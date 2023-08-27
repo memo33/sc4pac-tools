@@ -16,6 +16,7 @@ A package manager for SimCity 4 plugins.
   - `sc4pac` in Windows cmd.exe
   - `.\sc4pac` in Windows PowerShell
   - `./sc4pac` on Linux or macOS
+
   If everything works, this displays a help message.
 - Install your first package:
   - `sc4pac add memo:demo-package`
@@ -27,16 +28,16 @@ A package manager for SimCity 4 plugins.
 
 (preliminary)
 
-    - 100-props-textures
-    - 150-mods
-    - 200-residential
-    - 300-commercial
-    - 400-industrial
-    - 500-utilities
-    - 600-civis
-    - 700-transit
-    - 777-network-addon-mod
-    - 900-overrides
+    100-props-textures
+    150-mods
+    200-residential
+    300-commercial
+    400-industrial
+    500-utilities
+    600-civis
+    700-transit
+    777-network-addon-mod
+    900-overrides
 
 Packages are installed into even-numbered subfolders, as the order in which files are loaded by the game is important.
 Files you install manually should be put into odd-numbered subfolders.
