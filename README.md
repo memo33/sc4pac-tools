@@ -50,3 +50,8 @@ This information is used by sc4pac to compute all the necessary dependencies and
 
 The file `sc4pac-plugins-lock.json` stores information about all the installed packages (including dependencies).
 This tells sc4pac which version of packages are installed, where to find them in your plugins folder and how to upgrade them to newer versions.
+
+Sc4pac obtains its information from metadata stored in a remote channel.
+The metadata is added in terms of .yaml files.
+See the [commented example](channel-testing/yaml/templates/package-template-basic.yaml)
+and the [empty template](channel-testing/template-empty.yaml).
