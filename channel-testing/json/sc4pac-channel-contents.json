@@ -1,0 +1,53 @@
+{
+  "contents": [
+    {
+      "group": "sc4pacAsset",
+      "name": "memo-testing-second",
+      "versions": [
+        "1.0"
+      ]
+    },
+    {
+      "group": "memo",
+      "name": "demo-package",
+      "versions": [
+        "1.0"
+      ]
+    },
+    {
+      "group": "memo",
+      "name": "package-template-basic",
+      "versions": [
+        "2.0"
+      ]
+    },
+    {
+      "group": "sc4pacAsset",
+      "name": "memo-testing-first",
+      "versions": [
+        "1.0"
+      ]
+    },
+    {
+      "group": "sc4pacAsset",
+      "name": "memo-demo-package-file-a-zip",
+      "versions": [
+        "1.0"
+      ]
+    },
+    {
+      "group": "sc4pacAsset",
+      "name": "memo-testing-file-d-zip",
+      "versions": [
+        "1.0-1"
+      ]
+    },
+    {
+      "group": "memo",
+      "name": "package-template-variants",
+      "versions": [
+        "1.0"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,19 @@
+{
+  "group": "fukuda",
+  "name": "ir-placement-mod",
+  "version": "1.0",
+  "subfolder": "150-mods",
+  "info": {
+    "summary": "Remove 4×4 minimum size limit from agricultural zones"
+  },
+  "variants": [
+    {
+      "variant": {},
+      "assets": [
+        {
+          "assetId": "fukuda-ir-placement-mod"
+        }
+      ]
+    }
+  ]
+}

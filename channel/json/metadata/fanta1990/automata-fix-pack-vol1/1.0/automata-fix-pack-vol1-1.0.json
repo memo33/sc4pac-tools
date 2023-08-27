@@ -1,0 +1,19 @@
+{
+  "group": "fanta1990",
+  "name": "automata-fix-pack-vol1",
+  "version": "1.0",
+  "subfolder": "150-mods",
+  "info": {
+    "summary": "Fix visual glitches of plane and train models"
+  },
+  "variants": [
+    {
+      "variant": {},
+      "assets": [
+        {
+          "assetId": "apeek-automata-fix-pack-vol1"
+        }
+      ]
+    }
+  ]
+}

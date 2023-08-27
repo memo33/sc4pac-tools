@@ -1,0 +1,21 @@
+{
+  "group": "toroca",
+  "name": "opera-house-fix",
+  "version": "1.0",
+  "subfolder": "150-mods",
+  "info": {
+    "summary": "Fix the capacity of the opera house",
+    "warning": "You *must* bulldoze existing opera houses *before* installing this mod. Otherwise, the mod does not work and the game will crash when you bulldoze old opera houses.\n",
+    "description": "This mod adds a slider to the opera house query to solve a capacity problem that can have a major impact on city growth.\n"
+  },
+  "variants": [
+    {
+      "variant": {},
+      "assets": [
+        {
+          "assetId": "toroca-opera-house-fix"
+        }
+      ]
+    }
+  ]
+}

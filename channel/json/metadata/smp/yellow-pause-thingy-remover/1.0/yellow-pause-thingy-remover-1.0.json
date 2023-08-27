@@ -1,0 +1,19 @@
+{
+  "group": "smp",
+  "name": "yellow-pause-thingy-remover",
+  "version": "1.0",
+  "subfolder": "150-mods",
+  "info": {
+    "summary": "Remove the yellow border from the UI when the game is paused"
+  },
+  "variants": [
+    {
+      "variant": {},
+      "assets": [
+        {
+          "assetId": "smp-yellow-pause-thingy-remover"
+        }
+      ]
+    }
+  ]
+}

@@ -1,6 +1,4 @@
 target/
-/channel/json/
-/channel-testing/json/
 /cache/
 /temp/
 /plugins/

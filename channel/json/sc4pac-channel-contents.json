@@ -1,0 +1,109 @@
+{
+  "contents": [
+    {
+      "group": "toroca",
+      "name": "opera-house-fix",
+      "versions": [
+        "1.0"
+      ]
+    },
+    {
+      "group": "sc4pacAsset",
+      "name": "t-wrecks-maxis-prop-names-and-query-fix",
+      "versions": [
+        "1.0"
+      ]
+    },
+    {
+      "group": "sc4pacAsset",
+      "name": "smp-yellow-pause-thingy-remover",
+      "versions": [
+        "1.0"
+      ]
+    },
+    {
+      "group": "fukuda",
+      "name": "ir-placement-mod",
+      "versions": [
+        "1.0"
+      ]
+    },
+    {
+      "group": "heinbloed4711",
+      "name": "hi-tech-missing-high-wealth-jobs",
+      "versions": [
+        "1.11"
+      ]
+    },
+    {
+      "group": "sc4pacAsset",
+      "name": "fukuda-ir-placement-mod",
+      "versions": [
+        "1.0"
+      ]
+    },
+    {
+      "group": "t-wrecks",
+      "name": "maxis-prop-names-and-query-fix",
+      "versions": [
+        "1.0"
+      ]
+    },
+    {
+      "group": "sc4pacAsset",
+      "name": "heinbloed4711-ih-missing-r3-jobs-fix",
+      "versions": [
+        "1.11"
+      ]
+    },
+    {
+      "group": "memo",
+      "name": "essential-fixes",
+      "versions": [
+        "0.1.0"
+      ]
+    },
+    {
+      "group": "sc4pacAsset",
+      "name": "apeek-automata-fix-pack-vol1",
+      "versions": [
+        "1.0"
+      ]
+    },
+    {
+      "group": "sc4pacAsset",
+      "name": "cyclone-boom-save-warning-disable-exit-quit",
+      "versions": [
+        "1.0"
+      ]
+    },
+    {
+      "group": "sc4pacAsset",
+      "name": "toroca-opera-house-fix",
+      "versions": [
+        "1.0"
+      ]
+    },
+    {
+      "group": "cyclone-boom",
+      "name": "save-warning",
+      "versions": [
+        "1.0"
+      ]
+    },
+    {
+      "group": "smp",
+      "name": "yellow-pause-thingy-remover",
+      "versions": [
+        "1.0"
+      ]
+    },
+    {
+      "group": "fanta1990",
+      "name": "automata-fix-pack-vol1",
+      "versions": [
+        "1.0"
+      ]
+    }
+  ]
+}
