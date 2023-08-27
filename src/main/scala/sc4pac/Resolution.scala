@@ -151,7 +151,10 @@ object Resolution {
         ZIO.succeed(())  // artifact is changing, so cache.ttl (time-to-live) determines how long a file is cached
       } else {
         // dependency is a bare dependency without version and attributes, so we look up lastModified from DepAsset type
-        val lastModifiedOpt = depsWithVariant(dependency) match { case d: DepAsset => d.lastModified; case _ => None }
+        val lastModifiedOpt = depsWithVariant(dependency.withConfiguration(C.Configuration.empty)) match {
+          case d: DepAsset => d.lastModified
+          case _ => None
+        }
         assert(lastModifiedOpt.isDefined, s"non-changing assets should have lastModified defined: $artifact $dependency")
         deleteStaleCachedFile(cache.localFile(artifact.url, user=None), lastModifiedOpt.get, cache)
       }
@@ -173,7 +176,7 @@ object Resolution {
 
   private def create(cResolution: C.Resolution, globalVariant: Variant)(using ResolutionContext): Task[Resolution] = {
     ZIO.foreachPar(cResolution.dependencySet.minimizedSet) { d =>
-      Dep.fromBareDependency(d, globalVariant).map(d2 => (d, d2))
+      Dep.fromBareDependency(d, globalVariant).map(d2 => (d.withConfiguration(C.Configuration.empty), d2))
     }.map(depsWithVariant => new Resolution(cResolution, depsWithVariant.toMap))
   }
 
@@ -188,7 +191,7 @@ class Resolution(cResolution: C.Resolution, depsWithVariant: Map[C.Dependency, D
   /** Compute the direct dependencies. */
   def dependenciesOf(dep: Dep): Set[Dep] = {
     val cDeps: Seq[C.Dependency] = cResolution.dependenciesOf(depsWithVariantInv(dep).withConfiguration(Constants.link))
-    cDeps.iterator.map(depsWithVariant).toSet
+    cDeps.iterator.map(_.withConfiguration(C.Configuration.empty)).map(depsWithVariant).toSet
   }
 
   /** Compute the direct reverse dependencies. */
@@ -200,7 +203,7 @@ class Resolution(cResolution: C.Resolution, depsWithVariant: Map[C.Dependency, D
           .getOrElse(Set.empty)  // if empty, then dep is not a dependency of anything (it must be an explicitly installed package from initialDependencies)
       }
     depsWithVariant.iterator.collect {
-      case (dNoVar, dWithVar) if depsVersionlessNoVar.contains(dNoVar.withVersion("")) => dWithVar
+      case (dNoVar, dWithVar) if depsVersionlessNoVar.contains(dNoVar.withVersion("").withConfiguration(C.Configuration.empty)) => dWithVar
     }.toSet
   }
 
