@@ -1,3 +1,4 @@
+package io.github.memo33
 package sc4pac
 
 import sc4pac.CoursierZio.*  // implicit coursier-zio interop

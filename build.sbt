@@ -25,8 +25,8 @@ scalacOptions ++= Seq(
 javacOptions ++= Seq("--release", "8")
 
 console / initialCommands := """
-import sc4pac.*
-lazy val pacman = unsafeRun(Data.PluginsData.readOrInit.flatMap(data => sc4pac.Sc4pac.init(data.config)))
+import io.github.memo33.sc4pac.*
+lazy val pacman = unsafeRun(Data.PluginsData.readOrInit.flatMap(data => Sc4pac.init(data.config)))
 import zio.{ZIO, IO, Task}
 """
 
@@ -35,13 +35,13 @@ lazy val root = (project in file(".")).
   enablePlugins(BuildInfoPlugin).
   settings(
     buildInfoKeys := Seq[BuildInfoKey](name, organization, version, scalaVersion, sbtVersion, licenses),
-    buildInfoPackage := "sc4pac.cli"
+    buildInfoPackage := "io.github.memo33.sc4pac.cli"
   )
 
 
 Compile / run / fork := true
 
-Compile / mainClass := Some("sc4pac.cli.CliMain")
+Compile / mainClass := Some("io.github.memo33.sc4pac.cli.CliMain")
 
 // Create a large executable jar with `sbt assembly`.
 assembly / assemblyJarName := s"${name.value}-cli.jar"

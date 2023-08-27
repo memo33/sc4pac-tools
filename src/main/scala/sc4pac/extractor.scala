@@ -1,3 +1,4 @@
+package io.github.memo33
 package sc4pac
 
 import org.codehaus.plexus.archiver.zip.ZipUnArchiver
