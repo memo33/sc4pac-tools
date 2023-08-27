@@ -19,7 +19,7 @@ A package manager for SimCity 4 plugins.
 
   If everything works, this displays a help message.
 - Install your first package:
-  - `sc4pac add memo:demo-package`
+  - `sc4pac add memo:essential-fixes`
   - `sc4pac update`
 - Be aware that Simtropolis has a download limit of 20 files per day.
 
