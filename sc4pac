@@ -1,0 +1,11 @@
+#!/bin/sh
+# This file is a modified copy of src/scripts/sc4pac for testing purposes.
+#
+# Invocation of sc4pac command-line interface on Linux or macOS.
+# In a terminal, call:
+#
+#     ./sc4pac
+
+
+SCRIPTDIR="${0%/*}"
+java -jar "${SCRIPTDIR}/target/scala-3.3.0/sc4pac-cli.jar" "$@"

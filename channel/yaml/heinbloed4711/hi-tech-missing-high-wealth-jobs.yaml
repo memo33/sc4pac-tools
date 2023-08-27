@@ -1,0 +1,14 @@
+group: "heinbloed4711"
+name: "hi-tech-missing-high-wealth-jobs"
+version: "1.11"
+subfolder: "150-mods"
+assets:
+- assetId: "heinbloed4711-ih-missing-r3-jobs-fix"
+info:
+  summary: Fix arithmetic error causing missing high-wealth jobs on most IH lots
+
+---
+assetId: "heinbloed4711-ih-missing-r3-jobs-fix"
+version: "1.11"
+lastModified: "2009-11-03T13:21:04Z"
+url: "https://community.simtropolis.com/files/file/22771-ih-missing-jobs-fix-update/?do=download"

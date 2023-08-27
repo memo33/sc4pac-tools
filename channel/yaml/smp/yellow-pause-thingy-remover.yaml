@@ -1,0 +1,14 @@
+group: "smp"
+name: "yellow-pause-thingy-remover"
+version: "1.0"
+subfolder: "150-mods"
+assets:
+- assetId: "smp-yellow-pause-thingy-remover"
+info:
+  summary: Remove the yellow border from the UI when the game is paused
+
+---
+assetId: "smp-yellow-pause-thingy-remover"
+version: "1.0"
+lastModified: "2012-10-06T08:41:23Z"
+url: "https://community.simtropolis.com/files/file/18680-smp-yellow-pause-thingy-remover/?do=download"

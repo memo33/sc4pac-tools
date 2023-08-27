@@ -1,0 +1,16 @@
+group: "t-wrecks"
+name: "maxis-prop-names-and-query-fix"
+version: "1.0"
+subfolder: "150-mods"
+assets:
+- assetId: "t-wrecks-maxis-prop-names-and-query-fix"
+info:
+  summary: Make all Maxis props behave like buildings in terms of names and queries
+  description: >
+    This supersedes Buildings-as-Props 1 and 2 as well as Plugin_landmarks_and_other_missing_Props.dat
+
+---
+assetId: "t-wrecks-maxis-prop-names-and-query-fix"
+version: "1.0"
+lastModified: "2023-07-21T10:03:18Z"
+url: "https://community.simtropolis.com/files/file/22400-maxis-prop-names-and-query-fix/?do=download"

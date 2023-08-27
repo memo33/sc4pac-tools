@@ -1,0 +1,21 @@
+group: "<owner>"
+name: "<package-name>"
+version: "<version>"
+subfolder: "<100-subfolder>"
+dependencies: []
+assets:
+- assetId: "<unique-id>"
+  include: []
+  exclude: []
+info:
+  summary: "<one-line summary>"
+  warning: ""
+  description: ""
+  images: []
+  website: ""
+
+---
+assetId: "<unique-id>"
+version: "<version>"
+lastModified: "<ISO-8601-timestamp>"
+url: "<asset-url>"

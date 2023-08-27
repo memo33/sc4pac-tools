@@ -1,0 +1,35 @@
+group: "memo"
+name: "package-template-variants"
+version: "1.0"
+subfolder: "150-mods"
+
+# Packages can come in variants.
+# Variants are configuration options that should be the same across the entire plugins folder, such as driveside, nightmode, cam, etc.
+# Make sure to list all possible variants with all their dependencies and assets.
+# The first time a package with a new variant is installed, the user is prompted to choose.
+variants:
+- variant: { driveside: "right" }
+  dependencies: []
+  assets:
+  - assetId: "memo-testing-first"
+    include:
+    - "/file1.*"
+  - assetId: "memo-testing-second"
+
+- variant: { driveside: "left" }
+  dependencies: []
+  assets:
+  - assetId: "memo-testing-first"
+
+---
+assetId: "memo-testing-first"
+version: "1.0"
+lastModified: "2023-07-29T21:33:56Z"
+url: "http://localhost:8090/files/package-cFile3.zip"
+
+---
+assetId: "memo-testing-second"
+version: "1.0"
+lastModified: "2023-07-29T21:33:56Z"
+url: "http://localhost:8090/files/package-cFile2.zip"
+

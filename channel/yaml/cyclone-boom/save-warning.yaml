@@ -1,0 +1,14 @@
+group: "cyclone-boom"
+name: "save-warning"
+version: "1.0"
+subfolder: "150-mods"
+assets:
+- assetId: "cyclone-boom-save-warning-disable-exit-quit"  # one of the two options
+info:
+  summary: "Disable the Save & Exit button to prevent save file corruption"
+
+---
+assetId: "cyclone-boom-save-warning-disable-exit-quit"
+version: "1.0"
+lastModified: "2019-03-21T01:00:43Z"
+url: "https://community.simtropolis.com/files/file/32812-save-warning/?do=download&r=175227"

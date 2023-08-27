@@ -1,0 +1,14 @@
+group: "fanta1990"
+name: "automata-fix-pack-vol1"
+version: "1.0"
+subfolder: "150-mods"
+assets:
+- assetId: "apeek-automata-fix-pack-vol1"
+info:
+  summary: "Fix visual glitches of plane and train models"
+
+---
+assetId: "apeek-automata-fix-pack-vol1"
+version: "1.0"
+lastModified: "2014-04-01T20:13:40Z"
+url: "https://community.simtropolis.com/files/file/29394-automata-fix-pack-vol1/?do=download"

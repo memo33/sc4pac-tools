@@ -1,0 +1,20 @@
+group: "toroca"
+name: "opera-house-fix"
+version: "1.0"
+subfolder: "150-mods"
+assets:
+- assetId: "toroca-opera-house-fix"
+info:
+  summary: Fix the capacity of the opera house
+  warning: >
+    You *must* bulldoze existing opera houses *before* installing this mod.
+    Otherwise, the mod does not work and the game will crash when you bulldoze old opera houses.
+  description: >
+    This mod adds a slider to the opera house query to solve a capacity problem
+    that can have a major impact on city growth.
+
+---
+assetId: "toroca-opera-house-fix"
+version: "1.0"
+lastModified: "2004-03-31T00:00:00Z"
+url: "https://community.simtropolis.com/files/file/21342-opera-house-fix/?do=download"

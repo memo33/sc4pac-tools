@@ -1,0 +1,57 @@
+# The following section describes an asset.
+# An asset is a file that can be downloaded from the file exchanges.
+# An asset cannot be installed directly, but it can provide files for one or multiple installable packages.
+
+assetId: "memo-testing-file-d-zip"  # A unique identifier (lowercase, hyphenated, no special characters)
+# The version string and lastModified timestamp are used to determine when an
+# asset has changed, so that all packages depending on it can be reinstalled.
+version: "1.0-1"  # increment the -1 patch version if the remote file is updated without incrementing the version
+lastModified: "2023-07-29T21:33:57Z"
+# The direct download link to the artifact (supports zip files, jar files, and jar files containd in zip files)
+url: "http://localhost:8090/files/package-d.zip"
+
+---
+# The following section describes a package.
+# Packages are collections of files that can be installed on user request.
+# They only store metadata that tells sc4pac where to obtain the files and how to install them.
+# The files are extracted from assets.
+# Packages can depend on any number of other packages ("dependencies").
+
+group: "memo"  # Package owner or modding group (lowercase, hyphenated, no special characters)
+name: "package-template-basic"  # The name of the package, unique within the group (lowercase, hyphenated, no special characters)
+# The unique identifier of a package is <group>:<name>
+version: "2.0"
+subfolder: "100-props-textures"  # The folder inside Plugins to which the package is installed (even 3-digit number prefix to control load order)
+
+dependencies:  # Optional list of package identifiers (zero or more)
+- "memo:package-template-variants"
+
+assets:  # Optional list of assets from which to extract files (zero or more)
+- assetId: "memo-testing-file-d-zip"
+  # Optional RegEx include patterns matched against the path inside the archive
+  # (starting with and separated by _forward_ slashes for platform independence).
+  # The matching is case-insensitive for file-system independence.
+  # By default, every file is included.
+  include:
+  - "/folder/file1.dat"
+  - "/folder2/"
+  - "/file3.*"
+  - "^/full/path/to/file4\\.dat$"
+  # Optional RegEx exclude patterns tested after includes.
+  # If absent or empty, then by default all file types other than .dat/.sc4model/.sc4lot/.sc4desc/.sc4 are excluded.
+  exclude: []
+
+# Additional information, entirely optional (currently not used).
+info:
+  summary: "One-line summary"
+  warning: >
+    Special instructions to display before installation, such as bulldozing requirements.
+  description: >
+    Longer text with some details.
+
+    Yet more text…
+  images: [ "img1.png", "img2.png" ]
+  website: "example.org"
+
+# The .yaml files can contain any number of assets and packages.
+# The location of the .yaml files does not matter, so they can be organized in a reasonable directory structure.

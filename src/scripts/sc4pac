@@ -1,0 +1,9 @@
+#!/bin/sh
+# Invocation of sc4pac command-line interface on Linux or macOS.
+# In a terminal, call:
+#
+#     ./sc4pac
+
+
+SCRIPTDIR="${0%/*}"
+java -jar "$SCRIPTDIR/sc4pac-cli.jar" "$@"

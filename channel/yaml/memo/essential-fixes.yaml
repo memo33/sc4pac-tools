@@ -1,0 +1,14 @@
+group: "memo"
+name: "essential-fixes"
+version: "0.1.0"
+subfolder: "150-mods"
+info:
+  summary: "A collection of important fixes everyone should have"
+dependencies:
+- "toroca:opera-house-fix"
+- "cyclone-boom:save-warning"
+- "t-wrecks:maxis-prop-names-and-query-fix"
+- "heinbloed4711:hi-tech-missing-high-wealth-jobs"
+- "fanta1990:automata-fix-pack-vol1"
+- "fukuda:ir-placement-mod"
+- "smp:yellow-pause-thingy-remover"

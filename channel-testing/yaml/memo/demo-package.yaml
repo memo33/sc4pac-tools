@@ -1,0 +1,14 @@
+group: "memo"
+name: "demo-package"
+version: "1.0"
+subfolder: "100-props-textures"
+dependencies:
+- "memo:package-template-basic"
+assets:
+- assetId: "memo-demo-package-file-a-zip"
+
+---
+assetId: "memo-demo-package-file-a-zip"
+version: "1.0"
+lastModified: "2023-07-29T21:33:56Z"
+url: "http://localhost:8090/files/package-aFile3.zip"
