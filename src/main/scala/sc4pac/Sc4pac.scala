@@ -171,9 +171,9 @@ trait UpdateService { this: Sc4pac =>
   def update(modules: Seq[ModuleNoAssetNoVar], globalVariant0: Variant, pluginsRoot: os.Path): Task[Boolean] = {
 
     def logPlan(plan: Sc4pac.UpdatePlan): UIO[Unit] = ZIO.succeed {
-      if (plan.toRemove.nonEmpty) logPackages(f"The following packages will be removed:%n", plan.toRemove)
-      if (plan.toReinstall.nonEmpty) logPackages(f"The following packages will be reinstalled:%n", plan.toReinstall)
-      if (plan.toInstall.nonEmpty) logPackages(f"The following packages will be installed:%n", plan.toInstall)
+      if (plan.toRemove.nonEmpty) logPackages(f"The following packages will be removed:%n", plan.toRemove.filterNot(_.isSc4pacAsset))
+      if (plan.toReinstall.nonEmpty) logPackages(f"The following packages will be reinstalled:%n", plan.toReinstall.filterNot(_.isSc4pacAsset))
+      if (plan.toInstall.nonEmpty) logPackages(f"The following packages will be installed:%n", plan.toInstall.filterNot(_.isSc4pacAsset))
       if (plan.isUpToDate) logger.log("Everything is up-to-date.")
     }
 
