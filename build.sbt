@@ -80,3 +80,5 @@ libraryDependencies += "org.slf4j" % "slf4j-nop" % "2.0.7"  // ignore logging in
 libraryDependencies += "com.github.alexarchambault" %% "case-app" % "2.1.0-M25"  // command-line app helper
 
 libraryDependencies += "dev.dirs" % "directories" % "26"  // platform-specific location of cache, temp, config, etc.
+
+libraryDependencies += "io.github.alexarchambault.windows-ansi" % "windows-ansi" % "0.0.5"  // color in windows terminals
