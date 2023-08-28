@@ -16,10 +16,29 @@ import sc4pac.Data.*
 import sc4pac.Sc4pac.{StageResult, UpdatePlan}
 import sc4pac.Resolution.{Dep, DepModule, DepAsset}
 
-class Logger {
-  // TODO check line ending
+/** A plain Coursier logger, since Coursier's RefreshLogger results in dropped
+  * or invisible messages, hiding the downloading activity.
+  */
+class Logger private (useColor: Boolean) extends coursier.cache.CacheLogger {
+
+  private def cyan(msg: String): String = if (useColor) Console.CYAN + msg + Console.RESET else msg
+  private def yellowBold(msg: String): String = if (useColor) Console.YELLOW + Console.BOLD + msg + Console.RESET else msg
+
+  override def downloadingArtifact(url: String, artifact: coursier.util.Artifact) =
+    println("  " + cyan(s"> Downloading $url"))
+  override def downloadedArtifact(url: String, success: Boolean) = {
+    if (!success) println("  " + cyan(s"  Download of $url unsuccessful"))
+  }
+
   def log(msg: String): Unit = println(msg)
-  def warn(msg: String): Unit = println(s"Warning: $msg")
+  def warn(msg: String): Unit = println(yellowBold("Warning:") + " " + msg)
+}
+object Logger {
+  private def isWindows: Boolean = System.getProperty("os.name").toLowerCase(java.util.Locale.ROOT).contains("windows")
+  private lazy val supportsColor: Boolean = io.github.alexarchambault.windowsansi.WindowsAnsi.setup()  // lazy val, since setup is only needed once
+  def apply(useColor: Boolean): Logger = {
+    if (useColor && isWindows && !supportsColor) new Logger(useColor = false) else new Logger(useColor)
+  }
 }
 
 // TODO Use `Runtime#reportFatal` or `Runtime.setReportFatal` to log fatal errors like stack overflow
@@ -277,10 +296,9 @@ trait UpdateService { this: Sc4pac =>
       _               <- if (plan.isUpToDate) ZIO.succeed(true)
                          else Prompt.yesNo("Continue?").filterOrFail(_ == true)(Sc4pacAbort())
       _               <- ZIO.unless(globalVariant == globalVariant0)(storeGlobalVariant(globalVariant))  // only store something after confirmation
-      _               <- ZIO.attempt(if (plan.toInstall.nonEmpty) System.err.println())  // TODO workaround for skipped logger progress messages
       assetsToInstall <- resolution.fetchArtifactsOf(plan.toInstall)
-      _               <- ZIO.attempt(if (plan.toInstall.nonEmpty) System.err.println())  // TODO workaround for skipped logger progress messages
-      // TODO if some artifacts fail to be fetched, fall back to installing remaining packages
+      // TODO if some artifacts fail to be fetched, fall back to installing remaining packages (maybe not(?), as this leads to missing dependencies,
+      // but there needs to be a manual workaround in case of permanently missing artifacts)
       depsToStage     =  plan.toInstall.collect{ case d: DepModule => d }.toSeq  // keep only non-assets
       artifactsById   =  assetsToInstall.map((dep, pub, art, file) => (dep.module.organization, dep.module.name) -> (art, file)).toMap
       _               =  require(artifactsById.size == assetsToInstall.size, s"artifactsById is not 1-to-1: $assetsToInstall")
@@ -352,7 +370,7 @@ object Sc4pac {
   private[sc4pac] def initializeRepositories(repoUris: Seq[String], cache: FileCache[Task], channelContentsTtl: Option[scala.concurrent.duration.Duration]): Task[Seq[MetadataRepository]] = {
     val task: Task[Seq[MetadataRepository]] = ZIO.collectPar(repoUris) { url =>
       fetchChannelData(url, cache, channelContentsTtl)
-        .mapError((err: ErrStr) => { Console.err.println(s"Failed to read channel data: $err"); None })
+        .mapError((err: ErrStr) => { System.err.println(s"Failed to read channel data: $err"); None })
     }.filterOrFail(_.nonEmpty)(Sc4pacAbort(s"No channels available: $repoUris"))
     // TODO for long running processes, we might need a way to refresh the channel
     // data occasionally (but for now this is good enough)
@@ -362,9 +380,9 @@ object Sc4pac {
 
   def init(config: ConfigData): Task[Sc4pac] = {
     import CoursierZio.*  // implicit coursier-zio interop
-    val refreshLogger = coursier.cache.loggers.RefreshLogger.create(System.err)  // TODO System.err seems to cause less collisions between refreshing progress and ordinary log messages
-    val logger = new Logger()
-    val cache = FileCache[zio.Task]().withLocation(config.cacheRoot.resolve("coursier").toFile()).withLogger(refreshLogger)
+    // val refreshLogger = coursier.cache.loggers.RefreshLogger.create(System.err)  // TODO System.err seems to cause less collisions between refreshing progress and ordinary log messages
+    val logger = Logger(config.color)
+    val cache = FileCache[zio.Task]().withLocation(config.cacheRoot.resolve("coursier").toFile()).withLogger(logger)
       // .withCachePolicies(Seq(coursier.cache.CachePolicy.ForceDownload))  // TODO cache policy
       // .withPool(pool)  // TODO thread pool
       // .withTtl(1.hour)  // TODO time-to-live
