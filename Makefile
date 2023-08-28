@@ -18,4 +18,10 @@ clean:
 clean-cache: clean
 	rm -rf cache
 
-.PHONY: dist channel channel-testing host clean clean-cache
+test:
+	./sc4pac update
+	sed -i 's#"https.*raw.githubusercontent.*"#"http://localhost:8090"#g' sc4pac-plugins.json
+	./sc4pac add memo:demo-package
+	./sc4pac update
+
+.PHONY: dist channel channel-testing host clean clean-cache test
