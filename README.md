@@ -6,7 +6,7 @@ A package manager for SimCity 4 plugins.
 (unstable, work-in-progress, subject to change)
 
 
-# Usage:
+# Usage
 
 - Prerequisites:
   - Java 8+
@@ -55,3 +55,9 @@ Sc4pac obtains its information from metadata stored in a remote channel.
 The metadata is added in terms of .yaml files.
 See the [commented example](channel-testing/yaml/templates/package-template-basic.yaml)
 and the [empty template](channel-testing/template-empty.yaml).
+
+
+# Build instructions
+
+Compile with `sbt assembly`.
+Create a release bundle with `make dist` in a Unix shell.
