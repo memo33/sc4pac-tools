@@ -383,9 +383,10 @@ object Sc4pac {
     import CoursierZio.*  // implicit coursier-zio interop
     // val refreshLogger = coursier.cache.loggers.RefreshLogger.create(System.err)  // TODO System.err seems to cause less collisions between refreshing progress and ordinary log messages
     val logger = Logger(config.color)
+    val coursierPool = coursier.cache.internal.ThreadUtil.fixedThreadPool(size = 2)  // limit parallel downloads to 2 (ST rejects too many connections)
     val cache = FileCache[zio.Task]().withLocation(config.cacheRoot.resolve("coursier").toFile()).withLogger(logger)
+      .withPool(coursierPool)  // TODO thread pool
       // .withCachePolicies(Seq(coursier.cache.CachePolicy.ForceDownload))  // TODO cache policy
-      // .withPool(pool)  // TODO thread pool
       // .withTtl(1.hour)  // TODO time-to-live
     val tempRoot = os.Path(config.tempRoot, os.pwd)
     for (repos <- initializeRepositories(config.channels, cache, channelContentsTtl = None)) yield Sc4pac(repos, cache, tempRoot, logger)
