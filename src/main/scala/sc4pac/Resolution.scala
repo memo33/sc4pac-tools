@@ -23,7 +23,6 @@ object Resolution {
     def isSc4pacAsset: Boolean
     def version: String
     def orgName: String
-    def displayString: String = s"$orgName $version"
   }
 
   object Dep {
@@ -104,12 +103,12 @@ object Resolution {
     def isSc4pacAsset: Boolean = false
     def orgName: String = s"${group.value}:${name.value}"
 
-    override def displayString: String = {
+    def formattedDisplayString(gray: String => String): String = {
       val variantStr = {
           val s = Data.VariantData.variantString(variant)
-          if (s.nonEmpty) s"  [$s]" else ""
+          if (s.nonEmpty) s" [$s]" else ""
       }
-      super.displayString + variantStr
+      gray(s"${group.value}:") + name.value + " " + gray(version + variantStr)
     }
   }
 

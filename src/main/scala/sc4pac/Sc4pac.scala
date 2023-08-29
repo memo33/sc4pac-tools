@@ -23,6 +23,7 @@ class Logger private (useColor: Boolean) extends coursier.cache.CacheLogger {
 
   private def cyan(msg: String): String = if (useColor) Console.CYAN + msg + Console.RESET else msg
   private def yellowBold(msg: String): String = if (useColor) Console.YELLOW + Console.BOLD + msg + Console.RESET else msg
+  def gray(msg: String): String = if (useColor) s"${27.toChar}[90m" + msg + Console.RESET else msg  // aka bright black
 
   override def downloadingArtifact(url: String, artifact: coursier.util.Artifact) =
     println("  " + cyan(s"> Downloading $url"))
@@ -163,17 +164,17 @@ trait UpdateService { this: Sc4pac =>
     }
   }
 
-  private def logPackages(msg: String, dependencies: Iterable[Dep]): Unit = {
-    logger.log(msg + dependencies.iterator.map(_.displayString).toSeq.sorted.mkString(f"%n"+" "*4, f"%n"+" "*4, f"%n"))
+  private def logPackages(msg: String, dependencies: Iterable[DepModule]): Unit = {
+    logger.log(msg + dependencies.iterator.map(_.formattedDisplayString(logger.gray)).toSeq.sorted.mkString(f"%n"+" "*4, f"%n"+" "*4, f"%n"))
   }
 
   /** Update all installed packages from modules (the list of explicitly added packages). */
   def update(modules: Seq[ModuleNoAssetNoVar], globalVariant0: Variant, pluginsRoot: os.Path): Task[Boolean] = {
 
     def logPlan(plan: Sc4pac.UpdatePlan): UIO[Unit] = ZIO.succeed {
-      if (plan.toRemove.nonEmpty) logPackages(f"The following packages will be removed:%n", plan.toRemove.filterNot(_.isSc4pacAsset))
-      if (plan.toReinstall.nonEmpty) logPackages(f"The following packages will be reinstalled:%n", plan.toReinstall.filterNot(_.isSc4pacAsset))
-      if (plan.toInstall.nonEmpty) logPackages(f"The following packages will be installed:%n", plan.toInstall.filterNot(_.isSc4pacAsset))
+      if (plan.toRemove.nonEmpty) logPackages(f"The following packages will be removed:%n", plan.toRemove.collect{ case d: DepModule => d })
+      if (plan.toReinstall.nonEmpty) logPackages(f"The following packages will be reinstalled:%n", plan.toReinstall.collect{ case d: DepModule => d })
+      if (plan.toInstall.nonEmpty) logPackages(f"The following packages will be installed:%n", plan.toInstall.collect{ case d: DepModule => d })
       if (plan.isUpToDate) logger.log("Everything is up-to-date.")
     }
 
