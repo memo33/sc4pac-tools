@@ -213,12 +213,13 @@ object Data {
 
     /** Read PluginsData from file if it exists, else create it and write it to file. */
     val readOrInit: Task[PluginsData] = {
-      if (os.exists(PluginsData.path)) {
-        Data.readJsonIo[PluginsData](PluginsData.path)
-      } else for {
-        data <- PluginsData.init()
-        _    <- Data.writeJsonIo(PluginsData.path, data, None)(ZIO.succeed(()))
-      } yield data
+      ZIO.ifZIO(ZIO.attemptBlocking(os.exists(PluginsData.path)))(
+        onTrue = Data.readJsonIo[PluginsData](PluginsData.path),
+        onFalse = for {
+          data <- PluginsData.init()
+          _    <- Data.writeJsonIo(PluginsData.path, data, None)(ZIO.succeed(()))
+        } yield data
+      )
     }
   }
 
@@ -263,12 +264,13 @@ object Data {
 
     /** Read PluginsLockData from file if it exists, else create it and write it to file. */
     val readOrInit: Task[PluginsLockData] = {
-      if (os.exists(PluginsLockData.path)) {
-        Data.readJsonIo[PluginsLockData](PluginsLockData.path)
-      } else {
-        val data = PluginsLockData(Seq.empty, Seq.empty)
-        Data.writeJsonIo(PluginsLockData.path, data, None)(ZIO.succeed(data))
-      }
+      ZIO.ifZIO(ZIO.attemptBlocking(os.exists(PluginsLockData.path)))(
+        onTrue = Data.readJsonIo[PluginsLockData](PluginsLockData.path),
+        onFalse = {
+          val data = PluginsLockData(Seq.empty, Seq.empty)
+          Data.writeJsonIo(PluginsLockData.path, data, None)(ZIO.succeed(data))
+        }
+      )
     }
   }
 
@@ -317,7 +319,8 @@ object Data {
   }
 
   private[sc4pac] def readJsonIo[A : Reader](jsonPath: os.Path): zio.Task[A] = {
-    readJsonIo(os.read.stream(jsonPath), errMsg = jsonPath.toString())
+    ZIO.attemptBlocking(os.read.stream(jsonPath))
+      .flatMap(readJsonIo(_, errMsg = jsonPath.toString()))
   }
 
   private[sc4pac] def readJsonIo[A : Reader](jsonStr: String): zio.Task[A] = {
@@ -325,7 +328,7 @@ object Data {
   }
 
   private[sc4pac] def readJsonIo[A : Reader](pathOrString: ujson.Readable, errMsg: => ErrStr): zio.Task[A] = {
-    ZIO.attempt(read[A](pathOrString))
+    ZIO.attemptBlocking(read[A](pathOrString))
       .catchSome {
         case e @ (_: upickle.core.AbortException
                 | _: ujson.ParseException
@@ -347,15 +350,17 @@ object Data {
 
     // write to a temp file, wait for action to complete and if successful move temp file to actual destination
     val write: ZIO[zio.Scope, Throwable, A] = {
-      val jsonTmp = os.temp(dir = jsonPath / os.up, prefix = jsonPath.last, suffix = ".tmp", deleteOnExit = false)
-      ZIO.fromAutoCloseable(ZIO.attempt(java.nio.file.Files.newBufferedWriter(jsonTmp.toNIO)))
-        .flatMap(out => ZIO.attempt(writeTo[S](newState, out, indent=2)))  // catch which exceptions?
-        .zipRight(action)
-        .foldZIO(
-          failure = err => ZIO.attempt(os.remove(jsonTmp, checkExists = false)).zipRight(ZIO.fail(err)),
-          success = actRes => ZIO.attempt(os.move.over(jsonTmp, jsonPath)).zipRight(ZIO.succeed(actRes))
-        )
-        // TODO catch other exceptions?
+      ZIO.attemptBlocking(os.temp(dir = jsonPath / os.up, prefix = jsonPath.last, suffix = ".tmp", deleteOnExit = false))
+        .flatMap { jsonTmp =>
+          ZIO.fromAutoCloseable(ZIO.attemptBlocking(java.nio.file.Files.newBufferedWriter(jsonTmp.toNIO)))
+            .flatMap { out => ZIO.attemptBlocking(writeTo[S](newState, out, indent=2)) }  // catch which exceptions?
+            .zipRight(action)
+            .foldZIO(
+              failure = err => ZIO.attemptBlocking(os.remove(jsonTmp, checkExists = false)).zipRight(ZIO.fail(err)),
+              success = actRes => ZIO.attemptBlocking(os.move.over(jsonTmp, jsonPath)).zipRight(ZIO.succeed(actRes))
+            )
+            // TODO catch other exceptions?
+        }
     }
 
     // first read, then write only if the read result is still the original state

@@ -82,7 +82,6 @@ object ChannelUtil {
     * - files can include multiple package definitions
     */
   def convertYamlToJson(channelDir: os.Path): Unit = {
-    // val channelDir = os.pwd / "channel"
     val tempJsonDir = os.temp.dir(channelDir, prefix = "json", deleteOnExit = true)
     try {
       val packages: Map[(String, String), Seq[String]] = os.walk.stream(channelDir / "yaml")

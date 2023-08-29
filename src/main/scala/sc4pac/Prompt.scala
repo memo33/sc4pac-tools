@@ -61,12 +61,14 @@ object Prompt {
     }
 
     def createMaybe(path: os.Path): IO[java.io.IOException, Option[os.Path]] = {
-      if (os.exists(path)) ZIO.succeed(Some(path))
-      else for {
-        create <- yesNo(f"""The directory "$path" does not exist.%nShould it be created?""")
-        result <- if (!create) ZIO.succeed(None)
-                  else ZIO.attempt(os.makeDir.all(path)).refineToOrDie[java.io.IOException].map(_ => Option(path))
-      } yield result
+      ZIO.ifZIO(ZIO.attemptBlockingIO(os.exists(path)))(
+        onTrue = ZIO.succeed(Some(path)),
+        onFalse = for {
+          create <- yesNo(f"""The directory "$path" does not exist.%nShould it be created?""")
+          result <- if (!create) ZIO.succeed(None)
+                    else ZIO.attemptBlockingIO(os.makeDir.all(path)).map(_ => Option(path))
+        } yield result
+      )
     }
 
     ZIO.iterate(None: Option[os.Path])(_.isEmpty)(_ => readPath.flatMap(createMaybe)).map(_.get)

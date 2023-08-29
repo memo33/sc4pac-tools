@@ -108,7 +108,7 @@ trait UpdateService { this: Sc4pac =>
     jarsRoot: os.Path,
     progress: Sc4pac.Progress
   ): Task[(Seq[os.SubPath], Boolean)] = {
-    def extract(assetData: AssetReference, pkgFolder: os.SubPath): Task[Unit] = ZIO.attempt {
+    def extract(assetData: AssetReference, pkgFolder: os.SubPath): Task[Unit] = ZIO.attemptBlocking {
       // Given an AssetReference, we look up the corresponding artifact file
       // by ID. This relies on the 1-to-1-correspondence between sc4pacAssets
       // and artifact files.
@@ -142,7 +142,7 @@ trait UpdateService { this: Sc4pac =>
       pkgFolder              =  pkgData.subfolder / packageFolderName(dependency)
       _                      <- ZIO.attempt(logger.log(f"$progress Extracting ${dependency.orgName} ${dependency.version}"))
       warnings               <- if (pkgData.info.warning.nonEmpty) ZIO.attempt { logger.warn(pkgData.info.warning); true } else ZIO.succeed(false)
-      _                      <- ZIO.attempt(os.makeDir.all(tempPluginsRoot / pkgFolder))  // create folder even if package does not have any assets or files
+      _                      <- ZIO.attemptBlocking(os.makeDir.all(tempPluginsRoot / pkgFolder))  // create folder even if package does not have any assets or files
       _                      <- ZIO.foreachDiscard(variantData.assets)(extract(_, pkgFolder))
     } yield (Seq(pkgFolder), warnings)  // for now, everything is installed into this folder only, so we do not need to list individual files
   }
@@ -154,7 +154,7 @@ trait UpdateService { this: Sc4pac =>
       .flatMap(_.files)  // all files of packages to remove
     ZIO.foreachDiscard(files) { (sub: os.SubPath) =>  // this runs sequentially
       val path = pluginsRoot / sub
-      ZIO.attempt {
+      ZIO.attemptBlocking {
         if (os.exists(path)) {
           os.remove.all(path)
         } else {
@@ -193,7 +193,7 @@ trait UpdateService { this: Sc4pac =>
       */
     def stageAll(deps: Seq[DepModule], artifactsById: Map[(Organization, ModuleName), (Artifact, java.io.File)]): Task[StageResult] = {
 
-      val makeTempStagingDir = ZIO.attempt {
+      val makeTempStagingDir = ZIO.attemptBlocking {
         os.makeDir.all(tempRoot)
         os.temp.dir(tempRoot, prefix = "staging-process", deleteOnExit = true)
       }
@@ -201,7 +201,7 @@ trait UpdateService { this: Sc4pac =>
       for {
         stagingRoot             <- makeTempStagingDir
         tempPluginsRoot         =  stagingRoot / "plugins"
-        _                       <- ZIO.attempt(os.makeDir(tempPluginsRoot))
+        _                       <- ZIO.attemptBlocking(os.makeDir(tempPluginsRoot))
         jarsRoot                =  stagingRoot / "jars"
         numDeps                 =  deps.length
         (stagedFiles, warnings) <- ZIO.foreach(deps.zipWithIndex) { case (dep, idx) =>   // sequentially stages each package
@@ -218,9 +218,9 @@ trait UpdateService { this: Sc4pac =>
     def movePackagesToPlugins(staged: StageResult): IO[Nothing, Unit] = {
       ZIO.validateDiscard(staged.files) { case (dep, pkgFiles) =>
         ZIO.foreachDiscard(pkgFiles) { subPath =>
-          ZIO.attempt {
+          ZIO.attemptBlocking {
             os.move.over(staged.tempPluginsRoot / subPath, pluginsRoot / subPath, replaceExisting = true, createFolders = true)
-          } catchSome { case _: java.nio.file.DirectoryNotEmptyException => ZIO.attempt {
+          } catchSome { case _: java.nio.file.DirectoryNotEmptyException => ZIO.attemptBlocking {
             // moving a directory fails if its children require moving as well
             // (e.g. moving between two devices), so fall back to copying
             os.copy.over(staged.tempPluginsRoot / subPath, pluginsRoot / subPath, replaceExisting = true, createFolders = true)
@@ -306,7 +306,7 @@ trait UpdateService { this: Sc4pac =>
       stageResult     <- stageAll(depsToStage, artifactsById)
       // _               <- ZIO.attempt(logger.log(s"stage result: $stageResult"))
       flag            <- publishToPlugins(stageResult, pluginsLockData, plan)
-      _               <- ZIO.attempt(os.remove.all(stageResult.stagingRoot))  // deleteOnExit does not seem to work reliably, so explicitly delete temp folder  TODO catch and ignore TODO finally
+      _               <- ZIO.attemptBlocking(os.remove.all(stageResult.stagingRoot))  // deleteOnExit does not seem to work reliably, so explicitly delete temp folder  TODO catch and ignore TODO finally
     } yield flag  // TODO decide what flag means
 
   }
