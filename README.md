@@ -11,7 +11,8 @@ A package manager for SimCity 4 plugins.
 - Prerequisites:
   - Java 8+
   - enough disk space
-- Download the latest release and extract the contents to any location in your user directory (for example, your Desktop).
+- Download the [latest release](https://github.com/memo33/sc4pac-tools/releases/latest)
+  and extract the contents to any location in your user directory (for example, your Desktop).
 - Open a shell in the new directory and run the command-line tool `sc4pac` by calling:
   - `sc4pac` in Windows cmd.exe
   - `.\sc4pac` in Windows PowerShell
