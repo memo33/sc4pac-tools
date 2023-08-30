@@ -2,7 +2,7 @@ name := "sc4pac"
 
 organization := "io.github.memo33"
 
-version := "0.1.1"
+version := "0.1.2-SNAPSHOT"
 
 // ThisBuild / versionScheme := Some("early-semver")
 
@@ -46,16 +46,26 @@ Compile / mainClass := Some("io.github.memo33.sc4pac.cli.CliMain")
 // Create a large executable jar with `sbt assembly`.
 assembly / assemblyJarName := s"${name.value}-cli.jar"
 
-// Avoid deduplicate conflict between plexus-archiver-4.8.0.jar and plexus-io-3.4.1.jar
-// as well as slf4j-api-2.0.7.jar, slf4j-nop-2.0.7.jar, xz-1.9.jar
+// To avoid the following merge failures, we explicitly handle those respective
+// files from the uber-jar. Other files in META-INF must be preserved though, in
+// particular native libraries such as jansi.dll/libjansi.so in META-INF/native/.
+//
+//     Deduplicate found different file contents in the following:
+//       Jar name = slf4j-api-2.0.7.jar, jar org = org.slf4j, entry target = META-INF/versions/9/module-info.class
+//       Jar name = slf4j-nop-2.0.7.jar, jar org = org.slf4j, entry target = META-INF/versions/9/module-info.class
+//       Jar name = xz-1.9.jar, jar org = org.tukaani, entry target = META-INF/versions/9/module-info.class
+//     Deduplicate found different file contents in the following:
+//       Jar name = plexus-archiver-4.8.0.jar, jar org = org.codehaus.plexus, entry target = META-INF/sisu/javax.inject.Named
+//       Jar name = plexus-io-3.4.1.jar, jar org = org.codehaus.plexus, entry target = META-INF/sisu/javax.inject.Named
+//
 assembly / assemblyMergeStrategy := {
-  case PathList("META-INF", xs @ _*) =>  // from https://stackoverflow.com/a/74212770
-    (xs map {_.toLowerCase}) match {
-      case "services" :: xs =>
-        MergeStrategy.filterDistinctLines
-      case _ => MergeStrategy.discard
+  case p0 @ PathList("META-INF", xs @ _*) =>
+    (xs.map(_.toLowerCase)) match {
+      case p1 if p1.last == "module-info.class" => MergeStrategy.discard
+      case p1 if p1.last == "javax.inject.named" => MergeStrategy.filterDistinctLines
+      case _ => MergeStrategy.defaultMergeStrategy(p0)
     }
-  case x => MergeStrategy.first
+  case p0 => MergeStrategy.defaultMergeStrategy(p0)
 }
 
 

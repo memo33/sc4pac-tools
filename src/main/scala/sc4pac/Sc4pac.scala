@@ -36,7 +36,15 @@ class Logger private (useColor: Boolean) extends coursier.cache.CacheLogger {
 }
 object Logger {
   private def isWindows: Boolean = System.getProperty("os.name").toLowerCase(java.util.Locale.ROOT).contains("windows")
-  private lazy val supportsColor: Boolean = io.github.alexarchambault.windowsansi.WindowsAnsi.setup()  // lazy val, since setup is only needed once
+
+  private lazy val supportsColor: Boolean = try {  // lazy val, since setup is only needed once
+    io.github.alexarchambault.windowsansi.WindowsAnsi.setup()
+  } catch {
+    case e: java.lang.UnsatisfiedLinkError =>  // in case something goes really wrong and no suitable native library is included
+      System.err.println(s"Using colorless output as fallback due to $e")
+      false
+  }
+
   def apply(useColor: Boolean): Logger = {
     if (useColor && isWindows && !supportsColor) new Logger(useColor = false) else new Logger(useColor)
   }
