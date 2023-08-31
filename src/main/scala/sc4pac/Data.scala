@@ -3,7 +3,7 @@ package sc4pac
 
 import coursier.core.{Repository, Module, Publication, ArtifactSource, Versions, Version,
   Dependency, Project, Classifier, Extension, Type, Configuration, ModuleName, Organization, Info}
-import upickle.default.{read, macroRW, ReadWriter, Reader, writeTo, readwriter}
+import upickle.default.{read, macroRW, ReadWriter, Reader, writeTo, writeToByteArray, readwriter}
 import java.nio.file.{Path as NioPath}
 import zio.{ZIO, IO, Task}
 import java.util.regex.Pattern
@@ -341,40 +341,32 @@ object Data {
   // steps:
   // - lock file for writing
   // - optionally read json and compare with previous json `origState` to ensure file is up-to-date
-  // - write `newState` to .json.tmp file
   // - do some potentially destructive action
-  // - if action successful, rename .json.tmp to .json, else delete .json.tmp
+  // - if action successful, write json file
+
+  private val utf8 = java.nio.charset.Charset.forName("UTF-8")
 
   def writeJsonIo[S : ReadWriter, A](jsonPath: os.Path, newState: S, origState: Option[S])(action: zio.Task[A]): zio.Task[A] = {
     import java.nio.file.StandardOpenOption
+    import zio.nio.channels.AsynchronousFileChannel
 
-    // write to a temp file, wait for action to complete and if successful move temp file to actual destination
-    val write: ZIO[zio.Scope, Throwable, A] = {
-      ZIO.attemptBlocking(os.temp(dir = jsonPath / os.up, prefix = jsonPath.last, suffix = ".tmp", deleteOnExit = false))
-        .flatMap { jsonTmp =>
-          ZIO.fromAutoCloseable(ZIO.attemptBlocking(java.nio.file.Files.newBufferedWriter(jsonTmp.toNIO)))
-            .flatMap { out => ZIO.attemptBlocking(writeTo[S](newState, out, indent=2)) }  // catch which exceptions?
-            .zipRight(action)
-            .foldZIO(
-              failure = err => ZIO.attemptBlocking(os.remove(jsonTmp, checkExists = false)).zipRight(ZIO.fail(err)),
-              success = actRes => ZIO.attemptBlocking(os.move.over(jsonTmp, jsonPath)).zipRight(ZIO.succeed(actRes))
-            )
-            // TODO catch other exceptions?
-        }
+    def write(channel: AsynchronousFileChannel): ZIO[zio.Scope, Throwable, Unit] = {
+      for {
+        _      <- channel.truncate(size = 0)
+        arr    =  writeToByteArray[S](newState, indent = 2)
+        unit   <- channel.writeChunk(zio.Chunk.fromArray(arr), position = 0)
+      } yield unit
     }
 
-    // first read, then write only if the read result is still the original state
-    val readWrite: ZIO[zio.Scope, Throwable, A] =
-      if (origState.isEmpty) {
-        write
-      } else {
-        readJsonIo[S](jsonPath)
-          .filterOrFail(_ == origState.get)(new Sc4pacIoException(s"cannot write data since json file has been modified: $jsonPath"))
-          .zipRight(write)
-      }
+    def read(channel: AsynchronousFileChannel): ZIO[zio.Scope, Throwable, S] = {
+      for {
+        chunk <- channel.stream(position = 0).runCollect
+        state <- readJsonIo[S](chunk.asString(utf8): String)
+      } yield state
+    }
 
     // the file channel used for locking
-    val scopedChannel = zio.nio.channels.AsynchronousFileChannel.open(
+    val scopedChannel: ZIO[zio.Scope, java.io.IOException, AsynchronousFileChannel] = AsynchronousFileChannel.open(
       zio.nio.file.Path.fromJava(jsonPath.toNIO),
       StandardOpenOption.READ,
       StandardOpenOption.WRITE,
@@ -382,14 +374,19 @@ object Data {
 
     val releaseLock = (lock: zio.nio.channels.FileLock) => if (lock != null) lock.release.ignore else ZIO.succeed(())
 
-    // acquire file lock, check if file was locked, otherwise perform read-write, finally the lock is released when leaving the scope
+    // Acquire file lock, check if file was locked, otherwise perform read-write:
+    // First read, then write only if the read result is still the original state.
+    // Be careful to just read and write from the channel, as the channel is holding the lock.
     ZIO.scoped {
       for {
         channel <- scopedChannel
         lock    <- ZIO.acquireRelease(channel.tryLock(shared = false))(releaseLock)
                       .filterOrFail(lock => lock != null)(new Sc4pacIoException(s"json file $jsonPath is locked by another program and cannot be modified; if the problem persists, close any relevant program and release the file lock in your OS"))
-        result  <- readWrite
+        _       <- if (origState.isEmpty) ZIO.succeed(())
+                   else read(channel).filterOrFail(_ == origState.get)(new Sc4pacIoException(s"cannot write data since json file has been modified: $jsonPath"))
+        result  <- action
+        _       <- write(channel)
       } yield result
-    }
+    }  // Finally the lock is released and channel is closed when leaving the scope.
   }
 }
