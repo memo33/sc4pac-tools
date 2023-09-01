@@ -19,34 +19,31 @@ import sc4pac.Resolution.{Dep, DepModule, DepAsset}
 /** A plain Coursier logger, since Coursier's RefreshLogger results in dropped
   * or invisible messages, hiding the downloading activity.
   */
-class Logger private (useColor: Boolean) extends coursier.cache.CacheLogger {
+class Logger private (out: java.io.PrintStream, useColor: Boolean) extends coursier.cache.CacheLogger {
 
   private def cyan(msg: String): String = if (useColor) Console.CYAN + msg + Console.RESET else msg
   private def yellowBold(msg: String): String = if (useColor) Console.YELLOW + Console.BOLD + msg + Console.RESET else msg
   def gray(msg: String): String = if (useColor) s"${27.toChar}[90m" + msg + Console.RESET else msg  // aka bright black
 
   override def downloadingArtifact(url: String, artifact: coursier.util.Artifact) =
-    println("  " + cyan(s"> Downloading $url"))
+    out.println("  " + cyan(s"> Downloading $url"))
   override def downloadedArtifact(url: String, success: Boolean) = {
-    if (!success) println("  " + cyan(s"  Download of $url unsuccessful"))
+    if (!success) out.println("  " + cyan(s"  Download of $url unsuccessful"))
   }
 
-  def log(msg: String): Unit = println(msg)
-  def warn(msg: String): Unit = println(yellowBold("Warning:") + " " + msg)
+  def log(msg: String): Unit = out.println(msg)
+  def warn(msg: String): Unit = out.println(yellowBold("Warning:") + " " + msg)
 }
 object Logger {
-  private def isWindows: Boolean = System.getProperty("os.name").toLowerCase(java.util.Locale.ROOT).contains("windows")
-
-  private lazy val supportsColor: Boolean = try {  // lazy val, since setup is only needed once
-    io.github.alexarchambault.windowsansi.WindowsAnsi.setup()
-  } catch {
-    case e: java.lang.UnsatisfiedLinkError =>  // in case something goes really wrong and no suitable native library is included
-      System.err.println(s"Using colorless output as fallback due to $e")
-      false
-  }
-
   def apply(useColor: Boolean): Logger = {
-    if (useColor && isWindows && !supportsColor) new Logger(useColor = false) else new Logger(useColor)
+    if (useColor) try {
+      // this PrintStream uses color only if it is supported (so not on uncolored terminals and not when outputting to a file)
+      new Logger(org.fusesource.jansi.AnsiConsole.out(), useColor)
+    } catch {
+      case e: java.lang.UnsatisfiedLinkError =>  // in case something goes really wrong and no suitable jansi native library is included
+        System.err.println(s"Using colorless output as fallback due to $e")
+      new Logger(System.out, useColor = false)
+    } else new Logger(System.out, useColor = false)
   }
 }
 
