@@ -57,7 +57,7 @@ object Resolution {
         val mod = C.Module(group, name, attributes = Map.empty)
         for {
           concreteVersion  <- Find.concreteVersion(mod, Constants.versionLatestRelease)
-          (_, variantData) <- Find.matchingVariant(ModuleNoAssetNoVar.fromBareModule(bareMod), concreteVersion, globalVariant)
+          (_, variantData) <- Find.matchingVariant(bareMod, concreteVersion, globalVariant)
         } yield DepModule(group = group, name = name, version = concreteVersion, variant = variantData.variant)
     }
   }
@@ -84,7 +84,7 @@ object Resolution {
     }
     def isSc4pacAsset: Boolean = true
     def orgName = s"${Constants.sc4pacAssetOrg.value}:${assetId.value}"
-    def toBareDep = BareAsset(assetId)
+    def toBareDep: BareAsset = BareAsset(assetId)
   }
 
   /** An sc4pac metadata package dependency. */
@@ -100,7 +100,7 @@ object Resolution {
 
     def isSc4pacAsset: Boolean = false
     def orgName: String = s"${group.value}:${name.value}"
-    def toBareDep = BareModule(group, name)
+    def toBareDep: BareModule = BareModule(group, name)
 
     def formattedDisplayString(gray: String => String): String = {
       val variantStr = {
@@ -166,7 +166,7 @@ object Resolution {
     def lookupDependencies(dep: BareDep): Task[Seq[BareDep]] = dep match {
       case dep: BareAsset => ZIO.succeed(Seq.empty)
       case mod: BareModule => {
-        Find.matchingVariant(ModuleNoAssetNoVar.fromBareModule(mod), Constants.versionLatestRelease, globalVariant)
+        Find.matchingVariant(mod, Constants.versionLatestRelease, globalVariant)
           .map { (pkgData, variantData) => variantData.bareDependencies }
       }
     }

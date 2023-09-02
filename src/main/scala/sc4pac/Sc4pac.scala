@@ -127,9 +127,8 @@ trait UpdateService { this: Sc4pac =>
     // Since dependency is of type DepModule, we have already looked up the
     // variant successfully, but have lost the PackageData, so we reconstruct it
     // here a second time.
-    val mod = ModuleNoAssetNoVar.fromDepModule(dependency)
     for {
-      (pkgData, variantData) <- Find.matchingVariant(mod, dependency.version, dependency.variant)
+      (pkgData, variantData) <- Find.matchingVariant(dependency.toBareDep, dependency.version, dependency.variant)
       pkgFolder              =  pkgData.subfolder / packageFolderName(dependency)
       _                      <- ZIO.attempt(logger.log(f"$progress Extracting ${dependency.orgName} ${dependency.version}"))
       warnings               <- if (pkgData.info.warning.nonEmpty) ZIO.attempt { logger.warn(pkgData.info.warning); true } else ZIO.succeed(false)

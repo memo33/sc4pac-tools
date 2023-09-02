@@ -7,6 +7,7 @@ import upickle.default.Reader
 
 import sc4pac.Data.{PackageData, VariantData}
 import sc4pac.error.{Sc4pacIoException, Sc4pacMissingVariant}
+import sc4pac.Resolution.BareModule
 
 object Find {
 
@@ -55,20 +56,21 @@ object Find {
   }
 
   /** Given a module without specific variant, find a variant that matches globalVariant. */
-  def matchingVariant(module: ModuleNoAssetNoVar, version: String, globalVariant: Variant)(using ResolutionContext): Task[(PackageData, VariantData)] = {
+  def matchingVariant(module: BareModule, version: String, globalVariant: Variant)(using ResolutionContext): Task[(PackageData, VariantData)] = {
 
     def pickVariant(pkgOpt: Option[PackageData]): Task[(PackageData, VariantData)] = pkgOpt match {
-      case None => ZIO.fail(new Sc4pacIoException(s"could not find metadata of ${module.module} or suitable variant"))
+      case None => ZIO.fail(new Sc4pacIoException(s"could not find metadata of ${module.orgName} or suitable variant"))
       case Some(pkgData) =>
         pkgData.variants.find(vd => isSubMap(vd.variant, globalVariant)) match {
           case Some(vd) => ZIO.succeed((pkgData, vd))
           case None =>
-            ZIO.fail(new Sc4pacMissingVariant(pkgData, s"could not find variant for ${module.module} matching [${VariantData.variantString(globalVariant)}]"))
+            ZIO.fail(new Sc4pacMissingVariant(pkgData, s"could not find variant for ${module.orgName} matching [${VariantData.variantString(globalVariant)}]"))
         }
     }
 
-    concreteVersion(module.module, version)
-      .flatMap(packageData[PackageData](module.module, _))
+    val mod = C.Module(module.group, module.name, attributes = Map.empty)
+    concreteVersion(mod, version)
+      .flatMap(packageData[PackageData](mod, _))
       .flatMap(pickVariant)
   }
 
