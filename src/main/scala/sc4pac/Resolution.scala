@@ -145,17 +145,13 @@ object Resolution {
     * In case of coursier.cache.ArtifactError,
     * the file was locked, so could not be deleted (hint: if error persists, manually delete the .lock file)
     */
-  private def deleteStaleCachedFiles(resolution: coursier.core.Resolution, depsWithVariant: Map[C.Dependency, Dep], cache: coursier.cache.FileCache[Task]): Task[Unit] = {
-    ZIO.foreachDiscard(resolution.dependencyArtifacts()) { case (dependency, publication, artifact) =>
+  private def deleteStaleCachedFiles(assetsArtifacts: Seq[(Resolution.DepAsset, coursier.util.Artifact)], cache: coursier.cache.FileCache[Task]): Task[Unit] = {
+    ZIO.foreachDiscard(assetsArtifacts) { case (dep, artifact) =>
       if (artifact.changing) {
         ZIO.succeed(())  // artifact is changing, so cache.ttl (time-to-live) determines how long a file is cached
       } else {
-        // dependency is a bare dependency without version and attributes, so we look up lastModified from DepAsset type
-        val lastModifiedOpt = depsWithVariant(dependency.withConfiguration(C.Configuration.empty)) match {
-          case d: DepAsset => d.lastModified
-          case _ => None
-        }
-        assert(lastModifiedOpt.isDefined, s"non-changing assets should have lastModified defined: $artifact $dependency")
+        val lastModifiedOpt = dep.lastModified
+        assert(lastModifiedOpt.isDefined, s"non-changing assets should have lastModified defined: $artifact $dep")
         deleteStaleCachedFile(cache.localFile(artifact.url, user=None), lastModifiedOpt.get, cache)
       }
     }
@@ -208,26 +204,19 @@ class Resolution(cResolution: C.Resolution, depsWithVariant: Map[C.Dependency, D
   }
 
   // downloading step
-  def fetchArtifactsOf(subset: Set[Dep])(using context: ResolutionContext): Task[Seq[(C.Dependency, C.Publication, coursier.util.Artifact, java.io.File)]] = {
-    // Since in addTransformArtifacts, some dependencies may have a non-concrete
-    // version like latest.release, we compare by orgName ID only, without
-    // version or variant. A resolution should only fetch a single version and
-    // variant of any package ID, anyway.
-    val subsetIds: Set[(C.Organization, C.ModuleName)] = subset.map {
-      case d: Resolution.DepAsset => (Constants.sc4pacAssetOrg, d.assetId)
-      case d: Resolution.DepModule => (d.group, d.name)
-    }
-    val fetchTask = context.coursierApi.artifacts
-      .withResolution(cResolution)
-      .addTransformArtifacts(_.filter { case (dep, pub, art) => subsetIds.contains((dep.module.organization, dep.module.name)) })
-      .ioResult
-      .map(_.detailedArtifacts)
+  def fetchArtifactsOf(subset: Set[Dep])(using context: ResolutionContext): Task[Seq[(Resolution.DepAsset, coursier.util.Artifact, java.io.File)]] = {
+    val assetsArtifacts = subset.iterator.collect{ case d: Resolution.DepAsset => (d, MetadataRepository.createArtifact(d.url, d.lastModified)) }.toSeq
+    val fetchTask =  // TODO foreachPar for parallel downloads?
+      ZIO.foreach(assetsArtifacts) { (dep, art) =>
+        context.cache.file(art).run.absolve.map(file => (dep, art, file))
+      }
       .catchSome { case e: coursier.error.FetchError.DownloadingArtifacts =>
         ZIO.fail(new Sc4pacIoException("Failed to download some assets. " +
           f"You may have reached your daily download quota (Simtropolis: 20 files per day) or the file exchange server is currently unavailable.%n$e"))
       }
-      // TODO decide what to do when assets are permanently unobtainable (and test this case)
-    Resolution.deleteStaleCachedFiles(cResolution, depsWithVariant, context.cache)  // TODO consider making lastModified mandatory, so this is not needed
-      .zipRight(fetchTask)
+
+    import CoursierZio.*  // implicit coursier-zio interop
+    Resolution.deleteStaleCachedFiles(assetsArtifacts, context.cache)  // TODO consider making lastModified mandatory, so this is not needed
+      .zipRight(context.logger.using(fetchTask))
   }
 }

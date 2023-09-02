@@ -306,7 +306,7 @@ trait UpdateService { this: Sc4pac =>
       // TODO if some artifacts fail to be fetched, fall back to installing remaining packages (maybe not(?), as this leads to missing dependencies,
       // but there needs to be a manual workaround in case of permanently missing artifacts)
       depsToStage     =  plan.toInstall.collect{ case d: DepModule => d }.toSeq  // keep only non-assets
-      artifactsById   =  assetsToInstall.map((dep, pub, art, file) => (dep.module.organization, dep.module.name) -> (art, file)).toMap
+      artifactsById   =  assetsToInstall.map((dep, art, file) => (Constants.sc4pacAssetOrg, dep.assetId) -> (art, file)).toMap
       _               =  require(artifactsById.size == assetsToInstall.size, s"artifactsById is not 1-to-1: $assetsToInstall")
       stageResult     <- stageAll(depsToStage, artifactsById)
       // _               <- ZIO.attempt(logger.log(s"stage result: $stageResult"))
