@@ -10,9 +10,9 @@ class ResolutionContext(
 ) {
 
   object coursierApi {
-    val resolve = coursier.Resolve(cache)
-      .withRepositories(repositories)
-      // .mapResolutionParams(_.addProperties(properties: _*))
+    // val resolve = coursier.Resolve(cache)
+    //   .withRepositories(repositories)
+    //   // .mapResolutionParams(_.addProperties(properties: _*))
 
     // val fetch = Fetch(cache)
     //   .withArtifactTypes(Sc4pac.assetTypes)
@@ -21,12 +21,12 @@ class ResolutionContext(
     //   .transformResolution(_.flatMap(resolution => deleteStaleCachedFiles(resolution).map(_ => resolution)))
     //   // .mapResolutionParams(_.withDefaultConfiguration(Constants.link))
 
-    // To go from an existing resolution (i.e. without resolve) to fetching artifacts,
-    // one can use (but don't forget to transform the resolution!):
-    val artifacts = coursier.Artifacts(cache)
-      .withArtifactTypes(Sc4pac.assetTypes)
-      // .withResolution(resolution)
-      // .run() or .runResult()
+    // // To go from an existing resolution (i.e. without resolve) to fetching artifacts,
+    // // one can use (but don't forget to transform the resolution!):
+    // val artifacts = coursier.Artifacts(cache)
+    //   .withArtifactTypes(Sc4pac.assetTypes)
+    //   // .withResolution(resolution)
+    //   // .run() or .runResult()
 
     val versions = coursier.Versions(cache).withRepositories(repositories)
       // .withModule(coursier.parse.ModuleParser.module("memo:package-d", "").getOrElse(???))

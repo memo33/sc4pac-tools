@@ -6,12 +6,22 @@ import zio.{ZIO, IO, Task}
 
 import sc4pac.Constants.isSc4pacAsset
 import sc4pac.error.Sc4pacIoException
-import Resolution.Dep
+import Resolution.{Dep, BareDep}
 
 /** Wrapper around Coursier's resolution mechanism with more stringent types for
   * our purposes.
   */
 object Resolution {
+
+  sealed trait BareDep {
+    def orgName: String
+  }
+  final case class BareModule(group: C.Organization, name: C.ModuleName) extends BareDep {  // a dependency without version information, variant data or any other attributes
+    def orgName = s"${group.value}:${name.value}"
+  }
+  final case class BareAsset(assetId: C.ModuleName) extends BareDep {
+    def orgName = s"${Constants.sc4pacAssetOrg.value}:${assetId.value}"
+  }
 
   /** An sc4pac asset or module (metadata package) containing the relevant
     * information for resolving dependencies.
@@ -23,6 +33,7 @@ object Resolution {
     def isSc4pacAsset: Boolean
     def version: String
     def orgName: String
+    def toBareDep: BareDep
   }
 
   object Dep {
@@ -32,36 +43,22 @@ object Resolution {
       * Given an asset reference dependency, look up its url and lastModified
       * attributes.
       */
-    private[Resolution] def fromBareDependency(dependency: C.Dependency, globalVariant: Variant)(using ResolutionContext): Task[Dep] = {
-      if (isSc4pacAsset(dependency.module)) {
+    private[Resolution] def fromBareDependency(dependency: BareDep, globalVariant: Variant)(using ResolutionContext): Task[Dep] = dependency match {
+      case BareAsset(assetId) =>
         // assets do not have variants
-        require(!dependency.module.attributes.contains(Constants.urlKey), s"asset already contains url: $dependency")
-        Find.concreteVersion(dependency.module, dependency.version)
-          .flatMap(Find.packageData[Data.AssetData](dependency.module, _))
+        val mod = C.Module(Constants.sc4pacAssetOrg, assetId, attributes = Map.empty)
+        Find.concreteVersion(mod, Constants.versionLatestRelease)
+          .flatMap(Find.packageData[Data.AssetData](mod, _))
           .flatMap {
-            case None => ZIO.fail(new Sc4pacIoException(s"could not find attribute for ${dependency.module}"))
+            case None => ZIO.fail(new Sc4pacIoException(s"could not find attribute for ${mod}"))
             case Some(data) => ZIO.succeed(data.toDepAsset)
           }
-      } else {
-        // if some explicit dependencies contain variants, it can happen that
-        // dependency already has variants specified, so we remove the attributes
-        require(isSubMap(Data.VariantData.variantFromAttributes(dependency.module.attributes), globalVariant),
-          s"conflicting variants $dependency $globalVariant")  // sanity check
-        ModuleNoAssetNoVar.fromModule(dependency.module.withAttributes(Map.empty)) match {
-          case Left(err) => ZIO.fail(new Sc4pacIoException(err))  // dependency should not have variant in attributes
-          case Right(module) =>
-            for {
-              concreteVersion  <- Find.concreteVersion(module.module, dependency.version)
-              (_, variantData) <- Find.matchingVariant(module, concreteVersion, globalVariant)
-            } yield {
-              DepModule(
-                group = module.module.organization,
-                name = module.module.name,
-                version = concreteVersion,
-                variant = variantData.variant)
-            }
-        }
-      }
+      case bareMod @ BareModule(group, name) =>
+        val mod = C.Module(group, name, attributes = Map.empty)
+        for {
+          concreteVersion  <- Find.concreteVersion(mod, Constants.versionLatestRelease)
+          (_, variantData) <- Find.matchingVariant(ModuleNoAssetNoVar.fromBareModule(bareMod), concreteVersion, globalVariant)
+        } yield DepModule(group = group, name = name, version = concreteVersion, variant = variantData.variant)
     }
   }
 
@@ -87,6 +84,7 @@ object Resolution {
     }
     def isSc4pacAsset: Boolean = true
     def orgName = s"${Constants.sc4pacAssetOrg.value}:${assetId.value}"
+    def toBareDep = BareAsset(assetId)
   }
 
   /** An sc4pac metadata package dependency. */
@@ -102,6 +100,7 @@ object Resolution {
 
     def isSc4pacAsset: Boolean = false
     def orgName: String = s"${group.value}:${name.value}"
+    def toBareDep = BareModule(group, name)
 
     def formattedDisplayString(gray: String => String): String = {
       val variantStr = {
@@ -157,53 +156,62 @@ object Resolution {
     }
   }
 
-  def resolve(initialDependencies: Seq[Dep], globalVariant: Variant)(using context: ResolutionContext): Task[Resolution] = {
-    context.coursierApi.resolve
-      .withRepositories(context.repositories.map(_.copy(globalVariant = globalVariant)))
-      // The configuration Constants.link is used to distinguish between assets and regular dependencies.
-      // In practice, this is useless as we always resolve with assets included, never without assets.
-      .mapResolutionParams(_.withDefaultConfiguration(Constants.link).addProperties(globalVariant.toSeq *))  // as a precaution, add variants to resolution properties, as resolution depends on variants
-      .addDependencies(initialDependencies.map(_.toDependency) *)
-      // TODO remember to transform resolution (handled in fetchArtifactsOf)
-      // .transformResolution(_.flatMap(resolution => deleteStaleCachedFiles(resolution, context.cache).map(_ => resolution)))  // TODO consider making lastModified mandatory, so this is not needed
-      .io
-      .flatMap(create(_, globalVariant))
-  }
+  /** We resolve dependencies without concrete version information, but
+    * implicitly always take the latest version. That way, we do not need to
+    * worry about reconciliation strategies or dependency cycles.
+    */
+  def resolve(initialDependencies: Seq[BareDep], globalVariant: Variant)(using context: ResolutionContext): Task[Resolution] = {
 
-  private def create(cResolution: C.Resolution, globalVariant: Variant)(using ResolutionContext): Task[Resolution] = {
-    ZIO.foreachPar(cResolution.dependencySet.minimizedSet) { d =>
-      Dep.fromBareDependency(d, globalVariant).map(d2 => (d.withConfiguration(C.Configuration.empty), d2))
-    }.map(depsWithVariant => new Resolution(cResolution, depsWithVariant.toMap))
+    // TODO avoid looking up variants and packageData multiple times
+    def lookupDependencies(dep: BareDep): Task[Seq[BareDep]] = dep match {
+      case dep: BareAsset => ZIO.succeed(Seq.empty)
+      case mod: BareModule => {
+        Find.matchingVariant(ModuleNoAssetNoVar.fromBareModule(mod), Constants.versionLatestRelease, globalVariant)
+          .map { (pkgData, variantData) => variantData.bareDependencies }
+      }
+    }
+
+    // Here we iteratively compute transitive dependencies.
+    // The keys contain all reachable dependencies, the values may be empty sequences.
+    val computeReachableDependencies: Task[Map[BareDep, Seq[BareDep]]] =
+      ZIO.iterate((Map.empty[BareDep, Seq[BareDep]], initialDependencies))(_._2.nonEmpty) { (seen, remaining) =>
+        for {
+          seen2 <- ZIO.foreachPar(remaining.filterNot(seen.contains))(d => lookupDependencies(d).map(ds => (d, ds)))
+          deps2 = seen2.flatMap(_._2).distinct
+        } yield (seen ++ seen2, deps2)
+      }.map(_._1)
+
+    for {
+      reachableDeps <- computeReachableDependencies
+      nonbareDeps   <- ZIO.foreach(reachableDeps.keySet) { d => Dep.fromBareDependency(d, globalVariant).map(d -> _) }
+    } yield Resolution(reachableDeps, nonbareDeps.toMap)
+
   }
 
 }
 
-class Resolution(cResolution: C.Resolution, depsWithVariant: Map[C.Dependency, Dep]) {
-  private val depsWithVariantInv: Map[Dep, C.Dependency] = depsWithVariant.map(_.swap)
-  assert(depsWithVariant.size == depsWithVariantInv.size, s"dependency mapping should be 1-to-1: $depsWithVariant")
+class Resolution(reachableDeps: Map[BareDep, Seq[BareDep]], nonbareDeps: Map[BareDep, Dep]) {
 
-  val dependencySet: Set[Dep] = depsWithVariantInv.keySet
+  private val reverseDeps: Map[BareDep, Seq[BareDep]] = {  // note that this drops modules with zero dependencies
+    reachableDeps.toSeq
+      .flatMap((d0, d1s) => d1s.map(_ -> d0))  // reverse dependency relation
+      .groupMap(_._1)(_._2)
+  }
+
+  val dependencySet: Set[Dep] = reachableDeps.keySet.map(nonbareDeps)
 
   /** Compute the direct dependencies. */
   def dependenciesOf(dep: Dep): Set[Dep] = {
-    val cDeps: Seq[C.Dependency] = cResolution.dependenciesOf(depsWithVariantInv(dep).withConfiguration(Constants.link))
-    cDeps.iterator.map(_.withConfiguration(C.Configuration.empty)).map(depsWithVariant).toSet
+    reachableDeps(dep.toBareDep).map(nonbareDeps).toSet
   }
 
   /** Compute the direct reverse dependencies. */
   def dependentsOf(dependencies: Set[Dep]): Set[Dep] = {
-    val depsVersionlessNoVar: Set[C.Dependency] =  // workaround due to reverseDependencies erasing all the versions
-      dependencies.flatMap { dep =>
-        cResolution.reverseDependencies
-          .get(depsWithVariantInv(dep).withVersion(""))
-          .getOrElse(Set.empty)  // if empty, then dep is not a dependency of anything (it must be an explicitly installed package from initialDependencies)
-      }
-    depsWithVariant.iterator.collect {
-      case (dNoVar, dWithVar) if depsVersionlessNoVar.contains(dNoVar.withVersion("").withConfiguration(C.Configuration.empty)) => dWithVar
-    }.toSet
+    dependencies.map(_.toBareDep).flatMap(d => reverseDeps.get(d).getOrElse(Seq.empty)).map(nonbareDeps)
   }
 
   // downloading step
+  // TODO force redownloading of updated artifacts that still have the same url
   def fetchArtifactsOf(subset: Set[Dep])(using context: ResolutionContext): Task[Seq[(Resolution.DepAsset, coursier.util.Artifact, java.io.File)]] = {
     val assetsArtifacts = subset.iterator.collect{ case d: Resolution.DepAsset => (d, MetadataRepository.createArtifact(d.url, d.lastModified)) }.toSeq
     val fetchTask =  // TODO foreachPar for parallel downloads?

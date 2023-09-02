@@ -68,6 +68,7 @@ package object sc4pac {
       else Right(module)
     }
     def fromDepModule(module: Resolution.DepModule): ModuleNoAssetNoVar = coursier.core.Module(module.group, module.name, attributes = Map.empty)
+    def fromBareModule(module: Resolution.BareModule): ModuleNoAssetNoVar = coursier.core.Module(module.group, module.name, attributes = Map.empty)
   }
   extension (m: ModuleNoAssetNoVar) {
     def module: coursier.core.Module = m

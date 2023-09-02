@@ -14,7 +14,7 @@ import sc4pac.error.*
 import sc4pac.Constants.isSc4pacAsset
 import sc4pac.Data.*
 import sc4pac.Sc4pac.{StageResult, UpdatePlan}
-import sc4pac.Resolution.{Dep, DepModule, DepAsset}
+import sc4pac.Resolution.{Dep, DepModule, DepAsset, BareModule}
 
 /** A plain Coursier logger, since Coursier's RefreshLogger results in dropped
   * or invisible messages, hiding the downloading activity.
@@ -60,14 +60,14 @@ class Sc4pac(val repositories: Seq[MetadataRepository], val cache: FileCache[Tas
   /** Add modules to the json file containing the explicitly installed modules
     * and return the new full list of explicitly installed modules.
     */
-  def add(modules: Seq[ModuleNoAssetNoVar]): Task[Seq[ModuleNoAssetNoVar]] = {
+  def add(modules: Seq[BareModule]): Task[Seq[BareModule]] = {
     for {
       pluginsData  <- Data.readJsonIo[PluginsData](PluginsData.path)  // at this point, file should already exist
       modsOrig     <- Sc4pac.parseModules(pluginsData.explicit)
                         .mapError((err: String) => new Sc4pacIoException(s"format errors in json ${PluginsData.path}: $err"))
       modsNext     =  (modsOrig ++ modules).distinct
       _            <- ZIO.unless(modsNext == modsOrig) {
-                        val pluginsDataNext = pluginsData.copy(explicit = modsNext.map(_.module.orgName).sorted)
+                        val pluginsDataNext = pluginsData.copy(explicit = modsNext.map(_.orgName))
                         // we do not check whether file was modified as this entire operation is synchronous and fast (no network calls, no cache usage)
                         Data.writeJsonIo(PluginsData.path, pluginsDataNext, None)(ZIO.succeed(()))
                       }
@@ -80,20 +80,6 @@ class Sc4pac(val repositories: Seq[MetadataRepository], val cache: FileCache[Tas
 trait UpdateService { this: Sc4pac =>
 
   import CoursierZio.*  // implicit coursier-zio interop
-
-  private def modulesToDependencies(modules: Seq[ModuleNoAssetNoVar], globalVariant: Variant): Task[Seq[DepModule]] = {
-    // TODO bulk-query MetadataRepository for versions of all modules for efficiency
-    ZIO.collectAllPar {
-      modules.map { mod =>
-        val version = Constants.versionLatestRelease
-        for {
-          // vsResult         <- coursierApi.versions.withModule(mod.module).result()
-          // version          =  vsResult.versions.latest
-          (_, variantData) <- Find.matchingVariant(mod, version, globalVariant)
-        } yield DepModule(group = mod.module.organization, name = mod.module.name, version = version, variant = variantData.variant)
-      }
-    }
-  }
 
   private def packageFolderName(dependency: DepModule): String = {
     val variantTokens = dependency.variant.toSeq.sortBy(_._1).map(_._2)
@@ -174,7 +160,7 @@ trait UpdateService { this: Sc4pac =>
   }
 
   /** Update all installed packages from modules (the list of explicitly added packages). */
-  def update(modules: Seq[ModuleNoAssetNoVar], globalVariant0: Variant, pluginsRoot: os.Path): Task[Boolean] = {
+  def update(modules: Seq[BareModule], globalVariant0: Variant, pluginsRoot: os.Path): Task[Boolean] = {
 
     def logPlan(plan: Sc4pac.UpdatePlan): UIO[Unit] = ZIO.succeed {
       if (plan.toRemove.nonEmpty) logPackages(f"The following packages will be removed:%n", plan.toRemove.collect{ case d: DepModule => d })
@@ -282,11 +268,6 @@ trait UpdateService { this: Sc4pac =>
       }.map(_.toOption.get)
     }
 
-    def tryResolve(globalVariant: Variant): Task[Resolution] = for {
-      initialDeps <- modulesToDependencies(modules, globalVariant)  // including variants
-      resolution  <- Resolution.resolve(initialDeps, globalVariant)
-    } yield resolution
-
     def storeGlobalVariant(globalVariant: Variant): Task[Unit] = for {
       pluginsData <- Data.readJsonIo[PluginsData](PluginsData.path)  // json file should exist already
       _           <- Data.writeJsonIo(PluginsData.path, pluginsData.copy(config = pluginsData.config.copy(variant = globalVariant)), None)(ZIO.succeed(()))
@@ -295,7 +276,7 @@ trait UpdateService { this: Sc4pac =>
     // TODO catch coursier.error.ResolutionError$CantDownloadModule (e.g. when json files have syntax issues)
     for {
       pluginsLockData <- PluginsLockData.readOrInit
-      (resolution, globalVariant) <- doPromptingForVariant(globalVariant0)(tryResolve)
+      (resolution, globalVariant) <- doPromptingForVariant(globalVariant0)(Resolution.resolve(modules, _))
       // _               <- ZIO.attempt(logger.log(s"resolution:\n${resolution.dependencySet.mkString("\n")}"))
       plan            =  UpdatePlan.fromResolution(resolution, installed = pluginsLockData.dependenciesWithAssets)
       _               <- logPlan(plan)
@@ -397,13 +378,11 @@ object Sc4pac {
     for (repos <- initializeRepositories(config.channels, cache, channelContentsTtl = None)) yield Sc4pac(repos, cache, tempRoot, logger)
   }
 
-  def parseModules(modules: Seq[String]): IO[ErrStr, Seq[ModuleNoAssetNoVar]] = {
+  def parseModules(modules: Seq[String]): IO[ErrStr, Seq[BareModule]] = {
     ZIO.fromEither {
       coursier.parse.ModuleParser
         .modules(modules, defaultScalaVersion = "")
-        .flatMap { modules =>
-          (new coursier.util.Traverse.TraverseOps(modules)).validationNelTraverse(m => coursier.util.ValidationNel.fromEither(ModuleNoAssetNoVar.fromModule(m)))
-        }
+        .map { modules => modules.map(m => BareModule(m.organization, m.name)) }
         .either
     } mapError { (errs: List[ErrStr]) =>
       errs.mkString(", ")  // malformed module: a, malformed module: b
