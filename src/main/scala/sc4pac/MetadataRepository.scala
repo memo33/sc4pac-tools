@@ -54,14 +54,6 @@ case class MetadataRepository(baseUri: String, channelData: ChannelData, globalV
     })
   }
 
-  // /** For a module without specified variants, find the possible variants
-  //   * supported for it by reading its json file.
-  //   */
-  // def fetchVariants[F[_] : Monad](module: ModuleNoAssetNoVar, version: String, fetch: Repository.Fetch[F]): EitherT[F, ErrStr, Seq[Variant]] = {
-  //   fetchModuleJson(module.module, version, fetch)
-  //     .map(pkgData => pkgData.variants.map(_.variant))
-  // }
-
   /** For a module of a given version, find its metadata (parsed from its json
     * file) and return it as a `Project` (Coursier's representation of package
     * metadata, which only mirrors information of Maven pom files, so does not

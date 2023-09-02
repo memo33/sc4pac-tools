@@ -14,7 +14,7 @@ import sc4pac.error.*
 import sc4pac.Constants.isSc4pacAsset
 import sc4pac.Data.*
 import sc4pac.Sc4pac.{StageResult, UpdatePlan}
-import sc4pac.Resolution.{Dep, DepModule, DepAsset, BareModule}
+import sc4pac.Resolution.{Dep, DepModule, DepAsset, BareModule, BareAsset, BareDep}
 
 /** A plain Coursier logger, since Coursier's RefreshLogger results in dropped
   * or invisible messages, hiding the downloading activity.
@@ -95,7 +95,7 @@ trait UpdateService { this: Sc4pac =>
   private def stage(
     tempPluginsRoot: os.Path,
     dependency: DepModule,
-    artifactsById: Map[(Organization, ModuleName), (Artifact, java.io.File)],
+    artifactsById: Map[BareAsset, (Artifact, java.io.File)],
     jarsRoot: os.Path,
     progress: Sc4pac.Progress
   ): Task[(Seq[os.SubPath], Boolean)] = {
@@ -103,10 +103,10 @@ trait UpdateService { this: Sc4pac =>
       // Given an AssetReference, we look up the corresponding artifact file
       // by ID. This relies on the 1-to-1-correspondence between sc4pacAssets
       // and artifact files.
-      val id = (Constants.sc4pacAssetOrg, ModuleName(assetData.assetId))
+      val id = BareAsset(ModuleName(assetData.assetId))
       artifactsById.get(id) match {
         case None =>
-          logger.warn(s"skipping missing artifact, so it must be installed manually: ${id._1.value}:${id._2.value}")
+          logger.warn(s"skipping missing artifact, so it must be installed manually: ${id.orgName}")
         case Some(art, archive) =>
           // logger.log(s"  ==> $archive")  // TODO logging debug info
           val recipe = InstallRecipe.fromAssetReference(assetData)
@@ -163,7 +163,7 @@ trait UpdateService { this: Sc4pac =>
 
     def logPlan(plan: Sc4pac.UpdatePlan): UIO[Unit] = ZIO.succeed {
       if (plan.toRemove.nonEmpty) logPackages(f"The following packages will be removed:%n", plan.toRemove.collect{ case d: DepModule => d })
-      if (plan.toReinstall.nonEmpty) logPackages(f"The following packages will be reinstalled:%n", plan.toReinstall.collect{ case d: DepModule => d })
+      // if (plan.toReinstall.nonEmpty) logPackages(f"The following packages will be reinstalled:%n", plan.toReinstall.collect{ case d: DepModule => d })
       if (plan.toInstall.nonEmpty) logPackages(f"The following packages will be installed:%n", plan.toInstall.collect{ case d: DepModule => d })
       if (plan.isUpToDate) logger.log("Everything is up-to-date.")
     }
@@ -181,7 +181,7 @@ trait UpdateService { this: Sc4pac =>
       * If everything is properly extracted, the files are later moved to the
       * actual plugins folder in the publication step.
       */
-    def stageAll(deps: Seq[DepModule], artifactsById: Map[(Organization, ModuleName), (Artifact, java.io.File)]): Task[StageResult] = {
+    def stageAll(deps: Seq[DepModule], artifactsById: Map[BareAsset, (Artifact, java.io.File)]): Task[StageResult] = {
 
       val makeTempStagingDir = ZIO.attemptBlocking {
         os.makeDir.all(tempRoot)
@@ -286,7 +286,7 @@ trait UpdateService { this: Sc4pac =>
       // TODO if some artifacts fail to be fetched, fall back to installing remaining packages (maybe not(?), as this leads to missing dependencies,
       // but there needs to be a manual workaround in case of permanently missing artifacts)
       depsToStage     =  plan.toInstall.collect{ case d: DepModule => d }.toSeq  // keep only non-assets
-      artifactsById   =  assetsToInstall.map((dep, art, file) => (Constants.sc4pacAssetOrg, dep.assetId) -> (art, file)).toMap
+      artifactsById   =  assetsToInstall.map((dep, art, file) => dep.toBareDep -> (art, file)).toMap
       _               =  require(artifactsById.size == assetsToInstall.size, s"artifactsById is not 1-to-1: $assetsToInstall")
       stageResult     <- stageAll(depsToStage, artifactsById)
       // _               <- ZIO.attempt(logger.log(s"stage result: $stageResult"))

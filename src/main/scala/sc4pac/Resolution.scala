@@ -29,11 +29,10 @@ object Resolution {
     * For modules (metadata packages), this includes the variant.
     */
   sealed trait Dep {
-    private[Resolution] def toDependency: C.Dependency
     def isSc4pacAsset: Boolean
     def version: String
-    def orgName: String
     def toBareDep: BareDep
+    def orgName: String = toBareDep.orgName
   }
 
   object Dep {
@@ -69,21 +68,7 @@ object Resolution {
     url: String,
     lastModified: Option[java.time.Instant]
   ) extends Dep {
-    private[Resolution] def toDependency: C.Dependency = {
-      val attributes = {
-        // TODO unify with Data.AssetData.attributes
-        val m = Map(Constants.urlKey -> url)
-        // lastModified.foreach(Data.AssetData.parseLastModified)  // only accept valid timestamps (throws java.time.format.DateTimeParseException)
-        if (lastModified.isDefined) {
-          m + (Constants.lastModifiedKey -> lastModified.get.toString)
-        } else {
-          m
-        }
-      }
-      C.Dependency(C.Module(Constants.sc4pacAssetOrg, assetId, attributes = attributes), version = version)
-    }
     def isSc4pacAsset: Boolean = true
-    def orgName = s"${Constants.sc4pacAssetOrg.value}:${assetId.value}"
     def toBareDep: BareAsset = BareAsset(assetId)
   }
 
@@ -94,12 +79,7 @@ object Resolution {
     version: String,
     variant: Variant
   ) extends Dep {
-    private[Resolution] def toDependency: C.Dependency = {
-      C.Dependency(C.Module(group, name, attributes = Data.VariantData.variantToAttributes(variant)), version = version)
-    }
-
     def isSc4pacAsset: Boolean = false
-    def orgName: String = s"${group.value}:${name.value}"
     def toBareDep: BareModule = BareModule(group, name)
 
     def formattedDisplayString(gray: String => String): String = {
@@ -116,8 +96,8 @@ object Resolution {
   // TODO add regression test
   private def ttlFile(file: java.io.File) = new java.io.File(file.getParent, s".${file.getName}.checked")
 
-  private def deleteStaleCachedFile(file: java.io.File, lastModified: java.time.Instant, cache: coursier.cache.FileCache[Task]): IO[coursier.cache.ArtifactError, Unit] = {
-    ZIO.fromEither(coursier.cache.CacheLocks.withLockFor(cache.location, file) {
+  private def deleteStaleCachedFile(file: java.io.File, lastModified: java.time.Instant, cache: coursier.cache.FileCache[Task]): IO[coursier.cache.ArtifactError | Throwable, Unit] = {
+    ZIO.attemptBlocking(coursier.cache.CacheLocks.withLockFor(cache.location, file) {
       // Since `file.lastModified()` can be older than the download time,
       // we use coursier's internally used `.checked` file to obtain the
       // actual download time.
@@ -137,7 +117,7 @@ object Resolution {
         val success = file.delete()  // we ignore if deletion fails
         Right(())
       }
-    })
+    }).absolve
   }
 
   /** This transforms the resolution.
@@ -210,8 +190,9 @@ class Resolution(reachableDeps: Map[BareDep, Seq[BareDep]], nonbareDeps: Map[Bar
     dependencies.map(_.toBareDep).flatMap(d => reverseDeps.get(d).getOrElse(Seq.empty)).map(nonbareDeps)
   }
 
-  // downloading step
-  // TODO force redownloading of updated artifacts that still have the same url
+  /** Download artifacts of a subset of the dependency set of the resolution, or
+    * take files from cache in case they are still up-to-date.
+    */
   def fetchArtifactsOf(subset: Set[Dep])(using context: ResolutionContext): Task[Seq[(Resolution.DepAsset, coursier.util.Artifact, java.io.File)]] = {
     val assetsArtifacts = subset.iterator.collect{ case d: Resolution.DepAsset => (d, MetadataRepository.createArtifact(d.url, d.lastModified)) }.toSeq
     val fetchTask =  // TODO foreachPar for parallel downloads?
@@ -224,7 +205,7 @@ class Resolution(reachableDeps: Map[BareDep, Seq[BareDep]], nonbareDeps: Map[Bar
       }
 
     import CoursierZio.*  // implicit coursier-zio interop
-    Resolution.deleteStaleCachedFiles(assetsArtifacts, context.cache)  // TODO consider making lastModified mandatory, so this is not needed
+    Resolution.deleteStaleCachedFiles(assetsArtifacts, context.cache)
       .zipRight(context.logger.using(fetchTask))
   }
 }
