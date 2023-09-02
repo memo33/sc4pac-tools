@@ -37,8 +37,8 @@ class Logger private (out: java.io.PrintStream, useColor: Boolean) extends cours
 object Logger {
   def apply(useColor: Boolean): Logger = {
     if (useColor) try {
-      // this PrintStream uses color only if it is supported (so not on uncolored terminals and not when outputting to a file)
-      new Logger(org.fusesource.jansi.AnsiConsole.out(), useColor)
+      org.fusesource.jansi.AnsiConsole.systemInstall()  // installation is required since jansi 2.1.0 (technically this means System.out will also be ansi-aware)
+      new Logger(org.fusesource.jansi.AnsiConsole.out(), useColor)  // this PrintStream uses color only if it is supported (so not on uncolored terminals and not when outputting to a file)
     } catch {
       case e: java.lang.UnsatisfiedLinkError =>  // in case something goes really wrong and no suitable jansi native library is included
         System.err.println(s"Using colorless output as fallback due to $e")
