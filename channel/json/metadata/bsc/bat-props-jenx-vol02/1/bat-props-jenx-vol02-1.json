@@ -1,0 +1,22 @@
+{
+  "group": "bsc",
+  "name": "bat-props-jenx-vol02",
+  "version": "1",
+  "subfolder": "100-props-textures",
+  "info": {
+    "summary": "BSCBATProps JENX Vol02 by xannepan"
+  },
+  "variants": [
+    {
+      "variant": {},
+      "assets": [
+        {
+          "assetId": "sc4d-lex-legacy-bsc-common-dependencies-pack",
+          "include": [
+            "/BSCBATProps JENX Vol02.dat"
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,22 @@
+{
+  "group": "bsc",
+  "name": "texturepack-cycledogg-vol01",
+  "version": "1",
+  "subfolder": "100-props-textures",
+  "info": {
+    "summary": "BSC_TexturePack_Cycledogg_V 01"
+  },
+  "variants": [
+    {
+      "variant": {},
+      "assets": [
+        {
+          "assetId": "sc4d-lex-legacy-bsc-common-dependencies-pack",
+          "include": [
+            "/BSC_TexturePack_Cycledogg_V 01.dat"
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,23 @@
+{
+  "group": "bsc",
+  "name": "mega-props-cp-vol01",
+  "version": "1",
+  "subfolder": "100-props-textures",
+  "info": {
+    "summary": "BSC MEGA Props - CP Vol01 and CP_Essentials_FamilyNames by cycledogg/c.p."
+  },
+  "variants": [
+    {
+      "variant": {},
+      "assets": [
+        {
+          "assetId": "sc4d-lex-legacy-bsc-common-dependencies-pack",
+          "include": [
+            "/BSC MEGA Props - CP Vol01.dat",
+            "/CP_Essentials_FamilyNames.dat"
+          ]
+        }
+      ]
+    }
+  ]
+}

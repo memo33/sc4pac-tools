@@ -1,0 +1,22 @@
+{
+  "group": "bsc",
+  "name": "mega-props-cal-vol01",
+  "version": "2",
+  "subfolder": "100-props-textures",
+  "info": {
+    "summary": "BSC MEGA Props - CAL vol01 v2 by callagrafx"
+  },
+  "variants": [
+    {
+      "variant": {},
+      "assets": [
+        {
+          "assetId": "sc4d-lex-legacy-bsc-common-dependencies-pack",
+          "include": [
+            "/BSC MEGA Props - CAL vol01 v2.dat"
+          ]
+        }
+      ]
+    }
+  ]
+}

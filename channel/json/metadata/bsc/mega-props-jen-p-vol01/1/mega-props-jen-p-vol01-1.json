@@ -1,0 +1,22 @@
+{
+  "group": "bsc",
+  "name": "mega-props-jen-p-vol01",
+  "version": "1",
+  "subfolder": "100-props-textures",
+  "info": {
+    "summary": "BSC MEGA Props Jen_P Vol01"
+  },
+  "variants": [
+    {
+      "variant": {},
+      "assets": [
+        {
+          "assetId": "sc4d-lex-legacy-bsc-common-dependencies-pack",
+          "include": [
+            "/BSC MEGA Props Jen_P Vol01.dat"
+          ]
+        }
+      ]
+    }
+  ]
+}

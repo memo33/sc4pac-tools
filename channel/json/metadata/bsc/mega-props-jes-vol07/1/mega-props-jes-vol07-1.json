@@ -1,0 +1,22 @@
+{
+  "group": "bsc",
+  "name": "mega-props-jes-vol07",
+  "version": "1",
+  "subfolder": "100-props-textures",
+  "info": {
+    "summary": "BSC Mega Props - JES Vol07 by jestarr"
+  },
+  "variants": [
+    {
+      "variant": {},
+      "assets": [
+        {
+          "assetId": "sc4d-lex-legacy-bsc-common-dependencies-pack",
+          "include": [
+            "/BSC Mega Props - JES Vol07.dat"
+          ]
+        }
+      ]
+    }
+  ]
+}

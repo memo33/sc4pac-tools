@@ -1,0 +1,23 @@
+{
+  "group": "bsc",
+  "name": "essentials",
+  "version": "2022a",
+  "subfolder": "100-props-textures",
+  "info": {
+    "summary": "BSC queries, rewards and other related files"
+  },
+  "variants": [
+    {
+      "variant": {},
+      "assets": [
+        {
+          "assetId": "sc4d-lex-legacy-bsc-common-dependencies-pack",
+          "include": [
+            "/BSC Essentials",
+            "/BSC_Reward_essential.*dat"
+          ]
+        }
+      ]
+    }
+  ]
+}
