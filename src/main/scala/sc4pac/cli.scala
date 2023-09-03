@@ -93,4 +93,15 @@ object CliMain extends caseapp.core.app.CommandsEntryPoint {
   val commands = Seq(Commands.Add, Commands.Update, Commands.BuildChannel)
   val progName = BuildInfo.name
   override val description = s"  A package manager for SimCity 4 plugins. Version ${BuildInfo.version}."
+
+  override def main(args: Array[String]): Unit = {
+    try {
+      // First of all, we install ansi-aware streams, so that colors are
+      // interpreted correctly on Windows (for example for the help text).
+      org.fusesource.jansi.AnsiConsole.systemInstall()  // this alters System.out and System.err
+    } catch {
+      case e: java.lang.UnsatisfiedLinkError =>  // in case something goes really wrong and no suitable jansi native library is included
+    }
+    super.main(args)
+  }
 }

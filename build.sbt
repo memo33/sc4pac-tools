@@ -2,7 +2,7 @@ name := "sc4pac"
 
 organization := "io.github.memo33"
 
-version := "0.1.2"
+version := "0.1.3-SNAPSHOT"
 
 // ThisBuild / versionScheme := Some("early-semver")
 
@@ -91,4 +91,4 @@ libraryDependencies += "com.github.alexarchambault" %% "case-app" % "2.1.0-M25" 
 
 libraryDependencies += "dev.dirs" % "directories" % "26"  // platform-specific location of cache, temp, config, etc.
 
-libraryDependencies += "io.github.alexarchambault.windows-ansi" % "windows-ansi" % "0.0.5"  // color in windows terminals
+libraryDependencies += "org.fusesource.jansi" % "jansi" % "2.4.0"  // color support
