@@ -30,5 +30,11 @@
         }
       ]
     }
-  ]
+  ],
+  "variantDescriptions": {
+    "driveside": {
+      "right": "if cars in your game drive on the right",
+      "left": "if cars in your game drive on the left"
+    }
+  }
 }

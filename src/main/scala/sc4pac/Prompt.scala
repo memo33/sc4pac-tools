@@ -31,11 +31,11 @@ object Prompt {
 
   def yesNo(question: String): IO[java.io.IOException, Boolean] = Prompt(question, Seq("Yes", "no"), default = Some("Yes")).map(_ == "Yes")
 
-  def numbered[A](pretext: String, options: Seq[A]): IO[java.io.IOException, A] = {
+  def numbered[A](pretext: String, options: Seq[A], render: A => String = (_: A).toString): IO[java.io.IOException, A] = {
     val indexes = (1 to options.length).map(_.toString)
     val default = indexes match { case Seq(one) => Some(one); case _ => None }
     for {
-      _   <- zio.Console.printLine(f"$pretext%n%n" + indexes.zip(options).map((i, o) => s"  ($i) $o").mkString(f"%n") + f"%n")
+      _   <- zio.Console.printLine(f"$pretext%n%n" + indexes.zip(options).map((i, o) => s"  ($i) ${render(o)}").mkString(f"%n") + f"%n")
       num <- Prompt("Enter a number", indexes, default)
     } yield options(num.toInt - 1)
   }

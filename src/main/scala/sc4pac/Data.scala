@@ -111,7 +111,8 @@ object Data {
     version: String,
     subfolder: os.SubPath,
     info: InfoData = InfoData.empty,
-    variants: Seq[VariantData]
+    variants: Seq[VariantData],
+    variantDescriptions: Map[String, Map[String, String]] = Map.empty  // variantKey -> variantValue -> description
   ) derives ReadWriter {
     /** Create a `Project` from the package metadata, usually read from json file. */
     def toProject(globalVariant: Variant): Either[ErrStr, Project] = {

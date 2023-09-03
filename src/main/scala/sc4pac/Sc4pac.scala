@@ -254,9 +254,14 @@ trait UpdateService { this: Sc4pac =>
         case Left(globalVariant) =>
           def handler(pkgData: PackageData) = {
             val unknownVariants = pkgData.unknownVariants(globalVariant)
-            val mod = Module(Organization(pkgData.group), ModuleName(pkgData.name), attributes = Map.empty)
+            val mod = BareModule(Organization(pkgData.group), ModuleName(pkgData.name))
             val choose: Task[Seq[(String, String)]] = ZIO.foreach(unknownVariants.toSeq) { (key, values) =>
-              Prompt.numbered(s"""Choose a "$key" variant for $mod:""", values).map(v => (key, v))
+              val columnWidth = values.map(_.length).max + 8  // including some whitespace for separation
+              def renderDesc(value: String): String = pkgData.variantDescriptions.get(key).flatMap(_.get(value)) match {
+                case None => value
+                case Some(desc) => value + (" " * ((columnWidth - value.length) max 0)) + desc
+              }
+              Prompt.numbered(s"""Choose a "$key" variant for ${mod.orgName}:""", values, render = renderDesc).map(v => (key, v))
             }
             choose.map(additionalChoices => Left(globalVariant ++ additionalChoices))
           }

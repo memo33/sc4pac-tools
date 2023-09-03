@@ -21,6 +21,11 @@ variants:
   assets:
   - assetId: "memo-testing-first"
 
+variantDescriptions:
+  driveside:
+    "right": "if cars in your game drive on the right"
+    "left": "if cars in your game drive on the left"
+
 ---
 assetId: "memo-testing-first"
 version: "1.0"

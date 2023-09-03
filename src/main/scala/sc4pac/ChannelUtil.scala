@@ -29,11 +29,12 @@ object ChannelUtil {
     version: String,
     subfolder: os.SubPath,
     info: InfoData = InfoData.empty,
-    variants: Seq[YamlVariantData]
+    variants: Seq[YamlVariantData],
+    variantDescriptions: Map[String, Map[String, String]] = Map.empty  // variantKey -> variantValue -> description
   ) derives ReadWriter {
     def toPackageData = Data.PackageData(
       group = group, name = name, version = version, subfolder = subfolder,
-      info = info, variants = variants.map(_.toVariantData))
+      info = info, variants = variants.map(_.toVariantData), variantDescriptions = variantDescriptions)
   }
 
   case class YamlPackageDataBasic(
