@@ -204,10 +204,15 @@ class Resolution(reachableDeps: TreeSeqMap[BareDep, Seq[BareDep]], nonbareDeps: 
     */
   def fetchArtifactsOf(subset: Seq[Dep])(using context: ResolutionContext): Task[Seq[(DepAsset, Artifact, java.io.File)]] = {
     val assetsArtifacts = subset.collect{ case d: DepAsset => (d, MetadataRepository.createArtifact(d.url, d.lastModified)) }
-    val fetchTask =  // TODO foreachPar for parallel downloads?
-      ZIO.foreach(assetsArtifacts) { (dep, art) =>
+    val fetchTask =
+      ZIO.foreachPar(assetsArtifacts) { (dep, art) =>
         context.cache.file(art).run.absolve.map(file => (dep, art, file))
       }
+      // By scheduling the above downloads on the Coursier `cache.pool`, we use
+      // max 2 downloads in parallel (this requires that the previous tasks are
+      // not already on the `ZIO.blocking` pool, which would start to download
+      // EVERYTHING in parallel).
+      .onExecutionContext(scala.concurrent.ExecutionContext.fromExecutorService(context.cache.pool))
       .catchSome { case e: coursier.error.FetchError.DownloadingArtifacts =>
         ZIO.fail(new Sc4pacIoException("Failed to download some assets. " +
           f"You may have reached your daily download quota (Simtropolis: 20 files per day) or the file exchange server is currently unavailable.%n$e"))
