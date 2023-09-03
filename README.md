@@ -24,6 +24,8 @@ A package manager for SimCity 4 plugins.
   - `sc4pac update`
 - Be aware that Simtropolis has a download limit of 20 files per day.
 
+![demo-video](https://github.com/memo33/sc4pac-tools/releases/download/0.1.3/demo-video.gif)
+
 
 # Plugins folder structure
 

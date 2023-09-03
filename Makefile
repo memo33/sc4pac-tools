@@ -24,4 +24,9 @@ test:
 	./sc4pac add memo:demo-package
 	./sc4pac update
 
+# conversion from asciinema asciicast to gif using https://github.com/asciinema/agg
+demo-video.gif: demo-video.cast
+	agg --speed 2 --cols 80 --last-frame-duration 8 --theme asciinema demo-video.cast demo-video.gif
+
+
 .PHONY: dist channel channel-testing host clean clean-cache test
