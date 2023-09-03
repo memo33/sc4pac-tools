@@ -2,11 +2,13 @@ package io.github.memo33
 package sc4pac
 
 import coursier.core as C
+import coursier.util.Artifact
 import zio.{ZIO, IO, Task}
+import scala.collection.immutable.TreeSeqMap
 
 import sc4pac.Constants.isSc4pacAsset
 import sc4pac.error.Sc4pacIoException
-import Resolution.{Dep, BareDep}
+import Resolution.{Dep, BareDep, DepAsset}
 
 /** Wrapper around Coursier's resolution mechanism with more stringent types for
   * our purposes.
@@ -124,7 +126,7 @@ object Resolution {
     * In case of coursier.cache.ArtifactError,
     * the file was locked, so could not be deleted (hint: if error persists, manually delete the .lock file)
     */
-  private def deleteStaleCachedFiles(assetsArtifacts: Seq[(Resolution.DepAsset, coursier.util.Artifact)], cache: coursier.cache.FileCache[Task]): Task[Unit] = {
+  private def deleteStaleCachedFiles(assetsArtifacts: Seq[(DepAsset, Artifact)], cache: coursier.cache.FileCache[Task]): Task[Unit] = {
     ZIO.foreachDiscard(assetsArtifacts) { case (dep, artifact) =>
       if (artifact.changing) {
         ZIO.succeed(())  // artifact is changing, so cache.ttl (time-to-live) determines how long a file is cached
@@ -153,8 +155,9 @@ object Resolution {
 
     // Here we iteratively compute transitive dependencies.
     // The keys contain all reachable dependencies, the values may be empty sequences.
-    val computeReachableDependencies: Task[Map[BareDep, Seq[BareDep]]] =
-      ZIO.iterate((Map.empty[BareDep, Seq[BareDep]], initialDependencies))(_._2.nonEmpty) { (seen, remaining) =>
+    // The TreeSeqMap preserves insertion order.
+    val computeReachableDependencies: Task[TreeSeqMap[BareDep, Seq[BareDep]]] =
+      ZIO.iterate((TreeSeqMap.empty[BareDep, Seq[BareDep]], initialDependencies))(_._2.nonEmpty) { (seen, remaining) =>
         for {
           seen2 <- ZIO.foreachPar(remaining.filterNot(seen.contains))(d => lookupDependencies(d).map(ds => (d, ds)))
           deps2 = seen2.flatMap(_._2).distinct
@@ -170,7 +173,7 @@ object Resolution {
 
 }
 
-class Resolution(reachableDeps: Map[BareDep, Seq[BareDep]], nonbareDeps: Map[BareDep, Dep]) {
+class Resolution(reachableDeps: TreeSeqMap[BareDep, Seq[BareDep]], nonbareDeps: Map[BareDep, Dep]) {
 
   private val reverseDeps: Map[BareDep, Seq[BareDep]] = {  // note that this drops modules with zero dependencies
     reachableDeps.toSeq
@@ -178,7 +181,13 @@ class Resolution(reachableDeps: Map[BareDep, Seq[BareDep]], nonbareDeps: Map[Bar
       .groupMap(_._1)(_._2)
   }
 
-  val dependencySet: Set[Dep] = reachableDeps.keySet.map(nonbareDeps)
+  /** Since `TreeSeqMap` preserves insertion order, this sequence should contain
+    * all reachable dependencies such that, if you take any number from the
+    * right, you obtain a set of dependencies that includes all its transitive
+    * dependencies (if there are no cycles). In other words, the tails are
+    * closed under the operation of taking dependencies.
+    */
+  val transitiveDependencies: Seq[Dep] = reachableDeps.keysIterator.map(nonbareDeps).toSeq
 
   /** Compute the direct dependencies. */
   def dependenciesOf(dep: Dep): Set[Dep] = {
@@ -193,8 +202,8 @@ class Resolution(reachableDeps: Map[BareDep, Seq[BareDep]], nonbareDeps: Map[Bar
   /** Download artifacts of a subset of the dependency set of the resolution, or
     * take files from cache in case they are still up-to-date.
     */
-  def fetchArtifactsOf(subset: Set[Dep])(using context: ResolutionContext): Task[Seq[(Resolution.DepAsset, coursier.util.Artifact, java.io.File)]] = {
-    val assetsArtifacts = subset.iterator.collect{ case d: Resolution.DepAsset => (d, MetadataRepository.createArtifact(d.url, d.lastModified)) }.toSeq
+  def fetchArtifactsOf(subset: Seq[Dep])(using context: ResolutionContext): Task[Seq[(DepAsset, Artifact, java.io.File)]] = {
+    val assetsArtifacts = subset.collect{ case d: DepAsset => (d, MetadataRepository.createArtifact(d.url, d.lastModified)) }
     val fetchTask =  // TODO foreachPar for parallel downloads?
       ZIO.foreach(assetsArtifacts) { (dep, art) =>
         context.cache.file(art).run.absolve.map(file => (dep, art, file))

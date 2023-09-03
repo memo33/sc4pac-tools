@@ -282,7 +282,7 @@ trait UpdateService { this: Sc4pac =>
       _               <- if (plan.isUpToDate) ZIO.succeed(true)
                          else Prompt.yesNo("Continue?").filterOrFail(_ == true)(Sc4pacAbort())
       _               <- ZIO.unless(globalVariant == globalVariant0)(storeGlobalVariant(globalVariant))  // only store something after confirmation
-      assetsToInstall <- resolution.fetchArtifactsOf(plan.toInstall)
+      assetsToInstall <- resolution.fetchArtifactsOf(resolution.transitiveDependencies.filter(plan.toInstall).reverse)  // we start by fetching artifacts in reverse as those have fewest dependencies of their own
       // TODO if some artifacts fail to be fetched, fall back to installing remaining packages (maybe not(?), as this leads to missing dependencies,
       // but there needs to be a manual workaround in case of permanently missing artifacts)
       depsToStage     =  plan.toInstall.collect{ case d: DepModule => d }.toSeq  // keep only non-assets
@@ -309,7 +309,7 @@ object Sc4pac {
     def fromResolution(resolution: Resolution, installed: Set[Dep]): UpdatePlan = {
       // TODO decide whether we should also look for updates of `changing` artifacts
 
-      val wanted: Set[Dep] = resolution.dependencySet
+      val wanted: Set[Dep] = resolution.transitiveDependencies.toSet
       val missing = wanted &~ installed
       val obsolete = installed &~ wanted
       // for assets, we also reinstall the packages that depend on them
