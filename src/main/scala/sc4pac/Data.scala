@@ -87,7 +87,11 @@ object Data {
     variant: Variant,
     dependencies: Seq[DependencyData] = Seq.empty,
     assets: Seq[AssetReference] = Seq.empty
-  ) derives ReadWriter
+  ) derives ReadWriter {
+    def bareDependencies: Seq[Resolution.BareDep] =
+      dependencies.map(d => Resolution.BareModule(Organization(d.group), ModuleName(d.name)))
+        ++ assets.map(a => Resolution.BareAsset(ModuleName(a.assetId)))
+  }
   object VariantData {
     def variantToAttributes(variant: Variant): Map[String, String] = {
       require(variant.keysIterator.forall(k => !k.startsWith(Constants.variantPrefix)))

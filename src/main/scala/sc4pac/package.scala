@@ -57,22 +57,6 @@ package object sc4pac {
     }
   }
 
-
-  /** Captures at type level the notion of non-asset module that does not specify its variant.
-    */
-  opaque type ModuleNoAssetNoVar = coursier.core.Module
-  object ModuleNoAssetNoVar {
-    def fromModule(module: coursier.core.Module): Either[ErrStr, ModuleNoAssetNoVar] = {
-      if (Constants.isSc4pacAsset(module)) Left(s"module must not be an asset: $module")
-      else if (module.attributes.nonEmpty) Left(s"module must not specify variants: $module")
-      else Right(module)
-    }
-    def fromDepModule(module: Resolution.DepModule): ModuleNoAssetNoVar = coursier.core.Module(module.group, module.name, attributes = Map.empty)
-  }
-  extension (m: ModuleNoAssetNoVar) {
-    def module: coursier.core.Module = m
-  }
-
   // TODO find better place
   private[sc4pac] def isSubMap[A, B](small: Map[A, B], large: Map[A, B]): Boolean = small.keysIterator.forall(a => small.get(a) == large.get(a))
 

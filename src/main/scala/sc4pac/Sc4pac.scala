@@ -14,7 +14,7 @@ import sc4pac.error.*
 import sc4pac.Constants.isSc4pacAsset
 import sc4pac.Data.*
 import sc4pac.Sc4pac.{StageResult, UpdatePlan}
-import sc4pac.Resolution.{Dep, DepModule, DepAsset}
+import sc4pac.Resolution.{Dep, DepModule, DepAsset, BareModule, BareAsset, BareDep}
 
 /** A plain Coursier logger, since Coursier's RefreshLogger results in dropped
   * or invisible messages, hiding the downloading activity.
@@ -60,14 +60,14 @@ class Sc4pac(val repositories: Seq[MetadataRepository], val cache: FileCache[Tas
   /** Add modules to the json file containing the explicitly installed modules
     * and return the new full list of explicitly installed modules.
     */
-  def add(modules: Seq[ModuleNoAssetNoVar]): Task[Seq[ModuleNoAssetNoVar]] = {
+  def add(modules: Seq[BareModule]): Task[Seq[BareModule]] = {
     for {
       pluginsData  <- Data.readJsonIo[PluginsData](PluginsData.path)  // at this point, file should already exist
       modsOrig     <- Sc4pac.parseModules(pluginsData.explicit)
                         .mapError((err: String) => new Sc4pacIoException(s"format errors in json ${PluginsData.path}: $err"))
       modsNext     =  (modsOrig ++ modules).distinct
       _            <- ZIO.unless(modsNext == modsOrig) {
-                        val pluginsDataNext = pluginsData.copy(explicit = modsNext.map(_.module.orgName).sorted)
+                        val pluginsDataNext = pluginsData.copy(explicit = modsNext.map(_.orgName))
                         // we do not check whether file was modified as this entire operation is synchronous and fast (no network calls, no cache usage)
                         Data.writeJsonIo(PluginsData.path, pluginsDataNext, None)(ZIO.succeed(()))
                       }
@@ -80,20 +80,6 @@ class Sc4pac(val repositories: Seq[MetadataRepository], val cache: FileCache[Tas
 trait UpdateService { this: Sc4pac =>
 
   import CoursierZio.*  // implicit coursier-zio interop
-
-  private def modulesToDependencies(modules: Seq[ModuleNoAssetNoVar], globalVariant: Variant): Task[Seq[DepModule]] = {
-    // TODO bulk-query MetadataRepository for versions of all modules for efficiency
-    ZIO.collectAllPar {
-      modules.map { mod =>
-        val version = Constants.versionLatestRelease
-        for {
-          // vsResult         <- coursierApi.versions.withModule(mod.module).result()
-          // version          =  vsResult.versions.latest
-          (_, variantData) <- Find.matchingVariant(mod, version, globalVariant)
-        } yield DepModule(group = mod.module.organization, name = mod.module.name, version = version, variant = variantData.variant)
-      }
-    }
-  }
 
   private def packageFolderName(dependency: DepModule): String = {
     val variantTokens = dependency.variant.toSeq.sortBy(_._1).map(_._2)
@@ -109,7 +95,7 @@ trait UpdateService { this: Sc4pac =>
   private def stage(
     tempPluginsRoot: os.Path,
     dependency: DepModule,
-    artifactsById: Map[(Organization, ModuleName), (Artifact, java.io.File)],
+    artifactsById: Map[BareAsset, (Artifact, java.io.File)],
     jarsRoot: os.Path,
     progress: Sc4pac.Progress
   ): Task[(Seq[os.SubPath], Boolean)] = {
@@ -117,10 +103,10 @@ trait UpdateService { this: Sc4pac =>
       // Given an AssetReference, we look up the corresponding artifact file
       // by ID. This relies on the 1-to-1-correspondence between sc4pacAssets
       // and artifact files.
-      val id = (Constants.sc4pacAssetOrg, ModuleName(assetData.assetId))
+      val id = BareAsset(ModuleName(assetData.assetId))
       artifactsById.get(id) match {
         case None =>
-          logger.warn(s"skipping missing artifact, so it must be installed manually: ${id._1.value}:${id._2.value}")
+          logger.warn(s"skipping missing artifact, so it must be installed manually: ${id.orgName}")
         case Some(art, archive) =>
           // logger.log(s"  ==> $archive")  // TODO logging debug info
           val recipe = InstallRecipe.fromAssetReference(assetData)
@@ -141,9 +127,8 @@ trait UpdateService { this: Sc4pac =>
     // Since dependency is of type DepModule, we have already looked up the
     // variant successfully, but have lost the PackageData, so we reconstruct it
     // here a second time.
-    val mod = ModuleNoAssetNoVar.fromDepModule(dependency)
     for {
-      (pkgData, variantData) <- Find.matchingVariant(mod, dependency.version, dependency.variant)
+      (pkgData, variantData) <- Find.matchingVariant(dependency.toBareDep, dependency.version, dependency.variant)
       pkgFolder              =  pkgData.subfolder / packageFolderName(dependency)
       _                      <- ZIO.attempt(logger.log(f"$progress Extracting ${dependency.orgName} ${dependency.version}"))
       warnings               <- if (pkgData.info.warning.nonEmpty) ZIO.attempt { logger.warn(pkgData.info.warning); true } else ZIO.succeed(false)
@@ -174,11 +159,11 @@ trait UpdateService { this: Sc4pac =>
   }
 
   /** Update all installed packages from modules (the list of explicitly added packages). */
-  def update(modules: Seq[ModuleNoAssetNoVar], globalVariant0: Variant, pluginsRoot: os.Path): Task[Boolean] = {
+  def update(modules: Seq[BareModule], globalVariant0: Variant, pluginsRoot: os.Path): Task[Boolean] = {
 
     def logPlan(plan: Sc4pac.UpdatePlan): UIO[Unit] = ZIO.succeed {
       if (plan.toRemove.nonEmpty) logPackages(f"The following packages will be removed:%n", plan.toRemove.collect{ case d: DepModule => d })
-      if (plan.toReinstall.nonEmpty) logPackages(f"The following packages will be reinstalled:%n", plan.toReinstall.collect{ case d: DepModule => d })
+      // if (plan.toReinstall.nonEmpty) logPackages(f"The following packages will be reinstalled:%n", plan.toReinstall.collect{ case d: DepModule => d })
       if (plan.toInstall.nonEmpty) logPackages(f"The following packages will be installed:%n", plan.toInstall.collect{ case d: DepModule => d })
       if (plan.isUpToDate) logger.log("Everything is up-to-date.")
     }
@@ -196,7 +181,7 @@ trait UpdateService { this: Sc4pac =>
       * If everything is properly extracted, the files are later moved to the
       * actual plugins folder in the publication step.
       */
-    def stageAll(deps: Seq[DepModule], artifactsById: Map[(Organization, ModuleName), (Artifact, java.io.File)]): Task[StageResult] = {
+    def stageAll(deps: Seq[DepModule], artifactsById: Map[BareAsset, (Artifact, java.io.File)]): Task[StageResult] = {
 
       val makeTempStagingDir = ZIO.attemptBlocking {
         os.makeDir.all(tempRoot)
@@ -282,11 +267,6 @@ trait UpdateService { this: Sc4pac =>
       }.map(_.toOption.get)
     }
 
-    def tryResolve(globalVariant: Variant): Task[Resolution] = for {
-      initialDeps <- modulesToDependencies(modules, globalVariant)  // including variants
-      resolution  <- Resolution.resolve(initialDeps, globalVariant)
-    } yield resolution
-
     def storeGlobalVariant(globalVariant: Variant): Task[Unit] = for {
       pluginsData <- Data.readJsonIo[PluginsData](PluginsData.path)  // json file should exist already
       _           <- Data.writeJsonIo(PluginsData.path, pluginsData.copy(config = pluginsData.config.copy(variant = globalVariant)), None)(ZIO.succeed(()))
@@ -295,18 +275,18 @@ trait UpdateService { this: Sc4pac =>
     // TODO catch coursier.error.ResolutionError$CantDownloadModule (e.g. when json files have syntax issues)
     for {
       pluginsLockData <- PluginsLockData.readOrInit
-      (resolution, globalVariant) <- doPromptingForVariant(globalVariant0)(tryResolve)
+      (resolution, globalVariant) <- doPromptingForVariant(globalVariant0)(Resolution.resolve(modules, _))
       // _               <- ZIO.attempt(logger.log(s"resolution:\n${resolution.dependencySet.mkString("\n")}"))
       plan            =  UpdatePlan.fromResolution(resolution, installed = pluginsLockData.dependenciesWithAssets)
       _               <- logPlan(plan)
       _               <- if (plan.isUpToDate) ZIO.succeed(true)
                          else Prompt.yesNo("Continue?").filterOrFail(_ == true)(Sc4pacAbort())
       _               <- ZIO.unless(globalVariant == globalVariant0)(storeGlobalVariant(globalVariant))  // only store something after confirmation
-      assetsToInstall <- resolution.fetchArtifactsOf(plan.toInstall)
+      assetsToInstall <- resolution.fetchArtifactsOf(resolution.transitiveDependencies.filter(plan.toInstall).reverse)  // we start by fetching artifacts in reverse as those have fewest dependencies of their own
       // TODO if some artifacts fail to be fetched, fall back to installing remaining packages (maybe not(?), as this leads to missing dependencies,
       // but there needs to be a manual workaround in case of permanently missing artifacts)
       depsToStage     =  plan.toInstall.collect{ case d: DepModule => d }.toSeq  // keep only non-assets
-      artifactsById   =  assetsToInstall.map((dep, pub, art, file) => (dep.module.organization, dep.module.name) -> (art, file)).toMap
+      artifactsById   =  assetsToInstall.map((dep, art, file) => dep.toBareDep -> (art, file)).toMap
       _               =  require(artifactsById.size == assetsToInstall.size, s"artifactsById is not 1-to-1: $assetsToInstall")
       stageResult     <- stageAll(depsToStage, artifactsById)
       // _               <- ZIO.attempt(logger.log(s"stage result: $stageResult"))
@@ -329,7 +309,7 @@ object Sc4pac {
     def fromResolution(resolution: Resolution, installed: Set[Dep]): UpdatePlan = {
       // TODO decide whether we should also look for updates of `changing` artifacts
 
-      val wanted: Set[Dep] = resolution.dependencySet
+      val wanted: Set[Dep] = resolution.transitiveDependencies.toSet
       val missing = wanted &~ installed
       val obsolete = installed &~ wanted
       // for assets, we also reinstall the packages that depend on them
@@ -397,13 +377,11 @@ object Sc4pac {
     for (repos <- initializeRepositories(config.channels, cache, channelContentsTtl = None)) yield Sc4pac(repos, cache, tempRoot, logger)
   }
 
-  def parseModules(modules: Seq[String]): IO[ErrStr, Seq[ModuleNoAssetNoVar]] = {
+  def parseModules(modules: Seq[String]): IO[ErrStr, Seq[BareModule]] = {
     ZIO.fromEither {
       coursier.parse.ModuleParser
         .modules(modules, defaultScalaVersion = "")
-        .flatMap { modules =>
-          (new coursier.util.Traverse.TraverseOps(modules)).validationNelTraverse(m => coursier.util.ValidationNel.fromEither(ModuleNoAssetNoVar.fromModule(m)))
-        }
+        .map { modules => modules.map(m => BareModule(m.organization, m.name)) }
         .either
     } mapError { (errs: List[ErrStr]) =>
       errs.mkString(", ")  // malformed module: a, malformed module: b

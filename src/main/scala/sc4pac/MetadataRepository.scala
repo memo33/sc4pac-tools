@@ -54,14 +54,6 @@ case class MetadataRepository(baseUri: String, channelData: ChannelData, globalV
     })
   }
 
-  // /** For a module without specified variants, find the possible variants
-  //   * supported for it by reading its json file.
-  //   */
-  // def fetchVariants[F[_] : Monad](module: ModuleNoAssetNoVar, version: String, fetch: Repository.Fetch[F]): EitherT[F, ErrStr, Seq[Variant]] = {
-  //   fetchModuleJson(module.module, version, fetch)
-  //     .map(pkgData => pkgData.variants.map(_.variant))
-  // }
-
   /** For a module of a given version, find its metadata (parsed from its json
     * file) and return it as a `Project` (Coursier's representation of package
     * metadata, which only mirrors information of Maven pom files, so does not
@@ -108,19 +100,7 @@ case class MetadataRepository(baseUri: String, channelData: ChannelData, globalV
       val pub = Publication(mod.name.value, typ, ext, Classifier.empty /*Classifier(s"file$idx")*/)  // TODO classifier not needed?
       require(isSc4pacAsset(mod))  // TODO
       val lastModifiedOpt: Option[java.time.Instant] = mod.attributes.get(Constants.lastModifiedKey).flatMap(AssetData.parseLastModified)
-      val changing = if (lastModifiedOpt.isEmpty) {
-        // We do not know when the remote artifact is updated, so we set the artifact
-        // to be `changing` so that the cache can look for updates from time to time.
-        true
-      } else {
-        // We use the lastModified timestamp to determine when the remote
-        // artifact is newer than a locally cached file.
-        // This is implemented in deleteStaleCachedFiles.
-        false
-        // TODO Consider version string as well.
-      }
-      val art = Artifact(url).withChanging(changing)
-      Seq((pub, art))
+      Seq((pub, MetadataRepository.createArtifact(url, lastModifiedOpt)))
     }
 
   }
@@ -132,5 +112,20 @@ object MetadataRepository {
 
   def jsonSubPath(group: String, name: String, version: String): os.SubPath = {
     os.SubPath(s"${group}/${name}/${version}/${name}-${version}.json")
+  }
+
+  def createArtifact(url: String, lastModifiedOpt: Option[java.time.Instant]): Artifact = {
+    val changing = if (lastModifiedOpt.isEmpty) {
+      // We do not know when the remote artifact is updated, so we set the artifact
+      // to be `changing` so that the cache can look for updates from time to time.
+      true
+    } else {
+      // We use the lastModified timestamp to determine when the remote
+      // artifact is newer than a locally cached file.
+      // This is implemented in deleteStaleCachedFiles.
+      false
+      // TODO Consider version string as well.
+    }
+    Artifact(url).withChanging(changing)
   }
 }
