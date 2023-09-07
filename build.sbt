@@ -83,9 +83,7 @@ libraryDependencies += "com.lihaoyi" %% "ujson-circe" % "3.1.2"  // conversion f
 
 libraryDependencies += "io.circe" %% "circe-yaml" % "0.14.2"  // or circle-yaml-v12 for yaml 1.2?
 
-libraryDependencies += "org.codehaus.plexus" % "plexus-archiver" % "4.8.0"  // zip extraction
-
-libraryDependencies += "org.slf4j" % "slf4j-nop" % "2.0.7"  // ignore logging in plexus-archiver
+libraryDependencies += "org.apache.commons" % "commons-compress" % "1.23.0"  // zip extraction
 
 libraryDependencies += "com.github.alexarchambault" %% "case-app" % "2.1.0-M25"  // command-line app helper
 

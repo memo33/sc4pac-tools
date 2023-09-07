@@ -1,11 +1,9 @@
 package io.github.memo33
 package sc4pac
 
-import org.codehaus.plexus.archiver.zip.ZipUnArchiver
-import org.codehaus.plexus.components.io.fileselectors.{FileSelector, FileInfo}
-import org.codehaus.plexus.components.io.filemappers.{FileMapper, FlattenFileMapper}
-import java.util.zip.{ZipFile, ZipEntry}
-
+import org.apache.commons.compress.archivers.zip.{ZipFile, ZipArchiveEntry}
+import org.apache.commons.compress.utils.IOUtils
+import java.nio.file.StandardOpenOption
 
 import Data.InstallRecipe
 
@@ -23,66 +21,66 @@ class ZipExtractor extends Extractor {
     os.SubPath(p.segments0.take(i).toIndexedSeq)
   }
 
-  private def extractByRecipeOnly(archive: java.io.File, destination: os.Path, recipe: InstallRecipe): Unit = {
-    // first we read the acceptable file names contained in the zip file
-    val zip = new ZipFile(archive)
-    import scala.jdk.CollectionConverters.*
-    val entries: Seq[os.SubPath] = zip.entries.asScala
-      .map(e => os.SubPath(e.getName))
-      .filter(recipe.accepts)
-      .toSeq.distinct
-    // TODO close zip?
+  /** Extract the zip archive: filter the entries by a predicate, strip the
+    * common prefix from all paths for a more flattened folder structure, and
+    * optionally overwrite existing files.
+    */
+  private def extractByPredicate(archive: java.io.File, destination: os.Path, predicate: os.SubPath => Boolean, overwrite: Boolean, flatten: Boolean): Unit = {
+    scala.util.Using.resource(new ZipFile(archive)) { zip =>
+      // first we read the acceptable file names contained in the zip file
+      import scala.jdk.CollectionConverters.*
+      val entries: Seq[(ZipArchiveEntry, os.SubPath)] = zip.getEntries.asScala
+        .map(e => e -> os.SubPath(e.getName))
+        .filter((e, p) => predicate(p) && !e.isDirectory() && !e.isUnixSymlink())  // skip symlinks as precaution
+        .toSeq
 
-    if (entries.isEmpty) {
-      ()  // nothing to extract
-    } else {
-      // next we determine the prefix common to all files, so we can strip it for a more flattened folder structure
-      val prefix: os.SubPath = if (entries.lengthCompare(1) == 0) entries.head / os.up else entries.reduceLeft(commonPrefix)
-      val prefixStr = prefix.segments0.map(seg => s"$seg${java.io.File.separator}").mkString("")  // the plexus api works with platform-dependent File.separator
+      if (entries.isEmpty) {
+        ()  // nothing to extract
+      } else {
+        // map zip entry names to file names (within destination directory)
+        val mapper: os.SubPath => os.SubPath = if (flatten) {
+          (subpath) => subpath.subRelativeTo(subpath / os.up)  // keep just filename
+        } else {
+          // determine the prefix common to all files, so we can strip it for a semi-flattened folder structure
+          val prefix: os.SubPath =
+            if (entries.lengthCompare(1) == 0) entries.head._2 / os.up
+            else entries.iterator.map(_._2).reduceLeft(commonPrefix)
+          (subpath) => subpath.subRelativeTo(prefix)
+        }
 
-      val unzipper = new ZipUnArchiver(archive)  // TODO set logger
-      unzipper.setDestDirectory(destination.toIO)
-      unzipper.setOverwrite(true)
-      unzipper.setFileSelectors(Array(new FileSelector {
-        def isSelected(fileInfo: FileInfo): Boolean =
-          recipe.accepts(os.SubPath(fileInfo.getName())) && !fileInfo.isSymbolicLink()  // skip symlinks as precaution
-      }))
-      unzipper.setFileMappers(Array(new FileMapper {
-        def getMappedFileName(x: String): String = {
-          if (x.startsWith(prefixStr)) {
-            x.substring(prefixStr.length)  // strip the common prefix
+        val options =
+          if (overwrite) Seq(StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.WRITE)
+          else Seq(StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE)
+
+        os.makeDir.all(destination)
+        for ((entry, subpath) <- entries) {
+          val path = destination / mapper(subpath)
+          if (!overwrite && os.exists(path)) {
+            // do nothing
           } else {
-            println(s"zip entry $x did not start with prefix $prefixStr")  // TODO logger
-            x
+            os.makeDir.all(path / os.up)  // we know that entry refers to a file, not a directory
+            // write entry to file
+            scala.util.Using.resources(zip.getInputStream(entry), java.nio.file.Files.newOutputStream(path.toNIO, options*)) { (in, out) =>
+              IOUtils.copy(in, out, Constants.bufferSize)
+            }
           }
         }
-      }))
-      unzipper.extract()
+      }
     }
   }
 
   def extract(archive: java.io.File, destination: os.Path, recipe: InstallRecipe, jarExtractionOpt: Option[ZipExtractor.JarExtraction]): Unit = {
     // first extract just the main files
-    extractByRecipeOnly(archive, destination, recipe)
+    extractByPredicate(archive, destination, recipe.accepts, overwrite = true, flatten = false)
     // additionally, extract jar files contained in the zip file to a temporary location
-    jarExtractionOpt match {
-      case None => ()  // no jars to extract
-      case Some(ZipExtractor.JarExtraction(jarsDir)) =>
-        val unzipperJar = new ZipUnArchiver(archive)
-        os.makeDir.all(jarsDir)  // TODO avoid unnecessary creation if zip does not contain any jars
-        unzipperJar.setDestDirectory(jarsDir.toIO)
-        unzipperJar.setOverwrite(false)  // we want to extract any given jar only once per staging process
-        unzipperJar.setFileSelectors(Array(new FileSelector {
-          def isSelected(fileInfo: FileInfo): Boolean = fileInfo.isFile() && fileInfo.getName().endsWith(".jar")
-        }))
-        unzipperJar.setFileMappers(Array(new FlattenFileMapper()))
-        unzipperJar.extract()
-
-        // finally extract the jar files themselves (without recursively extracting jars contained inside)
+    for (ZipExtractor.JarExtraction(jarsDir) <- jarExtractionOpt) {
+      extractByPredicate(archive, jarsDir, predicate = _.last.endsWith(".jar"), overwrite = false, flatten = true)  // overwrite=false, as we want to extract any given jar only once per staging process
+      // finally extract the jar files themselves (without recursively extracting jars contained inside)
+      if (os.exists(jarsDir)) {  // is created during extraction if needed
         for (jarFile <- os.list(jarsDir) if jarFile.last.endsWith(".jar")) {
-          // println(s"  ==> $jarFile")  // TODO logger
-          extractByRecipeOnly(jarFile.toIO, destination, recipe)
+          extract(jarFile.toIO, destination, recipe, jarExtractionOpt = None)
         }
+      }
     }
   }
 }
