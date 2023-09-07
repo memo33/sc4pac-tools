@@ -83,9 +83,9 @@ trait UpdateService { this: Sc4pac =>
 
   private def packageFolderName(dependency: DepModule): String = {
     val variantTokens = dependency.variant.toSeq.sortBy(_._1).map(_._2)
-    val variantLabel = if (variantTokens.isEmpty) "" else variantTokens.mkString("-", "-", "")
+    val variantLabel = if (variantTokens.isEmpty) "" else variantTokens.mkString(".", "-", "")
     // we avoid the colons since they would need escaping in shells
-    s"${dependency.group.value}-${dependency.name.value}$variantLabel-${dependency.version}.sc4pac"
+    s"${dependency.group.value}.${dependency.name.value}$variantLabel.${dependency.version}.sc4pac"
   }
 
   /** Stage a single package into the temp plugins folder and return a list of
