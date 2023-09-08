@@ -135,7 +135,23 @@ object Commands {
           runMainExit(task, exit)
         case _ => error(caseapp.core.Error.Other("A single argument is needed: channel-URL"))
       }
+    }
+  }
 
+  @HelpMessage(f"List the channel URLs.%nThe first channel has the highest priority when resolving dependencies.")
+  final case class ChannelListOptions() extends Sc4pacCommandOptions
+
+  case object ChannelList extends Command[ChannelListOptions] {
+    override def names = I.List(I.List("channel", "list"))
+    def run(options: ChannelListOptions, args: RemainingArgs): Unit = {
+      val task = for {
+        pluginsData <- PluginsData.readOrInit
+      } yield {
+        for (url <- pluginsData.config.channels) {
+          println(url)
+        }
+      }
+      runMainExit(task, exit)
     }
   }
 
@@ -173,6 +189,7 @@ object CliMain extends caseapp.core.app.CommandsEntryPoint {
     Commands.Search,
     Commands.List,
     Commands.ChannelAdd,
+    Commands.ChannelList,
     Commands.ChannelBuild)
   val progName = BuildInfo.name
   override val description = s"  A package manager for SimCity 4 plugins. Version ${BuildInfo.version}."
