@@ -10,32 +10,9 @@ import sc4pac.Data.{PluginsData, PluginsLockData}
 // see https://github.com/coursier/coursier/blob/main/modules/cli/src/main/scala/coursier/cli/Coursier.scala
 // and related files
 
-sealed abstract class Sc4pacCommandOptions extends Product with Serializable
-
-@ArgsName("packages...")
-@HelpMessage(f"Add packages to the list of explicitly installed packages.%nPackage format: <group>:<package-name>")
-final case class AddOptions(
-  // @Group("foo")
-  // @Tag("foo")
-  // @ExtraName("V")
-  // @ValueDescription("stages")
-  // @HelpMessage("Set a value")
-  // aa: String
-) extends Sc4pacCommandOptions
-
-// @ArgsName("packages")
-@HelpMessage("Update all installed packages to their latest version and install any missing packages.")
-final case class UpdateOptions() extends Sc4pacCommandOptions
-
-@ArgsName("search text...")
-@HelpMessage("Search for the name of a package.")
-final case class SearchOptions() extends Sc4pacCommandOptions
-
-@ArgsName("channel-directory")
-@HelpMessage("Build the channel by converting all the yaml files to json.")
-final case class BuildChannelOptions() extends Sc4pacCommandOptions
-
 object Commands {
+
+  sealed abstract class Sc4pacCommandOptions extends Product with Serializable
 
   private def runMainExit(task: Task[Unit], exit: Int => Nothing): Nothing = {
     unsafeRun(task.fold(
@@ -46,6 +23,17 @@ object Commands {
       success = _ => exit(0)
     ))
   }
+
+  @ArgsName("packages...")
+  @HelpMessage(f"Add packages to the list of explicitly installed packages.%nPackage format: <group>:<package-name>")
+  final case class AddOptions(
+    // @Group("foo")
+    // @Tag("foo")
+    // @ExtraName("V")
+    // @ValueDescription("stages")
+    // @HelpMessage("Set a value")
+    // aa: String
+  ) extends Sc4pacCommandOptions
 
   case object Add extends Command[AddOptions] {
     def run(options: AddOptions, args: RemainingArgs): Unit = {
@@ -64,6 +52,10 @@ object Commands {
     }
   }
 
+  // @ArgsName("packages")
+  @HelpMessage("Update all installed packages to their latest version and install any missing packages.")
+  final case class UpdateOptions() extends Sc4pacCommandOptions
+
   case object Update extends Command[UpdateOptions] {
     def run(options: UpdateOptions, args: RemainingArgs): Unit = {
       val task = for {
@@ -75,6 +67,10 @@ object Commands {
       runMainExit(task, exit)
     }
   }
+
+  @ArgsName("search text...")
+  @HelpMessage("Search for the name of a package.")
+  final case class SearchOptions() extends Sc4pacCommandOptions
 
   case object Search extends Command[SearchOptions] {
     def run(options: SearchOptions, args: RemainingArgs): Unit = {
@@ -92,6 +88,10 @@ object Commands {
       runMainExit(task, exit)
     }
   }
+
+  @ArgsName("channel-directory")
+  @HelpMessage("Build the channel by converting all the yaml files to json.")
+  final case class BuildChannelOptions() extends Sc4pacCommandOptions
 
   /** For internal use, convert yaml files to json.
     * Usage: `./sc4pac build-channel ./channel-testing/`
