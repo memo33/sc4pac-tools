@@ -162,7 +162,7 @@ object Data {
     val empty = InfoData()
   }
 
-  case class ChannelItemData(group: String, name: String, versions: Seq[String]) derives ReadWriter
+  case class ChannelItemData(group: String, name: String, versions: Seq[String], summary: String = "") derives ReadWriter
 
   case class ChannelData(contents: Seq[ChannelItemData]) derives ReadWriter {
     lazy val versions: Map[Module, Seq[String]] =
