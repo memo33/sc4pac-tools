@@ -40,6 +40,10 @@ class Logger private (out: java.io.PrintStream, useColor: Boolean) extends cours
     val mod = module.formattedDisplayString(gray, bold) + (if (installed) " " + cyanBold("[installed]") else "")
     log((Array(mod) ++ description).mkString(f"%n" + " "*4))
   }
+
+  def logInstalled(module: DepModule, explicit: Boolean): Unit = {
+    log(module.formattedDisplayString(gray) + (if (explicit) " " + cyanBold("[explicit]") else ""))
+  }
 }
 object Logger {
   def apply(useColor: Boolean): Logger = {

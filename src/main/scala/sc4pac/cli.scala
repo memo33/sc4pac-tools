@@ -89,6 +89,27 @@ object Commands {
     }
   }
 
+  @HelpMessage("List all installed packages.")
+  final case class ListOptions() extends Sc4pacCommandOptions
+
+  case object List extends Command[ListOptions] {
+    def run(options: ListOptions, args: RemainingArgs): Unit = {
+      val task: Task[Unit] = for {
+        pluginsData  <- PluginsData.readOrInit
+        pac          <- Sc4pac.init(pluginsData.config)
+        installed    <- PluginsLockData.listInstalled
+        explicitMods <- pac.add(Seq.empty)  // retrieves explicitly installed modules
+      } yield {
+        val sorted = installed.sortBy(mod => (mod.group.value, mod.name.value))
+        val explicit = explicitMods.toSet
+        for (mod <- sorted) {
+          pac.logger.logInstalled(mod, explicit(mod.toBareDep))
+        }
+      }
+      runMainExit(task, exit)
+    }
+  }
+
   @ArgsName("channel-directory")
   @HelpMessage("Build the channel by converting all the yaml files to json.")
   final case class BuildChannelOptions() extends Sc4pacCommandOptions
@@ -109,7 +130,7 @@ object Commands {
 }
 
 object CliMain extends caseapp.core.app.CommandsEntryPoint {
-  val commands = Seq(Commands.Add, Commands.Update, Commands.Search, Commands.BuildChannel)
+  val commands = Seq(Commands.Add, Commands.Update, Commands.Search, Commands.List, Commands.BuildChannel)
   val progName = BuildInfo.name
   override val description = s"  A package manager for SimCity 4 plugins. Version ${BuildInfo.version}."
 
