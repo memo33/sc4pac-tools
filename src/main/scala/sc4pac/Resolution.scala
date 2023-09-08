@@ -20,6 +20,7 @@ object Resolution {
   }
   final case class BareModule(group: C.Organization, name: C.ModuleName) extends BareDep {  // a dependency without version information, variant data or any other attributes
     def orgName = s"${group.value}:${name.value}"
+    def formattedDisplayString(gray: String => String): String = gray(s"${group.value}:") + name.value
   }
   final case class BareAsset(assetId: C.ModuleName) extends BareDep {
     def orgName = s"${Constants.sc4pacAssetOrg.value}:${assetId.value}"

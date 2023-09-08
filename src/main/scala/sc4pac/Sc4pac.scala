@@ -33,6 +33,10 @@ class Logger private (out: java.io.PrintStream, useColor: Boolean) extends cours
 
   def log(msg: String): Unit = out.println(msg)
   def warn(msg: String): Unit = out.println(yellowBold("Warning:") + " " + msg)
+
+  def logSearchResult(module: BareModule, description: Option[String]): Unit = {
+    log((Array(module.formattedDisplayString(gray)) ++ description).mkString(f"%n  "))
+  }
 }
 object Logger {
   def apply(useColor: Boolean): Logger = {
@@ -72,6 +76,28 @@ class Sc4pac(val repositories: Seq[MetadataRepository], val cache: FileCache[Tas
                         Data.writeJsonIo(PluginsData.path, pluginsDataNext, None)(ZIO.succeed(()))
                       }
     } yield modsNext
+  }
+
+  /** Fuzzy-search across all repositories.
+    * The selection of results is ordered in descending order and includes the
+    * module, the relevance ratio and the description.
+    */
+  def search(query: String): Task[Seq[(BareModule, Int, Option[String])]] = ZIO.attempt {
+    val results: Seq[(BareModule, Int, Option[String])] =
+      repositories.flatMap { repo =>
+        repo.channelData.contents.iterator.flatMap { item =>
+          if (item.isSc4pacAsset) {
+            None
+          } else {
+            // TODO reconsider choice of search algorithm
+            val ratio = me.xdrop.fuzzywuzzy.FuzzySearch.tokenSetRatio(query, item.toSearchString)
+            if (ratio >= Constants.fuzzySearchThreshold) {
+              Some(BareModule(Organization(item.group), ModuleName(item.name)), ratio, Option(item.summary).filter(_.nonEmpty))
+            } else None
+          }
+        }
+      }
+    results.sortBy(_._2)(Ordering.Int.reverse).distinctBy(_._1)
   }
 
 }

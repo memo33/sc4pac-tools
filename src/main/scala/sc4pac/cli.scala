@@ -12,7 +12,7 @@ import sc4pac.Data.PluginsData
 
 sealed abstract class Sc4pacCommandOptions extends Product with Serializable
 
-@ArgsName("packages")
+@ArgsName("packages...")
 @HelpMessage(f"Add packages to the list of explicitly installed packages.%nPackage format: <group>:<package-name>")
 final case class AddOptions(
   // @Group("foo")
@@ -25,9 +25,11 @@ final case class AddOptions(
 
 // @ArgsName("packages")
 @HelpMessage("Update all installed packages to their latest version and install any missing packages.")
-final case class UpdateOptions(
-  // bb: String
-) extends Sc4pacCommandOptions
+final case class UpdateOptions() extends Sc4pacCommandOptions
+
+@ArgsName("search text...")
+@HelpMessage("Search for the name of a package.")
+final case class SearchOptions() extends Sc4pacCommandOptions
 
 @ArgsName("channel-directory")
 @HelpMessage("Build the channel by converting all the yaml files to json.")
@@ -74,6 +76,22 @@ object Commands {
     }
   }
 
+  case object Search extends Command[SearchOptions] {
+    def run(options: SearchOptions, args: RemainingArgs): Unit = {
+      val task: Task[Unit] = for {
+        pluginsData  <- PluginsData.readOrInit
+        pac          <- Sc4pac.init(pluginsData.config)
+        query        =  args.all.mkString(" ")
+        searchResult <- pac.search(query)
+      } yield {
+        for ((mod, ratio, description) <- searchResult) {
+          pac.logger.logSearchResult(mod, description)
+        }
+      }
+      runMainExit(task, exit)
+    }
+  }
+
   /** For internal use, convert yaml files to json.
     * Usage: `./sc4pac build-channel ./channel-testing/`
     */
@@ -90,7 +108,7 @@ object Commands {
 }
 
 object CliMain extends caseapp.core.app.CommandsEntryPoint {
-  val commands = Seq(Commands.Add, Commands.Update, Commands.BuildChannel)
+  val commands = Seq(Commands.Add, Commands.Update, Commands.Search, Commands.BuildChannel)
   val progName = BuildInfo.name
   override val description = s"  A package manager for SimCity 4 plugins. Version ${BuildInfo.version}."
 
