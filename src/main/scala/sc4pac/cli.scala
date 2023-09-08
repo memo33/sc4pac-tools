@@ -3,7 +3,7 @@ package sc4pac
 package cli
 
 import scala.collection.immutable as I
-import caseapp.{Command, RemainingArgs, ArgsName, HelpMessage}
+import caseapp.{Command, RemainingArgs, ArgsName, HelpMessage, ExtraName, ValueDescription}
 import zio.{ZIO, Task}
 
 import sc4pac.Data.{PluginsData, PluginsLockData}
@@ -139,22 +139,28 @@ object Commands {
     }
   }
 
-  @ArgsName("channel-directory")
-  @HelpMessage("Build a channel locally by converting YAML files to JSON.")
-  final case class ChannelBuildOptions() extends Sc4pacCommandOptions
+  @ArgsName("YAML-input-directories...")
+  @HelpMessage("""
+    |Build a channel locally by converting YAML files to JSON.
+    |
+    |Examples:
+    |  sc4pac channel build --output channel/json/ channel/yaml/
+    """.stripMargin.trim)
+  final case class ChannelBuildOptions(
+    @ExtraName("o") @ValueDescription("directory") @HelpMessage("Output directory for JSON files")
+    output: String
+  ) extends Sc4pacCommandOptions
 
   /** For internal use, convert yaml files to json.
     * Usage: `./sc4pac build-channel ./channel-testing/`
     */
   case object ChannelBuild extends Command[ChannelBuildOptions] {
-    // override def hidden = true  // for internal use
     override def names = I.List(I.List("channel", "build"))
     def run(options: ChannelBuildOptions, args: RemainingArgs): Unit = {
       args.all match {
-        case Seq[String](channelDir) => ChannelUtil.convertYamlToJson(os.Path(channelDir, os.pwd))
-        case _ => error(caseapp.core.Error.Other("A single argument is needed: channel-directory"))
+        case Nil => error(caseapp.core.Error.Other("An argument is needed: YAML input directory"))
+        case inputs => ChannelUtil.convertYamlToJson(inputs.map(os.Path(_, os.pwd)), os.Path(options.output, os.pwd))
       }
-
     }
   }
 
