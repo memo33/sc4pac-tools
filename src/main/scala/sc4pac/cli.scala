@@ -5,7 +5,7 @@ package cli
 import caseapp.{Command, RemainingArgs, ArgsName, HelpMessage}
 import zio.{ZIO, Task}
 
-import sc4pac.Data.PluginsData
+import sc4pac.Data.{PluginsData, PluginsLockData}
 
 // see https://github.com/coursier/coursier/blob/main/modules/cli/src/main/scala/coursier/cli/Coursier.scala
 // and related files
@@ -83,9 +83,10 @@ object Commands {
         pac          <- Sc4pac.init(pluginsData.config)
         query        =  args.all.mkString(" ")
         searchResult <- pac.search(query)
+        installed    <- PluginsLockData.listInstalled.map(_.map(_.toBareDep).toSet)
       } yield {
         for ((mod, ratio, description) <- searchResult) {
-          pac.logger.logSearchResult(mod, description)
+          pac.logger.logSearchResult(mod, description, installed(mod))
         }
       }
       runMainExit(task, exit)

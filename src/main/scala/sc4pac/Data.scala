@@ -280,6 +280,13 @@ object Data {
         }
       )
     }
+
+    val listInstalled: Task[Seq[DepModule]] = {
+      ZIO.ifZIO(ZIO.attemptBlocking(os.exists(PluginsLockData.path)))(
+        onTrue = Data.readJsonIo[PluginsLockData](PluginsLockData.path).map(_.installed.map(_.toDepModule)),
+        onFalse = ZIO.succeed(Seq.empty)
+      )
+    }
   }
 
   case class InstallRecipe(include: Seq[Pattern], exclude: Seq[Pattern]) {

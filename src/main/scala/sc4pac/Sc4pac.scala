@@ -22,7 +22,9 @@ import sc4pac.Resolution.{Dep, DepModule, DepAsset, BareModule, BareAsset, BareD
 class Logger private (out: java.io.PrintStream, useColor: Boolean) extends coursier.cache.CacheLogger {
 
   private def cyan(msg: String): String = if (useColor) Console.CYAN + msg + Console.RESET else msg
+  private def cyanBold(msg: String): String = if (useColor) Console.CYAN + Console.BOLD + msg + Console.RESET else msg
   private def yellowBold(msg: String): String = if (useColor) Console.YELLOW + Console.BOLD + msg + Console.RESET else msg
+  private def bold(msg: String): String = if (useColor) Console.BOLD + msg + Console.RESET else msg
   def gray(msg: String): String = if (useColor) s"${27.toChar}[90m" + msg + Console.RESET else msg  // aka bright black
 
   override def downloadingArtifact(url: String, artifact: coursier.util.Artifact) =
@@ -34,8 +36,9 @@ class Logger private (out: java.io.PrintStream, useColor: Boolean) extends cours
   def log(msg: String): Unit = out.println(msg)
   def warn(msg: String): Unit = out.println(yellowBold("Warning:") + " " + msg)
 
-  def logSearchResult(module: BareModule, description: Option[String]): Unit = {
-    log((Array(module.formattedDisplayString(gray)) ++ description).mkString(f"%n  "))
+  def logSearchResult(module: BareModule, description: Option[String], installed: Boolean): Unit = {
+    val mod = module.formattedDisplayString(gray, bold) + (if (installed) " " + cyanBold("[installed]") else "")
+    log((Array(mod) ++ description).mkString(f"%n" + " "*4))
   }
 }
 object Logger {
