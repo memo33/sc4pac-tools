@@ -374,9 +374,9 @@ object Sc4pac {
   case class StageResult(tempPluginsRoot: os.Path, files: Seq[(DepModule, Seq[os.SubPath])], stagingRoot: os.Path)
 
 
-  private def fetchChannelData(repoUri: String, cache: FileCache[Task], channelContentsTtl: Option[scala.concurrent.duration.Duration]): IO[ErrStr, MetadataRepository] = {
+  private def fetchChannelData(repoUri: java.net.URI, cache: FileCache[Task], channelContentsTtl: Option[scala.concurrent.duration.Duration]): IO[ErrStr, MetadataRepository] = {
     import CoursierZio.*  // implicit coursier-zio interop
-    val contentsUrl = MetadataRepository.channelContentsUrl(repoUri)
+    val contentsUrl = MetadataRepository.channelContentsUrl(repoUri).toString
     val artifact = Artifact(contentsUrl).withChanging(true)  // changing as the remote file is updated whenever any remote package is added or updated
     cache
       .withTtl(channelContentsTtl.orElse(cache.ttl))
@@ -390,7 +390,7 @@ object Sc4pac {
       })
   }
 
-  private[sc4pac] def initializeRepositories(repoUris: Seq[String], cache: FileCache[Task], channelContentsTtl: Option[scala.concurrent.duration.Duration]): Task[Seq[MetadataRepository]] = {
+  private[sc4pac] def initializeRepositories(repoUris: Seq[java.net.URI], cache: FileCache[Task], channelContentsTtl: Option[scala.concurrent.duration.Duration]): Task[Seq[MetadataRepository]] = {
     val task: Task[Seq[MetadataRepository]] = ZIO.collectPar(repoUris) { url =>
       fetchChannelData(url, cache, channelContentsTtl)
         .mapError((err: ErrStr) => { System.err.println(s"Failed to read channel data: $err"); None })
