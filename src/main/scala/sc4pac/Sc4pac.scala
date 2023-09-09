@@ -48,19 +48,27 @@ class Logger private (out: java.io.PrintStream, useColor: Boolean) extends cours
 
   private val spinnerSymbols = collection.immutable.ArraySeq("⣾", "⣽", "⣻", "⢿", "⡿", "⣟", "⣯", "⣷")
 
-  /** Print a message, followed by a spinning animation, while running a non-printing task.
+  /** Print a message, followed by a spinning animation, while running a task.
+    * The task should not print anything, unless sameLine is true.
     */
-  def withSpinner[A](msg: String)(task: Task[A]): Task[A] = {
-    out.println(msg)
+  def withSpinner[A](msg: Option[String], sameLine: Boolean, cyan: Boolean = false, duration: java.time.Duration = java.time.Duration.ofMillis(100))(task: Task[A]): Task[A] = {
+    if (msg.nonEmpty) {
+      out.println(msg.get)
+    }
     if (!useColor) {
       task
     } else {
-      val col = msg.length + 2
-      def spin(symbol: String) = out.print(Ansi.ansi().saveCursorPosition().cursorUpLine().cursorToColumn(col).a(symbol).restoreCursorPosition())
+      val coloredSymbols = if (!cyan) spinnerSymbols else spinnerSymbols.map(this.cyan)
+      val spin: String => Unit = if (!sameLine) {
+        val col = msg.map(_.length + 2).getOrElse(1)
+        (symbol) => out.print(Ansi.ansi().saveCursorPosition().cursorUpLine().cursorToColumn(col).a(symbol).restoreCursorPosition())
+      } else {
+        (symbol) => out.print(Ansi.ansi().saveCursorPosition().cursorRight(2).a(symbol).restoreCursorPosition())
+      }
       val spinner = ZIO.iterate(0)(_ => true) { i =>
-        for (_ <- ZIO.sleep(java.time.Duration.ofMillis(100))) yield {  // TODO use zio.Schedule instead?
-          spin(spinnerSymbols(i))
-          (i+1) % spinnerSymbols.length
+        for (_ <- ZIO.sleep(duration)) yield {  // TODO use zio.Schedule instead?
+          spin(coloredSymbols(i))
+          (i+1) % coloredSymbols.length
         }
       }
       // run task and spinner in parallel and interrupt spinner once task completes or fails
@@ -219,7 +227,7 @@ trait UpdateService { this: Sc4pac =>
     for {
       (pkgData, variant) <- Find.matchingVariant(dependency.toBareDep, dependency.version, dependency.variant)
       pkgFolder          =  pkgData.subfolder / packageFolderName(dependency)
-      _                  <- logger.withSpinner(s"$progress Extracting ${dependency.orgName} ${dependency.version}") {
+      _                  <- logger.withSpinner(Some(s"$progress Extracting ${dependency.orgName} ${dependency.version}"), sameLine = false) {
                               for {
                                 _ <- ZIO.attemptBlocking(os.makeDir.all(tempPluginsRoot / pkgFolder))  // create folder even if package does not have any assets or files
                                 _ <- ZIO.foreachDiscard(variant.assets)(extract(_, pkgFolder))
