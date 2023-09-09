@@ -170,6 +170,28 @@ object Commands {
     }
   }
 
+  @HelpMessage("Select a channel to remove.")
+  final case class ChannelRemoveOptions() extends Sc4pacCommandOptions
+
+  case object ChannelRemove extends Command[ChannelRemoveOptions] {
+    override def names = I.List(I.List("channel", "remove"))
+    def run(options: ChannelRemoveOptions, args: RemainingArgs): Unit = {
+      val task = PluginsData.readOrInit.flatMap { data =>
+        if (data.config.channels.isEmpty) {
+          ZIO.succeed(println("The list of channel URLs is already empty."))
+        } else {
+          for {
+            url   <- Prompt.numbered("Select a channel to remove:", data.config.channels)
+            data2 =  data.copy(config = data.config.copy(channels = data.config.channels.filter(_ != url)))
+            _     <- Data.writeJsonIo(PluginsData.path, data2, None)(ZIO.succeed(()))
+          } yield ()
+        }
+      }
+      runMainExit(task, exit)
+    }
+  }
+
+
   @HelpMessage(f"List the channel URLs.%nThe first channel has the highest priority when resolving dependencies.")
   final case class ChannelListOptions() extends Sc4pacCommandOptions
 
@@ -222,6 +244,7 @@ object CliMain extends caseapp.core.app.CommandsEntryPoint {
     Commands.Search,
     Commands.List,
     Commands.ChannelAdd,
+    Commands.ChannelRemove,
     Commands.ChannelList,
     Commands.ChannelBuild)
   val progName = BuildInfo.name
