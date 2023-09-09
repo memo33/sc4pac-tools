@@ -143,6 +143,37 @@ object Commands {
     }
   }
 
+  @HelpMessage("""
+    |Select variants to reset in order to choose a different package variant.
+    |
+    |For some packages you install, you can choose from a list of package variants that match your preferences. Your choices are stored in a configuration file.
+    |
+    |After resetting a variant identifier, the next time you run "sc4pac update", you will be asked to choose a new variant.
+    |
+    |Examples:
+    |  sc4pac variant reset      # interactively select variants to reset
+    """.stripMargin.trim)
+  final case class VariantResetOptions() extends Sc4pacCommandOptions
+
+  case object VariantReset extends Command[VariantResetOptions] {
+    override def names = I.List(I.List("variant", "reset"))
+    def run(options: VariantResetOptions, args: RemainingArgs): Unit = {
+      val task = PluginsData.readOrInit.flatMap { data =>
+        if (data.config.variant.isEmpty) {
+          ZIO.succeed(println("The list of configured variants is empty. The next time you install a package that comes in variants, you can choose again."))
+        } else {
+          val variants: Seq[(String, String)] = data.config.variant.toSeq.sorted
+          for {
+            selected <- Prompt.numberedMultiSelect("Select variants to reset:", variants, (k, v) => s"$k: $v").map(_.map(_._1))
+            data2    =  data.copy(config = data.config.copy(variant = data.config.variant -- selected))
+            _        <- Data.writeJsonIo(PluginsData.path, data2, None)(ZIO.succeed(()))
+          } yield ()
+        }
+      }
+      runMainExit(task, exit)
+    }
+  }
+
   @ArgsName("channel-URL")
   @HelpMessage(s"""
     |Add a channel to fetch package metadata from.
@@ -243,6 +274,7 @@ object CliMain extends caseapp.core.app.CommandsEntryPoint {
     Commands.Remove,
     Commands.Search,
     Commands.List,
+    Commands.VariantReset,
     Commands.ChannelAdd,
     Commands.ChannelRemove,
     Commands.ChannelList,
