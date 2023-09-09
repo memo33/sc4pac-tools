@@ -74,11 +74,10 @@ class Sc4pac(val repositories: Seq[MetadataRepository], val cache: FileCache[Tas
   def add(modules: Seq[BareModule]): Task[Seq[BareModule]] = {
     for {
       pluginsData  <- Data.readJsonIo[PluginsData](PluginsData.path)  // at this point, file should already exist
-      modsOrig     <- Sc4pac.parseModules(pluginsData.explicit)
-                        .mapError((err: String) => new Sc4pacIoException(s"format errors in json ${PluginsData.path}: $err"))
+      modsOrig     =  pluginsData.explicit
       modsNext     =  (modsOrig ++ modules).distinct
       _            <- ZIO.unless(modsNext == modsOrig) {
-                        val pluginsDataNext = pluginsData.copy(explicit = modsNext.map(_.orgName))
+                        val pluginsDataNext = pluginsData.copy(explicit = modsNext)
                         // we do not check whether file was modified as this entire operation is synchronous and fast (no network calls, no cache usage)
                         Data.writeJsonIo(PluginsData.path, pluginsDataNext, None)(ZIO.succeed(()))
                       }
@@ -414,15 +413,14 @@ object Sc4pac {
     for (repos <- initializeRepositories(config.channels, cache, channelContentsTtl = None)) yield Sc4pac(repos, cache, tempRoot, logger)
   }
 
-  def parseModules(modules: Seq[String]): IO[ErrStr, Seq[BareModule]] = {
-    ZIO.fromEither {
-      coursier.parse.ModuleParser
-        .modules(modules, defaultScalaVersion = "")
-        .map { modules => modules.map(m => BareModule(m.organization, m.name)) }
-        .either
-    } mapError { (errs: List[ErrStr]) =>
-      errs.mkString(", ")  // malformed module: a, malformed module: b
-    }
+  def parseModules(modules: Seq[String]): Either[ErrStr, Seq[BareModule]] = {
+    coursier.parse.ModuleParser
+      .modules(modules, defaultScalaVersion = "")
+      .map { modules => modules.map(m => BareModule(m.organization, m.name)) }
+      .either
+      .left.map { (errs: List[ErrStr]) =>
+        errs.mkString(", ")  // malformed module: a, malformed module: b
+      }
   }
 
 }

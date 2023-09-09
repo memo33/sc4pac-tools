@@ -9,7 +9,7 @@ import zio.{ZIO, IO, Task}
 import java.util.regex.Pattern
 
 import sc4pac.error.Sc4pacIoException
-import sc4pac.Resolution.{Dep, DepModule, DepAsset}
+import sc4pac.Resolution.{Dep, DepModule, DepAsset, BareModule}
 
 /** Contains data types for JSON serialization. */
 object Data {
@@ -22,6 +22,14 @@ object Data {
   implicit val osSubPathRw: ReadWriter[os.SubPath] = readwriter[String].bimap[os.SubPath](_.toString(), os.SubPath(_))
 
   implicit val uriRw: ReadWriter[java.net.URI] = readwriter[String].bimap[java.net.URI](_.toString(), MetadataRepository.parseChannelUrl(_))
+
+  implicit val bareModuleRw: ReadWriter[BareModule] = readwriter[String].bimap[BareModule](_.orgName, { (s: String) =>
+    Sc4pac.parseModules(Seq(s)) match {
+      case Right(Seq(mod)) => mod
+      case Left(err) => throw new IllegalArgumentException(err)
+      case _ => throw new AssertionError
+    }
+  })
 
   case class DependencyData(group: String, name: String, version: String) derives ReadWriter {
     private[Data] def toDependency = Dependency(Module(Organization(group), ModuleName(name), attributes = Map.empty), version = version)
@@ -193,7 +201,7 @@ object Data {
     }
   }
 
-  case class PluginsData(config: ConfigData, explicit: Seq[String]) derives ReadWriter {
+  case class PluginsData(config: ConfigData, explicit: Seq[BareModule]) derives ReadWriter {
     val pluginsRootAbs: os.Path = os.Path(config.pluginsRoot, base = os.pwd)  // converts to absolute if not absolute already
   }
   object PluginsData {
@@ -331,6 +339,7 @@ object Data {
     case e @ (_: upickle.core.AbortException
             | _: ujson.ParseException
             | _: java.nio.file.NoSuchFileException
+            | _: IllegalArgumentException
             | _: java.time.format.DateTimeParseException) =>
       Left(s"failed to read $errMsg: ${e.getMessage()}")
   }
@@ -345,14 +354,7 @@ object Data {
   }
 
   private[sc4pac] def readJsonIo[A : Reader](pathOrString: ujson.Readable, errMsg: => ErrStr): zio.Task[A] = {
-    ZIO.attemptBlocking(read[A](pathOrString))
-      .catchSome {
-        case e @ (_: upickle.core.AbortException
-                | _: ujson.ParseException
-                | _: java.nio.file.NoSuchFileException
-                | _: java.time.format.DateTimeParseException) =>
-          ZIO.fail(new Sc4pacIoException(s"failed to read json $errMsg: ${e.getMessage()}"))
-      }
+    ZIO.attemptBlocking(readJson[A](pathOrString, errMsg).left.map(new Sc4pacIoException(_))).absolve
   }
 
   // steps:

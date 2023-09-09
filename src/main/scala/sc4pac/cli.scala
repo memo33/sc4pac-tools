@@ -7,6 +7,7 @@ import caseapp.{Command, RemainingArgs, ArgsName, HelpMessage, ExtraName, ValueD
 import zio.{ZIO, Task}
 
 import sc4pac.Data.{PluginsData, PluginsLockData}
+import sc4pac.Resolution.BareModule
 
 // see https://github.com/coursier/coursier/blob/main/modules/cli/src/main/scala/coursier/cli/Coursier.scala
 // and related files
@@ -42,7 +43,7 @@ object Commands {
         error(caseapp.core.Error.Other("Argument missing: add one or more packages of the form <group>:<package-name>"))
       }
       val task: Task[Unit] = for {
-        mods   <- Sc4pac.parseModules(args.all).catchAll { (err: String) =>
+        mods   <- ZIO.fromEither(Sc4pac.parseModules(args.all)).catchAll { (err: ErrStr) =>
                     error(caseapp.core.Error.Other(s"Package format is <group>:<package-name> ($err)"))
                   }
         config <- PluginsData.readOrInit.map(_.config)
@@ -62,8 +63,7 @@ object Commands {
       val task = for {
         pluginsData  <- PluginsData.readOrInit
         pac          <- Sc4pac.init(pluginsData.config)
-        explicitMods <- pac.add(Seq.empty)  // retrieves explicitly installed modules
-        flag         <- pac.update(explicitMods, globalVariant0 = pluginsData.config.variant, pluginsRoot = pluginsData.pluginsRootAbs)
+        flag         <- pac.update(pluginsData.explicit, globalVariant0 = pluginsData.config.variant, pluginsRoot = pluginsData.pluginsRootAbs)
       } yield ()
       runMainExit(task, exit)
     }
@@ -97,12 +97,11 @@ object Commands {
     def run(options: ListOptions, args: RemainingArgs): Unit = {
       val task: Task[Unit] = for {
         pluginsData  <- PluginsData.readOrInit
-        pac          <- Sc4pac.init(pluginsData.config)
+        pac          <- Sc4pac.init(pluginsData.config)  // only used for logging
         installed    <- PluginsLockData.listInstalled
-        explicitMods <- pac.add(Seq.empty)  // retrieves explicitly installed modules
       } yield {
         val sorted = installed.sortBy(mod => (mod.group.value, mod.name.value))
-        val explicit = explicitMods.toSet
+        val explicit: Set[BareModule] = pluginsData.explicit.toSet
         for (mod <- sorted) {
           pac.logger.logInstalled(mod, explicit(mod.toBareDep))
         }
