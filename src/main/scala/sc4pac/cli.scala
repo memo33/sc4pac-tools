@@ -27,7 +27,12 @@ object Commands {
   }
 
   @ArgsName("packages...")
-  @HelpMessage(f"Add packages to the list of explicitly installed packages.%nPackage format: <group>:<package-name>")
+  @HelpMessage("""
+    |Add packages to the list of explicitly installed packages.
+    |Run "sc4pac update" for the changes to take effect.
+    |
+    |Package format: <group>:<package-name>
+    """.stripMargin.trim)
   final case class AddOptions(
     // @Group("foo")
     // @Tag("foo")
@@ -68,6 +73,34 @@ object Commands {
       runMainExit(task, exit)
     }
   }
+
+  @ArgsName("packages...")
+  @HelpMessage("""
+    |Remove packages from the list of explicitly installed packages.
+    |Run "sc4pac update" for the changes to take effect.
+    |
+    |Package format: <group>:<package-name>
+    |
+    |Examples:
+    |  sc4pac remove                        # interactively select package to remove
+    |  sc4pac remove memo:essential-fixes   # remove this package
+    |""".stripMargin.trim)
+  final case class RemoveOptions() extends Sc4pacCommandOptions
+
+  case object Remove extends Command[RemoveOptions] {
+    def run(options: RemoveOptions, args: RemainingArgs): Unit = {
+      val task: Task[Unit] = for {
+        mods   <- ZIO.fromEither(Sc4pac.parseModules(args.all)).catchAll { (err: ErrStr) =>
+                    error(caseapp.core.Error.Other(s"Package format is <group>:<package-name> ($err)"))
+                  }
+        config <- PluginsData.readOrInit.map(_.config)
+        pac    <- Sc4pac.init(config)
+        _      <- if (mods.isEmpty) pac.removeSelect() else pac.remove(mods)
+      } yield ()
+      runMainExit(task, exit)
+    }
+  }
+
 
   @ArgsName("search text...")
   @HelpMessage("Search for the name of a package.")
@@ -185,6 +218,7 @@ object CliMain extends caseapp.core.app.CommandsEntryPoint {
   val commands = Seq(
     Commands.Add,
     Commands.Update,
+    Commands.Remove,
     Commands.Search,
     Commands.List,
     Commands.ChannelAdd,

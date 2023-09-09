@@ -68,20 +68,49 @@ class Sc4pac(val repositories: Seq[MetadataRepository], val cache: FileCache[Tas
 
   // TODO check resolution.conflicts
 
+  private def modifyExplicitModules(modify: Seq[BareModule] => Task[Seq[BareModule]]): Task[Seq[BareModule]] = {
+    for {
+      pluginsData  <- Data.readJsonIo[PluginsData](PluginsData.path)  // at this point, file should already exist
+      modsOrig     =  pluginsData.explicit
+      modsNext     <- modify(modsOrig)
+      _            <- ZIO.unless(modsNext == modsOrig) {
+                        val pluginsDataNext = pluginsData.copy(explicit = modsNext)
+                        // we do not check whether file was modified as this entire operation is synchronous and fast, in most cases
+                        Data.writeJsonIo(PluginsData.path, pluginsDataNext, None)(ZIO.succeed(()))
+                      }
+    } yield modsNext
+  }
+
   /** Add modules to the json file containing the explicitly installed modules
     * and return the new full list of explicitly installed modules.
     */
   def add(modules: Seq[BareModule]): Task[Seq[BareModule]] = {
-    for {
-      pluginsData  <- Data.readJsonIo[PluginsData](PluginsData.path)  // at this point, file should already exist
-      modsOrig     =  pluginsData.explicit
-      modsNext     =  (modsOrig ++ modules).distinct
-      _            <- ZIO.unless(modsNext == modsOrig) {
-                        val pluginsDataNext = pluginsData.copy(explicit = modsNext)
-                        // we do not check whether file was modified as this entire operation is synchronous and fast (no network calls, no cache usage)
-                        Data.writeJsonIo(PluginsData.path, pluginsDataNext, None)(ZIO.succeed(()))
-                      }
-    } yield modsNext
+    modifyExplicitModules(modsOrig => ZIO.succeed((modsOrig ++ modules).distinct))
+  }
+
+  /** Remove modules from the list of explicitly installed modules.
+    */
+  def remove(modules: Seq[BareModule]): Task[Seq[BareModule]] = {
+    val toRemove = modules.toSet
+    modifyExplicitModules(modsOrig => ZIO.succeed(modsOrig.filterNot(toRemove)))
+  }
+
+  /** Select modules to remove from list of explicitly installed modules.
+    */
+  def removeSelect(): Task[Seq[BareModule]] = {
+    modifyExplicitModules { modsOrig =>
+      if (modsOrig.isEmpty) {
+        logger.log("List of explicitly installed packages is already empty.")
+        ZIO.succeed(modsOrig)
+      } else {
+        for {  // TODO allow multiple selections
+          module <- Prompt.numbered(
+            "Select a package to remove:",
+            modsOrig.sortBy(m => (m.group.value, m.name.value)),
+            _.formattedDisplayString(logger.gray, identity))
+        } yield modsOrig.filter(_ != module)
+      }
+    }
   }
 
   /** Fuzzy-search across all repositories.
