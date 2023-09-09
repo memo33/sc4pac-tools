@@ -48,18 +48,20 @@ class Logger private (out: java.io.PrintStream, useColor: Boolean) extends cours
 
   private val spinnerSymbols = collection.immutable.ArraySeq("⣾", "⣽", "⣻", "⢿", "⡿", "⣟", "⣯", "⣷")
 
-  /** Print a message, prepended by a spinning animation, while running a non-printing task.
+  /** Print a message, followed by a spinning animation, while running a non-printing task.
     */
   def withSpinner[A](msg: String)(task: Task[A]): Task[A] = {
+    out.println(msg)
     if (!useColor) {
-      out.println(msg)
       task
     } else {
-      out.println("  " + msg)
-      def spin(symbol: String) = out.print(Ansi.ansi().saveCursorPosition().cursorUpLine().a(symbol).restoreCursorPosition())
+      val col = msg.length + 2
+      def spin(symbol: String) = out.print(Ansi.ansi().saveCursorPosition().cursorUpLine().cursorToColumn(col).a(symbol).restoreCursorPosition())
       val spinner = ZIO.iterate(0)(_ => true) { i =>
-        spin(spinnerSymbols(i))
-        ZIO.sleep(java.time.Duration.ofMillis(100)).map(_ => (i+1) % spinnerSymbols.length)  // TODO use zio.Schedule instead?
+        for (_ <- ZIO.sleep(java.time.Duration.ofMillis(100))) yield {  // TODO use zio.Schedule instead?
+          spin(spinnerSymbols(i))
+          (i+1) % spinnerSymbols.length
+        }
       }
       // run task and spinner in parallel and interrupt spinner once task completes or fails
       for (result <- task.map(Right(_)).raceFirst(spinner.map(Left(_)))) yield {
@@ -215,12 +217,15 @@ trait UpdateService { this: Sc4pac =>
     // variant successfully, but have lost the PackageData, so we reconstruct it
     // here a second time.
     for {
-      (pkgData, variantData) <- Find.matchingVariant(dependency.toBareDep, dependency.version, dependency.variant)
-      pkgFolder              =  pkgData.subfolder / packageFolderName(dependency)
-      _                      <- ZIO.attempt(logger.log(f"$progress Extracting ${dependency.orgName} ${dependency.version}"))
-      warnings               <- if (pkgData.info.warning.nonEmpty) ZIO.attempt { logger.warn(pkgData.info.warning); true } else ZIO.succeed(false)
-      _                      <- ZIO.attemptBlocking(os.makeDir.all(tempPluginsRoot / pkgFolder))  // create folder even if package does not have any assets or files
-      _                      <- ZIO.foreachDiscard(variantData.assets)(extract(_, pkgFolder))
+      (pkgData, variant) <- Find.matchingVariant(dependency.toBareDep, dependency.version, dependency.variant)
+      pkgFolder          =  pkgData.subfolder / packageFolderName(dependency)
+      _                  <- logger.withSpinner(s"$progress Extracting ${dependency.orgName} ${dependency.version}") {
+                              for {
+                                _ <- ZIO.attemptBlocking(os.makeDir.all(tempPluginsRoot / pkgFolder))  // create folder even if package does not have any assets or files
+                                _ <- ZIO.foreachDiscard(variant.assets)(extract(_, pkgFolder))
+                              } yield ()
+                            }
+      warnings           <- if (pkgData.info.warning.nonEmpty) ZIO.attempt { logger.warn(pkgData.info.warning); true } else ZIO.succeed(false)
     } yield (Seq(pkgFolder), warnings)  // for now, everything is installed into this folder only, so we do not need to list individual files
   }
 
