@@ -7,6 +7,7 @@ import caseapp.{Command, RemainingArgs, ArgsName, HelpMessage, ExtraName, ValueD
 import zio.{ZIO, Task}
 
 import sc4pac.Data.{PluginsData, PluginsLockData}
+import sc4pac.Resolution.BareModule
 
 // see https://github.com/coursier/coursier/blob/main/modules/cli/src/main/scala/coursier/cli/Coursier.scala
 // and related files
@@ -26,7 +27,12 @@ object Commands {
   }
 
   @ArgsName("packages...")
-  @HelpMessage(f"Add packages to the list of explicitly installed packages.%nPackage format: <group>:<package-name>")
+  @HelpMessage("""
+    |Add packages to the list of explicitly installed packages.
+    |Run "sc4pac update" for the changes to take effect.
+    |
+    |Package format: <group>:<package-name>
+    """.stripMargin.trim)
   final case class AddOptions(
     // @Group("foo")
     // @Tag("foo")
@@ -42,7 +48,7 @@ object Commands {
         error(caseapp.core.Error.Other("Argument missing: add one or more packages of the form <group>:<package-name>"))
       }
       val task: Task[Unit] = for {
-        mods   <- Sc4pac.parseModules(args.all).catchAll { (err: String) =>
+        mods   <- ZIO.fromEither(Sc4pac.parseModules(args.all)).catchAll { (err: ErrStr) =>
                     error(caseapp.core.Error.Other(s"Package format is <group>:<package-name> ($err)"))
                   }
         config <- PluginsData.readOrInit.map(_.config)
@@ -62,12 +68,39 @@ object Commands {
       val task = for {
         pluginsData  <- PluginsData.readOrInit
         pac          <- Sc4pac.init(pluginsData.config)
-        explicitMods <- pac.add(Seq.empty)  // retrieves explicitly installed modules
-        flag         <- pac.update(explicitMods, globalVariant0 = pluginsData.config.variant, pluginsRoot = pluginsData.pluginsRootAbs)
+        flag         <- pac.update(pluginsData.explicit, globalVariant0 = pluginsData.config.variant, pluginsRoot = pluginsData.pluginsRootAbs)
       } yield ()
       runMainExit(task, exit)
     }
   }
+
+  @ArgsName("packages...")
+  @HelpMessage("""
+    |Remove packages from the list of explicitly installed packages.
+    |Run "sc4pac update" for the changes to take effect.
+    |
+    |Package format: <group>:<package-name>
+    |
+    |Examples:
+    |  sc4pac remove                        # interactively select package to remove
+    |  sc4pac remove memo:essential-fixes   # remove this package
+    |""".stripMargin.trim)
+  final case class RemoveOptions() extends Sc4pacCommandOptions
+
+  case object Remove extends Command[RemoveOptions] {
+    def run(options: RemoveOptions, args: RemainingArgs): Unit = {
+      val task: Task[Unit] = for {
+        mods   <- ZIO.fromEither(Sc4pac.parseModules(args.all)).catchAll { (err: ErrStr) =>
+                    error(caseapp.core.Error.Other(s"Package format is <group>:<package-name> ($err)"))
+                  }
+        config <- PluginsData.readOrInit.map(_.config)
+        pac    <- Sc4pac.init(config)
+        _      <- if (mods.isEmpty) pac.removeSelect() else pac.remove(mods)
+      } yield ()
+      runMainExit(task, exit)
+    }
+  }
+
 
   @ArgsName("search text...")
   @HelpMessage("Search for the name of a package.")
@@ -97,12 +130,11 @@ object Commands {
     def run(options: ListOptions, args: RemainingArgs): Unit = {
       val task: Task[Unit] = for {
         pluginsData  <- PluginsData.readOrInit
-        pac          <- Sc4pac.init(pluginsData.config)
+        pac          <- Sc4pac.init(pluginsData.config)  // only used for logging
         installed    <- PluginsLockData.listInstalled
-        explicitMods <- pac.add(Seq.empty)  // retrieves explicitly installed modules
       } yield {
         val sorted = installed.sortBy(mod => (mod.group.value, mod.name.value))
-        val explicit = explicitMods.toSet
+        val explicit: Set[BareModule] = pluginsData.explicit.toSet
         for (mod <- sorted) {
           pac.logger.logInstalled(mod, explicit(mod.toBareDep))
         }
@@ -137,6 +169,28 @@ object Commands {
       }
     }
   }
+
+  @HelpMessage("Select a channel to remove.")
+  final case class ChannelRemoveOptions() extends Sc4pacCommandOptions
+
+  case object ChannelRemove extends Command[ChannelRemoveOptions] {
+    override def names = I.List(I.List("channel", "remove"))
+    def run(options: ChannelRemoveOptions, args: RemainingArgs): Unit = {
+      val task = PluginsData.readOrInit.flatMap { data =>
+        if (data.config.channels.isEmpty) {
+          ZIO.succeed(println("The list of channel URLs is already empty."))
+        } else {
+          for {
+            url   <- Prompt.numbered("Select a channel to remove:", data.config.channels)
+            data2 =  data.copy(config = data.config.copy(channels = data.config.channels.filter(_ != url)))
+            _     <- Data.writeJsonIo(PluginsData.path, data2, None)(ZIO.succeed(()))
+          } yield ()
+        }
+      }
+      runMainExit(task, exit)
+    }
+  }
+
 
   @HelpMessage(f"List the channel URLs.%nThe first channel has the highest priority when resolving dependencies.")
   final case class ChannelListOptions() extends Sc4pacCommandOptions
@@ -186,9 +240,11 @@ object CliMain extends caseapp.core.app.CommandsEntryPoint {
   val commands = Seq(
     Commands.Add,
     Commands.Update,
+    Commands.Remove,
     Commands.Search,
     Commands.List,
     Commands.ChannelAdd,
+    Commands.ChannelRemove,
     Commands.ChannelList,
     Commands.ChannelBuild)
   val progName = BuildInfo.name

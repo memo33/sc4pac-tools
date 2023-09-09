@@ -68,21 +68,49 @@ class Sc4pac(val repositories: Seq[MetadataRepository], val cache: FileCache[Tas
 
   // TODO check resolution.conflicts
 
+  private def modifyExplicitModules(modify: Seq[BareModule] => Task[Seq[BareModule]]): Task[Seq[BareModule]] = {
+    for {
+      pluginsData  <- Data.readJsonIo[PluginsData](PluginsData.path)  // at this point, file should already exist
+      modsOrig     =  pluginsData.explicit
+      modsNext     <- modify(modsOrig)
+      _            <- ZIO.unless(modsNext == modsOrig) {
+                        val pluginsDataNext = pluginsData.copy(explicit = modsNext)
+                        // we do not check whether file was modified as this entire operation is synchronous and fast, in most cases
+                        Data.writeJsonIo(PluginsData.path, pluginsDataNext, None)(ZIO.succeed(()))
+                      }
+    } yield modsNext
+  }
+
   /** Add modules to the json file containing the explicitly installed modules
     * and return the new full list of explicitly installed modules.
     */
   def add(modules: Seq[BareModule]): Task[Seq[BareModule]] = {
-    for {
-      pluginsData  <- Data.readJsonIo[PluginsData](PluginsData.path)  // at this point, file should already exist
-      modsOrig     <- Sc4pac.parseModules(pluginsData.explicit)
-                        .mapError((err: String) => new Sc4pacIoException(s"format errors in json ${PluginsData.path}: $err"))
-      modsNext     =  (modsOrig ++ modules).distinct
-      _            <- ZIO.unless(modsNext == modsOrig) {
-                        val pluginsDataNext = pluginsData.copy(explicit = modsNext.map(_.orgName))
-                        // we do not check whether file was modified as this entire operation is synchronous and fast (no network calls, no cache usage)
-                        Data.writeJsonIo(PluginsData.path, pluginsDataNext, None)(ZIO.succeed(()))
-                      }
-    } yield modsNext
+    modifyExplicitModules(modsOrig => ZIO.succeed((modsOrig ++ modules).distinct))
+  }
+
+  /** Remove modules from the list of explicitly installed modules.
+    */
+  def remove(modules: Seq[BareModule]): Task[Seq[BareModule]] = {
+    val toRemove = modules.toSet
+    modifyExplicitModules(modsOrig => ZIO.succeed(modsOrig.filterNot(toRemove)))
+  }
+
+  /** Select modules to remove from list of explicitly installed modules.
+    */
+  def removeSelect(): Task[Seq[BareModule]] = {
+    modifyExplicitModules { modsOrig =>
+      if (modsOrig.isEmpty) {
+        logger.log("List of explicitly installed packages is already empty.")
+        ZIO.succeed(modsOrig)
+      } else {
+        for {  // TODO allow multiple selections
+          module <- Prompt.numbered(
+            "Select a package to remove:",
+            modsOrig.sortBy(m => (m.group.value, m.name.value)),
+            _.formattedDisplayString(logger.gray, identity))
+        } yield modsOrig.filter(_ != module)
+      }
+    }
   }
 
   /** Fuzzy-search across all repositories.
@@ -414,15 +442,14 @@ object Sc4pac {
     for (repos <- initializeRepositories(config.channels, cache, channelContentsTtl = None)) yield Sc4pac(repos, cache, tempRoot, logger)
   }
 
-  def parseModules(modules: Seq[String]): IO[ErrStr, Seq[BareModule]] = {
-    ZIO.fromEither {
-      coursier.parse.ModuleParser
-        .modules(modules, defaultScalaVersion = "")
-        .map { modules => modules.map(m => BareModule(m.organization, m.name)) }
-        .either
-    } mapError { (errs: List[ErrStr]) =>
-      errs.mkString(", ")  // malformed module: a, malformed module: b
-    }
+  def parseModules(modules: Seq[String]): Either[ErrStr, Seq[BareModule]] = {
+    coursier.parse.ModuleParser
+      .modules(modules, defaultScalaVersion = "")
+      .map { modules => modules.map(m => BareModule(m.organization, m.name)) }
+      .either
+      .left.map { (errs: List[ErrStr]) =>
+        errs.mkString(", ")  // malformed module: a, malformed module: b
+      }
   }
 
 }

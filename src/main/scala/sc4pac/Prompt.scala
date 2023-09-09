@@ -7,11 +7,11 @@ object Prompt {
 
   /** Prompts for input until a valid option is chosen.
     */
-  def apply(question: String, options: Seq[String], default: Option[String]): IO[java.io.IOException, String] = {
+  def apply(question: String, options: Seq[String], default: Option[String], optionsShort: Option[String] = None): IO[java.io.IOException, String] = {
     require(default.forall(options.contains), s"default option $default must be contained in options $options")
 
     val readOption: IO[java.io.IOException, Option[String]] = for {
-      _     <- zio.Console.print(s"$question [${options.mkString("/")}]: ")
+      _     <- zio.Console.print(s"$question [${optionsShort.getOrElse(options.mkString("/"))}]: ")
       input <- zio.Console.readLine.map(_.trim)
       // _     <- zio.Console.printLine("")
     } yield {
@@ -35,8 +35,9 @@ object Prompt {
     val indexes = (1 to options.length).map(_.toString)
     val default = indexes match { case Seq(one) => Some(one); case _ => None }
     for {
-      _   <- zio.Console.printLine(f"$pretext%n%n" + indexes.zip(options).map((i, o) => s"  ($i) ${render(o)}").mkString(f"%n") + f"%n")
-      num <- Prompt("Enter a number", indexes, default)
+      _      <- zio.Console.printLine(f"$pretext%n%n" + indexes.zip(options).map((i, o) => s"  ($i) ${render(o)}").mkString(f"%n") + f"%n")
+      abbrev =  if (indexes.length <= 2) None else Some(s"${indexes.head}-${indexes.last}")
+      num    <- Prompt("Enter a number", indexes, default, optionsShort = abbrev)
     } yield options(num.toInt - 1)
   }
 
