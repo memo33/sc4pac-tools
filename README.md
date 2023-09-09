@@ -37,7 +37,7 @@ A package manager for SimCity 4 plugins.
     300-commercial
     400-industrial
     500-utilities
-    600-civis
+    600-civics
     700-transit
     777-network-addon-mod
     900-overrides
