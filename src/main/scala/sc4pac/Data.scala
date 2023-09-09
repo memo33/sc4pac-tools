@@ -187,8 +187,7 @@ object Data {
     cacheRoot: NioPath,
     tempRoot: NioPath,
     variant: Variant,
-    channels: Seq[java.net.URI],
-    color: Boolean = true
+    channels: Seq[java.net.URI]
   ) derives ReadWriter
   object ConfigData {
     def subRelativize(path: os.Path): NioPath = {

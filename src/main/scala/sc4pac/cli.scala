@@ -288,6 +288,10 @@ object CliMain extends caseapp.core.app.CommandsEntryPoint {
       // First of all, we install ansi-aware streams, so that colors are
       // interpreted correctly on Windows (for example for the help text).
       org.fusesource.jansi.AnsiConsole.systemInstall()  // this alters System.out and System.err
+      if (Constants.noColor) {
+        org.fusesource.jansi.AnsiConsole.out().setMode(org.fusesource.jansi.AnsiMode.Strip)
+        org.fusesource.jansi.AnsiConsole.err().setMode(org.fusesource.jansi.AnsiMode.Strip)
+      }
     } catch {
       case e: java.lang.UnsatisfiedLinkError =>  // in case something goes really wrong and no suitable jansi native library is included
     }

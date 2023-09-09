@@ -20,5 +20,8 @@ object Constants {
   val fuzzySearchThreshold = 50  // 0..100
   val promptTimeout = java.time.Duration.ofSeconds(120)
 
+  lazy val noColor: Boolean = (System.getenv("NO_COLOR") match { case null | "" => false; case _ => true }) ||
+                              (System.getenv("SC4PAC_NO_COLOR") match { case null | "" => false; case _ => true })
+
   def isSc4pacAsset(module: Module): Boolean = module.organization == Constants.sc4pacAssetOrg
 }

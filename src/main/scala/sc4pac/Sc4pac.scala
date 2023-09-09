@@ -46,15 +46,16 @@ class Logger private (out: java.io.PrintStream, useColor: Boolean) extends cours
   }
 }
 object Logger {
-  def apply(useColor: Boolean): Logger = {
-    if (useColor) try {
-      org.fusesource.jansi.AnsiConsole.systemInstall()  // installation is required since jansi 2.1.0 (technically this means System.out will also be ansi-aware)
+  def apply(): Logger = {
+    try {
+      val useColor = org.fusesource.jansi.AnsiConsole.out().getMode() != org.fusesource.jansi.AnsiMode.Strip
+      // the streams have been installed in `main` (installation is required since jansi 2.1.0)
       new Logger(org.fusesource.jansi.AnsiConsole.out(), useColor)  // this PrintStream uses color only if it is supported (so not on uncolored terminals and not when outputting to a file)
     } catch {
       case e: java.lang.UnsatisfiedLinkError =>  // in case something goes really wrong and no suitable jansi native library is included
         System.err.println(s"Using colorless output as fallback due to $e")
       new Logger(System.out, useColor = false)
-    } else new Logger(System.out, useColor = false)
+    }
   }
 }
 
@@ -433,7 +434,7 @@ object Sc4pac {
   def init(config: ConfigData): Task[Sc4pac] = {
     import CoursierZio.*  // implicit coursier-zio interop
     // val refreshLogger = coursier.cache.loggers.RefreshLogger.create(System.err)  // TODO System.err seems to cause less collisions between refreshing progress and ordinary log messages
-    val logger = Logger(config.color)
+    val logger = Logger()
     val coursierPool = coursier.cache.internal.ThreadUtil.fixedThreadPool(size = 2)  // limit parallel downloads to 2 (ST rejects too many connections)
     val cache = FileCache[zio.Task]().withLocation(config.cacheRoot.resolve("coursier").toFile()).withLogger(logger)
       .withPool(coursierPool)  // TODO thread pool
