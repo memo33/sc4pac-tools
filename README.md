@@ -37,7 +37,7 @@ A package manager for SimCity 4 plugins.
     300-commercial
     400-industrial
     500-utilities
-    600-civis
+    600-civics
     700-transit
     777-network-addon-mod
     900-overrides
@@ -58,6 +58,17 @@ Sc4pac obtains its information from metadata stored in a remote channel.
 The metadata is added in terms of .yaml files.
 See the [commented example](channel-testing/yaml/templates/package-template-basic.yaml)
 and the [empty template](channel-testing/template-empty.yaml).
+
+
+# Uninstalling
+
+- First, remove all installed packages from your plugins folder. Either:
+  1. run `sc4pac remove --interactive` and select everything, or
+  2. delete every folder named `*.sc4pac` from your plugins folder, or
+  3. delete the entire plugins folder.
+- Optionally, delete the cache folder.
+  (In case you forgot its location, it is saved in the file `sc4pac-plugins.json`, which you can open with a text editor.)
+- Finally, delete the folder containing the sc4pac program files.
 
 
 # Build instructions
