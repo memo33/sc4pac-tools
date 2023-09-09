@@ -25,17 +25,17 @@ class ZipExtractor extends Extractor {
     * common prefix from all paths for a more flattened folder structure, and
     * optionally overwrite existing files.
     */
-  private def extractByPredicate(archive: java.io.File, destination: os.Path, predicate: os.SubPath => Boolean, overwrite: Boolean, flatten: Boolean): Unit = {
+  private def extractByPredicate(archive: java.io.File, destination: os.Path, predicate: os.SubPath => Boolean, overwrite: Boolean, flatten: Boolean): Seq[os.Path] = {
     scala.util.Using.resource(new ZipFile(archive)) { zip =>
       // first we read the acceptable file names contained in the zip file
       import scala.jdk.CollectionConverters.*
       val entries: Seq[(ZipArchiveEntry, os.SubPath)] = zip.getEntries.asScala
         .map(e => e -> os.SubPath(e.getName))
-        .filter((e, p) => predicate(p) && !e.isDirectory() && !e.isUnixSymlink())  // skip symlinks as precaution
+        .filter((e, p) => !e.isDirectory() && !e.isUnixSymlink() && predicate(p))  // skip symlinks as precaution
         .toSeq
 
       if (entries.isEmpty) {
-        ()  // nothing to extract
+        Seq.empty  // nothing to extract
       } else {
         // map zip entry names to file names (within destination directory)
         val mapper: os.SubPath => os.SubPath = if (flatten) {
@@ -53,10 +53,10 @@ class ZipExtractor extends Extractor {
           else Seq(StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE)
 
         os.makeDir.all(destination)
-        for ((entry, subpath) <- entries) {
+        for ((entry, subpath) <- entries) yield {
           val path = destination / mapper(subpath)
           if (!overwrite && os.exists(path)) {
-            // do nothing
+            // do nothing, as file has already been extracted previously
           } else {
             os.makeDir.all(path / os.up)  // we know that entry refers to a file, not a directory
             // write entry to file
@@ -64,6 +64,7 @@ class ZipExtractor extends Extractor {
               IOUtils.copy(in, out, Constants.bufferSize)
             }
           }
+          path
         }
       }
     }
@@ -74,12 +75,10 @@ class ZipExtractor extends Extractor {
     extractByPredicate(archive, destination, recipe.accepts, overwrite = true, flatten = false)
     // additionally, extract jar files contained in the zip file to a temporary location
     for (ZipExtractor.JarExtraction(jarsDir) <- jarExtractionOpt) {
-      extractByPredicate(archive, jarsDir, predicate = _.last.endsWith(".jar"), overwrite = false, flatten = true)  // overwrite=false, as we want to extract any given jar only once per staging process
+      val jarFiles = extractByPredicate(archive, jarsDir, predicate = _.last.endsWith(".jar"), overwrite = false, flatten = true)  // overwrite=false, as we want to extract any given jar only once per staging process
       // finally extract the jar files themselves (without recursively extracting jars contained inside)
-      if (os.exists(jarsDir)) {  // is created during extraction if needed
-        for (jarFile <- os.list(jarsDir) if jarFile.last.endsWith(".jar")) {
-          extract(jarFile.toIO, destination, recipe, jarExtractionOpt = None)
-        }
+      for (jarFile <- jarFiles if jarFile.last.endsWith(".jar")) {
+        extract(jarFile.toIO, destination, recipe, jarExtractionOpt = None)
       }
     }
   }
