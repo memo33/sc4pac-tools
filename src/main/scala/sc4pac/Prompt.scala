@@ -2,8 +2,24 @@ package io.github.memo33
 package sc4pac
 
 import zio.{ZIO, IO}
+import sc4pac.error.Sc4pacTimeout
 
 object Prompt {
+
+  /** Calls readLine with a timeout. In case of a timeout, System.in seems to
+    * remain blocked or out-of-sync, so the program should terminate.
+    */
+  private val readLineTimeout: IO[java.io.IOException, String] = {  // See also https://github.com/zio/zio/pull/6205#issue-1088016373
+    // Since Console.readLine is not reliably interruptible on every OS
+    // (well-known Java issue), we race two fibers and interrupt the slower one.
+    val sleep = ZIO.sleep(Constants.promptTimeout)
+    sleep.raceWith(zio.Console.readLine)(
+      leftDone = (result, fiberRight) =>  // The forking (interruptFork) is important in order not to wait indefinitely for the blocking non-interruptible readLine.
+        fiberRight.interruptFork.zipRight(ZIO.fail(new Sc4pacTimeout("Timeout at prompt."))),  // exit the program
+      rightDone = (result, fiberLeft) =>
+        fiberLeft.interrupt.zipRight(result)
+    )
+  }
 
   /** Prompts for input until a valid option is chosen.
     */
@@ -12,7 +28,7 @@ object Prompt {
 
     val readOption: IO[java.io.IOException, Option[String]] = for {
       _     <- zio.Console.print(s"$question [${optionsShort.getOrElse(options.mkString("/"))}]: ")
-      input <- zio.Console.readLine.map(_.trim)
+      input <- readLineTimeout.map(_.trim)
       // _     <- zio.Console.printLine("")
     } yield {
       if (input.isEmpty) default
@@ -64,7 +80,7 @@ object Prompt {
     val indexed = (1 to options.length).zip(options)
     val promptRanges: IO[java.io.IOException, Option[Set[Int]]] = for {
       _ <- zio.Console.print("""Enter numbers [e.g. "1 2 3", "1-3"]: """)
-      s <- zio.Console.readLine.map(_.trim)
+      s <- readLineTimeout.map(_.trim)
     } yield parseRanges(s)
     for {
       _        <- zio.Console.printLine(f"$pretext%n%n" + indexed.map((i, o) => s"  ($i) ${render(o)}").mkString(f"%n") + f"%n")
@@ -76,7 +92,7 @@ object Prompt {
   def pathInput(pretext: String): IO[java.io.IOException, os.Path] = {
     val readOption: IO[java.io.IOException, Option[os.Path]] = for {
       _ <- zio.Console.print(pretext)
-      s <- zio.Console.readLine.map(_.trim)
+      s <- readLineTimeout.map(_.trim)
     } yield if (s.isEmpty) None else try {
       Some(os.Path(java.nio.file.Paths.get(s), os.pwd))
     } catch { case _: java.nio.file.InvalidPathException => None }

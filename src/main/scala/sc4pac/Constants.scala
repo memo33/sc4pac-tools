@@ -18,6 +18,7 @@ object Constants {
   val defaultChannelUrls = Seq(MetadataRepository.parseChannelUrl("https://raw.githubusercontent.com/memo33/sc4pac-tools/main/channel/json"))  // temporary
   val bufferSize = 64 * 1024  // 64 kiB
   val fuzzySearchThreshold = 50  // 0..100
+  val promptTimeout = java.time.Duration.ofSeconds(120)
 
   def isSc4pacAsset(module: Module): Boolean = module.organization == Constants.sc4pacAssetOrg
 }

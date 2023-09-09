@@ -19,7 +19,8 @@ object Commands {
   private def runMainExit(task: Task[Unit], exit: Int => Nothing): Nothing = {
     unsafeRun(task.fold(
       failure = {
-        case abort: sc4pac.error.Sc4pacAbort => { System.err.println(Seq("Operation aborted.", abort.msg).mkString(" ")); exit(1) }
+        case abort: sc4pac.error.Sc4pacAbort => { System.err.println(Array("Operation aborted.", abort.msg).mkString(" ")); exit(1) }
+        case abort: sc4pac.error.Sc4pacTimeout => { System.err.println(Array("Operation aborted.", abort.getMessage).mkString(" ")); exit(1) }
         case e => { e.printStackTrace(); exit(1) }
       },
       success = _ => exit(0)
