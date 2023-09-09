@@ -224,9 +224,7 @@ trait UpdateService { this: Sc4pac =>
           logger.warn(s"Failed to correctly install the following packages (manual intervention needed): ${failedPkgs.mkString(" ")}")
           // TODO further handling?
         },
-        success = { _ =>
-          logger.log("Done.")  // TODO
-        }
+        success = identity
       )
     }
 
@@ -297,6 +295,7 @@ trait UpdateService { this: Sc4pac =>
       // _               <- ZIO.attempt(logger.log(s"stage result: $stageResult"))
       flag            <- publishToPlugins(stageResult, pluginsLockData, plan)
       _               <- ZIO.attemptBlocking(os.remove.all(stageResult.stagingRoot))  // deleteOnExit does not seem to work reliably, so explicitly delete temp folder  TODO catch and ignore TODO finally
+      _               <- ZIO.attempt(logger.log("Done."))
     } yield flag  // TODO decide what flag means
 
   }
