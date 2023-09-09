@@ -90,3 +90,5 @@ libraryDependencies += "com.github.alexarchambault" %% "case-app" % "2.1.0-M25" 
 libraryDependencies += "dev.dirs" % "directories" % "26"  // platform-specific location of cache, temp, config, etc.
 
 libraryDependencies += "org.fusesource.jansi" % "jansi" % "2.4.0"  // color support
+
+libraryDependencies += "me.xdrop" % "fuzzywuzzy" % "1.4.0"  // fuzzy search

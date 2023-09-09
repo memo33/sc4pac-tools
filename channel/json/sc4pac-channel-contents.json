@@ -5,7 +5,8 @@
       "name": "opera-house-fix",
       "versions": [
         "1.0"
-      ]
+      ],
+      "summary": "Fix the capacity of the opera house"
     },
     {
       "group": "sc4pacAsset",
@@ -26,14 +27,16 @@
       "name": "ir-placement-mod",
       "versions": [
         "1.0"
-      ]
+      ],
+      "summary": "Remove 4×4 minimum size limit from agricultural zones"
     },
     {
       "group": "heinbloed4711",
       "name": "hi-tech-missing-high-wealth-jobs",
       "versions": [
         "1.11"
-      ]
+      ],
+      "summary": "Fix arithmetic error causing missing high-wealth jobs on most IH lots"
     },
     {
       "group": "sc4pacAsset",
@@ -47,7 +50,8 @@
       "name": "maxis-prop-names-and-query-fix",
       "versions": [
         "1.0"
-      ]
+      ],
+      "summary": "Make all Maxis props behave like buildings in terms of names and queries"
     },
     {
       "group": "sc4pacAsset",
@@ -61,7 +65,8 @@
       "name": "essential-fixes",
       "versions": [
         "0.1.0"
-      ]
+      ],
+      "summary": "A collection of important fixes everyone should have"
     },
     {
       "group": "sc4pacAsset",
@@ -89,21 +94,24 @@
       "name": "save-warning",
       "versions": [
         "1.0"
-      ]
+      ],
+      "summary": "Disable the Save & Exit button to prevent save file corruption"
     },
     {
       "group": "smp",
       "name": "yellow-pause-thingy-remover",
       "versions": [
         "1.0"
-      ]
+      ],
+      "summary": "Remove the yellow border from the UI when the game is paused"
     },
     {
       "group": "fanta1990",
       "name": "automata-fix-pack-vol1",
       "versions": [
         "1.0"
-      ]
+      ],
+      "summary": "Fix visual glitches of plane and train models"
     }
   ]
 }

@@ -17,6 +17,7 @@ object Constants {
   // val defaultChannelUrls = Seq("http://localhost:8090")  // for testing
   val defaultChannelUrls = Seq("https://raw.githubusercontent.com/memo33/sc4pac-tools/main/channel/json")  // temporary
   val bufferSize = 64 * 1024  // 64 kiB
+  val fuzzySearchThreshold = 50  // 0..100
 
   def isSc4pacAsset(module: Module): Boolean = module.organization == Constants.sc4pacAssetOrg
 }

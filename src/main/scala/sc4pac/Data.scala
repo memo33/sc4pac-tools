@@ -162,7 +162,10 @@ object Data {
     val empty = InfoData()
   }
 
-  case class ChannelItemData(group: String, name: String, versions: Seq[String]) derives ReadWriter
+  case class ChannelItemData(group: String, name: String, versions: Seq[String], summary: String = "") derives ReadWriter {
+    def isSc4pacAsset: Boolean = group == Constants.sc4pacAssetOrg.value
+    private[sc4pac] def toSearchString: String = s"$group:$name $summary"
+  }
 
   case class ChannelData(contents: Seq[ChannelItemData]) derives ReadWriter {
     lazy val versions: Map[Module, Seq[String]] =
@@ -275,6 +278,13 @@ object Data {
           val data = PluginsLockData(Seq.empty, Seq.empty)
           Data.writeJsonIo(PluginsLockData.path, data, None)(ZIO.succeed(data))
         }
+      )
+    }
+
+    val listInstalled: Task[Seq[DepModule]] = {
+      ZIO.ifZIO(ZIO.attemptBlocking(os.exists(PluginsLockData.path)))(
+        onTrue = Data.readJsonIo[PluginsLockData](PluginsLockData.path).map(_.installed.map(_.toDepModule)),
+        onFalse = ZIO.succeed(Seq.empty)
       )
     }
   }

@@ -19,7 +19,8 @@
       "name": "package-template-basic",
       "versions": [
         "2.0"
-      ]
+      ],
+      "summary": "One-line summary"
     },
     {
       "group": "sc4pacAsset",

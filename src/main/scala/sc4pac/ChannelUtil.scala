@@ -85,13 +85,13 @@ object ChannelUtil {
   def convertYamlToJson(channelDir: os.Path): Unit = {
     val tempJsonDir = os.temp.dir(channelDir, prefix = "json", deleteOnExit = true)
     try {
-      val packages: Map[(String, String), Seq[String]] = os.walk.stream(channelDir / "yaml")
+      val packages: Map[(String, String), (Seq[String], Seq[Option[String]])] = os.walk.stream(channelDir / "yaml")
         .filter(_.last.endsWith(".yaml"))
         .flatMap(readAndParsePkgData)
         .map { pkgData =>
-          val (g, n, v) = pkgData match {
-            case data: Data.PackageData => (data.group, data.name, data.version)
-            case data: Data.AssetData => (Constants.sc4pacAssetOrg.value, data.assetId, data.version)
+          val (g, n, v, s) = pkgData match {
+            case data: Data.PackageData => (data.group, data.name, data.version, Option(data.info.summary).filter(_.nonEmpty))
+            case data: Data.AssetData => (Constants.sc4pacAssetOrg.value, data.assetId, data.version, None)
           }
           val subpath = MetadataRepository.jsonSubPath(g, n, v)
           val target = tempJsonDir / "metadata" / subpath
@@ -102,11 +102,14 @@ object ChannelUtil {
               case data: Data.AssetData => writeTo(data, out, indent=2)  // writes asset json file
             }
           }
-          ((g, n), v)
-        }.toSeq.groupMap(_._1)(_._2)
+          ((g, n), (v, s))
+        }.toSeq.groupMap(_._1)(_._2).view.mapValues(_.unzip).toMap
 
-      val contents = Data.ChannelData(contents = packages.toSeq.map {
-        case ((group, name), versions) => Data.ChannelItemData(group = group, name = name, versions = versions)
+      val contents = Data.ChannelData(contents = packages.toSeq.map { case ((group, name), (versions, summaries)) =>
+        Data.ChannelItemData(
+          group = group,
+          name = name, versions = versions,
+          summary = summaries.headOption.flatten.getOrElse(""))  // TODO we arbitrarily picked the summary of the first item (usually there is just one version anyway)
       })
 
       scala.util.Using.resource(java.nio.file.Files.newBufferedWriter((tempJsonDir / MetadataRepository.channelContentsFilename).toNIO)) { out =>
