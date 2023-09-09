@@ -103,12 +103,13 @@ class Sc4pac(val repositories: Seq[MetadataRepository], val cache: FileCache[Tas
         logger.log("List of explicitly installed packages is already empty.")
         ZIO.succeed(modsOrig)
       } else {
-        for {  // TODO allow multiple selections
-          module <- Prompt.numbered(
-            "Select a package to remove:",
-            modsOrig.sortBy(m => (m.group.value, m.name.value)),
-            _.formattedDisplayString(logger.gray, identity))
-        } yield modsOrig.filter(_ != module)
+        for {
+          selected <- Prompt.numberedMultiSelect(
+                        "Select packages to remove:",
+                        modsOrig.sortBy(m => (m.group.value, m.name.value)),
+                        _.formattedDisplayString(logger.gray, identity)
+                      ).map(_.toSet)
+        } yield modsOrig.filterNot(selected)
       }
     }
   }

@@ -82,7 +82,7 @@ object Commands {
     |Package format: <group>:<package-name>
     |
     |Examples:
-    |  sc4pac remove                        # interactively select package to remove
+    |  sc4pac remove                        # interactively select packages to remove
     |  sc4pac remove memo:essential-fixes   # remove this package
     |""".stripMargin.trim)
   final case class RemoveOptions() extends Sc4pacCommandOptions
@@ -170,7 +170,7 @@ object Commands {
     }
   }
 
-  @HelpMessage("Select a channel to remove.")
+  @HelpMessage("Select channels to remove.")
   final case class ChannelRemoveOptions() extends Sc4pacCommandOptions
 
   case object ChannelRemove extends Command[ChannelRemoveOptions] {
@@ -181,9 +181,9 @@ object Commands {
           ZIO.succeed(println("The list of channel URLs is already empty."))
         } else {
           for {
-            url   <- Prompt.numbered("Select a channel to remove:", data.config.channels)
-            data2 =  data.copy(config = data.config.copy(channels = data.config.channels.filter(_ != url)))
-            _     <- Data.writeJsonIo(PluginsData.path, data2, None)(ZIO.succeed(()))
+            selectedUrls <- Prompt.numberedMultiSelect("Select channels to remove:", data.config.channels).map(_.toSet)
+            data2        =  data.copy(config = data.config.copy(channels = data.config.channels.filterNot(selectedUrls)))
+            _            <- Data.writeJsonIo(PluginsData.path, data2, None)(ZIO.succeed(()))
           } yield ()
         }
       }

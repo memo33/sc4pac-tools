@@ -31,6 +31,24 @@ object Prompt {
 
   def yesNo(question: String): IO[java.io.IOException, Boolean] = Prompt(question, Seq("Yes", "no"), default = Some("Yes")).map(_ == "Yes")
 
+  /** Parse space-separated numeric ranges like "1 3 5-7".
+    * Only meant for reasonably small ranges.
+    */
+  private def parseRanges(text: String): Option[Set[Int]] = {
+    val regexInt = raw"(\d+)".r
+    val regexRange = raw"(\d+)-(\d+)".r
+    val tokens = text.split(raw"\s+")
+    val ranges: Array[Option[Seq[Int]]] = tokens.map(_ match {
+      case "" => Some(Seq.empty)
+      case regexInt(num) => Some(Seq(num.toInt))
+      case regexRange(start, end) => Some(start.toInt to end.toInt)
+      case _ => None
+    })
+    if (ranges.exists(_.isEmpty)) None  // syntax error
+    else Some(ranges.flatMap(_.get).toSet)
+  }
+
+  /** Select a single option by number. */
   def numbered[A](pretext: String, options: Seq[A], render: A => String = (_: A).toString): IO[java.io.IOException, A] = {
     val indexes = (1 to options.length).map(_.toString)
     val default = indexes match { case Seq(one) => Some(one); case _ => None }
@@ -39,6 +57,19 @@ object Prompt {
       abbrev =  if (indexes.length <= 2) None else Some(s"${indexes.head}-${indexes.last}")
       num    <- Prompt("Enter a number", indexes, default, optionsShort = abbrev)
     } yield options(num.toInt - 1)
+  }
+
+  /** Select multiple options by number. */
+  def numberedMultiSelect[A](pretext: String, options: Seq[A], render: A => String = (_: A).toString): IO[java.io.IOException, Seq[A]] = {
+    val indexed = (1 to options.length).zip(options)
+    val promptRanges: IO[java.io.IOException, Option[Set[Int]]] = for {
+      _ <- zio.Console.print("""Enter numbers [e.g. "1 2 3", "1-3"]: """)
+      s <- zio.Console.readLine.map(_.trim)
+    } yield parseRanges(s)
+    for {
+      _        <- zio.Console.printLine(f"$pretext%n%n" + indexed.map((i, o) => s"  ($i) ${render(o)}").mkString(f"%n") + f"%n")
+      selected <- ZIO.iterate(None: Option[Set[Int]])(_.isEmpty)(_ => promptRanges).map(_.get)
+    } yield indexed.collect { case (i, o) if selected(i) => o }
   }
 
   /** Prompts until user inputs a valid path (relative or absolute). */
