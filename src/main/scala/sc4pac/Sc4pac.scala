@@ -9,6 +9,7 @@ import coursier.cache.FileCache
 import upickle.default.{ReadWriter, readwriter, macroRW, read}
 import java.nio.file.Path
 import zio.{IO, ZIO, UIO, Task}
+import org.fusesource.jansi.Ansi
 
 import sc4pac.error.*
 import sc4pac.Constants.isSc4pacAsset
@@ -43,6 +44,29 @@ class Logger private (out: java.io.PrintStream, useColor: Boolean) extends cours
 
   def logInstalled(module: DepModule, explicit: Boolean): Unit = {
     log(module.formattedDisplayString(gray) + (if (explicit) " " + cyanBold("[explicit]") else ""))
+  }
+
+  private val spinnerSymbols = collection.immutable.ArraySeq("⣾", "⣽", "⣻", "⢿", "⡿", "⣟", "⣯", "⣷")
+
+  /** Print a message, prepended by a spinning animation, while running a non-printing task.
+    */
+  def withSpinner[A](msg: String)(task: Task[A]): Task[A] = {
+    if (!useColor) {
+      out.println(msg)
+      task
+    } else {
+      out.println("  " + msg)
+      def spin(symbol: String) = out.print(Ansi.ansi().saveCursorPosition().cursorUpLine().a(symbol).restoreCursorPosition())
+      val spinner = ZIO.iterate(0)(_ => true) { i =>
+        spin(spinnerSymbols(i))
+        ZIO.sleep(java.time.Duration.ofMillis(100)).map(_ => (i+1) % spinnerSymbols.length)  // TODO use zio.Schedule instead?
+      }
+      // run task and spinner in parallel and interrupt spinner once task completes or fails
+      for (result <- task.map(Right(_)).raceFirst(spinner.map(Left(_)))) yield {
+        spin(" ")  // clear animation
+        result.toOption.get  // spinner/Left will never complete, so we get A from Right
+      }
+    }
   }
 }
 object Logger {
