@@ -2,7 +2,8 @@ package io.github.memo33
 package sc4pac
 package cli
 
-import caseapp.{Command, RemainingArgs, ArgsName, HelpMessage}
+import scala.collection.immutable as I
+import caseapp.{Command, RemainingArgs, ArgsName, HelpMessage, ExtraName, ValueDescription}
 import zio.{ZIO, Task}
 
 import sc4pac.Data.{PluginsData, PluginsLockData}
@@ -110,27 +111,86 @@ object Commands {
     }
   }
 
-  @ArgsName("channel-directory")
-  @HelpMessage("Build the channel by converting all the yaml files to json.")
-  final case class BuildChannelOptions() extends Sc4pacCommandOptions
+  @ArgsName("channel-URL")
+  @HelpMessage(s"""
+    |Add a channel to fetch package metadata from.
+    |
+    |Examples:
+    |  sc4pac channel add "${Constants.defaultChannelUrls.head}"
+    |  sc4pac channel add "file://absolute/local/path/to/channel/json/"
+    """.stripMargin.trim)
+  final case class ChannelAddOptions() extends Sc4pacCommandOptions
+
+  case object ChannelAdd extends Command[ChannelAddOptions] {
+    override def names = I.List(I.List("channel", "add"))
+    def run(options: ChannelAddOptions, args: RemainingArgs): Unit = {
+      args.all match {
+        case Seq[String](channelUrl) =>
+          val uri = MetadataRepository.parseChannelUrl(channelUrl)
+          val task: Task[Unit] = for {
+            data  <- PluginsData.readOrInit
+            data2 =  data.copy(config = data.config.copy(channels = (data.config.channels :+ uri).distinct))
+            _     <- Data.writeJsonIo(PluginsData.path, data2, None)(ZIO.succeed(()))
+          } yield ()
+          runMainExit(task, exit)
+        case _ => error(caseapp.core.Error.Other("A single argument is needed: channel-URL"))
+      }
+    }
+  }
+
+  @HelpMessage(f"List the channel URLs.%nThe first channel has the highest priority when resolving dependencies.")
+  final case class ChannelListOptions() extends Sc4pacCommandOptions
+
+  case object ChannelList extends Command[ChannelListOptions] {
+    override def names = I.List(I.List("channel", "list"))
+    def run(options: ChannelListOptions, args: RemainingArgs): Unit = {
+      val task = for {
+        pluginsData <- PluginsData.readOrInit
+      } yield {
+        for (url <- pluginsData.config.channels) {
+          println(url)
+        }
+      }
+      runMainExit(task, exit)
+    }
+  }
+
+  @ArgsName("YAML-input-directories...")
+  @HelpMessage("""
+    |Build a channel locally by converting YAML files to JSON.
+    |
+    |Examples:
+    |  sc4pac channel build --output channel/json/ channel/yaml/
+    """.stripMargin.trim)
+  final case class ChannelBuildOptions(
+    @ExtraName("o") @ValueDescription("directory") @HelpMessage("Output directory for JSON files")
+    output: String
+  ) extends Sc4pacCommandOptions
 
   /** For internal use, convert yaml files to json.
     * Usage: `./sc4pac build-channel ./channel-testing/`
     */
-  case object BuildChannel extends Command[BuildChannelOptions] {
-    override def hidden = true  // for internal use
-    def run(options: BuildChannelOptions, args: RemainingArgs): Unit = {
+  case object ChannelBuild extends Command[ChannelBuildOptions] {
+    override def names = I.List(I.List("channel", "build"))
+    def run(options: ChannelBuildOptions, args: RemainingArgs): Unit = {
       args.all match {
-        case Seq[String](channelDir) => ChannelUtil.convertYamlToJson(os.Path(channelDir, os.pwd))
-        case _ => error(caseapp.core.Error.Other("A single argument is needed: channel-directory"))
+        case Nil => error(caseapp.core.Error.Other("An argument is needed: YAML input directory"))
+        case inputs => ChannelUtil.convertYamlToJson(inputs.map(os.Path(_, os.pwd)), os.Path(options.output, os.pwd))
       }
-
     }
   }
+
 }
 
 object CliMain extends caseapp.core.app.CommandsEntryPoint {
-  val commands = Seq(Commands.Add, Commands.Update, Commands.Search, Commands.List, Commands.BuildChannel)
+  val commands = Seq(
+    Commands.Add,
+    Commands.Update,
+    Commands.Search,
+    Commands.List,
+    Commands.ChannelAdd,
+    Commands.ChannelList,
+    Commands.ChannelBuild)
   val progName = BuildInfo.name
   override val description = s"  A package manager for SimCity 4 plugins. Version ${BuildInfo.version}."
 

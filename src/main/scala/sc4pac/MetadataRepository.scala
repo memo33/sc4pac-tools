@@ -11,7 +11,7 @@ import sc4pac.error.*
 import sc4pac.Constants.isSc4pacAsset
 import sc4pac.Data.*
 
-case class MetadataRepository(baseUri: String, channelData: ChannelData, globalVariant: Variant) extends Repository {
+case class MetadataRepository(baseUri: java.net.URI, channelData: ChannelData, globalVariant: Variant) extends Repository {
 
   /** Reads the repository's channel contents to obtain all available versions
     * of modules.
@@ -31,7 +31,7 @@ case class MetadataRepository(baseUri: String, channelData: ChannelData, globalV
                                 // as our version numbers are not predictable enough
                                 // and we only care about the current release anyway.
           Right((Versions(latest.repr, release.repr, available = parsedVersions.map(_.repr).toList, lastUpdated = None),  // TODO lastUpdated = lastModified?
-                 MetadataRepository.channelContentsUrl(baseUri)))
+                 MetadataRepository.channelContentsUrl(baseUri).toString))
         case _ => Left(s"no versions of $module found in repository $baseUri")
       }
     }
@@ -44,7 +44,7 @@ case class MetadataRepository(baseUri: String, channelData: ChannelData, globalV
     */
   def fetchModuleJson[F[_] : Monad, A : Reader](module: Module, version: String, fetch: Repository.Fetch[F]): EitherT[F, ErrStr, A] = {
     // TODO use flatter directory (remove version folder, rename maven folder)
-    val remoteUrl = s"$baseUri/metadata/" + MetadataRepository.jsonSubPath(module.organization.value, module.name.value, version).segments0.mkString("/")
+    val remoteUrl = baseUri.resolve("metadata/" + MetadataRepository.jsonSubPath(module.organization.value, module.name.value, version).segments0.mkString("/")).toString
     // We have complete control over the json metadata files, so for a fixed
     // version, they never change and therefore can be cached indefinitely
     val jsonArtifact = Artifact(remoteUrl).withChanging(false)
@@ -108,7 +108,20 @@ case class MetadataRepository(baseUri: String, channelData: ChannelData, globalV
 
 object MetadataRepository {
   val channelContentsFilename = "sc4pac-channel-contents.json"
-  def channelContentsUrl(baseUri: String) = s"$baseUri/$channelContentsFilename"
+  def channelContentsUrl(baseUri: java.net.URI): java.net.URI = baseUri.resolve(channelContentsFilename)
+
+  /** Sanitize URL.
+    */
+  def parseChannelUrl(url: String): java.net.URI = {
+    val uri = new java.net.URI(url)
+    require(uri.getRawQuery == null, s"channel URL must not have query: $uri")
+    require(uri.getRawFragment == null, s"channel URL must not have fragment: $uri")
+    if (uri.getPath.endsWith("/")) {
+      uri
+    } else {
+      java.net.URI.create(url + "/")  // add a slash for proper subdirectory resolution
+    }
+  }
 
   def jsonSubPath(group: String, name: String, version: String): os.SubPath = {
     os.SubPath(s"${group}/${name}/${version}/${name}-${version}.json")

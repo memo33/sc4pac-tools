@@ -2,9 +2,9 @@ dist:
 	sh ./src/scripts/dist.sh
 
 channel:
-	./sc4pac build-channel ./channel
+	./sc4pac channel build --output ./channel/json ./channel/yaml
 channel-testing:
-	./sc4pac build-channel ./channel-testing
+	./sc4pac channel build --output ./channel-testing/json ./channel-testing/yaml
 
 host:
 	# jwebserver comes with java 18

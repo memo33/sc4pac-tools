@@ -21,6 +21,8 @@ object Data {
 
   implicit val osSubPathRw: ReadWriter[os.SubPath] = readwriter[String].bimap[os.SubPath](_.toString(), os.SubPath(_))
 
+  implicit val uriRw: ReadWriter[java.net.URI] = readwriter[String].bimap[java.net.URI](_.toString(), MetadataRepository.parseChannelUrl(_))
+
   case class DependencyData(group: String, name: String, version: String) derives ReadWriter {
     private[Data] def toDependency = Dependency(Module(Organization(group), ModuleName(name), attributes = Map.empty), version = version)
   }
@@ -177,7 +179,7 @@ object Data {
     cacheRoot: NioPath,
     tempRoot: NioPath,
     variant: Variant,
-    channels: Seq[String],
+    channels: Seq[java.net.URI],
     color: Boolean = true
   ) derives ReadWriter
   object ConfigData {
