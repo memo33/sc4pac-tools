@@ -10,29 +10,41 @@ import zio.{ZIO, IO}
 import sc4pac.error.*
 import sc4pac.Constants.isSc4pacAsset
 import sc4pac.Data.*
+import sc4pac.Resolution.BareDep
 
 case class MetadataRepository(baseUri: java.net.URI, channelData: ChannelData, globalVariant: Variant) extends Repository {
+
+  private def getRawVersions(dep: BareDep): Seq[String] = {
+    channelData.versions.get(dep).getOrElse(Seq.empty)
+  }
+
+  // This only works for concrete versions (so not for "latest.release").
+  // The assumption is that all methods of MetadataRepository are only called with concrete versions.
+  private def containsVersion(dep: BareDep, version: String): Boolean = {
+    getRawVersions(dep).exists(_ == version)
+  }
 
   /** Reads the repository's channel contents to obtain all available versions
     * of modules.
     */
   override def fetchVersions[F[_] : Monad](module: Module, fetch: Repository.Fetch[F]): EitherT[F, ErrStr, (Versions, String)] = {
     EitherT.fromEither {
-      channelData.versions.get(module.withAttributes(Map.empty)) match {
-        case Some(rawVersions) if rawVersions.nonEmpty =>
-          val parsedVersions = rawVersions.map(Version(_))
-          val latest = parsedVersions.max
-          // val nonPreVersions = parsedVersions.filter(_.items.forall {
-          //   case t: Version.Tag => !t.isPreRelease
-          //   case _ => true
-          // })
-          // val release = if (nonPreVersions.nonEmpty) nonPreVersions.max else latest
-          val release = latest  // We do not bother with detecting prerelease versions,
-                                // as our version numbers are not predictable enough
-                                // and we only care about the current release anyway.
-          Right((Versions(latest.repr, release.repr, available = parsedVersions.map(_.repr).toList, lastUpdated = None),  // TODO lastUpdated = lastModified?
-                 MetadataRepository.channelContentsUrl(baseUri).toString))
-        case _ => Left(s"no versions of $module found in repository $baseUri")
+      val rawVersions = getRawVersions(BareDep.fromModule(module))
+      if (rawVersions.nonEmpty) {
+        val parsedVersions = rawVersions.map(Version(_))
+        val latest = parsedVersions.max
+        // val nonPreVersions = parsedVersions.filter(_.items.forall {
+        //   case t: Version.Tag => !t.isPreRelease
+        //   case _ => true
+        // })
+        // val release = if (nonPreVersions.nonEmpty) nonPreVersions.max else latest
+        val release = latest  // We do not bother with detecting prerelease versions,
+                              // as our version numbers are not predictable enough
+                              // and we only care about the current release anyway.
+        Right((Versions(latest.repr, release.repr, available = parsedVersions.map(_.repr).toList, lastUpdated = None),  // TODO lastUpdated = lastModified?
+               MetadataRepository.channelContentsUrl(baseUri).toString))
+      } else {
+        Left(s"no versions of $module found in repository $baseUri")
       }
     }
   }
@@ -43,15 +55,19 @@ case class MetadataRepository(baseUri: java.net.URI, channelData: ChannelData, g
     * A = PackageData or AssetData
     */
   def fetchModuleJson[F[_] : Monad, A : Reader](module: Module, version: String, fetch: Repository.Fetch[F]): EitherT[F, ErrStr, A] = {
-    // TODO use flatter directory (remove version folder, rename maven folder)
-    val remoteUrl = baseUri.resolve("metadata/" + MetadataRepository.jsonSubPath(module.organization.value, module.name.value, version).segments0.mkString("/")).toString
-    // We have complete control over the json metadata files, so for a fixed
-    // version, they never change and therefore can be cached indefinitely
-    val jsonArtifact = Artifact(remoteUrl).withChanging(false)
+    if (!containsVersion(BareDep.fromModule(module), version)) {
+      EitherT.fromEither(Left(s"no versions of $module found in repository $baseUri"))
+    } else {
+      // TODO use flatter directory (remove version folder, rename maven folder)
+      val remoteUrl = baseUri.resolve("metadata/" + MetadataRepository.jsonSubPath(module.organization.value, module.name.value, version).segments0.mkString("/")).toString
+      // We have complete control over the json metadata files, so for a fixed
+      // version, they never change and therefore can be cached indefinitely
+      val jsonArtifact = Artifact(remoteUrl).withChanging(false)
 
-    fetch(jsonArtifact).flatMap((jsonStr: String) => EitherT.fromEither {
-      Data.readJson[A](jsonStr, errMsg = remoteUrl)
-    })
+      fetch(jsonArtifact).flatMap((jsonStr: String) => EitherT.fromEither {
+        Data.readJson[A](jsonStr, errMsg = remoteUrl)
+      })
+    }
   }
 
   /** For a module of a given version, find its metadata (parsed from its json

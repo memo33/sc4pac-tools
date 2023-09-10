@@ -7,7 +7,7 @@ import zio.{ZIO, IO, Task}
 import scala.collection.immutable.TreeSeqMap
 
 import sc4pac.Constants.isSc4pacAsset
-import sc4pac.error.Sc4pacIoException
+import sc4pac.error.{Sc4pacIoException, Sc4pacAbort}
 import Resolution.{Dep, BareDep, DepAsset}
 
 /** Wrapper around Coursier's resolution mechanism with more stringent types for
@@ -17,6 +17,9 @@ object Resolution {
 
   sealed trait BareDep {
     def orgName: String
+  }
+  object BareDep {
+    def fromModule(module: C.Module): BareDep = if (isSc4pacAsset(module)) BareAsset(module.name) else BareModule(module.organization, module.name)
   }
   final case class BareModule(group: C.Organization, name: C.ModuleName) extends BareDep {  // a dependency without version information, variant data or any other attributes
     def orgName = s"${group.value}:${name.value}"
@@ -214,9 +217,11 @@ class Resolution(reachableDeps: TreeSeqMap[BareDep, Seq[BareDep]], nonbareDeps: 
       // not already on the `ZIO.blocking` pool, which would start to download
       // EVERYTHING in parallel).
       .onExecutionContext(scala.concurrent.ExecutionContext.fromExecutorService(context.cache.pool))
-      .catchSome { case e: coursier.error.FetchError.DownloadingArtifacts =>
-        ZIO.fail(new Sc4pacIoException("Failed to download some assets. " +
-          f"You may have reached your daily download quota (Simtropolis: 20 files per day) or the file exchange server is currently unavailable.%n$e"))
+      .catchSome { case e: (coursier.error.FetchError.DownloadingArtifacts
+                          | coursier.cache.ArtifactError.DownloadError
+                          | coursier.cache.ArtifactError.NotFound) =>
+        ZIO.fail(new Sc4pacAbort("Failed to download some assets. " +
+          f"You may have reached your daily download quota (Simtropolis: 20 files per day) or the file exchange server is currently unavailable: ${e.getMessage}"))
       }
 
     import CoursierZio.*  // implicit coursier-zio interop

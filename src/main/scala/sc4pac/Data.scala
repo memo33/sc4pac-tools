@@ -9,7 +9,7 @@ import zio.{ZIO, IO, Task}
 import java.util.regex.Pattern
 
 import sc4pac.error.Sc4pacIoException
-import sc4pac.Resolution.{Dep, DepModule, DepAsset, BareModule}
+import sc4pac.Resolution.{Dep, DepModule, DepAsset, BareModule, BareDep, BareAsset}
 
 /** Contains data types for JSON serialization. */
 object Data {
@@ -174,12 +174,13 @@ object Data {
 
   case class ChannelItemData(group: String, name: String, versions: Seq[String], summary: String = "") derives ReadWriter {
     def isSc4pacAsset: Boolean = group == Constants.sc4pacAssetOrg.value
+    def toBareDep: BareDep = if (isSc4pacAsset) BareAsset(ModuleName(name)) else BareModule(Organization(group), ModuleName(name))
     private[sc4pac] def toSearchString: String = s"$group:$name $summary"
   }
 
   case class ChannelData(contents: Seq[ChannelItemData]) derives ReadWriter {
-    lazy val versions: Map[Module, Seq[String]] =
-      contents.map(item => Module(Organization(item.group), ModuleName(item.name), attributes = Map.empty) -> item.versions).toMap
+    lazy val versions: Map[BareDep, Seq[String]] =
+      contents.map(item => item.toBareDep -> item.versions).toMap
   }
 
   case class ConfigData(

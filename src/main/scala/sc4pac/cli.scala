@@ -23,6 +23,7 @@ object Commands {
         case abort: sc4pac.error.Sc4pacAbort => { System.err.println(Array("Operation aborted.", abort.msg).mkString(" ")); exit(1) }
         case abort: sc4pac.error.Sc4pacTimeout => { System.err.println(Array("Operation aborted.", abort.getMessage).mkString(" ")); exit(1) }
         case abort: sc4pac.error.Sc4pacNotInteractive => { System.err.println(s"Operation aborted as terminal is non-interactive: ${abort.getMessage}"); exit(1) }
+        case abort: sc4pac.error.Sc4pacVersionNotFound => { System.err.println(s"Operation aborted. ${abort.getMessage}"); exit(1) }
         case e => { e.printStackTrace(); exit(1) }
       },
       success = _ => exit(0)
