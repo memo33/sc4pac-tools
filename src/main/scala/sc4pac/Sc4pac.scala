@@ -9,6 +9,7 @@ import coursier.cache.FileCache
 import upickle.default.{ReadWriter, readwriter, macroRW, read}
 import java.nio.file.Path
 import zio.{IO, ZIO, UIO, Task}
+import org.fusesource.jansi.Ansi
 
 import sc4pac.error.*
 import sc4pac.Constants.isSc4pacAsset
@@ -19,7 +20,7 @@ import sc4pac.Resolution.{Dep, DepModule, DepAsset, BareModule, BareAsset, BareD
 /** A plain Coursier logger, since Coursier's RefreshLogger results in dropped
   * or invisible messages, hiding the downloading activity.
   */
-class Logger private (out: java.io.PrintStream, useColor: Boolean) extends coursier.cache.CacheLogger {
+class Logger private (out: java.io.PrintStream, useColor: Boolean, isInteractive: Boolean) extends coursier.cache.CacheLogger {
 
   private def cyan(msg: String): String = if (useColor) Console.CYAN + msg + Console.RESET else msg
   private def cyanBold(msg: String): String = if (useColor) Console.CYAN + Console.BOLD + msg + Console.RESET else msg
@@ -44,17 +45,52 @@ class Logger private (out: java.io.PrintStream, useColor: Boolean) extends cours
   def logInstalled(module: DepModule, explicit: Boolean): Unit = {
     log(module.formattedDisplayString(gray) + (if (explicit) " " + cyanBold("[explicit]") else ""))
   }
+
+  private val spinnerSymbols = collection.immutable.ArraySeq("⡿", "⣟", "⣯", "⣷", "⣾", "⣽", "⣻", "⢿").reverse
+
+  /** Print a message, followed by a spinning animation, while running a task.
+    * The task should not print anything, unless sameLine is true.
+    */
+  def withSpinner[A](msg: Option[String], sameLine: Boolean, cyan: Boolean = false, duration: java.time.Duration = java.time.Duration.ofMillis(100))(task: Task[A]): Task[A] = {
+    if (msg.nonEmpty) {
+      out.println(msg.get)
+    }
+    if (!useColor || !isInteractive) {
+      task
+    } else {
+      val coloredSymbols = if (!cyan) spinnerSymbols else spinnerSymbols.map(this.cyan)
+      val spin: String => Unit = if (!sameLine) {
+        val col = msg.map(_.length + 2).getOrElse(1)
+        (symbol) => out.print(Ansi.ansi().saveCursorPosition().cursorUpLine().cursorToColumn(col).a(symbol).restoreCursorPosition())
+      } else {
+        (symbol) => out.print(Ansi.ansi().saveCursorPosition().cursorRight(2).a(symbol).restoreCursorPosition())
+      }
+      val spinner = ZIO.iterate(0)(_ => true) { i =>
+        for (_ <- ZIO.sleep(duration)) yield {  // TODO use zio.Schedule instead?
+          spin(coloredSymbols(i))
+          (i+1) % coloredSymbols.length
+        }
+      }
+      // run task and spinner in parallel and interrupt spinner once task completes or fails
+      for (result <- task.map(Right(_)).raceFirst(spinner.map(Left(_)))) yield {
+        spin(" ")  // clear animation
+        result.toOption.get  // spinner/Left will never complete, so we get A from Right
+      }
+    }
+  }
 }
+
 object Logger {
   def apply(): Logger = {
+    val isInteractive = Constants.isInteractive
     try {
       val useColor = org.fusesource.jansi.AnsiConsole.out().getMode() != org.fusesource.jansi.AnsiMode.Strip
       // the streams have been installed in `main` (installation is required since jansi 2.1.0)
-      new Logger(org.fusesource.jansi.AnsiConsole.out(), useColor)  // this PrintStream uses color only if it is supported (so not on uncolored terminals and not when outputting to a file)
+      new Logger(org.fusesource.jansi.AnsiConsole.out(), useColor, isInteractive)  // this PrintStream uses color only if it is supported (so not on uncolored terminals and not when outputting to a file)
     } catch {
       case e: java.lang.UnsatisfiedLinkError =>  // in case something goes really wrong and no suitable jansi native library is included
         System.err.println(s"Using colorless output as fallback due to $e")
-      new Logger(System.out, useColor = false)
+      new Logger(System.out, useColor = false, isInteractive)
     }
   }
 }
@@ -69,7 +105,7 @@ class Sc4pac(val repositories: Seq[MetadataRepository], val cache: FileCache[Tas
 
   // TODO check resolution.conflicts
 
-  private def modifyExplicitModules(modify: Seq[BareModule] => Task[Seq[BareModule]]): Task[Seq[BareModule]] = {
+  private def modifyExplicitModules[R](modify: Seq[BareModule] => ZIO[R, Throwable, Seq[BareModule]]): ZIO[R, Throwable, Seq[BareModule]] = {
     for {
       pluginsData  <- Data.readJsonIo[PluginsData](PluginsData.path)  // at this point, file should already exist
       modsOrig     =  pluginsData.explicit
@@ -98,7 +134,7 @@ class Sc4pac(val repositories: Seq[MetadataRepository], val cache: FileCache[Tas
 
   /** Select modules to remove from list of explicitly installed modules.
     */
-  def removeSelect(): Task[Seq[BareModule]] = {
+  def removeSelect(): ZIO[Prompt.Interactive, Throwable, Seq[BareModule]] = {
     modifyExplicitModules { modsOrig =>
       if (modsOrig.isEmpty) {
         logger.log("List of explicitly installed packages is already empty.")
@@ -191,12 +227,15 @@ trait UpdateService { this: Sc4pac =>
     // variant successfully, but have lost the PackageData, so we reconstruct it
     // here a second time.
     for {
-      (pkgData, variantData) <- Find.matchingVariant(dependency.toBareDep, dependency.version, dependency.variant)
-      pkgFolder              =  pkgData.subfolder / packageFolderName(dependency)
-      _                      <- ZIO.attempt(logger.log(f"$progress Extracting ${dependency.orgName} ${dependency.version}"))
-      warnings               <- if (pkgData.info.warning.nonEmpty) ZIO.attempt { logger.warn(pkgData.info.warning); true } else ZIO.succeed(false)
-      _                      <- ZIO.attemptBlocking(os.makeDir.all(tempPluginsRoot / pkgFolder))  // create folder even if package does not have any assets or files
-      _                      <- ZIO.foreachDiscard(variantData.assets)(extract(_, pkgFolder))
+      (pkgData, variant) <- Find.matchingVariant(dependency.toBareDep, dependency.version, dependency.variant)
+      pkgFolder          =  pkgData.subfolder / packageFolderName(dependency)
+      _                  <- logger.withSpinner(Some(s"$progress Extracting ${dependency.orgName} ${dependency.version}"), sameLine = false) {
+                              for {
+                                _ <- ZIO.attemptBlocking(os.makeDir.all(tempPluginsRoot / pkgFolder))  // create folder even if package does not have any assets or files
+                                _ <- ZIO.foreachDiscard(variant.assets)(extract(_, pkgFolder))
+                              } yield ()
+                            }
+      warnings           <- if (pkgData.info.warning.nonEmpty) ZIO.attempt { logger.warn(pkgData.info.warning); true } else ZIO.succeed(false)
     } yield (Seq(pkgFolder), warnings)  // for now, everything is installed into this folder only, so we do not need to list individual files
   }
 
@@ -261,14 +300,16 @@ trait UpdateService { this: Sc4pac =>
                                      stage(tempPluginsRoot, dep, artifactsById, jarsRoot, Sc4pac.Progress(idx+1, numDeps))
                                    }.map(_.unzip)
         _                       <- if (warnings.forall(_ == false)) ZIO.succeed(true)
-                                   else Prompt.yesNo("Continue despite warnings?").filterOrFail(_ == true)(Sc4pacAbort())
+                                   else Prompt.ifInteractive(
+                                     onTrue = Prompt.yesNo("Continue despite warnings?").filterOrFail(_ == true)(Sc4pacAbort()),
+                                     onFalse = ZIO.succeed(true))  // in non-interactive mode, we continue despite warnings
       } yield StageResult(tempPluginsRoot, deps.zip(stagedFiles), stagingRoot)
     }
 
     /** Moves staged files from temp plugins to actual plugins. This effect has
       * no expected failures, but only potentially unexpected defects.
       */
-    def movePackagesToPlugins(staged: StageResult): IO[Nothing, Unit] = {
+    def movePackagesToPlugins(staged: StageResult): IO[Sc4pacPublishWarning, Unit] = {
       ZIO.validateDiscard(staged.files) { case (dep, pkgFiles) =>
         ZIO.foreachDiscard(pkgFiles) { subPath =>
           ZIO.attemptBlocking {
@@ -284,7 +325,7 @@ trait UpdateService { this: Sc4pac =>
         }
       }.fold(
         failure = { (failedPkgs: ::[ErrStr]) =>
-          logger.warn(s"Failed to correctly install the following packages (manual intervention needed): ${failedPkgs.mkString(" ")}")
+          new Sc4pacPublishWarning(s"Failed to correctly install the following packages (manual intervention needed): ${failedPkgs.mkString(" ")}")
           // TODO further handling?
         },
         success = identity
@@ -300,13 +341,17 @@ trait UpdateService { this: Sc4pac =>
       // - remove old packages
       // - move new packages into plugins folder
       // - write json database and release lock
-      Data.writeJsonIo(PluginsLockData.path, pluginsLockData.updateTo(plan, staged.files.toMap), Some(pluginsLockData)) {
+      val task = Data.writeJsonIo(PluginsLockData.path, pluginsLockData.updateTo(plan, staged.files.toMap), Some(pluginsLockData)) {
         for {
           _ <- remove(plan.toRemove, pluginsLockData.installed, pluginsRoot)
                  // .catchAll(???)  // TODO catch exceptions
           _ <- movePackagesToPlugins(staged)
         } yield true  // TODO return result
       }
+      logger.withSpinner(Some("Moving extracted files to plugins folder."), sameLine = false)(task)
+        .catchSome {
+          case e: Sc4pacPublishWarning => logger.warn(e.getMessage); ZIO.succeed(true)  // TODO return result
+        }
     }
 
     def doPromptingForVariant[A](globalVariant: Variant)(task: Variant => Task[A]): Task[(A, Variant)] = {
@@ -322,7 +367,9 @@ trait UpdateService { this: Sc4pac =>
                 case None => value
                 case Some(desc) => value + (" " * ((columnWidth - value.length) max 0)) + desc
               }
-              Prompt.numbered(s"""Choose a "$key" variant for ${mod.orgName}:""", values, render = renderDesc).map(v => (key, v))
+              Prompt.ifInteractive(
+                onTrue = Prompt.numbered(s"""Choose a "$key" variant for ${mod.orgName}:""", values, render = renderDesc).map(v => (key, v)),
+                onFalse = ZIO.fail(new Sc4pacNotInteractive(s"""Configure a "$key" variant for ${mod.orgName} in ${PluginsData.path.last}: ${values.mkString(", ")}""")))
             }
             choose.map(additionalChoices => Left(globalVariant ++ additionalChoices))
           }
@@ -342,24 +389,25 @@ trait UpdateService { this: Sc4pac =>
     for {
       pluginsLockData <- PluginsLockData.readOrInit
       (resolution, globalVariant) <- doPromptingForVariant(globalVariant0)(Resolution.resolve(modules, _))
-      // _               <- ZIO.attempt(logger.log(s"resolution:\n${resolution.dependencySet.mkString("\n")}"))
       plan            =  UpdatePlan.fromResolution(resolution, installed = pluginsLockData.dependenciesWithAssets)
       _               <- logPlan(plan)
-      _               <- if (plan.isUpToDate) ZIO.succeed(true)
-                         else Prompt.yesNo("Continue?").filterOrFail(_ == true)(Sc4pacAbort())
-      _               <- ZIO.unless(globalVariant == globalVariant0)(storeGlobalVariant(globalVariant))  // only store something after confirmation
-      assetsToInstall <- resolution.fetchArtifactsOf(resolution.transitiveDependencies.filter(plan.toInstall).reverse)  // we start by fetching artifacts in reverse as those have fewest dependencies of their own
-      // TODO if some artifacts fail to be fetched, fall back to installing remaining packages (maybe not(?), as this leads to missing dependencies,
-      // but there needs to be a manual workaround in case of permanently missing artifacts)
-      depsToStage     =  plan.toInstall.collect{ case d: DepModule => d }.toSeq  // keep only non-assets
-      artifactsById   =  assetsToInstall.map((dep, art, file) => dep.toBareDep -> (art, file)).toMap
-      _               =  require(artifactsById.size == assetsToInstall.size, s"artifactsById is not 1-to-1: $assetsToInstall")
-      stageResult     <- stageAll(depsToStage, artifactsById)
-      // _               <- ZIO.attempt(logger.log(s"stage result: $stageResult"))
-      flag            <- publishToPlugins(stageResult, pluginsLockData, plan)
-      _               <- ZIO.attemptBlocking(os.remove.all(stageResult.stagingRoot))  // deleteOnExit does not seem to work reliably, so explicitly delete temp folder  TODO catch and ignore TODO finally
-      _               <- ZIO.attempt(logger.log("Done."))
-    } yield flag  // TODO decide what flag means
+      flagOpt         <- ZIO.unless(plan.isUpToDate)(for {
+        _               <- Prompt.ifInteractive(
+                             onTrue = Prompt.yesNo("Continue?").filterOrFail(_ == true)(Sc4pacAbort()),
+                             onFalse = ZIO.succeed(true))  // in non-interactive mode, always continue
+        _               <- ZIO.unless(globalVariant == globalVariant0)(storeGlobalVariant(globalVariant))  // only store something after confirmation
+        assetsToInstall <- resolution.fetchArtifactsOf(resolution.transitiveDependencies.filter(plan.toInstall).reverse)  // we start by fetching artifacts in reverse as those have fewest dependencies of their own
+        // TODO if some artifacts fail to be fetched, fall back to installing remaining packages (maybe not(?), as this leads to missing dependencies,
+        // but there needs to be a manual workaround in case of permanently missing artifacts)
+        depsToStage     =  plan.toInstall.collect{ case d: DepModule => d }.toSeq  // keep only non-assets
+        artifactsById   =  assetsToInstall.map((dep, art, file) => dep.toBareDep -> (art, file)).toMap
+        _               =  require(artifactsById.size == assetsToInstall.size, s"artifactsById is not 1-to-1: $assetsToInstall")
+        stageResult     <- stageAll(depsToStage, artifactsById)
+        flag            <- publishToPlugins(stageResult, pluginsLockData, plan)
+        _               <- ZIO.attemptBlocking(os.remove.all(stageResult.stagingRoot))  // deleteOnExit does not seem to work reliably, so explicitly delete temp folder  TODO catch and ignore TODO finally
+        _               <- ZIO.attempt(logger.log("Done."))
+      } yield flag)
+    } yield flagOpt.getOrElse(false)  // TODO decide what flag means
 
   }
 

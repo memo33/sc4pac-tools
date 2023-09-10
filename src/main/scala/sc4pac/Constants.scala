@@ -24,4 +24,14 @@ object Constants {
                               (System.getenv("SC4PAC_NO_COLOR") match { case null | "" => false; case _ => true })
 
   def isSc4pacAsset(module: Module): Boolean = module.organization == Constants.sc4pacAssetOrg
+
+  lazy val isInteractive: Boolean = try {
+    import org.fusesource.jansi.{AnsiConsole, AnsiType}
+    val ttype = AnsiConsole.out().getType
+    ttype != AnsiType.Redirected && ttype != AnsiType.Unsupported
+  } catch {
+    case e: java.lang.UnsatisfiedLinkError =>  // in case something goes really wrong and no suitable jansi native library is included
+    System.err.println("Falling back to interactive mode.")  // TODO use --no-prompt to force non-interactive mode (once implemented)
+    true
+  }
 }

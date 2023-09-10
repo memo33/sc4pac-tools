@@ -221,6 +221,6 @@ class Resolution(reachableDeps: TreeSeqMap[BareDep, Seq[BareDep]], nonbareDeps: 
 
     import CoursierZio.*  // implicit coursier-zio interop
     Resolution.deleteStaleCachedFiles(assetsArtifacts, context.cache)
-      .zipRight(context.logger.using(fetchTask))
+      .zipRight(context.logger.using(context.logger.withSpinner(None, sameLine = true, cyan = true, duration = java.time.Duration.ofMillis(160))(fetchTask)))
   }
 }
