@@ -46,7 +46,7 @@ class Logger private (out: java.io.PrintStream, useColor: Boolean, isInteractive
     log(module.formattedDisplayString(gray) + (if (explicit) " " + cyanBold("[explicit]") else ""))
   }
 
-  private val spinnerSymbols = collection.immutable.ArraySeq("⣾", "⣽", "⣻", "⢿", "⡿", "⣟", "⣯", "⣷").reverse
+  private val spinnerSymbols = collection.immutable.ArraySeq("⡿", "⣟", "⣯", "⣷", "⣾", "⣽", "⣻", "⢿").reverse
 
   /** Print a message, followed by a spinning animation, while running a task.
     * The task should not print anything, unless sameLine is true.
@@ -309,7 +309,7 @@ trait UpdateService { this: Sc4pac =>
     /** Moves staged files from temp plugins to actual plugins. This effect has
       * no expected failures, but only potentially unexpected defects.
       */
-    def movePackagesToPlugins(staged: StageResult): IO[Nothing, Unit] = {
+    def movePackagesToPlugins(staged: StageResult): IO[Sc4pacPublishWarning, Unit] = {
       ZIO.validateDiscard(staged.files) { case (dep, pkgFiles) =>
         ZIO.foreachDiscard(pkgFiles) { subPath =>
           ZIO.attemptBlocking {
@@ -325,7 +325,7 @@ trait UpdateService { this: Sc4pac =>
         }
       }.fold(
         failure = { (failedPkgs: ::[ErrStr]) =>
-          logger.warn(s"Failed to correctly install the following packages (manual intervention needed): ${failedPkgs.mkString(" ")}")
+          new Sc4pacPublishWarning(s"Failed to correctly install the following packages (manual intervention needed): ${failedPkgs.mkString(" ")}")
           // TODO further handling?
         },
         success = identity
@@ -341,13 +341,17 @@ trait UpdateService { this: Sc4pac =>
       // - remove old packages
       // - move new packages into plugins folder
       // - write json database and release lock
-      Data.writeJsonIo(PluginsLockData.path, pluginsLockData.updateTo(plan, staged.files.toMap), Some(pluginsLockData)) {
+      val task = Data.writeJsonIo(PluginsLockData.path, pluginsLockData.updateTo(plan, staged.files.toMap), Some(pluginsLockData)) {
         for {
           _ <- remove(plan.toRemove, pluginsLockData.installed, pluginsRoot)
                  // .catchAll(???)  // TODO catch exceptions
           _ <- movePackagesToPlugins(staged)
         } yield true  // TODO return result
       }
+      logger.withSpinner(Some("Moving extracted files to plugins folder."), sameLine = false)(task)
+        .catchSome {
+          case e: Sc4pacPublishWarning => logger.warn(e.getMessage); ZIO.succeed(true)  // TODO return result
+        }
     }
 
     def doPromptingForVariant[A](globalVariant: Variant)(task: Variant => Task[A]): Task[(A, Variant)] = {
@@ -385,26 +389,25 @@ trait UpdateService { this: Sc4pac =>
     for {
       pluginsLockData <- PluginsLockData.readOrInit
       (resolution, globalVariant) <- doPromptingForVariant(globalVariant0)(Resolution.resolve(modules, _))
-      // _               <- ZIO.attempt(logger.log(s"resolution:\n${resolution.dependencySet.mkString("\n")}"))
       plan            =  UpdatePlan.fromResolution(resolution, installed = pluginsLockData.dependenciesWithAssets)
       _               <- logPlan(plan)
-      _               <- if (plan.isUpToDate) ZIO.succeed(true)
-                         else Prompt.ifInteractive(
-                           onTrue = Prompt.yesNo("Continue?").filterOrFail(_ == true)(Sc4pacAbort()),
-                           onFalse = ZIO.succeed(true))  // in non-interactive mode, always continue
-      _               <- ZIO.unless(globalVariant == globalVariant0)(storeGlobalVariant(globalVariant))  // only store something after confirmation
-      assetsToInstall <- resolution.fetchArtifactsOf(resolution.transitiveDependencies.filter(plan.toInstall).reverse)  // we start by fetching artifacts in reverse as those have fewest dependencies of their own
-      // TODO if some artifacts fail to be fetched, fall back to installing remaining packages (maybe not(?), as this leads to missing dependencies,
-      // but there needs to be a manual workaround in case of permanently missing artifacts)
-      depsToStage     =  plan.toInstall.collect{ case d: DepModule => d }.toSeq  // keep only non-assets
-      artifactsById   =  assetsToInstall.map((dep, art, file) => dep.toBareDep -> (art, file)).toMap
-      _               =  require(artifactsById.size == assetsToInstall.size, s"artifactsById is not 1-to-1: $assetsToInstall")
-      stageResult     <- stageAll(depsToStage, artifactsById)
-      // _               <- ZIO.attempt(logger.log(s"stage result: $stageResult"))
-      flag            <- publishToPlugins(stageResult, pluginsLockData, plan)
-      _               <- ZIO.attemptBlocking(os.remove.all(stageResult.stagingRoot))  // deleteOnExit does not seem to work reliably, so explicitly delete temp folder  TODO catch and ignore TODO finally
-      _               <- ZIO.attempt(logger.log("Done."))
-    } yield flag  // TODO decide what flag means
+      flagOpt         <- ZIO.unless(plan.isUpToDate)(for {
+        _               <- Prompt.ifInteractive(
+                             onTrue = Prompt.yesNo("Continue?").filterOrFail(_ == true)(Sc4pacAbort()),
+                             onFalse = ZIO.succeed(true))  // in non-interactive mode, always continue
+        _               <- ZIO.unless(globalVariant == globalVariant0)(storeGlobalVariant(globalVariant))  // only store something after confirmation
+        assetsToInstall <- resolution.fetchArtifactsOf(resolution.transitiveDependencies.filter(plan.toInstall).reverse)  // we start by fetching artifacts in reverse as those have fewest dependencies of their own
+        // TODO if some artifacts fail to be fetched, fall back to installing remaining packages (maybe not(?), as this leads to missing dependencies,
+        // but there needs to be a manual workaround in case of permanently missing artifacts)
+        depsToStage     =  plan.toInstall.collect{ case d: DepModule => d }.toSeq  // keep only non-assets
+        artifactsById   =  assetsToInstall.map((dep, art, file) => dep.toBareDep -> (art, file)).toMap
+        _               =  require(artifactsById.size == assetsToInstall.size, s"artifactsById is not 1-to-1: $assetsToInstall")
+        stageResult     <- stageAll(depsToStage, artifactsById)
+        flag            <- publishToPlugins(stageResult, pluginsLockData, plan)
+        _               <- ZIO.attemptBlocking(os.remove.all(stageResult.stagingRoot))  // deleteOnExit does not seem to work reliably, so explicitly delete temp folder  TODO catch and ignore TODO finally
+        _               <- ZIO.attempt(logger.log("Done."))
+      } yield flag)
+    } yield flagOpt.getOrElse(false)  // TODO decide what flag means
 
   }
 
