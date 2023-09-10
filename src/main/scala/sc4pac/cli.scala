@@ -3,7 +3,7 @@ package sc4pac
 package cli
 
 import scala.collection.immutable as I
-import caseapp.{Command, RemainingArgs, ArgsName, HelpMessage, ExtraName, ValueDescription}
+import caseapp.{Command, RemainingArgs, ArgsName, HelpMessage, ExtraName, ValueDescription, Group, Tag}
 import zio.{ZIO, Task}
 
 import sc4pac.error.Sc4pacNotInteractive
@@ -16,6 +16,13 @@ import sc4pac.Resolution.BareModule
 object Commands {
 
   sealed abstract class Sc4pacCommandOptions extends Product with Serializable
+
+  // TODO strip escape sequences if jansi failed with a link error
+  private[sc4pac] def gray(msg: String): String = s"${27.toChar}[90m" + msg + Console.RESET  // aka bright black
+  private[sc4pac] def emph(msg: String): String = Console.BOLD + msg + Console.RESET
+
+  private val sortHelpLast: Option[Seq[String] => Seq[String]] =
+    Some(groups => groups.partition(_ == "Help") match { case (help, nonHelp) => nonHelp ++ help })
 
   private def runMainExit(task: Task[Unit], exit: Int => Nothing): Nothing = {
     unsafeRun(task.fold(
@@ -31,11 +38,13 @@ object Commands {
   }
 
   @ArgsName("packages...")
-  @HelpMessage("""
-    |Add packages to the list of explicitly installed packages.
-    |Run "sc4pac update" for the changes to take effect.
+  @HelpMessage(s"""
+    |Add new packages to install explicitly.
     |
-    |Package format: <group>:<package-name>
+    |Afterwards, run ${emph("sc4pac update")} for the changes to take effect.
+    |
+    |Example:
+    |  sc4pac add memo:essential-fixes   ${gray("# packages of the form <group>:<package-name>")}
     """.stripMargin.trim)
   final case class AddOptions(
     // @Group("foo")
@@ -63,8 +72,11 @@ object Commands {
     }
   }
 
-  // @ArgsName("packages")
-  @HelpMessage("Update all installed packages to their latest version and install any missing packages.")
+  @HelpMessage(s"""
+    |Update all installed packages to their latest version and install any missing packages.
+    |
+    |In particular, this installs the explicitly added packages and, implicitly, all their dependencies.
+    """.stripMargin.trim)
   final case class UpdateOptions() extends Sc4pacCommandOptions
 
   case object Update extends Command[UpdateOptions] {
@@ -79,15 +91,16 @@ object Commands {
   }
 
   @ArgsName("packages...")
-  @HelpMessage("""
+  @HelpMessage(s"""
     |Remove packages from the list of explicitly installed packages.
-    |Run "sc4pac update" for the changes to take effect.
+    |
+    |Afterwards, run ${emph("sc4pac update")} for the changes to take effect.
     |
     |Package format: <group>:<package-name>
     |
     |Examples:
-    |  sc4pac remove                        # interactively select packages to remove
-    |  sc4pac remove memo:essential-fixes   # remove this package
+    |  sc4pac remove                        ${gray("# interactively select packages to remove")}
+    |  sc4pac remove memo:essential-fixes   ${gray("# remove this package")}
     |""".stripMargin.trim)
   final case class RemoveOptions() extends Sc4pacCommandOptions
 
@@ -111,9 +124,20 @@ object Commands {
     }
   }
 
-
   @ArgsName("search text...")
-  @HelpMessage("Search for the name of a package.")
+  @HelpMessage(s"""
+    |Search for the name of a package.
+    |
+    |Example:
+    |
+    |  sc4pac search "Pause border"
+    |
+    |Result:
+    |
+    |  smp:yellow-pause-thingy-remover
+    |      Remove the yellow border from the UI when the game is paused
+    |
+    """.stripMargin.trim)
   final case class SearchOptions() extends Sc4pacCommandOptions
 
   case object Search extends Command[SearchOptions] {
@@ -154,16 +178,16 @@ object Commands {
   }
 
   @ArgsName("variants...")
-  @HelpMessage("""
+  @HelpMessage(s"""
     |Select variants to reset in order to choose a different package variant.
     |
     |For some packages you install, you can choose from a list of package variants that match your preferences. Your choices are stored in a configuration file.
     |
-    |After resetting a variant identifier, the next time you run "sc4pac update", you will be asked to choose a new variant.
+    |After resetting a variant identifier, the next time you run ${emph("sc4pac update")}, you will be asked to choose a new variant.
     |
     |Examples:
-    |  sc4pac variant reset               # interactively select variants to reset
-    |  sc4pac variant reset "driveside"   # reset the "driveside" variant
+    |  sc4pac variant reset               ${gray("# interactively select variants to reset")}
+    |  sc4pac variant reset "driveside"   ${gray("# reset the \"driveside\" variant")}
     """.stripMargin.trim)
   final case class VariantResetOptions() extends Sc4pacCommandOptions
 
@@ -268,10 +292,10 @@ object Commands {
     |Build a channel locally by converting YAML files to JSON.
     |
     |Examples:
-    |  sc4pac channel build --output channel/json/ channel/yaml/
+    |  sc4pac channel build --output "channel/json/" "channel/yaml/"
     """.stripMargin.trim)
   final case class ChannelBuildOptions(
-    @ExtraName("o") @ValueDescription("directory") @HelpMessage("Output directory for JSON files")
+    @ExtraName("o") @ValueDescription("dir") @HelpMessage("Output directory for JSON files") @Group("Main") @Tag("Main")
     output: String
   ) extends Sc4pacCommandOptions
 
@@ -280,6 +304,7 @@ object Commands {
     */
   case object ChannelBuild extends Command[ChannelBuildOptions] {
     override def names = I.List(I.List("channel", "build"))
+    override def helpFormat = super.helpFormat.copy(sortGroups = sortHelpLast)
     def run(options: ChannelBuildOptions, args: RemainingArgs): Unit = {
       args.all match {
         case Nil => error(caseapp.core.Error.Other("An argument is needed: YAML input directory"))
@@ -291,6 +316,8 @@ object Commands {
 }
 
 object CliMain extends caseapp.core.app.CommandsEntryPoint {
+  import Commands.gray
+
   val commands = Seq(
     Commands.Add,
     Commands.Update,
@@ -302,15 +329,17 @@ object CliMain extends caseapp.core.app.CommandsEntryPoint {
     Commands.ChannelRemove,
     Commands.ChannelList,
     Commands.ChannelBuild)
+
   val progName = BuildInfo.name
+
   override val description = s"""
-    |A package manager for SimCity 4 plugins. Version ${BuildInfo.version}.
+    |A package manager for SimCity 4 plugins (Version ${BuildInfo.version}).
     |
     |Examples:
     |
-    |  sc4pac add memo:essential-fixes    # Add new package to install.
-    |  sc4pac update                      # Download and install everything as needed.
-    |  sc4pac add --help                  # Display more information about a command.
+    |  sc4pac add memo:essential-fixes    ${gray("# Add new package to install.")}
+    |  sc4pac update                      ${gray("# Download and install everything as needed.")}
+    |  sc4pac add --help                  ${gray("# Display more information about a command.")}
     |
     """.stripMargin.trim
 
