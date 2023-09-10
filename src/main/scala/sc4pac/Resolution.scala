@@ -18,6 +18,9 @@ object Resolution {
   sealed trait BareDep {
     def orgName: String
   }
+  object BareDep {
+    def fromModule(module: C.Module): BareDep = if (isSc4pacAsset(module)) BareAsset(module.name) else BareModule(module.organization, module.name)
+  }
   final case class BareModule(group: C.Organization, name: C.ModuleName) extends BareDep {  // a dependency without version information, variant data or any other attributes
     def orgName = s"${group.value}:${name.value}"
     def formattedDisplayString(gray: String => String, bold: String => String): String = gray(s"${group.value}:") + bold(name.value)
