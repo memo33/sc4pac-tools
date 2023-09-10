@@ -65,7 +65,7 @@ object Commands {
   case object Add extends Command[AddOptions] {
     def run(options: AddOptions, args: RemainingArgs): Unit = {
       if (args.all.isEmpty) {
-        error(caseapp.core.Error.Other("Argument missing: add one or more packages of the form <group>:<package-name>"))
+        fullHelpAsked(commandName)
       }
       val task: Task[Unit] = for {
         mods   <- ZIO.fromEither(Sc4pac.parseModules(args.all)).catchAll { (err: ErrStr) =>
@@ -269,6 +269,7 @@ object Commands {
             _     <- Data.writeJsonIo(PluginsData.path, data2, None)(ZIO.succeed(()))
           } yield ()
           runMainExit(task, exit)
+        case Nil => fullHelpAsked(commandName)
         case _ => error(caseapp.core.Error.Other("A single argument is needed: channel-URL"))
       }
     }
