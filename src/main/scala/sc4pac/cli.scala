@@ -3,7 +3,7 @@ package sc4pac
 package cli
 
 import scala.collection.immutable as I
-import caseapp.{Command, RemainingArgs, ArgsName, HelpMessage, ExtraName, ValueDescription, Group, Tag}
+import caseapp.{RemainingArgs, ArgsName, HelpMessage, ExtraName, ValueDescription, Group, Tag}
 import zio.{ZIO, Task}
 
 import sc4pac.error.Sc4pacNotInteractive
@@ -13,6 +13,13 @@ import sc4pac.Resolution.BareModule
 // see https://github.com/coursier/coursier/blob/main/modules/cli/src/main/scala/coursier/cli/Coursier.scala
 // and related files
 
+trait Command[A] extends caseapp.Command[A] {
+
+  def commandName: String = names.headOption.map(parts => (BuildInfo.name :: parts).mkString(" ")).getOrElse(BuildInfo.name + " <COMMAND>")
+
+  override def helpFormat = super.helpFormat.copy(sortGroups = Commands.sortHelpLast)
+}
+
 object Commands {
 
   sealed abstract class Sc4pacCommandOptions extends Product with Serializable
@@ -21,7 +28,7 @@ object Commands {
   private[sc4pac] def gray(msg: String): String = s"${27.toChar}[90m" + msg + Console.RESET  // aka bright black
   private[sc4pac] def emph(msg: String): String = Console.BOLD + msg + Console.RESET
 
-  private val sortHelpLast: Option[Seq[String] => Seq[String]] =
+  private[sc4pac] val sortHelpLast: Option[Seq[String] => Seq[String]] =
     Some(groups => groups.partition(_ == "Help") match { case (help, nonHelp) => nonHelp ++ help })
 
   private def runMainExit(task: Task[Unit], exit: Int => Nothing): Nothing = {
@@ -92,35 +99,40 @@ object Commands {
 
   @ArgsName("packages...")
   @HelpMessage(s"""
-    |Remove packages from the list of explicitly installed packages.
+    |Remove packages that have been installed explicitly.
     |
     |Afterwards, run ${emph("sc4pac update")} for the changes to take effect.
     |
-    |Package format: <group>:<package-name>
-    |
     |Examples:
-    |  sc4pac remove                        ${gray("# interactively select packages to remove")}
-    |  sc4pac remove memo:essential-fixes   ${gray("# remove this package")}
+    |  sc4pac remove --interactive          ${gray("# Interactively select packages to remove.")}
+    |  sc4pac remove memo:essential-fixes   ${gray("# Remove package <group>:<package-name>.")}
     |""".stripMargin.trim)
-  final case class RemoveOptions() extends Sc4pacCommandOptions
+  final case class RemoveOptions(
+    @ExtraName("i") @HelpMessage("Interactively select packages to remove") @Group("Main") @Tag("Main")
+    interactive: Boolean = false
+  ) extends Sc4pacCommandOptions
 
   case object Remove extends Command[RemoveOptions] {
     def run(options: RemoveOptions, args: RemainingArgs): Unit = {
-      val task: Task[Unit] = for {
-        mods   <- ZIO.fromEither(Sc4pac.parseModules(args.all)).catchAll { (err: ErrStr) =>
-                    error(caseapp.core.Error.Other(s"Package format is <group>:<package-name> ($err)"))
-                  }
-        config <- PluginsData.readOrInit.map(_.config)
-        pac    <- Sc4pac.init(config)
-        _      <- if (mods.isEmpty) {
-                    Prompt.ifInteractive(
-                      onTrue = pac.removeSelect(),
-                      onFalse = ZIO.fail(new Sc4pacNotInteractive(s"Pass packages to remove as arguments.")))
-                  } else {
-                    pac.remove(mods)
-                  }
-      } yield ()
-      runMainExit(task, exit)
+      if (!options.interactive && args.all.isEmpty) {
+        fullHelpAsked(commandName)
+      } else {
+        val task: Task[Unit] = for {
+          mods   <- ZIO.fromEither(Sc4pac.parseModules(args.all)).catchAll { (err: ErrStr) =>
+                      error(caseapp.core.Error.Other(s"Package format is <group>:<package-name> ($err)"))
+                    }
+          config <- PluginsData.readOrInit.map(_.config)
+          pac    <- Sc4pac.init(config)
+          _      <- if (options.interactive) {
+                      Prompt.ifInteractive(
+                        onTrue = pac.removeSelect(),
+                        onFalse = ZIO.fail(new Sc4pacNotInteractive(s"Pass packages to remove as arguments, non-interactively.")))
+                    } else {
+                      pac.remove(mods)
+                    }
+        } yield ()
+        runMainExit(task, exit)
+      }
     }
   }
 
@@ -186,35 +198,43 @@ object Commands {
     |After resetting a variant identifier, the next time you run ${emph("sc4pac update")}, you will be asked to choose a new variant.
     |
     |Examples:
-    |  sc4pac variant reset               ${gray("# interactively select variants to reset")}
-    |  sc4pac variant reset "driveside"   ${gray("# reset the \"driveside\" variant")}
+    |  sc4pac variant reset --interactive    ${gray("# Interactively select variants to reset.")}
+    |  sc4pac variant reset "driveside"      ${gray("# Reset the \"driveside\" variant.")}
     """.stripMargin.trim)
-  final case class VariantResetOptions() extends Sc4pacCommandOptions
+  final case class VariantResetOptions(
+    @ExtraName("i") @HelpMessage("Interactively select variants to reset") @Group("Main") @Tag("Main")
+    interactive: Boolean = false
+  ) extends Sc4pacCommandOptions
 
   case object VariantReset extends Command[VariantResetOptions] {
     override def names = I.List(I.List("variant", "reset"))
     def run(options: VariantResetOptions, args: RemainingArgs): Unit = {
-      val task = PluginsData.readOrInit.flatMap { data =>
-        if (data.config.variant.isEmpty) {
-          ZIO.succeed(println("The list of configured variants is empty. The next time you install a package that comes in variants, you can choose again."))
-        } else {
-          val variants: Seq[(String, String)] = data.config.variant.toSeq.sorted
-          val select: Task[Seq[String]] = if (args.all.nonEmpty) {
-            ZIO.succeed(args.all)  // non-interactive
-          } else {  // interactive
-            Prompt.ifInteractive(
-              onTrue = Prompt.numberedMultiSelect("Select variants to reset:", variants, (k, v) => s"$k: $v").map(_.map(_._1)),
-              onFalse = ZIO.fail(new Sc4pacNotInteractive(s"Pass variants to remove as arguments."))
-            )
+      if (!options.interactive && args.all.isEmpty) {
+        fullHelpAsked(commandName)
+      } else {
+        val task = PluginsData.readOrInit.flatMap { data =>
+          if (data.config.variant.isEmpty) {
+            ZIO.succeed(println("The list of configured variants is empty. The next time you install a package that comes in variants, you can choose again."))
+          } else {
+            val variants: Seq[(String, String)] = data.config.variant.toSeq.sorted
+            val select: Task[Seq[String]] =
+              if (!options.interactive) {
+                ZIO.succeed(args.all)
+              } else {
+                Prompt.ifInteractive(
+                  onTrue = Prompt.numberedMultiSelect("Select variants to reset:", variants, (k, v) => s"$k: $v").map(_.map(_._1)),
+                  onFalse = ZIO.fail(new Sc4pacNotInteractive(s"Pass variants to remove as arguments, non-interactively."))
+                )
+              }
+            for {
+              selected <- select
+              data2    =  data.copy(config = data.config.copy(variant = data.config.variant -- selected))
+              _        <- Data.writeJsonIo(PluginsData.path, data2, None)(ZIO.succeed(()))
+            } yield ()
           }
-          for {
-            selected <- select
-            data2    =  data.copy(config = data.config.copy(variant = data.config.variant -- selected))
-            _        <- Data.writeJsonIo(PluginsData.path, data2, None)(ZIO.succeed(()))
-          } yield ()
         }
+        runMainExit(task, exit)
       }
-      runMainExit(task, exit)
     }
   }
 
@@ -304,7 +324,6 @@ object Commands {
     */
   case object ChannelBuild extends Command[ChannelBuildOptions] {
     override def names = I.List(I.List("channel", "build"))
-    override def helpFormat = super.helpFormat.copy(sortGroups = sortHelpLast)
     def run(options: ChannelBuildOptions, args: RemainingArgs): Unit = {
       args.all match {
         case Nil => error(caseapp.core.Error.Other("An argument is needed: YAML input directory"))
