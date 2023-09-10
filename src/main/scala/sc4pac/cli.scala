@@ -303,20 +303,33 @@ object CliMain extends caseapp.core.app.CommandsEntryPoint {
     Commands.ChannelList,
     Commands.ChannelBuild)
   val progName = BuildInfo.name
-  override val description = s"  A package manager for SimCity 4 plugins. Version ${BuildInfo.version}."
+  override val description = s"""
+    |A package manager for SimCity 4 plugins. Version ${BuildInfo.version}.
+    |
+    |Examples:
+    |
+    |  sc4pac add memo:essential-fixes    # Add new package to install.
+    |  sc4pac update                      # Download and install everything as needed.
+    |  sc4pac add --help                  # Display more information about a command.
+    |
+    """.stripMargin.trim
 
   override def main(args: Array[String]): Unit = {
-    try {
-      // First of all, we install ansi-aware streams, so that colors are
-      // interpreted correctly on Windows (for example for the help text).
-      org.fusesource.jansi.AnsiConsole.systemInstall()  // this alters System.out and System.err
-      if (Constants.noColor) {
-        org.fusesource.jansi.AnsiConsole.out().setMode(org.fusesource.jansi.AnsiMode.Strip)
-        org.fusesource.jansi.AnsiConsole.err().setMode(org.fusesource.jansi.AnsiMode.Strip)
+    if (args.length == 1 && (args(0) == "--version" || args(0) == "-v")) {
+      println(BuildInfo.version)
+    } else {
+      try {
+        // First of all, we install ansi-aware streams, so that colors are
+        // interpreted correctly on Windows (for example for the help text).
+        org.fusesource.jansi.AnsiConsole.systemInstall()  // this alters System.out and System.err
+        if (Constants.noColor) {
+          org.fusesource.jansi.AnsiConsole.out().setMode(org.fusesource.jansi.AnsiMode.Strip)
+          org.fusesource.jansi.AnsiConsole.err().setMode(org.fusesource.jansi.AnsiMode.Strip)
+        }
+      } catch {
+        case e: java.lang.UnsatisfiedLinkError =>  // in case something goes really wrong and no suitable jansi native library is included
       }
-    } catch {
-      case e: java.lang.UnsatisfiedLinkError =>  // in case something goes really wrong and no suitable jansi native library is included
+      super.main(args)
     }
-    super.main(args)
   }
 }
