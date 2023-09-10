@@ -21,7 +21,8 @@ object Data {
 
   implicit val osSubPathRw: ReadWriter[os.SubPath] = readwriter[String].bimap[os.SubPath](_.toString(), os.SubPath(_))
 
-  implicit val uriRw: ReadWriter[java.net.URI] = readwriter[String].bimap[java.net.URI](_.toString(), MetadataRepository.parseChannelUrl(_))
+  implicit val uriRw: ReadWriter[java.net.URI] = readwriter[String].bimap[java.net.URI](_.toString(),
+    MetadataRepository.parseChannelUrl(_).left.map(new IllegalArgumentException(_)).toTry.get)
 
   implicit val bareModuleRw: ReadWriter[BareModule] = readwriter[String].bimap[BareModule](_.orgName, { (s: String) =>
     Sc4pac.parseModules(Seq(s)) match {

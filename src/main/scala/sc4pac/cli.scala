@@ -261,14 +261,17 @@ object Commands {
     override def names = I.List(I.List("channel", "add"))
     def run(options: ChannelAddOptions, args: RemainingArgs): Unit = {
       args.all match {
-        case Seq[String](channelUrl) =>
-          val uri = MetadataRepository.parseChannelUrl(channelUrl)
-          val task: Task[Unit] = for {
-            data  <- PluginsData.readOrInit
-            data2 =  data.copy(config = data.config.copy(channels = (data.config.channels :+ uri).distinct))
-            _     <- Data.writeJsonIo(PluginsData.path, data2, None)(ZIO.succeed(()))
-          } yield ()
-          runMainExit(task, exit)
+        case Seq[String](text) =>
+          MetadataRepository.parseChannelUrl(text) match {
+            case Left(err) => error(caseapp.core.Error.Other(s"Malformed URL: $err"))
+            case Right(uri) =>
+              val task: Task[Unit] = for {
+                data  <- PluginsData.readOrInit
+                data2 =  data.copy(config = data.config.copy(channels = (data.config.channels :+ uri).distinct))
+                _     <- Data.writeJsonIo(PluginsData.path, data2, None)(ZIO.succeed(()))
+              } yield ()
+              runMainExit(task, exit)
+          }
         case Nil => fullHelpAsked(commandName)
         case _ => error(caseapp.core.Error.Other("A single argument is needed: channel-URL"))
       }
