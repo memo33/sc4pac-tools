@@ -6,7 +6,7 @@ import zio.{ZIO, Task}
 import upickle.default.Reader
 
 import sc4pac.Data.{PackageData, VariantData}
-import sc4pac.error.{Sc4pacIoException, Sc4pacMissingVariant}
+import sc4pac.error.{Sc4pacVersionNotFound, Sc4pacMissingVariant}
 import sc4pac.Resolution.BareModule
 
 object Find {
@@ -59,7 +59,8 @@ object Find {
   def matchingVariant(module: BareModule, version: String, globalVariant: Variant)(using ResolutionContext): Task[(PackageData, VariantData)] = {
 
     def pickVariant(pkgOpt: Option[PackageData]): Task[(PackageData, VariantData)] = pkgOpt match {
-      case None => ZIO.fail(new Sc4pacIoException(s"could not find metadata of ${module.orgName} or suitable variant"))
+      case None => ZIO.fail(new Sc4pacVersionNotFound(s"Could not find metadata of ${module.orgName} or suitable variant." +
+                                                      " Most likely the metadata stored in the corresponding channel is incorrect or incomplete."))
       case Some(pkgData) =>
         pkgData.variants.find(vd => isSubMap(vd.variant, globalVariant)) match {
           case Some(vd) => ZIO.succeed((pkgData, vd))
