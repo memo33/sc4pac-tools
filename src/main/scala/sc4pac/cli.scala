@@ -139,33 +139,42 @@ object Commands {
   @ArgsName("search text...")
   @HelpMessage(s"""
     |Search for the name of a package.
+    |The results are ordered such that the best match is displayed at the bottom.
     |
-    |Example:
+    |Examples:
     |
     |  sc4pac search "Pause border"
+    |  ${gray(">>>")} (1) smp:yellow-pause-thingy-remover
+    |  ${gray(">>>")}         Remove the yellow border from the UI when the game is paused
     |
-    |Result:
-    |
-    |  smp:yellow-pause-thingy-remover
-    |      Remove the yellow border from the UI when the game is paused
+    |  sc4pac search --threshold 20 "Pause border"    ${gray("# Decrease threshold for more results.")}
+    |  ${gray(">>>")} ...
     |
     """.stripMargin.trim)
-  final case class SearchOptions() extends Sc4pacCommandOptions
+  final case class SearchOptions(
+    @ValueDescription("number") @Group("Search") @Tag("Search")
+    @HelpMessage(s"Fuziness (0..100, default=${Constants.fuzzySearchThreshold}): Smaller numbers lead to more results.")
+    threshold: Int = Constants.fuzzySearchThreshold  // 0..100, default 50
+  ) extends Sc4pacCommandOptions
 
   case object Search extends Command[SearchOptions] {
     def run(options: SearchOptions, args: RemainingArgs): Unit = {
-      val task: Task[Unit] = for {
-        pluginsData  <- PluginsData.readOrInit
-        pac          <- Sc4pac.init(pluginsData.config)
-        query        =  args.all.mkString(" ")
-        searchResult <- pac.search(query)
-        installed    <- PluginsLockData.listInstalled.map(_.map(_.toBareDep).toSet)
-      } yield {
-        for ((mod, ratio, description) <- searchResult) {
-          pac.logger.logSearchResult(mod, description, installed(mod))
+      if (args.all.isEmpty) {
+        fullHelpAsked(commandName)
+      } else {
+        val task: Task[Unit] = for {
+          pluginsData  <- PluginsData.readOrInit
+          pac          <- Sc4pac.init(pluginsData.config)
+          query        =  args.all.mkString(" ")
+          searchResult <- pac.search(query, options.threshold)
+          installed    <- PluginsLockData.listInstalled.map(_.map(_.toBareDep).toSet)
+        } yield {
+          for (((mod, ratio, description), idx) <- searchResult.zipWithIndex.reverse) {
+            pac.logger.logSearchResult(idx, mod, description, installed(mod))
+          }
         }
+        runMainExit(task, exit)
       }
-      runMainExit(task, exit)
     }
   }
 
