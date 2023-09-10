@@ -208,7 +208,7 @@ object Data {
 
     def init(): Task[PluginsData] = {
       val projDirs = dev.dirs.ProjectDirectories.from("", cli.BuildInfo.organization, cli.BuildInfo.name)  // qualifier, organization, application
-      for {
+      val task = for {
         pluginsRoot  <- Prompt.paths("Choose the location of your Plugins folder. (It is recommended to start with an empty folder.)", Seq(
                           os.home / "Documents" / "SimCity 4" / "Plugins",
                           os.pwd / "plugins"))
@@ -226,6 +226,9 @@ object Data {
           variant = Map.empty,
           channels = Constants.defaultChannelUrls),
         explicit = Seq.empty)
+      Prompt.ifInteractive(
+        onTrue = task,
+        onFalse = ZIO.fail(new error.Sc4pacNotInteractive("Path to plugins folder cannot be configured non-interactively (yet).")))  // TODO fallback
     }
 
     /** Read PluginsData from file if it exists, else create it and write it to file. */

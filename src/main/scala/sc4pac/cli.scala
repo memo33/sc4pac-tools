@@ -6,6 +6,7 @@ import scala.collection.immutable as I
 import caseapp.{Command, RemainingArgs, ArgsName, HelpMessage, ExtraName, ValueDescription}
 import zio.{ZIO, Task}
 
+import sc4pac.error.Sc4pacNotInteractive
 import sc4pac.Data.{PluginsData, PluginsLockData}
 import sc4pac.Resolution.BareModule
 
@@ -21,6 +22,7 @@ object Commands {
       failure = {
         case abort: sc4pac.error.Sc4pacAbort => { System.err.println(Array("Operation aborted.", abort.msg).mkString(" ")); exit(1) }
         case abort: sc4pac.error.Sc4pacTimeout => { System.err.println(Array("Operation aborted.", abort.getMessage).mkString(" ")); exit(1) }
+        case abort: sc4pac.error.Sc4pacNotInteractive => { System.err.println(s"Operation aborted as terminal is non-interactive: ${abort.getMessage}"); exit(1) }
         case e => { e.printStackTrace(); exit(1) }
       },
       success = _ => exit(0)
@@ -96,7 +98,13 @@ object Commands {
                   }
         config <- PluginsData.readOrInit.map(_.config)
         pac    <- Sc4pac.init(config)
-        _      <- if (mods.isEmpty) pac.removeSelect() else pac.remove(mods)
+        _      <- if (mods.isEmpty) {
+                    Prompt.ifInteractive(
+                      onTrue = pac.removeSelect(),
+                      onFalse = ZIO.fail(new Sc4pacNotInteractive(s"Pass packages to remove as arguments.")))
+                  } else {
+                    pac.remove(mods)
+                  }
       } yield ()
       runMainExit(task, exit)
     }
@@ -171,7 +179,10 @@ object Commands {
           } yield ()
         }
       }
-      runMainExit(task, exit)
+      runMainExit(Prompt.ifInteractive(
+        onTrue = task,
+        onFalse = ZIO.fail(new Sc4pacNotInteractive(s"Variants can only be reset interactively currently. Alternatively, edit ${PluginsData.path.last}."))  // TODO fallback
+      ), exit)
     }
   }
 
@@ -219,7 +230,10 @@ object Commands {
           } yield ()
         }
       }
-      runMainExit(task, exit)
+      runMainExit(Prompt.ifInteractive(
+        onTrue = task,
+        onFalse = ZIO.fail(new Sc4pacNotInteractive(s"Channels can only be removed interactively currently. Alternatively, edit ${PluginsData.path.last}."))  // TODO fallback
+      ), exit)
     }
   }
 

@@ -10,4 +10,6 @@ final class Sc4pacAbort(val msg: String = "") extends scala.util.control.Control
 
 final class Sc4pacTimeout(msg: String) extends java.io.IOException(msg) with Sc4pacErr
 
+final class Sc4pacNotInteractive(msg: String) extends java.io.IOException(msg) with Sc4pacErr
+
 final class Sc4pacMissingVariant(val packageData: Data.PackageData, msg: String) extends scala.util.control.ControlThrowable(msg)

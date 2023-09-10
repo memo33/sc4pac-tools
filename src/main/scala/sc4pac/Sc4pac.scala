@@ -20,7 +20,7 @@ import sc4pac.Resolution.{Dep, DepModule, DepAsset, BareModule, BareAsset, BareD
 /** A plain Coursier logger, since Coursier's RefreshLogger results in dropped
   * or invisible messages, hiding the downloading activity.
   */
-class Logger private (out: java.io.PrintStream, useColor: Boolean) extends coursier.cache.CacheLogger {
+class Logger private (out: java.io.PrintStream, useColor: Boolean, isInteractive: Boolean) extends coursier.cache.CacheLogger {
 
   private def cyan(msg: String): String = if (useColor) Console.CYAN + msg + Console.RESET else msg
   private def cyanBold(msg: String): String = if (useColor) Console.CYAN + Console.BOLD + msg + Console.RESET else msg
@@ -46,7 +46,7 @@ class Logger private (out: java.io.PrintStream, useColor: Boolean) extends cours
     log(module.formattedDisplayString(gray) + (if (explicit) " " + cyanBold("[explicit]") else ""))
   }
 
-  private val spinnerSymbols = collection.immutable.ArraySeq("⣾", "⣽", "⣻", "⢿", "⡿", "⣟", "⣯", "⣷")
+  private val spinnerSymbols = collection.immutable.ArraySeq("⣾", "⣽", "⣻", "⢿", "⡿", "⣟", "⣯", "⣷").reverse
 
   /** Print a message, followed by a spinning animation, while running a task.
     * The task should not print anything, unless sameLine is true.
@@ -55,7 +55,7 @@ class Logger private (out: java.io.PrintStream, useColor: Boolean) extends cours
     if (msg.nonEmpty) {
       out.println(msg.get)
     }
-    if (!useColor) {
+    if (!useColor || !isInteractive) {
       task
     } else {
       val coloredSymbols = if (!cyan) spinnerSymbols else spinnerSymbols.map(this.cyan)
@@ -79,16 +79,18 @@ class Logger private (out: java.io.PrintStream, useColor: Boolean) extends cours
     }
   }
 }
+
 object Logger {
   def apply(): Logger = {
+    val isInteractive = Constants.isInteractive
     try {
       val useColor = org.fusesource.jansi.AnsiConsole.out().getMode() != org.fusesource.jansi.AnsiMode.Strip
       // the streams have been installed in `main` (installation is required since jansi 2.1.0)
-      new Logger(org.fusesource.jansi.AnsiConsole.out(), useColor)  // this PrintStream uses color only if it is supported (so not on uncolored terminals and not when outputting to a file)
+      new Logger(org.fusesource.jansi.AnsiConsole.out(), useColor, isInteractive)  // this PrintStream uses color only if it is supported (so not on uncolored terminals and not when outputting to a file)
     } catch {
       case e: java.lang.UnsatisfiedLinkError =>  // in case something goes really wrong and no suitable jansi native library is included
         System.err.println(s"Using colorless output as fallback due to $e")
-      new Logger(System.out, useColor = false)
+      new Logger(System.out, useColor = false, isInteractive)
     }
   }
 }
@@ -103,7 +105,7 @@ class Sc4pac(val repositories: Seq[MetadataRepository], val cache: FileCache[Tas
 
   // TODO check resolution.conflicts
 
-  private def modifyExplicitModules(modify: Seq[BareModule] => Task[Seq[BareModule]]): Task[Seq[BareModule]] = {
+  private def modifyExplicitModules[R](modify: Seq[BareModule] => ZIO[R, Throwable, Seq[BareModule]]): ZIO[R, Throwable, Seq[BareModule]] = {
     for {
       pluginsData  <- Data.readJsonIo[PluginsData](PluginsData.path)  // at this point, file should already exist
       modsOrig     =  pluginsData.explicit
@@ -132,7 +134,7 @@ class Sc4pac(val repositories: Seq[MetadataRepository], val cache: FileCache[Tas
 
   /** Select modules to remove from list of explicitly installed modules.
     */
-  def removeSelect(): Task[Seq[BareModule]] = {
+  def removeSelect(): ZIO[Prompt.Interactive, Throwable, Seq[BareModule]] = {
     modifyExplicitModules { modsOrig =>
       if (modsOrig.isEmpty) {
         logger.log("List of explicitly installed packages is already empty.")
@@ -298,7 +300,9 @@ trait UpdateService { this: Sc4pac =>
                                      stage(tempPluginsRoot, dep, artifactsById, jarsRoot, Sc4pac.Progress(idx+1, numDeps))
                                    }.map(_.unzip)
         _                       <- if (warnings.forall(_ == false)) ZIO.succeed(true)
-                                   else Prompt.yesNo("Continue despite warnings?").filterOrFail(_ == true)(Sc4pacAbort())
+                                   else Prompt.ifInteractive(
+                                     onTrue = Prompt.yesNo("Continue despite warnings?").filterOrFail(_ == true)(Sc4pacAbort()),
+                                     onFalse = ZIO.succeed(true))  // in non-interactive mode, we continue despite warnings
       } yield StageResult(tempPluginsRoot, deps.zip(stagedFiles), stagingRoot)
     }
 
@@ -359,7 +363,9 @@ trait UpdateService { this: Sc4pac =>
                 case None => value
                 case Some(desc) => value + (" " * ((columnWidth - value.length) max 0)) + desc
               }
-              Prompt.numbered(s"""Choose a "$key" variant for ${mod.orgName}:""", values, render = renderDesc).map(v => (key, v))
+              Prompt.ifInteractive(
+                onTrue = Prompt.numbered(s"""Choose a "$key" variant for ${mod.orgName}:""", values, render = renderDesc).map(v => (key, v)),
+                onFalse = ZIO.fail(new Sc4pacNotInteractive(s"""Configure a "$key" variant for ${mod.orgName} in ${PluginsData.path.last}: ${values.mkString(", ")}""")))
             }
             choose.map(additionalChoices => Left(globalVariant ++ additionalChoices))
           }
@@ -383,7 +389,9 @@ trait UpdateService { this: Sc4pac =>
       plan            =  UpdatePlan.fromResolution(resolution, installed = pluginsLockData.dependenciesWithAssets)
       _               <- logPlan(plan)
       _               <- if (plan.isUpToDate) ZIO.succeed(true)
-                         else Prompt.yesNo("Continue?").filterOrFail(_ == true)(Sc4pacAbort())
+                         else Prompt.ifInteractive(
+                           onTrue = Prompt.yesNo("Continue?").filterOrFail(_ == true)(Sc4pacAbort()),
+                           onFalse = ZIO.succeed(true))  // in non-interactive mode, always continue
       _               <- ZIO.unless(globalVariant == globalVariant0)(storeGlobalVariant(globalVariant))  // only store something after confirmation
       assetsToInstall <- resolution.fetchArtifactsOf(resolution.transitiveDependencies.filter(plan.toInstall).reverse)  // we start by fetching artifacts in reverse as those have fewest dependencies of their own
       // TODO if some artifacts fail to be fetched, fall back to installing remaining packages (maybe not(?), as this leads to missing dependencies,
