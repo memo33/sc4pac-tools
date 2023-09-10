@@ -153,6 +153,7 @@ object Commands {
     }
   }
 
+  @ArgsName("variants...")
   @HelpMessage("""
     |Select variants to reset in order to choose a different package variant.
     |
@@ -161,7 +162,8 @@ object Commands {
     |After resetting a variant identifier, the next time you run "sc4pac update", you will be asked to choose a new variant.
     |
     |Examples:
-    |  sc4pac variant reset      # interactively select variants to reset
+    |  sc4pac variant reset               # interactively select variants to reset
+    |  sc4pac variant reset "driveside"   # reset the "driveside" variant
     """.stripMargin.trim)
   final case class VariantResetOptions() extends Sc4pacCommandOptions
 
@@ -173,17 +175,22 @@ object Commands {
           ZIO.succeed(println("The list of configured variants is empty. The next time you install a package that comes in variants, you can choose again."))
         } else {
           val variants: Seq[(String, String)] = data.config.variant.toSeq.sorted
+          val select: Task[Seq[String]] = if (args.all.nonEmpty) {
+            ZIO.succeed(args.all)  // non-interactive
+          } else {  // interactive
+            Prompt.ifInteractive(
+              onTrue = Prompt.numberedMultiSelect("Select variants to reset:", variants, (k, v) => s"$k: $v").map(_.map(_._1)),
+              onFalse = ZIO.fail(new Sc4pacNotInteractive(s"Pass variants to remove as arguments."))
+            )
+          }
           for {
-            selected <- Prompt.numberedMultiSelect("Select variants to reset:", variants, (k, v) => s"$k: $v").map(_.map(_._1))
+            selected <- select
             data2    =  data.copy(config = data.config.copy(variant = data.config.variant -- selected))
             _        <- Data.writeJsonIo(PluginsData.path, data2, None)(ZIO.succeed(()))
           } yield ()
         }
       }
-      runMainExit(Prompt.ifInteractive(
-        onTrue = task,
-        onFalse = ZIO.fail(new Sc4pacNotInteractive(s"Variants can only be reset interactively currently. Alternatively, edit ${PluginsData.path.last}."))  // TODO fallback
-      ), exit)
+      runMainExit(task, exit)
     }
   }
 
