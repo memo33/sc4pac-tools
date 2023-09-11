@@ -231,7 +231,7 @@ object Commands {
                 ZIO.succeed(args.all)
               } else {
                 Prompt.ifInteractive(
-                  onTrue = Prompt.numberedMultiSelect("Select variants to reset:", variants, (k, v) => s"$k: $v").map(_.map(_._1)),
+                  onTrue = Prompt.numberedMultiSelect("Select variants to reset:", variants, (k, v) => s"$k = $v").map(_.map(_._1)),
                   onFalse = ZIO.fail(new Sc4pacNotInteractive(s"Pass variants to remove as arguments, non-interactively."))
                 )
               }
