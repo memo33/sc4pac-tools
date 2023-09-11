@@ -63,9 +63,9 @@ and the [empty template](channel-testing/template-empty.yaml).
 # Uninstalling
 
 - First, remove all installed packages from your plugins folder. Either:
-  1. run `sc4pac remove --interactive` and select everything, or
-  2. delete every folder named `*.sc4pac` from your plugins folder, or
-  3. delete the entire plugins folder.
+  * run `sc4pac remove --interactive` and select everything, or
+  * delete every folder named `*.sc4pac` from your plugins folder, or
+  * delete the entire plugins folder.
 - Optionally, delete the cache folder.
   (In case you forgot its location, it is saved in the file `sc4pac-plugins.json`, which you can open with a text editor.)
 - Finally, delete the folder containing the sc4pac program files.
@@ -75,3 +75,13 @@ and the [empty template](channel-testing/template-empty.yaml).
 
 Compile with `sbt assembly`.
 Create a release bundle with `make dist` in a Unix shell.
+
+# Roadmap
+
+- [x] Basic functionality
+- [x] Command-line interface with all important commands
+- [ ] Improve robustness of downloading (missing content-length (ST), incomplete downloads (SC4E), non-persistent URLs (Moddb), handling servers that have gone offline)
+- [ ] Central metadata channel
+- [ ] Website and online documentation
+- [ ] Server API (backend)
+- [ ] Graphical UI (frontend), Mod manager
