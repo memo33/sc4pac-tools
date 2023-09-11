@@ -15,7 +15,7 @@ object Constants {
   val defaultExclude = """(?<!\.dat|\.sc4model|\.sc4lot|\.sc4desc|\.sc4)$"""  // excludes files with other file types
   val versionLatestRelease = "latest.release"
   // val defaultChannelUrls = Seq("http://localhost:8090")  // for testing
-  val defaultChannelUrls = Seq(MetadataRepository.parseChannelUrl("https://raw.githubusercontent.com/memo33/sc4pac-tools/main/channel/json"))  // temporary
+  val defaultChannelUrls = Seq(MetadataRepository.parseChannelUrl("https://raw.githubusercontent.com/memo33/sc4pac-tools/main/channel/json").toOption.get)  // temporary
   val bufferSize = 64 * 1024  // 64 kiB
   val fuzzySearchThreshold = 50  // 0..100
   val promptTimeout = java.time.Duration.ofSeconds(120)

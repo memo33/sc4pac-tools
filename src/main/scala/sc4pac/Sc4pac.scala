@@ -37,9 +37,9 @@ class Logger private (out: java.io.PrintStream, useColor: Boolean, isInteractive
   def log(msg: String): Unit = out.println(msg)
   def warn(msg: String): Unit = out.println(yellowBold("Warning:") + " " + msg)
 
-  def logSearchResult(module: BareModule, description: Option[String], installed: Boolean): Unit = {
+  def logSearchResult(idx: Int, module: BareModule, description: Option[String], installed: Boolean): Unit = {
     val mod = module.formattedDisplayString(gray, bold) + (if (installed) " " + cyanBold("[installed]") else "")
-    log((Array(mod) ++ description).mkString(f"%n" + " "*4))
+    log((Array(s"(${idx+1}) $mod") ++ description).mkString(f"%n" + " "*8))
   }
 
   def logInstalled(module: DepModule, explicit: Boolean): Unit = {
@@ -155,7 +155,7 @@ class Sc4pac(val repositories: Seq[MetadataRepository], val cache: FileCache[Tas
     * The selection of results is ordered in descending order and includes the
     * module, the relevance ratio and the description.
     */
-  def search(query: String): Task[Seq[(BareModule, Int, Option[String])]] = ZIO.attempt {
+  def search(query: String, threshold: Int): Task[Seq[(BareModule, Int, Option[String])]] = ZIO.attempt {
     val results: Seq[(BareModule, Int, Option[String])] =
       repositories.flatMap { repo =>
         repo.channelData.contents.iterator.flatMap { item =>
@@ -164,7 +164,7 @@ class Sc4pac(val repositories: Seq[MetadataRepository], val cache: FileCache[Tas
           } else {
             // TODO reconsider choice of search algorithm
             val ratio = me.xdrop.fuzzywuzzy.FuzzySearch.tokenSetRatio(query, item.toSearchString)
-            if (ratio >= Constants.fuzzySearchThreshold) {
+            if (ratio >= threshold) {
               Some(BareModule(Organization(item.group), ModuleName(item.name)), ratio, Option(item.summary).filter(_.nonEmpty))
             } else None
           }

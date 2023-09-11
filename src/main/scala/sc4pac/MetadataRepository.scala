@@ -128,15 +128,18 @@ object MetadataRepository {
 
   /** Sanitize URL.
     */
-  def parseChannelUrl(url: String): java.net.URI = {
+  def parseChannelUrl(url: String): Either[ErrStr, java.net.URI] = try {
     val uri = new java.net.URI(url)
-    require(uri.getRawQuery == null, s"channel URL must not have query: $uri")
-    require(uri.getRawFragment == null, s"channel URL must not have fragment: $uri")
-    if (uri.getPath.endsWith("/")) {
-      uri
+    if (uri.getScheme == null) Left(s"channel URL must start with https://, http:// or file:// ($uri)")  // coursier-cache requirement
+    else if (uri.getRawQuery != null) Left(s"channel URL must not have query: $uri")
+    else if (uri.getRawFragment != null) Left(s"channel URL must not have fragment: $uri")
+    else if (uri.getPath.endsWith("/")) {
+      Right(uri)
     } else {
-      java.net.URI.create(url + "/")  // add a slash for proper subdirectory resolution
+      Right(java.net.URI.create(url + "/"))  // add a slash for proper subdirectory resolution
     }
+  } catch {
+    case e: java.net.URISyntaxException => Left(e.getMessage)
   }
 
   def jsonSubPath(group: String, name: String, version: String): os.SubPath = {
