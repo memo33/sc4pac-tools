@@ -348,7 +348,8 @@ trait UpdateService { this: Sc4pac =>
           _ <- movePackagesToPlugins(staged)
         } yield true  // TODO return result
       }
-      logger.withSpinner(Some("Moving extracted files to plugins folder."), sameLine = false)(task)
+      val msg = if (plan.toInstall.nonEmpty) "Moving extracted files to plugins folder." else "Removing files from plugins folder."
+      logger.withSpinner(Some(msg), sameLine = false)(task)
         .catchSome {
           case e: Sc4pacPublishWarning => logger.warn(e.getMessage); ZIO.succeed(true)  // TODO return result
         }
