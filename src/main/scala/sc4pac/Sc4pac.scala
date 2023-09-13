@@ -46,7 +46,12 @@ class Logger private (out: java.io.PrintStream, useColor: Boolean, isInteractive
     log(module.formattedDisplayString(gray) + (if (explicit) " " + cyanBold("[explicit]") else ""))
   }
 
-  private val spinnerSymbols = collection.immutable.ArraySeq("⡿", "⣟", "⣯", "⣷", "⣾", "⣽", "⣻", "⢿").reverse
+  // private val spinnerSymbols = collection.immutable.ArraySeq("⡿", "⣟", "⣯", "⣷", "⣾", "⣽", "⣻", "⢿").reverse
+  private val spinnerSymbols = {
+    val n = 6
+    val xs = collection.immutable.ArraySeq.tabulate(n+1)(i => "▪"*i + "▫"*(n-i))  // supported by Windows default font Consolas
+    xs.dropRight(1) ++ xs.drop(1).map(_.reverse).reverse
+  }
 
   /** Print a message, followed by a spinning animation, while running a task.
     * The task should not print anything, unless sameLine is true.
@@ -73,7 +78,7 @@ class Logger private (out: java.io.PrintStream, useColor: Boolean, isInteractive
       }
       // run task and spinner in parallel and interrupt spinner once task completes or fails
       for (result <- task.map(Right(_)).raceFirst(spinner.map(Left(_)))) yield {
-        spin(" ")  // clear animation
+        spin(" " * spinnerSymbols.head.length)  // clear animation
         result.toOption.get  // spinner/Left will never complete, so we get A from Right
       }
     }
