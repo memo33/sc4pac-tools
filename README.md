@@ -27,6 +27,20 @@ A package manager for SimCity 4 plugins.
 ![demo-video](https://github.com/memo33/sc4pac-tools/releases/download/0.1.3/demo-video.gif)
 
 
+## Available commands
+
+    add             Add new packages to install explicitly.
+    update          Update all installed packages to their latest version and install any missing packages.
+    remove          Remove packages that have been installed explicitly.
+    search          Search for the name of a package.
+    list            List all installed packages.
+    variant reset   Select variants to reset in order to choose a different package variant.
+    channel add     Add a channel to fetch package metadata from.
+    channel remove  Select channels to remove.
+    channel list    List the channel URLs.
+    channel build   Build a channel locally by converting YAML files to JSON.
+
+
 # Plugins folder structure
 
 (preliminary)
@@ -39,7 +53,7 @@ A package manager for SimCity 4 plugins.
     500-utilities
     600-civics
     700-transit
-    777-network-addon-mod
+    777-network-addon-mod  (installed manually)
     900-overrides
 
 Packages are installed into even-numbered subfolders, as the order in which files are loaded by the game is important.

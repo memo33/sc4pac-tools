@@ -19,8 +19,7 @@ clean-cache: clean
 	rm -rf cache
 
 test:
-	./sc4pac update
-	sed -i 's#"https.*raw.githubusercontent.*"#"http://localhost:8090"#g' sc4pac-plugins.json
+	./sc4pac channel add "http://localhost:8090"
 	./sc4pac add memo:demo-package
 	./sc4pac update
 
