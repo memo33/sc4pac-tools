@@ -7,8 +7,8 @@ import caseapp.{RemainingArgs, ArgsName, HelpMessage, ExtraName, ValueDescriptio
 import zio.{ZIO, Task}
 
 import sc4pac.error.Sc4pacNotInteractive
-import sc4pac.Data.{PluginsData, PluginsLockData}
 import sc4pac.Resolution.BareModule
+import sc4pac.JsonData as JD
 
 // see https://github.com/coursier/coursier/blob/main/modules/cli/src/main/scala/coursier/cli/Coursier.scala
 // and related files
@@ -71,7 +71,7 @@ object Commands {
         mods   <- ZIO.fromEither(Sc4pac.parseModules(args.all)).catchAll { (err: ErrStr) =>
                     error(caseapp.core.Error.Other(s"Package format is <group>:<package-name> ($err)"))
                   }
-        config <- PluginsData.readOrInit.map(_.config)
+        config <- JD.Plugins.readOrInit.map(_.config)
         pac    <- Sc4pac.init(config)
         _      <- pac.add(mods)
       } yield ()
@@ -89,7 +89,7 @@ object Commands {
   case object Update extends Command[UpdateOptions] {
     def run(options: UpdateOptions, args: RemainingArgs): Unit = {
       val task = for {
-        pluginsData  <- PluginsData.readOrInit
+        pluginsData  <- JD.Plugins.readOrInit
         pac          <- Sc4pac.init(pluginsData.config)
         flag         <- pac.update(pluginsData.explicit, globalVariant0 = pluginsData.config.variant, pluginsRoot = pluginsData.pluginsRootAbs)
       } yield ()
@@ -121,7 +121,7 @@ object Commands {
           mods   <- ZIO.fromEither(Sc4pac.parseModules(args.all)).catchAll { (err: ErrStr) =>
                       error(caseapp.core.Error.Other(s"Package format is <group>:<package-name> ($err)"))
                     }
-          config <- PluginsData.readOrInit.map(_.config)
+          config <- JD.Plugins.readOrInit.map(_.config)
           pac    <- Sc4pac.init(config)
           _      <- if (options.interactive) {
                       Prompt.ifInteractive(
@@ -163,11 +163,11 @@ object Commands {
         fullHelpAsked(commandName)
       } else {
         val task: Task[Unit] = for {
-          pluginsData  <- PluginsData.readOrInit
+          pluginsData  <- JD.Plugins.readOrInit
           pac          <- Sc4pac.init(pluginsData.config)
           query        =  args.all.mkString(" ")
           searchResult <- pac.search(query, options.threshold)
-          installed    <- PluginsLockData.listInstalled.map(_.map(_.toBareDep).toSet)
+          installed    <- JD.PluginsLock.listInstalled.map(_.map(_.toBareDep).toSet)
         } yield {
           for (((mod, ratio, description), idx) <- searchResult.zipWithIndex.reverse) {
             pac.logger.logSearchResult(idx, mod, description, installed(mod))
@@ -184,9 +184,9 @@ object Commands {
   case object List extends Command[ListOptions] {
     def run(options: ListOptions, args: RemainingArgs): Unit = {
       val task: Task[Unit] = for {
-        pluginsData  <- PluginsData.readOrInit
+        pluginsData  <- JD.Plugins.readOrInit
         pac          <- Sc4pac.init(pluginsData.config)  // only used for logging
-        installed    <- PluginsLockData.listInstalled
+        installed    <- JD.PluginsLock.listInstalled
       } yield {
         val sorted = installed.sortBy(mod => (mod.group.value, mod.name.value))
         val explicit: Set[BareModule] = pluginsData.explicit.toSet
@@ -221,7 +221,7 @@ object Commands {
       if (!options.interactive && args.all.isEmpty) {
         fullHelpAsked(commandName)
       } else {
-        val task = PluginsData.readOrInit.flatMap { data =>
+        val task = JD.Plugins.readOrInit.flatMap { data =>
           if (data.config.variant.isEmpty) {
             ZIO.succeed(println("The list of configured variants is empty. The next time you install a package that comes in variants, you can choose again."))
           } else {
@@ -238,7 +238,7 @@ object Commands {
             for {
               selected <- select
               data2    =  data.copy(config = data.config.copy(variant = data.config.variant -- selected))
-              _        <- Data.writeJsonIo(PluginsData.path, data2, None)(ZIO.succeed(()))
+              _        <- JsonIo.write(JD.Plugins.path, data2, None)(ZIO.succeed(()))
             } yield ()
           }
         }
@@ -266,9 +266,9 @@ object Commands {
             case Left(err) => error(caseapp.core.Error.Other(s"Malformed URL: $err"))
             case Right(uri) =>
               val task: Task[Unit] = for {
-                data  <- PluginsData.readOrInit
+                data  <- JD.Plugins.readOrInit
                 data2 =  data.copy(config = data.config.copy(channels = (data.config.channels :+ uri).distinct))
-                _     <- Data.writeJsonIo(PluginsData.path, data2, None)(ZIO.succeed(()))
+                _     <- JsonIo.write(JD.Plugins.path, data2, None)(ZIO.succeed(()))
               } yield ()
               runMainExit(task, exit)
           }
@@ -284,20 +284,20 @@ object Commands {
   case object ChannelRemove extends Command[ChannelRemoveOptions] {
     override def names = I.List(I.List("channel", "remove"))
     def run(options: ChannelRemoveOptions, args: RemainingArgs): Unit = {
-      val task = PluginsData.readOrInit.flatMap { data =>
+      val task = JD.Plugins.readOrInit.flatMap { data =>
         if (data.config.channels.isEmpty) {
           ZIO.succeed(println("The list of channel URLs is already empty."))
         } else {
           for {
             selectedUrls <- Prompt.numberedMultiSelect("Select channels to remove:", data.config.channels).map(_.toSet)
             data2        =  data.copy(config = data.config.copy(channels = data.config.channels.filterNot(selectedUrls)))
-            _            <- Data.writeJsonIo(PluginsData.path, data2, None)(ZIO.succeed(()))
+            _            <- JsonIo.write(JD.Plugins.path, data2, None)(ZIO.succeed(()))
           } yield ()
         }
       }
       runMainExit(Prompt.ifInteractive(
         onTrue = task,
-        onFalse = ZIO.fail(new Sc4pacNotInteractive(s"Channels can only be removed interactively currently. Alternatively, edit ${PluginsData.path.last}."))  // TODO fallback
+        onFalse = ZIO.fail(new Sc4pacNotInteractive(s"Channels can only be removed interactively currently. Alternatively, edit ${JD.Plugins.path.last}."))  // TODO fallback
       ), exit)
     }
   }
@@ -310,7 +310,7 @@ object Commands {
     override def names = I.List(I.List("channel", "list"))
     def run(options: ChannelListOptions, args: RemainingArgs): Unit = {
       val task = for {
-        pluginsData <- PluginsData.readOrInit
+        pluginsData <- JD.Plugins.readOrInit
       } yield {
         for (url <- pluginsData.config.channels) {
           println(url)

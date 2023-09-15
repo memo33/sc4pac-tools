@@ -5,7 +5,7 @@ import org.apache.commons.compress.archivers.zip.{ZipFile, ZipArchiveEntry}
 import org.apache.commons.compress.utils.IOUtils
 import java.nio.file.StandardOpenOption
 
-import Data.InstallRecipe
+import JsonData.InstallRecipe
 
 trait Extractor {
   // def extract(archive: java.io.File, destination: os.Path, recipe: InstallRecipe): Boolean

@@ -1,18 +1,17 @@
 package io.github.memo33
 package sc4pac
 
-import coursier.core.{Repository, Module, Publication, ArtifactSource, Versions, Version,
-  Dependency, Project, Classifier, Extension, Type, Configuration, ModuleName, Organization, Info}
-import upickle.default.{read, macroRW, ReadWriter, Reader, writeTo, writeToByteArray, readwriter}
+import coursier.core.{Repository, Module, ModuleName, Organization}
+import coursier.core as C
+import upickle.default.{ReadWriter, readwriter}
 import java.nio.file.{Path as NioPath}
 import zio.{ZIO, IO, Task}
 import java.util.regex.Pattern
 
-import sc4pac.error.Sc4pacIoException
 import sc4pac.Resolution.{Dep, DepModule, DepAsset, BareModule, BareDep, BareAsset}
 
 /** Contains data types for JSON serialization. */
-object Data {
+object JsonData {
 
   implicit val instantRw: ReadWriter[java.time.Instant] =
     readwriter[String].bimap[java.time.Instant](_.toString(), Option(_).map(java.time.Instant.parse).orNull)
@@ -32,8 +31,8 @@ object Data {
     }
   })
 
-  case class DependencyData(group: String, name: String, version: String) derives ReadWriter {
-    private[Data] def toDependency = Dependency(Module(Organization(group), ModuleName(name), attributes = Map.empty), version = version)
+  case class Dependency(group: String, name: String, version: String) derives ReadWriter {
+    private[JsonData] def toDependency = C.Dependency(Module(Organization(group), ModuleName(name), attributes = Map.empty), version = version)
   }
 
   case class AssetReference(
@@ -41,10 +40,10 @@ object Data {
     include: Seq[String] = Seq.empty,
     exclude: Seq[String] = Seq.empty
   ) derives ReadWriter {
-    private[Data] def toDependency = Dependency(Module(Constants.sc4pacAssetOrg, ModuleName(assetId), attributes = Map.empty), version = Constants.versionLatestRelease)
+    private[JsonData] def toDependency = C.Dependency(Module(Constants.sc4pacAssetOrg, ModuleName(assetId), attributes = Map.empty), version = Constants.versionLatestRelease)
   }
 
-  case class AssetData(
+  case class Asset(
     assetId: String,
     version: String,
     url: String,
@@ -59,12 +58,12 @@ object Data {
       }
     }
 
-    // private[Data] def toDependency = Dependency(Module(Constants.sc4pacAssetOrg, ModuleName(assetId), attributes = attributes), version = version)
+    // private[JsonData] def toDependency = C.Dependency(Module(Constants.sc4pacAssetOrg, ModuleName(assetId), attributes = attributes), version = version)
     def toDepAsset = DepAsset(assetId = ModuleName(assetId), version = version, url = url, lastModified = Option(lastModified))
 
-    /** Create a `Project` (contains metadata) for this asset from scratch on the fly. */
-    def toProject: Project = {
-      Project(
+    /** Create a `C.Project` (contains metadata) for this asset from scratch on the fly. */
+    def toProject: C.Project = {
+      C.Project(
         module = Module(
           Constants.sc4pacAssetOrg,
           ModuleName(assetId),
@@ -73,22 +72,22 @@ object Data {
         dependencies = Seq.empty,
         configurations = Map.empty,  // TODO
           // Map(
-          //   Configuration.compile -> Seq.empty,
-          //   Constants.link -> Seq(Configuration.compile)),
+          //   C.Configuration.compile -> Seq.empty,
+          //   Constants.link -> Seq(C.Configuration.compile)),
         parent = None,
         dependencyManagement = Seq.empty,  // ? TODO
         properties = Seq.empty,  // TODO
         profiles = Seq.empty,
         versions = None,  // TODO
         snapshotVersioning = None,  // TODO
-        packagingOpt = None,  // Option[Type],
+        packagingOpt = None,  // Option[C.Type],
         relocated = false,
         actualVersionOpt = None,
-        publications = Seq.empty,  // Seq[(Configuration, Publication)],
-        info = Info.empty)
+        publications = Seq.empty,  // Seq[(C.Configuration, C.Publication)],
+        info = C.Info.empty)
     }
   }
-  object AssetData {
+  object Asset {
     def parseLastModified(lastModified: String): Option[java.time.Instant] = {
       Option(lastModified).map(java.time.Instant.parse)  // throws java.time.format.DateTimeParseException
     }
@@ -96,7 +95,7 @@ object Data {
 
   case class VariantData(
     variant: Variant,
-    dependencies: Seq[DependencyData] = Seq.empty,
+    dependencies: Seq[Dependency] = Seq.empty,
     assets: Seq[AssetReference] = Seq.empty
   ) derives ReadWriter {
     def bareDependencies: Seq[Resolution.BareDep] =
@@ -116,43 +115,43 @@ object Data {
     def variantString(variant: Variant): String = variant.toSeq.sorted.map((k, v) => s"$k=$v").mkString(", ")
   }
 
-  case class PackageData(
+  case class Package(
     group: String,
     name: String,
     version: String,
     subfolder: os.SubPath,
-    info: InfoData = InfoData.empty,
+    info: Info = Info.empty,
     variants: Seq[VariantData],
     variantDescriptions: Map[String, Map[String, String]] = Map.empty  // variantKey -> variantValue -> description
   ) derives ReadWriter {
-    /** Create a `Project` from the package metadata, usually read from json file. */
-    def toProject(globalVariant: Variant): Either[ErrStr, Project] = {
+    /** Create a `C.Project` from the package metadata, usually read from json file. */
+    def toProject(globalVariant: Variant): Either[ErrStr, C.Project] = {
       variants.find(data => isSubMap(data.variant, globalVariant)) match {
         case None =>
           Left(s"no variant found for $group:$name matching [${VariantData.variantString(globalVariant)}]")
         case Some(matchingVariant) =>
-          Right(Project(
+          Right(C.Project(
             module = Module(
               Organization(group),
               ModuleName(name),
               attributes = VariantData.variantToAttributes(matchingVariant.variant)),  // TODO add variants to attributes or properties?
             version = version,
-            dependencies = matchingVariant.dependencies.map(dep => (Configuration.compile, dep.toDependency))
+            dependencies = matchingVariant.dependencies.map(dep => (C.Configuration.compile, dep.toDependency))
               ++ matchingVariant.assets.map(a => (Constants.link, a.toDependency /*.withConfiguration(Constants.link)*/)),
             configurations = Map(
-              Configuration.compile -> Seq.empty,
-              Constants.link -> Seq(Configuration.compile)),
+              C.Configuration.compile -> Seq.empty,
+              Constants.link -> Seq(C.Configuration.compile)),
             parent = None,
             dependencyManagement = Seq.empty,  // ? TODO
             properties = Seq.empty,  // TODO
             profiles = Seq.empty,
             versions = None,  // TODO
             snapshotVersioning = None,  // TODO
-            packagingOpt = None,  // Option[Type],
+            packagingOpt = None,  // Option[C.Type],
             relocated = false,
             actualVersionOpt = None,
-            publications = Seq.empty,  // Seq[(Configuration, Publication)],
-            info = Info.empty))
+            publications = Seq.empty,  // Seq[(C.Configuration, C.Publication)],
+            info = C.Info.empty))
       }
     }
 
@@ -162,36 +161,36 @@ object Data {
     }
   }
 
-  case class InfoData(
+  case class Info(
     summary: String = "",
     warning: String = "",
     description: String = "",
     images: Seq[String] = Seq.empty,
     website: String = ""
   ) derives ReadWriter
-  object InfoData {
-    val empty = InfoData()
+  object Info {
+    val empty = Info()
   }
 
-  case class ChannelItemData(group: String, name: String, versions: Seq[String], summary: String = "") derives ReadWriter {
+  case class ChannelItem(group: String, name: String, versions: Seq[String], summary: String = "") derives ReadWriter {
     def isSc4pacAsset: Boolean = group == Constants.sc4pacAssetOrg.value
     def toBareDep: BareDep = if (isSc4pacAsset) BareAsset(ModuleName(name)) else BareModule(Organization(group), ModuleName(name))
     private[sc4pac] def toSearchString: String = s"$group:$name $summary"
   }
 
-  case class ChannelData(contents: Seq[ChannelItemData]) derives ReadWriter {
+  case class Channel(contents: Seq[ChannelItem]) derives ReadWriter {
     lazy val versions: Map[BareDep, Seq[String]] =
       contents.map(item => item.toBareDep -> item.versions).toMap
   }
 
-  case class ConfigData(
+  case class Config(
     pluginsRoot: NioPath,
     cacheRoot: NioPath,
     tempRoot: NioPath,
     variant: Variant,
     channels: Seq[java.net.URI]
   ) derives ReadWriter
-  object ConfigData {
+  object Config {
     def subRelativize(path: os.Path): NioPath = {
       try {
         val sub: os.SubPath = path.subRelativeTo(os.pwd)
@@ -202,13 +201,13 @@ object Data {
     }
   }
 
-  case class PluginsData(config: ConfigData, explicit: Seq[BareModule]) derives ReadWriter {
+  case class Plugins(config: Config, explicit: Seq[BareModule]) derives ReadWriter {
     val pluginsRootAbs: os.Path = os.Path(config.pluginsRoot, base = os.pwd)  // converts to absolute if not absolute already
   }
-  object PluginsData {
+  object Plugins {
     val path: os.Path = os.pwd / "sc4pac-plugins.json"
 
-    def init(): Task[PluginsData] = {
+    def init(): Task[Plugins] = {
       val projDirs = dev.dirs.ProjectDirectories.from("", cli.BuildInfo.organization, cli.BuildInfo.name)  // qualifier, organization, application
       val task = for {
         pluginsRoot  <- Prompt.paths("Choose the location of your Plugins folder. (It is recommended to start with an empty folder.)", Seq(
@@ -220,11 +219,11 @@ object Data {
                           os.Path(java.nio.file.Paths.get(projDirs.cacheDir)),
                           os.pwd / "cache"))
         tempRoot     <- ZIO.succeed(os.pwd / "temp")  // customization not needed
-      } yield PluginsData(
-        config = ConfigData(
-          pluginsRoot = ConfigData.subRelativize(pluginsRoot),
-          cacheRoot = ConfigData.subRelativize(cacheRoot),
-          tempRoot = ConfigData.subRelativize(tempRoot),
+      } yield Plugins(
+        config = Config(
+          pluginsRoot = Config.subRelativize(pluginsRoot),
+          cacheRoot = Config.subRelativize(cacheRoot),
+          tempRoot = Config.subRelativize(tempRoot),
           variant = Map.empty,
           channels = Constants.defaultChannelUrls),
         explicit = Seq.empty)
@@ -233,13 +232,13 @@ object Data {
         onFalse = ZIO.fail(new error.Sc4pacNotInteractive("Path to plugins folder cannot be configured non-interactively (yet).")))  // TODO fallback
     }
 
-    /** Read PluginsData from file if it exists, else create it and write it to file. */
-    val readOrInit: Task[PluginsData] = {
-      ZIO.ifZIO(ZIO.attemptBlocking(os.exists(PluginsData.path)))(
-        onTrue = Data.readJsonIo[PluginsData](PluginsData.path),
+    /** Read Plugins from file if it exists, else create it and write it to file. */
+    val readOrInit: Task[Plugins] = {
+      ZIO.ifZIO(ZIO.attemptBlocking(os.exists(Plugins.path)))(
+        onTrue = JsonIo.read[Plugins](Plugins.path),
         onFalse = for {
-          data <- PluginsData.init()
-          _    <- Data.writeJsonIo(PluginsData.path, data, None)(ZIO.succeed(()))
+          data <- Plugins.init()
+          _    <- JsonIo.write(Plugins.path, data, None)(ZIO.succeed(()))
         } yield data
       )
     }
@@ -248,15 +247,15 @@ object Data {
   case class InstalledData(group: String, name: String, variant: Variant, version: String, files: Seq[os.SubPath]) derives ReadWriter {
     def moduleWithoutAttributes = Module(Organization(group), ModuleName(name), attributes=Map.empty)
     def moduleWithAttributes = Module(Organization(group), ModuleName(name), attributes=VariantData.variantToAttributes(variant))
-    // def toDependency = DepVariant.fromDependency(Dependency(moduleWithAttributes, version))  // TODO remove?
+    // def toDependency = DepVariant.fromDependency(C.Dependency(moduleWithAttributes, version))  // TODO remove?
     def toDepModule = DepModule(Organization(group), ModuleName(name), version = version, variant = variant)
   }
 
-  case class PluginsLockData(installed: Seq[InstalledData], assets: Seq[AssetData]) derives ReadWriter {
+  case class PluginsLock(installed: Seq[InstalledData], assets: Seq[Asset]) derives ReadWriter {
     def dependenciesWithAssets: Set[Resolution.Dep] =
       (installed.map(_.toDepModule) ++ assets.map(_.toDepAsset)).toSet
 
-    def updateTo(plan: Sc4pac.UpdatePlan, filesStaged: Map[DepModule, Seq[os.SubPath]]): PluginsLockData = {
+    def updateTo(plan: Sc4pac.UpdatePlan, filesStaged: Map[DepModule, Seq[os.SubPath]]): PluginsLock = {
       val orig = dependenciesWithAssets
       val next = plan.toInstall | (orig &~ plan.toRemove)
       val previousPkgs: Map[DepModule, InstalledData] = installed.map(i => (i.toDepModule, i)).toMap
@@ -264,7 +263,7 @@ object Data {
         case a: DepAsset => Left(a)
         case m: DepModule => Right(m)
       }
-      PluginsLockData(
+      PluginsLock(
         installed = insts.map(dep => InstalledData(
           group = dep.group.value,
           name = dep.name.value,
@@ -272,7 +271,7 @@ object Data {
           version = dep.version,
           files = filesStaged.get(dep).getOrElse(previousPkgs(dep).files)
         )),
-        assets = arts.map(dep => AssetData(
+        assets = arts.map(dep => Asset(
           assetId = dep.assetId.value,
           version = dep.version,
           url = dep.url,
@@ -281,23 +280,23 @@ object Data {
       )
     }
   }
-  object PluginsLockData {
+  object PluginsLock {
     val path: os.Path = os.pwd / "sc4pac-plugins-lock.json"
 
-    /** Read PluginsLockData from file if it exists, else create it and write it to file. */
-    val readOrInit: Task[PluginsLockData] = {
-      ZIO.ifZIO(ZIO.attemptBlocking(os.exists(PluginsLockData.path)))(
-        onTrue = Data.readJsonIo[PluginsLockData](PluginsLockData.path),
+    /** Read PluginsLock from file if it exists, else create it and write it to file. */
+    val readOrInit: Task[PluginsLock] = {
+      ZIO.ifZIO(ZIO.attemptBlocking(os.exists(PluginsLock.path)))(
+        onTrue = JsonIo.read[PluginsLock](PluginsLock.path),
         onFalse = {
-          val data = PluginsLockData(Seq.empty, Seq.empty)
-          Data.writeJsonIo(PluginsLockData.path, data, None)(ZIO.succeed(data))
+          val data = PluginsLock(Seq.empty, Seq.empty)
+          JsonIo.write(PluginsLock.path, data, None)(ZIO.succeed(data))
         }
       )
     }
 
     val listInstalled: Task[Seq[DepModule]] = {
-      ZIO.ifZIO(ZIO.attemptBlocking(os.exists(PluginsLockData.path)))(
-        onTrue = Data.readJsonIo[PluginsLockData](PluginsLockData.path).map(_.installed.map(_.toDepModule)),
+      ZIO.ifZIO(ZIO.attemptBlocking(os.exists(PluginsLock.path)))(
+        onTrue = JsonIo.read[PluginsLock](PluginsLock.path).map(_.installed.map(_.toDepModule)),
         onFalse = ZIO.succeed(Seq.empty)
       )
     }
@@ -327,89 +326,4 @@ object Data {
     }
   }
 
-
-
-  private[sc4pac] def readJson[A : Reader](jsonPath: os.Path): Either[ErrStr, A] = {
-    readJson(os.read.stream(jsonPath), errMsg = jsonPath.toString())
-  }
-
-  private[sc4pac] def readJson[A : Reader](jsonStr: String): Either[ErrStr, A] = {
-    readJson(jsonStr, errMsg = jsonStr)
-  }
-
-  private[sc4pac] def readJson[A : Reader](pathOrString: ujson.Readable, errMsg: => ErrStr): Either[ErrStr, A] = try {
-    Right(read[A](pathOrString))
-  } catch {
-    case e @ (_: upickle.core.AbortException
-            | _: ujson.ParseException
-            | _: java.nio.file.NoSuchFileException
-            | _: IllegalArgumentException
-            | _: java.time.format.DateTimeParseException) =>
-      Left(s"failed to read $errMsg: ${e.getMessage()}")
-  }
-
-  private[sc4pac] def readJsonIo[A : Reader](jsonPath: os.Path): zio.Task[A] = {
-    ZIO.attemptBlocking(os.read.stream(jsonPath))
-      .flatMap(readJsonIo(_, errMsg = jsonPath.toString()))
-  }
-
-  private[sc4pac] def readJsonIo[A : Reader](jsonStr: String): zio.Task[A] = {
-    readJsonIo(jsonStr, errMsg = jsonStr)
-  }
-
-  private[sc4pac] def readJsonIo[A : Reader](pathOrString: ujson.Readable, errMsg: => ErrStr): zio.Task[A] = {
-    ZIO.attemptBlocking(readJson[A](pathOrString, errMsg).left.map(new Sc4pacIoException(_))).absolve
-  }
-
-  // steps:
-  // - lock file for writing
-  // - optionally read json and compare with previous json `origState` to ensure file is up-to-date
-  // - do some potentially destructive action
-  // - if action successful, write json file
-
-  private val utf8 = java.nio.charset.Charset.forName("UTF-8")
-
-  def writeJsonIo[S : ReadWriter, A](jsonPath: os.Path, newState: S, origState: Option[S])(action: zio.Task[A]): zio.Task[A] = {
-    import java.nio.file.StandardOpenOption
-    import zio.nio.channels.AsynchronousFileChannel
-
-    def write(channel: AsynchronousFileChannel): ZIO[zio.Scope, Throwable, Unit] = {
-      for {
-        _      <- channel.truncate(size = 0)
-        arr    =  writeToByteArray[S](newState, indent = 2)
-        unit   <- channel.writeChunk(zio.Chunk.fromArray(arr), position = 0)
-      } yield unit
-    }
-
-    def read(channel: AsynchronousFileChannel): ZIO[zio.Scope, Throwable, S] = {
-      for {
-        chunk <- channel.stream(position = 0).runCollect
-        state <- readJsonIo[S](chunk.asString(utf8): String)
-      } yield state
-    }
-
-    // the file channel used for locking
-    val scopedChannel: ZIO[zio.Scope, java.io.IOException, AsynchronousFileChannel] = AsynchronousFileChannel.open(
-      zio.nio.file.Path.fromJava(jsonPath.toNIO),
-      StandardOpenOption.READ,
-      StandardOpenOption.WRITE,
-      StandardOpenOption.CREATE)  // TODO decide what to do if file does not exist
-
-    val releaseLock = (lock: zio.nio.channels.FileLock) => if (lock != null) lock.release.ignore else ZIO.succeed(())
-
-    // Acquire file lock, check if file was locked, otherwise perform read-write:
-    // First read, then write only if the read result is still the original state.
-    // Be careful to just read and write from the channel, as the channel is holding the lock.
-    ZIO.scoped {
-      for {
-        channel <- scopedChannel
-        lock    <- ZIO.acquireRelease(channel.tryLock(shared = false))(releaseLock)
-                      .filterOrFail(lock => lock != null)(new Sc4pacIoException(s"json file $jsonPath is locked by another program and cannot be modified; if the problem persists, close any relevant program and release the file lock in your OS"))
-        _       <- if (origState.isEmpty) ZIO.succeed(())
-                   else read(channel).filterOrFail(_ == origState.get)(new Sc4pacIoException(s"cannot write data since json file has been modified: $jsonPath"))
-        result  <- action
-        _       <- write(channel)
-      } yield result
-    }  // Finally the lock is released and channel is closed when leaving the scope.
-  }
 }

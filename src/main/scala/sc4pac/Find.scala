@@ -5,7 +5,7 @@ import coursier.core as C
 import zio.{ZIO, Task}
 import upickle.default.Reader
 
-import sc4pac.Data.{PackageData, VariantData}
+import sc4pac.JsonData as JD
 import sc4pac.error.{Sc4pacVersionNotFound, Sc4pacMissingVariant}
 import sc4pac.Resolution.BareModule
 
@@ -21,7 +21,7 @@ object Find {
     }
   }
 
-  /** Find the PackageData or AssetData corresponding to module and version,
+  /** Find the JD.Package or JD.Asset corresponding to module and version,
     * across all repositories. If not found at all, try a second time with the
     * repository channel contents updated. */
   def packageData[A : Reader](module: C.Module, version: String)(using context: ResolutionContext): Task[Option[A]] = {
@@ -56,22 +56,22 @@ object Find {
   }
 
   /** Given a module without specific variant, find a variant that matches globalVariant. */
-  def matchingVariant(module: BareModule, version: String, globalVariant: Variant)(using ResolutionContext): Task[(PackageData, VariantData)] = {
+  def matchingVariant(module: BareModule, version: String, globalVariant: Variant)(using ResolutionContext): Task[(JD.Package, JD.VariantData)] = {
 
-    def pickVariant(pkgOpt: Option[PackageData]): Task[(PackageData, VariantData)] = pkgOpt match {
+    def pickVariant(pkgOpt: Option[JD.Package]): Task[(JD.Package, JD.VariantData)] = pkgOpt match {
       case None => ZIO.fail(new Sc4pacVersionNotFound(s"Could not find metadata of ${module.orgName} or suitable variant." +
                                                       " Most likely the metadata stored in the corresponding channel is incorrect or incomplete."))
       case Some(pkgData) =>
         pkgData.variants.find(vd => isSubMap(vd.variant, globalVariant)) match {
           case Some(vd) => ZIO.succeed((pkgData, vd))
           case None =>
-            ZIO.fail(new Sc4pacMissingVariant(pkgData, s"could not find variant for ${module.orgName} matching [${VariantData.variantString(globalVariant)}]"))
+            ZIO.fail(new Sc4pacMissingVariant(pkgData, s"could not find variant for ${module.orgName} matching [${JD.VariantData.variantString(globalVariant)}]"))
         }
     }
 
     val mod = C.Module(module.group, module.name, attributes = Map.empty)
     concreteVersion(mod, version)
-      .flatMap(packageData[PackageData](mod, _))
+      .flatMap(packageData[JD.Package](mod, _))
       .flatMap(pickVariant)
   }
 

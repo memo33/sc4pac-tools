@@ -26,7 +26,7 @@ javacOptions ++= Seq("--release", "8")
 
 console / initialCommands := """
 import io.github.memo33.sc4pac.*
-lazy val pacman = unsafeRun(Data.PluginsData.readOrInit.flatMap(data => Sc4pac.init(data.config)))
+lazy val pacman = unsafeRun(JsonData.Plugins.readOrInit.flatMap(data => Sc4pac.init(data.config)))
 import zio.{ZIO, IO, Task}
 """
 

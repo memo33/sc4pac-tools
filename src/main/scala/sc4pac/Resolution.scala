@@ -6,6 +6,7 @@ import coursier.util.Artifact
 import zio.{ZIO, IO, Task}
 import scala.collection.immutable.TreeSeqMap
 
+import sc4pac.JsonData as JD
 import sc4pac.Constants.isSc4pacAsset
 import sc4pac.error.{Sc4pacIoException, Sc4pacAbort}
 import Resolution.{Dep, BareDep, DepAsset}
@@ -53,7 +54,7 @@ object Resolution {
         // assets do not have variants
         val mod = C.Module(Constants.sc4pacAssetOrg, assetId, attributes = Map.empty)
         Find.concreteVersion(mod, Constants.versionLatestRelease)
-          .flatMap(Find.packageData[Data.AssetData](mod, _))
+          .flatMap(Find.packageData[JD.Asset](mod, _))
           .flatMap {
             case None => ZIO.fail(new Sc4pacIoException(s"could not find attribute for ${mod}"))
             case Some(data) => ZIO.succeed(data.toDepAsset)
@@ -90,7 +91,7 @@ object Resolution {
 
     def formattedDisplayString(gray: String => String): String = {
       val variantStr = {
-          val s = Data.VariantData.variantString(variant)
+          val s = JD.VariantData.variantString(variant)
           if (s.nonEmpty) s" [$s]" else ""
       }
       gray(s"${group.value}:") + name.value + " " + gray(version + variantStr)

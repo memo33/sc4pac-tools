@@ -13,7 +13,7 @@ import org.fusesource.jansi.Ansi
 
 import sc4pac.error.*
 import sc4pac.Constants.isSc4pacAsset
-import sc4pac.Data.*
+import sc4pac.JsonData as JD
 import sc4pac.Sc4pac.{StageResult, UpdatePlan}
 import sc4pac.Resolution.{Dep, DepModule, DepAsset, BareModule, BareAsset, BareDep}
 
@@ -112,13 +112,13 @@ class Sc4pac(val repositories: Seq[MetadataRepository], val cache: FileCache[Tas
 
   private def modifyExplicitModules[R](modify: Seq[BareModule] => ZIO[R, Throwable, Seq[BareModule]]): ZIO[R, Throwable, Seq[BareModule]] = {
     for {
-      pluginsData  <- Data.readJsonIo[PluginsData](PluginsData.path)  // at this point, file should already exist
+      pluginsData  <- JsonIo.read[JD.Plugins](JD.Plugins.path)  // at this point, file should already exist
       modsOrig     =  pluginsData.explicit
       modsNext     <- modify(modsOrig)
       _            <- ZIO.unless(modsNext == modsOrig) {
                         val pluginsDataNext = pluginsData.copy(explicit = modsNext)
                         // we do not check whether file was modified as this entire operation is synchronous and fast, in most cases
-                        Data.writeJsonIo(PluginsData.path, pluginsDataNext, None)(ZIO.succeed(()))
+                        JsonIo.write(JD.Plugins.path, pluginsDataNext, None)(ZIO.succeed(()))
                       }
     } yield modsNext
   }
@@ -203,7 +203,7 @@ trait UpdateService { this: Sc4pac =>
     jarsRoot: os.Path,
     progress: Sc4pac.Progress
   ): Task[(Seq[os.SubPath], Boolean)] = {
-    def extract(assetData: AssetReference, pkgFolder: os.SubPath): Task[Unit] = ZIO.attemptBlocking {
+    def extract(assetData: JD.AssetReference, pkgFolder: os.SubPath): Task[Unit] = ZIO.attemptBlocking {
       // Given an AssetReference, we look up the corresponding artifact file
       // by ID. This relies on the 1-to-1-correspondence between sc4pacAssets
       // and artifact files.
@@ -213,7 +213,7 @@ trait UpdateService { this: Sc4pac =>
           logger.warn(s"skipping missing artifact, so it must be installed manually: ${id.orgName}")
         case Some(art, archive) =>
           // logger.log(s"  ==> $archive")  // TODO logging debug info
-          val recipe = InstallRecipe.fromAssetReference(assetData)
+          val recipe = JD.InstallRecipe.fromAssetReference(assetData)
           // ??? TODO extraction not implemented
           // TODO skip symlinks as a precaution
 
@@ -229,7 +229,7 @@ trait UpdateService { this: Sc4pac =>
     }
 
     // Since dependency is of type DepModule, we have already looked up the
-    // variant successfully, but have lost the PackageData, so we reconstruct it
+    // variant successfully, but have lost the JsonData.Package, so we reconstruct it
     // here a second time.
     for {
       (pkgData, variant) <- Find.matchingVariant(dependency.toBareDep, dependency.version, dependency.variant)
@@ -244,7 +244,7 @@ trait UpdateService { this: Sc4pac =>
     } yield (Seq(pkgFolder), warnings)  // for now, everything is installed into this folder only, so we do not need to list individual files
   }
 
-  private def remove(toRemove: Set[Dep], installed: Seq[InstalledData], pluginsRoot: os.Path): Task[Unit] = {
+  private def remove(toRemove: Set[Dep], installed: Seq[JD.InstalledData], pluginsRoot: os.Path): Task[Unit] = {
     // removing files is synchronous but can be blocking a while, so we wrap it in Task (TODO should use zio blocking)
     val files = installed
       .filter(item => toRemove.contains(item.toDepModule))
@@ -341,12 +341,12 @@ trait UpdateService { this: Sc4pac =>
     /** Remove old files from plugins and move staged files and folders into
       * plugins folder. Also update the json database of installed files.
       */
-    def publishToPlugins(staged: StageResult, pluginsLockData: PluginsLockData, plan: UpdatePlan): Task[Boolean] = {
+    def publishToPlugins(staged: StageResult, pluginsLockData: JD.PluginsLock, plan: UpdatePlan): Task[Boolean] = {
       // - lock the json database using file lock
       // - remove old packages
       // - move new packages into plugins folder
       // - write json database and release lock
-      val task = Data.writeJsonIo(PluginsLockData.path, pluginsLockData.updateTo(plan, staged.files.toMap), Some(pluginsLockData)) {
+      val task = JsonIo.write(JD.PluginsLock.path, pluginsLockData.updateTo(plan, staged.files.toMap), Some(pluginsLockData)) {
         for {
           _ <- remove(plan.toRemove, pluginsLockData.installed, pluginsRoot)
                  // .catchAll(???)  // TODO catch exceptions
@@ -364,7 +364,7 @@ trait UpdateService { this: Sc4pac =>
       ZIO.iterate(Left(globalVariant): Either[Variant, (A, Variant)])(_.isLeft) {
         case Right(_) => throw new AssertionError
         case Left(globalVariant) =>
-          def handler(pkgData: PackageData) = {
+          def handler(pkgData: JD.Package) = {
             val unknownVariants = pkgData.unknownVariants(globalVariant)
             val mod = BareModule(Organization(pkgData.group), ModuleName(pkgData.name))
             val choose: Task[Seq[(String, String)]] = ZIO.foreach(unknownVariants.toSeq) { (key, values) =>
@@ -376,7 +376,7 @@ trait UpdateService { this: Sc4pac =>
               }
               Prompt.ifInteractive(
                 onTrue = Prompt.numbered(s"""Choose a variant for ${mod.orgName}:""", values, render = renderDesc).map(v => (key, v)),
-                onFalse = ZIO.fail(new Sc4pacNotInteractive(s"""Configure a "$key" variant for ${mod.orgName} in ${PluginsData.path.last}: ${values.mkString(", ")}""")))
+                onFalse = ZIO.fail(new Sc4pacNotInteractive(s"""Configure a "$key" variant for ${mod.orgName} in ${JD.Plugins.path.last}: ${values.mkString(", ")}""")))
             }
             choose.map(additionalChoices => Left(globalVariant ++ additionalChoices))
           }
@@ -388,13 +388,13 @@ trait UpdateService { this: Sc4pac =>
     }
 
     def storeGlobalVariant(globalVariant: Variant): Task[Unit] = for {
-      pluginsData <- Data.readJsonIo[PluginsData](PluginsData.path)  // json file should exist already
-      _           <- Data.writeJsonIo(PluginsData.path, pluginsData.copy(config = pluginsData.config.copy(variant = globalVariant)), None)(ZIO.succeed(()))
+      pluginsData <- JsonIo.read[JD.Plugins](JD.Plugins.path)  // json file should exist already
+      _           <- JsonIo.write(JD.Plugins.path, pluginsData.copy(config = pluginsData.config.copy(variant = globalVariant)), None)(ZIO.succeed(()))
     } yield ()
 
     // TODO catch coursier.error.ResolutionError$CantDownloadModule (e.g. when json files have syntax issues)
     for {
-      pluginsLockData <- PluginsLockData.readOrInit
+      pluginsLockData <- JD.PluginsLock.readOrInit
       (resolution, globalVariant) <- doPromptingForVariant(globalVariant0)(Resolution.resolve(modules, _))
       plan            =  UpdatePlan.fromResolution(resolution, installed = pluginsLockData.dependenciesWithAssets)
       _               <- logPlan(plan)
@@ -470,7 +470,7 @@ object Sc4pac {
         ZIO.fail(f"could not access remote channel $repoUri%n$e")
       }  // dies on all throwables; TODO catch which Exceptions?
       .flatMap((jsonStr: String) => ZIO.fromEither {
-        Data.readJson[ChannelData](jsonStr, errMsg = contentsUrl)  // TODO does this really give the jsonStr directly instead of a path to a jsonFile?
+        JsonIo.readBlocking[JD.Channel](jsonStr, errMsg = contentsUrl)  // TODO does this really give the jsonStr directly instead of a path to a jsonFile?
           .map(channelData => MetadataRepository(repoUri, channelData, globalVariant = Map.empty))
       })
   }
@@ -486,7 +486,7 @@ object Sc4pac {
     cache.logger.using(task)  // properly initializes logger (avoids Uninitialized TermDisplay)
   }
 
-  def init(config: ConfigData): Task[Sc4pac] = {
+  def init(config: JD.Config): Task[Sc4pac] = {
     import CoursierZio.*  // implicit coursier-zio interop
     // val refreshLogger = coursier.cache.loggers.RefreshLogger.create(System.err)  // TODO System.err seems to cause less collisions between refreshing progress and ordinary log messages
     val logger = Logger()

@@ -9,10 +9,10 @@ import zio.{ZIO, IO}
 
 import sc4pac.error.*
 import sc4pac.Constants.isSc4pacAsset
-import sc4pac.Data.*
+import sc4pac.JsonData as JD
 import sc4pac.Resolution.BareDep
 
-case class MetadataRepository(baseUri: java.net.URI, channelData: ChannelData, globalVariant: Variant) extends Repository {
+case class MetadataRepository(baseUri: java.net.URI, channelData: JD.Channel, globalVariant: Variant) extends Repository {
 
   private def getRawVersions(dep: BareDep): Seq[String] = {
     channelData.versions.get(dep).getOrElse(Seq.empty)
@@ -50,9 +50,9 @@ case class MetadataRepository(baseUri: java.net.URI, channelData: ChannelData, g
   }
 
   /** For a module (no asset, no variant) of a given version, fetch the
-    * corresponding `PackageData` contained in its json file.
+    * corresponding `JD.Package` contained in its json file.
     *
-    * A = PackageData or AssetData
+    * A = JD.Package or JD.Asset
     */
   def fetchModuleJson[F[_] : Monad, A : Reader](module: Module, version: String, fetch: Repository.Fetch[F]): EitherT[F, ErrStr, A] = {
     if (!containsVersion(BareDep.fromModule(module), version)) {
@@ -65,7 +65,7 @@ case class MetadataRepository(baseUri: java.net.URI, channelData: ChannelData, g
       val jsonArtifact = Artifact(remoteUrl).withChanging(false)
 
       fetch(jsonArtifact).flatMap((jsonStr: String) => EitherT.fromEither {
-        Data.readJson[A](jsonStr, errMsg = remoteUrl)
+        JsonIo.readBlocking[A](jsonStr, errMsg = remoteUrl)
       })
     }
   }
@@ -80,10 +80,10 @@ case class MetadataRepository(baseUri: java.net.URI, channelData: ChannelData, g
   def find[F[_] : Monad](module: Module, version: String, fetch: Repository.Fetch[F]): EitherT[F, ErrStr, (ArtifactSource, Project)] = {
     if (isSc4pacAsset(module)) {
       // EitherT.fromEither(Right((this, MetadataRepository.sc4pacAssetProject(module, version))))
-      fetchModuleJson[F, AssetData](module, version, fetch)
+      fetchModuleJson[F, JD.Asset](module, version, fetch)
         .flatMap { data => EitherT.point((this, data.toProject)) }
     } else {
-      fetchModuleJson[F, PackageData](module, version, fetch)
+      fetchModuleJson[F, JD.Package](module, version, fetch)
         .flatMap { data =>
           data.toProject(globalVariant) match {
             case Left(err) => throw new Sc4pacMissingVariant(data, msg = err)
@@ -115,7 +115,7 @@ case class MetadataRepository(baseUri: java.net.URI, channelData: ChannelData, g
       val typ = /*dep.publication.`type`*/ Constants.sc4pacAssetType
       val pub = Publication(mod.name.value, typ, ext, Classifier.empty /*Classifier(s"file$idx")*/)  // TODO classifier not needed?
       require(isSc4pacAsset(mod))  // TODO
-      val lastModifiedOpt: Option[java.time.Instant] = mod.attributes.get(Constants.lastModifiedKey).flatMap(AssetData.parseLastModified)
+      val lastModifiedOpt: Option[java.time.Instant] = mod.attributes.get(Constants.lastModifiedKey).flatMap(JD.Asset.parseLastModified)
       Seq((pub, MetadataRepository.createArtifact(url, lastModifiedOpt)))
     }
 

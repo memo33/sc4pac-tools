@@ -5,20 +5,21 @@ import io.circe.{ParsingFailure, Json}
 import upickle.default.{Reader, ReadWriter, writeTo}
 import zio.{ZIO, IO}
 
-import sc4pac.Data.{osSubPathRw, InfoData}
+import sc4pac.JsonData as JD
+import sc4pac.JsonData.osSubPathRw
 
 object ChannelUtil {
 
   case class YamlVariantData(
     variant: Variant,
     dependencies: Seq[String] = Seq.empty,
-    assets: Seq[Data.AssetReference] = Seq.empty
+    assets: Seq[JD.AssetReference] = Seq.empty
   ) derives ReadWriter {
-    def toVariantData = Data.VariantData(
+    def toVariantData = JD.VariantData(
       variant = variant,
       dependencies = coursier.parse.ModuleParser.modules(dependencies, defaultScalaVersion = "").either match {
         case Left(errs) => throw new IllegalArgumentException(s"format error in dependencies: ${errs.mkString(", ")}")  // TODO error reporting
-        case Right(modules) => modules.map(mod => Data.DependencyData(group = mod.organization.value, name = mod.name.value, version = "latest.release"))
+        case Right(modules) => modules.map(mod => JD.Dependency(group = mod.organization.value, name = mod.name.value, version = "latest.release"))
       },
       assets = assets)
   }
@@ -28,11 +29,11 @@ object ChannelUtil {
     name: String,
     version: String,
     subfolder: os.SubPath,
-    info: InfoData = InfoData.empty,
+    info: JD.Info = JD.Info.empty,
     variants: Seq[YamlVariantData],
     variantDescriptions: Map[String, Map[String, String]] = Map.empty  // variantKey -> variantValue -> description
   ) derives ReadWriter {
-    def toPackageData = Data.PackageData(
+    def toPackageData = JD.Package(
       group = group, name = name, version = version, subfolder = subfolder,
       info = info, variants = variants.map(_.toVariantData), variantDescriptions = variantDescriptions)
   }
@@ -42,9 +43,9 @@ object ChannelUtil {
     name: String,
     version: String,
     subfolder: os.SubPath,
-    info: InfoData = InfoData.empty,
+    info: JD.Info = JD.Info.empty,
     dependencies: Seq[String] = Seq.empty,
-    assets: Seq[Data.AssetReference] = Seq.empty
+    assets: Seq[JD.AssetReference] = Seq.empty
   ) derives ReadWriter {
     def toVariants = YamlPackageDataVariants(
       group = group, name = name, version = version, subfolder = subfolder, info = info,
@@ -55,19 +56,19 @@ object ChannelUtil {
     ZIO.attempt(ujson.circe.CirceJson.transform(j, upickle.default.reader[A])).refineToOrDie
   }
 
-  private def parsePkgData(j: Json): IO[ErrStr, Data.PackageData | Data.AssetData] = {
+  private def parsePkgData(j: Json): IO[ErrStr, JD.Package | JD.Asset] = {
     ZIO.validateFirst(Seq(  // we use ZIO validate for error accumulation
       parseCirceJson[YamlPackageDataVariants](_: Json).map(_.toPackageData),
       parseCirceJson[YamlPackageDataBasic](_: Json).map(_.toVariants.toPackageData),  // if `variants` is absent, try YamlPackageDataBasic
-      parseCirceJson[Data.AssetData](_: Json)
+      parseCirceJson[JD.Asset](_: Json)
     ))(parse => parse(j))
       .mapError(errs => errs.mkString("(", " | ", ")"))
   }
 
-  private def readAndParsePkgData(path: os.Path): IndexedSeq[Data.PackageData | Data.AssetData] = {
+  private def readAndParsePkgData(path: os.Path): IndexedSeq[JD.Package | JD.Asset] = {
     val docs: IndexedSeq[Either[ParsingFailure, Json]] =
       scala.util.Using.resource(new java.io.FileReader(path.toIO))(io.circe.yaml.parser.parseDocuments(_).toIndexedSeq)
-    val task: IO[ErrStr, IndexedSeq[Data.PackageData | Data.AssetData]] = ZIO.validatePar(docs) { doc =>
+    val task: IO[ErrStr, IndexedSeq[JD.Package | JD.Asset]] = ZIO.validatePar(docs) { doc =>
       ZIO.fromEither(doc).flatMap(parsePkgData)
     }.mapError(errs => s"format error in $path: ${errs.mkString(", ")}")
     unsafeRun(task)  // TODO unsafe
@@ -92,24 +93,24 @@ object ChannelUtil {
           .flatMap(readAndParsePkgData)
           .map { pkgData =>
             val (g, n, v, s) = pkgData match {
-              case data: Data.PackageData => (data.group, data.name, data.version, Option(data.info.summary).filter(_.nonEmpty))
-              case data: Data.AssetData => (Constants.sc4pacAssetOrg.value, data.assetId, data.version, None)
+              case data: JD.Package => (data.group, data.name, data.version, Option(data.info.summary).filter(_.nonEmpty))
+              case data: JD.Asset => (Constants.sc4pacAssetOrg.value, data.assetId, data.version, None)
             }
             val subpath = MetadataRepository.jsonSubPath(g, n, v)
             val target = tempJsonDir / "metadata" / subpath
             os.makeDir.all(target / os.up)
             scala.util.Using.resource(java.nio.file.Files.newBufferedWriter(target.toNIO)) { out =>
               pkgData match {
-                case data: Data.PackageData => writeTo(data, out, indent=2)  // writes package json file
-                case data: Data.AssetData => writeTo(data, out, indent=2)  // writes asset json file
+                case data: JD.Package => writeTo(data, out, indent=2)  // writes package json file
+                case data: JD.Asset => writeTo(data, out, indent=2)  // writes asset json file
               }
             }
             ((g, n), (v, s))
           }.toSeq
       }.groupMap(_._1)(_._2).view.mapValues(_.unzip).toMap
 
-      val contents = Data.ChannelData(contents = packages.toSeq.map { case ((group, name), (versions, summaries)) =>
-        Data.ChannelItemData(
+      val contents = JD.Channel(contents = packages.toSeq.map { case ((group, name), (versions, summaries)) =>
+        JD.ChannelItem(
           group = group,
           name = name,
           versions = versions.distinct,
