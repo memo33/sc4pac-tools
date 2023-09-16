@@ -61,7 +61,7 @@ class ZipExtractor extends Extractor {
             os.makeDir.all(path / os.up)  // we know that entry refers to a file, not a directory
             // write entry to file
             scala.util.Using.resources(zip.getInputStream(entry), java.nio.file.Files.newOutputStream(path.toNIO, options*)) { (in, out) =>
-              IOUtils.copy(in, out, Constants.bufferSize)
+              IOUtils.copy(in, out, Constants.bufferSizeExtract)
             }
           }
           path

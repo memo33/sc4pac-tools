@@ -98,17 +98,12 @@ object Resolution {
     }
   }
 
-  // Copied from coursier internals:
-  // https://github.com/coursier/coursier/blob/3e212b42d3bda5d80453b4e7804670ccf75d4197/modules/cache/jvm/src/main/scala/coursier/cache/internal/Downloader.scala#L436
-  // TODO add regression test
-  private def ttlFile(file: java.io.File) = new java.io.File(file.getParent, s".${file.getName}.checked")
-
   private def deleteStaleCachedFile(file: java.io.File, lastModified: java.time.Instant, cache: FileCache): IO[coursier.cache.ArtifactError | Throwable, Unit] = {
     ZIO.attemptBlocking(coursier.cache.CacheLocks.withLockFor(cache.location, file) {
       // Since `file.lastModified()` can be older than the download time,
       // we use coursier's internally used `.checked` file to obtain the
       // actual download time.
-      val fileChecked = ttlFile(file)
+      val fileChecked = FileCache.ttlFile(file)
       if (!file.exists()) {
         Right(())  // nothing to delete
       } else if (fileChecked.exists()) {

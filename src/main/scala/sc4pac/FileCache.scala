@@ -46,4 +46,9 @@ object FileCache {
     val csCache = CC.FileCache[Task]().withLocation(location).withLogger(logger).withPool(pool)
     new FileCache(csCache)
   }
+
+  // Copied from coursier internals:
+  // https://github.com/coursier/coursier/blob/3e212b42d3bda5d80453b4e7804670ccf75d4197/modules/cache/jvm/src/main/scala/coursier/cache/internal/Downloader.scala#L436
+  // TODO add regression test
+  private[sc4pac] def ttlFile(file: java.io.File) = new java.io.File(file.getParent, s".${file.getName}.checked")
 }

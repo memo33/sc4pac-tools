@@ -16,7 +16,9 @@ object Constants {
   val versionLatestRelease = "latest.release"
   // val defaultChannelUrls = Seq("http://localhost:8090")  // for testing
   val defaultChannelUrls = Seq(MetadataRepository.parseChannelUrl("https://raw.githubusercontent.com/memo33/sc4pac-tools/main/channel/json").toOption.get)  // temporary
-  val bufferSize = 64 * 1024  // 64 kiB
+  val bufferSizeExtract = 64 * 1024  // 64 kiB, bounded by disk speed
+  val bufferSizeDownload = 1024 * 1024  // 1 MiB, bounded by download speed
+  val maxRedirectionsOpt = Some(20)
   val fuzzySearchThreshold = 50  // 0..100
   val interactivePromptTimeout = java.time.Duration.ofSeconds(240)
 
