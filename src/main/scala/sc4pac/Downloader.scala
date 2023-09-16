@@ -51,10 +51,10 @@ class Downloader(
   ): Either[CC.ArtifactError, T] = {
 
     @tailrec
-    def helper(retry: Int): Either[CC.ArtifactError, T] = {
-      require(retry >= 0)
+    def helper(retrySsl: Int, retryResumption: Int): Either[CC.ArtifactError, T] = {
+      require(retrySsl >= 0 && retryResumption >= 0)
 
-      val resOpt: Option[Either[CC.ArtifactError, T]] =
+      val resOpt: Either[(Int, Int), Either[CC.ArtifactError, T]] =
         try {
           val res0 = CC.CacheLocks.withUrlLock(url) {
             try f
@@ -63,23 +63,25 @@ class Downloader(
                 Left(new CC.ArtifactError.NotFound(nfe.getMessage))
             }
           }
-          res0.orElse(ifLocked)
+          res0.orElse(ifLocked).toRight((retrySsl - 1, retryResumption))  // as a safe-guard, we also decrease retry counter here
         } catch {
-          case _: javax.net.ssl.SSLException if retry >= 1 => None
+          case _: javax.net.ssl.SSLException if retrySsl >= 1 => Left(retrySsl - 1, retryResumption)
           case scala.util.control.NonFatal(e) =>
             val ex = new CC.ArtifactError.DownloadError(
               s"Caught ${e.getClass().getName()}${Option(e.getMessage).fold("")(" (" + _ + ")")} while downloading $url",
               Some(e)
             )
-            Some(Left(ex))
+            Right(Left(ex))
         }
 
       resOpt match {
-        case Some(res) => res
-        case None      => helper(retry - 1)
+        case Right(Left(ex: CC.ArtifactError.WrongLength)) if ex.got < ex.expected && retryResumption >= 1 =>
+          helper(retrySsl, retryResumption - 1)
+        case Right(res) => res
+        case Left((retrySsl, retryResumption)) => helper(retrySsl, retryResumption)
       }
     }
-    helper(Constants.sslRetryCount)
+    helper(Constants.sslRetryCount, Constants.resumeIncompleteDownloadAttemps)
   }
 
   /** Download in blocking fashion. */
@@ -105,9 +107,12 @@ class Downloader(
         Left(new CC.ArtifactError.Unauthorized(url, realm = CC.CacheUrl.realm(conn)))
       else {
         val lenOpt: Option[Long] =
-          for (len0 <- Option(conn.getContentLengthLong) if len0 >= 0L) yield {
-            val len = len0 + (if (partialDownload) alreadyDownloaded else 0L)
-            logger.downloadLength(url, len, alreadyDownloaded, watching = false)
+          for (len <- Option(conn.getContentLengthLong) if len >= 0L) yield {
+            // TODO check that length of partial downloads work as expected
+            if (alreadyDownloaded > len) {
+              ???
+            }
+            logger.downloadLength(url, len, (if (partialDownload) alreadyDownloaded else 0L), watching = false)
             len
           }
 
