@@ -5,7 +5,6 @@ import scala.collection.immutable.{Set, Seq}
 import coursier.{Type, Resolve, Fetch}
 import coursier.core.{Module, Organization, ModuleName, Dependency, Publication, Configuration}
 import coursier.util.{Artifact, EitherT, Gather}
-import coursier.cache.FileCache
 import upickle.default.{ReadWriter, readwriter, macroRW, read}
 import java.nio.file.Path
 import zio.{IO, ZIO, UIO, Task}
@@ -109,7 +108,7 @@ object Logger {
 
 // TODO Use `Runtime#reportFatal` or `Runtime.setReportFatal` to log fatal errors like stack overflow
 
-class Sc4pac(val repositories: Seq[MetadataRepository], val cache: FileCache[Task], val tempRoot: os.Path, val logger: Logger) extends UpdateService {  // TODO defaults
+class Sc4pac(val repositories: Seq[MetadataRepository], val cache: FileCache, val tempRoot: os.Path, val logger: Logger) extends UpdateService {  // TODO defaults
 
   given context: ResolutionContext = new ResolutionContext(repositories, cache, logger)
 
@@ -507,7 +506,7 @@ object Sc4pac {
   case class StageResult(tempPluginsRoot: os.Path, files: Seq[(DepModule, Seq[os.SubPath])], stagingRoot: os.Path)
 
 
-  private def fetchChannelData(repoUri: java.net.URI, cache: FileCache[Task], channelContentsTtl: Option[scala.concurrent.duration.Duration]): IO[ErrStr, MetadataRepository] = {
+  private def fetchChannelData(repoUri: java.net.URI, cache: FileCache, channelContentsTtl: Option[scala.concurrent.duration.Duration]): IO[ErrStr, MetadataRepository] = {
     import CoursierZio.*  // implicit coursier-zio interop
     val contentsUrl = MetadataRepository.channelContentsUrl(repoUri).toString
     val artifact = Artifact(contentsUrl).withChanging(true)  // changing as the remote file is updated whenever any remote package is added or updated
@@ -523,7 +522,7 @@ object Sc4pac {
       })
   }
 
-  private[sc4pac] def initializeRepositories(repoUris: Seq[java.net.URI], cache: FileCache[Task], channelContentsTtl: Option[scala.concurrent.duration.Duration]): Task[Seq[MetadataRepository]] = {
+  private[sc4pac] def initializeRepositories(repoUris: Seq[java.net.URI], cache: FileCache, channelContentsTtl: Option[scala.concurrent.duration.Duration]): Task[Seq[MetadataRepository]] = {
     val task: Task[Seq[MetadataRepository]] = ZIO.collectPar(repoUris) { url =>
       fetchChannelData(url, cache, channelContentsTtl)
         .mapError((err: ErrStr) => { System.err.println(s"Failed to read channel data: $err"); None })
@@ -539,8 +538,7 @@ object Sc4pac {
     // val refreshLogger = coursier.cache.loggers.RefreshLogger.create(System.err)  // TODO System.err seems to cause less collisions between refreshing progress and ordinary log messages
     val logger = Logger()
     val coursierPool = coursier.cache.internal.ThreadUtil.fixedThreadPool(size = 2)  // limit parallel downloads to 2 (ST rejects too many connections)
-    val cache = FileCache[zio.Task]().withLocation(config.cacheRoot.resolve("coursier").toFile()).withLogger(logger)
-      .withPool(coursierPool)  // TODO thread pool
+    val cache = FileCache(location = config.cacheRoot.resolve("coursier").toFile(), logger = logger, pool = coursierPool)
       // .withCachePolicies(Seq(coursier.cache.CachePolicy.ForceDownload))  // TODO cache policy
       // .withTtl(1.hour)  // TODO time-to-live
     val tempRoot = os.Path(config.tempRoot, os.pwd)

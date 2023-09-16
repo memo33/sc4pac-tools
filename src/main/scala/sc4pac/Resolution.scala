@@ -103,7 +103,7 @@ object Resolution {
   // TODO add regression test
   private def ttlFile(file: java.io.File) = new java.io.File(file.getParent, s".${file.getName}.checked")
 
-  private def deleteStaleCachedFile(file: java.io.File, lastModified: java.time.Instant, cache: coursier.cache.FileCache[Task]): IO[coursier.cache.ArtifactError | Throwable, Unit] = {
+  private def deleteStaleCachedFile(file: java.io.File, lastModified: java.time.Instant, cache: FileCache): IO[coursier.cache.ArtifactError | Throwable, Unit] = {
     ZIO.attemptBlocking(coursier.cache.CacheLocks.withLockFor(cache.location, file) {
       // Since `file.lastModified()` can be older than the download time,
       // we use coursier's internally used `.checked` file to obtain the
@@ -131,14 +131,14 @@ object Resolution {
     * In case of coursier.cache.ArtifactError,
     * the file was locked, so could not be deleted (hint: if error persists, manually delete the .lock file)
     */
-  private def deleteStaleCachedFiles(assetsArtifacts: Seq[(DepAsset, Artifact)], cache: coursier.cache.FileCache[Task]): Task[Unit] = {
+  private def deleteStaleCachedFiles(assetsArtifacts: Seq[(DepAsset, Artifact)], cache: FileCache): Task[Unit] = {
     ZIO.foreachDiscard(assetsArtifacts) { case (dep, artifact) =>
       if (artifact.changing) {
         ZIO.succeed(())  // artifact is changing, so cache.ttl (time-to-live) determines how long a file is cached
       } else {
         val lastModifiedOpt = dep.lastModified
         assert(lastModifiedOpt.isDefined, s"non-changing assets should have lastModified defined: $artifact $dep")
-        deleteStaleCachedFile(cache.localFile(artifact.url, user=None), lastModifiedOpt.get, cache)
+        deleteStaleCachedFile(cache.localFile(artifact.url), lastModifiedOpt.get, cache)
       }
     }
   }

@@ -90,7 +90,7 @@ object ZipExtractor {
     */
   case class JarExtraction(jarsDir: os.Path)
   object JarExtraction {
-    def fromUrl[F[_]](archiveUrl: String, cache: coursier.cache.FileCache[F], jarsRoot: os.Path): JarExtraction = {
+    def fromUrl[F[_]](archiveUrl: String, cache: FileCache, jarsRoot: os.Path): JarExtraction = {
       // we use cache to find a consistent archiveSubPath based on the url
       val archivePath = os.Path(cache.localFile(archiveUrl), os.pwd)
       val cachePath = os.Path(cache.location, os.pwd)
