@@ -19,6 +19,7 @@ object Constants {
   val bufferSizeExtract = 64 * 1024  // 64 kiB, bounded by disk speed
   val bufferSizeDownload = 1024 * 1024  // 1 MiB, bounded by download speed
   val maxRedirectionsOpt = Some(20)
+  val sslRetryCount = 3  // Coursier legacy
   val fuzzySearchThreshold = 50  // 0..100
   val interactivePromptTimeout = java.time.Duration.ofSeconds(240)
 

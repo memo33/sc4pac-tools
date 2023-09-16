@@ -10,39 +10,78 @@ class Downloader(
   artifact: coursier.util.Artifact,  // contains the URL
   cacheLocation: java.io.File,
   localFile: java.io.File,  // the local file after download
-  logger: Logger,
+  logger: coursier.cache.CacheLogger,
   pool: java.util.concurrent.ExecutorService,
   ttl: Option[scala.concurrent.duration.Duration]
 ) {
 
-  def download: IO[CC.ArtifactError, (String, java.io.File)] =
-    downloadUrl(artifact.url)
-
-  private def downloadUrl(url: String): IO[CC.ArtifactError, (String, java.io.File)] = {
+  def download: IO[CC.ArtifactError, java.io.File] = {
+    val url = artifact.url
     logger.checkingArtifact(url, artifact)
     val task =
       if (url.startsWith("file:/")) {
-        ??? // TODO
+        ??? // TODO handle local files
       } else {
-        // TODO check (remote?) if update is necessary
+        // TODO check (remote?) if update is necessary (TODO ttl)
         remote(localFile, url)
       }
-    task.map(_ => (url, localFile))
+    task.map(_ => localFile)
   }
 
   private def remote(file: java.io.File, url: String): IO[CC.ArtifactError, Unit] = {
+    ZIO.fromEither {
+      val tmp = coursier.paths.CachePath.temporaryFile(file)  // file => .file.part
+      logger.downloadingArtifact(url, artifact)
+      var success = false
+      try {
+        val res = downloading(url, file)(
+          CC.CacheLocks.withLockOr(
+            cacheLocation, file)(doDownload(file, url, tmp),
+            ifLocked = ???
+          ),
+          ifLocked = ???
+        )
+        success = res.isRight
+        res
+      } finally logger.downloadedArtifact(url, success = success)
+    } //.onExecutionContext(scala.concurrent.ExecutionContext.fromExecutorService(pool))  // TODO this is currently handled in Resolution
+  }
 
-    val tmp = coursier.paths.CachePath.temporaryFile(file)  // file => .file.part
+  /** Wraps download with ArtifactError.DownloadError and ssl retry attempts. */
+  private def downloading[T](url: String, file: java.io.File)(
+    f: => Either[CC.ArtifactError, T], ifLocked: => Option[Either[CC.ArtifactError, T]]
+  ): Either[CC.ArtifactError, T] = {
 
-    logger.downloadingArtifact(url, artifact)
-    var success = false
-    try {
-      ZIO.fromEither {
-        CC.CacheLocks.withLockOr(cacheLocation, file)(
-          doDownload(file, url, tmp),
-          ifLocked = ???)
-      } //.onExecutionContext(scala.concurrent.ExecutionContext.fromExecutorService(pool))  // TODO this is currently handled in Resolution
-    } finally logger.downloadedArtifact(url, success = success)
+    @tailrec
+    def helper(retry: Int): Either[CC.ArtifactError, T] = {
+      require(retry >= 0)
+
+      val resOpt: Option[Either[CC.ArtifactError, T]] =
+        try {
+          val res0 = CC.CacheLocks.withUrlLock(url) {
+            try f
+            catch {
+              case nfe: java.io.FileNotFoundException if nfe.getMessage != null =>
+                Left(new CC.ArtifactError.NotFound(nfe.getMessage))
+            }
+          }
+          res0.orElse(ifLocked)
+        } catch {
+          case _: javax.net.ssl.SSLException if retry >= 1 => None
+          case scala.util.control.NonFatal(e) =>
+            val ex = new CC.ArtifactError.DownloadError(
+              s"Caught ${e.getClass().getName()}${Option(e.getMessage).fold("")(" (" + _ + ")")} while downloading $url",
+              Some(e)
+            )
+            Some(Left(ex))
+        }
+
+      resOpt match {
+        case Some(res) => res
+        case None      => helper(retry - 1)
+      }
+    }
+    helper(Constants.sslRetryCount)
   }
 
   /** Download in blocking fashion. */
@@ -145,7 +184,7 @@ object Downloader {
   private def readFullyTo(
     in: java.io.InputStream,
     out: java.io.OutputStream,
-    logger: Logger,
+    logger: coursier.cache.CacheLogger,
     url: String,
     alreadyDownloaded: Long
   ): Unit = {
