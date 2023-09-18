@@ -24,6 +24,8 @@ object Constants {
   val fuzzySearchThreshold = 50  // 0..100
   val interactivePromptTimeout = java.time.Duration.ofSeconds(240)
 
+  lazy val debugMode: Boolean = System.getenv("SC4PAC_DEBUG") match { case null | "" => false; case _ => true }
+
   lazy val noColor: Boolean = (System.getenv("NO_COLOR") match { case null | "" => false; case _ => true }) ||
                               (System.getenv("SC4PAC_NO_COLOR") match { case null | "" => false; case _ => true })
 
