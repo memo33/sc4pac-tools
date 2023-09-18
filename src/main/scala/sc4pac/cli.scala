@@ -178,6 +178,43 @@ object Commands {
     }
   }
 
+  @ArgsName("packages")
+  @HelpMessage(s"""
+    |Display more information about a package.
+    |
+    |Examples:
+    |  sc4pac info memo:essential-fixes
+    """.stripMargin.trim)
+  final case class InfoOptions() extends Sc4pacCommandOptions
+
+  case object Info extends Command[InfoOptions] {
+    def run(options: InfoOptions, args: RemainingArgs): Unit = {
+      args.all match {
+        case Nil => fullHelpAsked(commandName)
+        case pkgNames =>
+          val task: Task[Unit] = for {
+            mods         <- ZIO.fromEither(Sc4pac.parseModules(pkgNames)).catchAll { (err: ErrStr) =>
+                              error(caseapp.core.Error.Other(s"Package format is <group>:<package-name> ($err)"))
+                            }
+            pluginsData  <- JD.Plugins.readOrInit
+            pac          <- Sc4pac.init(pluginsData.config)
+            infoResults  <- ZIO.foreachPar(mods)(pac.info)
+          } yield {
+            val (found, notFound) = infoResults.zip(mods).partition(_._1.isDefined)
+            if (notFound.nonEmpty) {
+              error(caseapp.core.Error.Other("Package not found: " + notFound.map(_._2.orgName).mkString(" ")))
+            } else {
+              for ((infoResultOpt, idx) <- found.zipWithIndex) {
+                if (idx > 0) pac.logger.log("")
+                pac.logger.logInfoResult(infoResultOpt._1.get)
+              }
+            }
+          }
+          runMainExit(task, exit)
+      }
+    }
+  }
+
   @HelpMessage("List all installed packages.")
   final case class ListOptions() extends Sc4pacCommandOptions
 
@@ -355,6 +392,7 @@ object CliMain extends caseapp.core.app.CommandsEntryPoint {
     Commands.Update,
     Commands.Remove,
     Commands.Search,
+    Commands.Info,
     Commands.List,
     Commands.VariantReset,
     Commands.ChannelAdd,

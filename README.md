@@ -33,6 +33,7 @@ A package manager for SimCity 4 plugins.
     update          Update all installed packages to their latest version and install any missing packages.
     remove          Remove packages that have been installed explicitly.
     search          Search for the name of a package.
+    info            Display more information about a package.
     list            List all installed packages.
     variant reset   Select variants to reset in order to choose a different package variant.
     channel add     Add a channel to fetch package metadata from.
@@ -76,7 +77,7 @@ and the [empty template](channel-testing/template-empty.yaml).
 
 # Uninstalling
 
-- First, remove all installed packages from your plugins folder. Either:
+- Remove all installed packages from your plugins folder. Either:
   * run `sc4pac remove --interactive` and select everything, or
   * delete every folder named `*.sc4pac` from your plugins folder, or
   * delete the entire plugins folder.
@@ -95,7 +96,7 @@ Create a release bundle with `make dist` in a Unix shell.
 - [x] Basic functionality
 - [x] Command-line interface with all important commands
 - [ ] Improve robustness of downloading (missing content-length (ST), incomplete downloads (SC4E), non-persistent URLs (Moddb), handling servers that have gone offline)
-- [ ] Central metadata channel
+- [ ] Collaborative central metadata channel
 - [ ] Website and online documentation
 - [ ] Server API (backend)
-- [ ] Graphical UI (frontend), Mod manager
+- [ ] Graphical UI (frontend) aka Mod manager

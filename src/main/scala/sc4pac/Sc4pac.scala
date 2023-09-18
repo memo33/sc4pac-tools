@@ -42,6 +42,13 @@ class Logger private (out: java.io.PrintStream, useColor: Boolean, isInteractive
     log((Array(s"(${idx+1}) $mod") ++ description).mkString(f"%n" + " "*8))
   }
 
+  def logInfoResult(infoResult: Seq[(String, String)]): Unit = {
+    val columnWidth = infoResult.map(_._1.length).maxOption.getOrElse(0)
+    for ((label, description) <- infoResult) {
+      log(bold(label + " " * (columnWidth - label.length) + " :") + s" $description")
+    }
+  }
+
   def logInstalled(module: DepModule, explicit: Boolean): Unit = {
     log(module.formattedDisplayString(gray) + (if (explicit) " " + cyanBold("[explicit]") else ""))
   }
@@ -176,6 +183,43 @@ class Sc4pac(val repositories: Seq[MetadataRepository], val cache: FileCache[Tas
         }
       }
     results.sortBy(_._2)(Ordering.Int.reverse).distinctBy(_._1)
+  }
+
+  def info(module: BareModule): Task[Option[Seq[(String, String)]]] = {
+    val mod = Module(module.group, module.name, attributes = Map.empty)
+    for {
+      version <- Find.concreteVersion(mod, Constants.versionLatestRelease)
+      pkgOpt  <- Find.packageData[JD.Package](mod, version)
+    } yield {
+      pkgOpt.map { pkg =>
+        val b = Seq.newBuilder[(String, String)]
+        b += "Name" -> s"${pkg.group}:${pkg.name}"
+        b += "Version" -> pkg.version
+        b += "Subfolder" -> pkg.subfolder.toString
+        b += "Summary" -> pkg.info.summary
+        if (pkg.info.description.nonEmpty)
+          b += "Description" -> pkg.info.description
+        if (pkg.info.warning.nonEmpty)
+          b += "Warning" -> pkg.info.warning
+        if (pkg.info.website.nonEmpty)
+          b += "Website" -> pkg.info.website
+
+        def mkDeps(vd: JD.VariantData) = "Dependencies" -> vd.bareDependencies.collect{ case m: BareModule => m.formattedDisplayString(logger.gray, identity) }.mkString(" ")
+        if (pkg.variants.length == 1 && pkg.variants.head.variant.isEmpty) {
+          // no variant
+          b += mkDeps(pkg.variants.head)
+        } else {
+          // multiple variants
+          for (vd <- pkg.variants) {
+            b += "Variant" -> JD.VariantData.variantString(vd.variant)
+            b += mkDeps(vd)
+          }
+        }
+        // TODO variant descriptions
+        // TODO channel URL
+        b.result()
+      }
+    }
   }
 
 }
