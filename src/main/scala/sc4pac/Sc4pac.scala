@@ -204,15 +204,19 @@ class Sc4pac(val repositories: Seq[MetadataRepository], val cache: FileCache[Tas
         if (pkg.info.website.nonEmpty)
           b += "Website" -> pkg.info.website
 
-        def mkDeps(vd: JD.VariantData) = "Dependencies" -> vd.bareDependencies.collect{ case m: BareModule => m.formattedDisplayString(logger.gray, identity) }.mkString(" ")
+        def mkDeps(vd: JD.VariantData) = {
+          val deps = vd.bareDependencies.collect{ case m: BareModule => m.formattedDisplayString(logger.gray, identity) }
+          if (deps.isEmpty) "None" else deps.mkString(" ")
+        }
+
         if (pkg.variants.length == 1 && pkg.variants.head.variant.isEmpty) {
           // no variant
-          b += mkDeps(pkg.variants.head)
+          b += "Dependencies" -> mkDeps(pkg.variants.head)
         } else {
           // multiple variants
           for (vd <- pkg.variants) {
             b += "Variant" -> JD.VariantData.variantString(vd.variant)
-            b += mkDeps(vd)
+            b += " Dependencies" -> mkDeps(vd)
           }
         }
         // TODO variant descriptions

@@ -41,7 +41,7 @@ assets:  # Optional list of assets from which to extract files (zero or more)
   # If absent or empty, then by default all file types other than .dat/.sc4model/.sc4lot/.sc4desc/.sc4 are excluded.
   exclude: []
 
-# Additional information, entirely optional (currently not used).
+# Additional descriptive information, entirely optional.
 info:
   summary: "One-line summary"
   warning: >

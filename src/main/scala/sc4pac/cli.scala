@@ -315,27 +315,47 @@ object Commands {
     }
   }
 
-  @HelpMessage("Select channels to remove.")
-  final case class ChannelRemoveOptions() extends Sc4pacCommandOptions
+  @ArgsName("URL-patterns")
+  @HelpMessage(s"""
+    |Select channels to remove.
+    |
+    |Examples:
+    |  sc4pac channel remove --interactive     ${gray("# Interactively select channels to remove.")}
+    |  sc4pac channel remove "github.com"      ${gray("# Remove channel URLs containing \"github.com\".")}
+    """.stripMargin.trim)
+  final case class ChannelRemoveOptions(
+    @ExtraName("i") @HelpMessage("Interactively select channels to remove") @Group("Main") @Tag("Main")
+    interactive: Boolean = false
+  ) extends Sc4pacCommandOptions
 
   case object ChannelRemove extends Command[ChannelRemoveOptions] {
     override def names = I.List(I.List("channel", "remove"))
     def run(options: ChannelRemoveOptions, args: RemainingArgs): Unit = {
-      val task = JD.Plugins.readOrInit.flatMap { data =>
-        if (data.config.channels.isEmpty) {
-          ZIO.succeed(println("The list of channel URLs is already empty."))
-        } else {
-          for {
-            selectedUrls <- Prompt.numberedMultiSelect("Select channels to remove:", data.config.channels).map(_.toSet)
-            data2        =  data.copy(config = data.config.copy(channels = data.config.channels.filterNot(selectedUrls)))
-            _            <- JsonIo.write(JD.Plugins.path, data2, None)(ZIO.succeed(()))
-          } yield ()
+      if (!options.interactive && args.all.isEmpty) {
+        fullHelpAsked(commandName)
+      } else {
+        val task = JD.Plugins.readOrInit.flatMap { data =>
+          if (data.config.channels.isEmpty) {
+            ZIO.succeed(println("The list of channel URLs is already empty."))
+          } else {
+            for {
+              isSelected   <- if (options.interactive) {
+                                Prompt.ifInteractive(
+                                  onTrue = Prompt.numberedMultiSelect("Select channels to remove:", data.config.channels).map(_.toSet),
+                                  onFalse = ZIO.fail(new Sc4pacNotInteractive(s"Pass channel URL patterns as arguments, non-interactively."))
+                                )
+                              } else {
+                                ZIO.succeed((url: java.net.URI) => args.all.exists(pattern => url.toString.contains(pattern)))
+                              }
+              (drop, keep) =  data.config.channels.partition(isSelected)
+              _            <- ZIO.succeed { if (drop.nonEmpty) println(("The following channels have been removed:" +: drop).mkString(f"%n")) }
+              data2        =  data.copy(config = data.config.copy(channels = keep))
+              _            <- JsonIo.write(JD.Plugins.path, data2, None)(ZIO.succeed(()))
+            } yield ()
+          }
         }
+        runMainExit(task, exit)
       }
-      runMainExit(Prompt.ifInteractive(
-        onTrue = task,
-        onFalse = ZIO.fail(new Sc4pacNotInteractive(s"Channels can only be removed interactively currently. Alternatively, edit ${JD.Plugins.path.last}."))  // TODO fallback
-      ), exit)
     }
   }
 
