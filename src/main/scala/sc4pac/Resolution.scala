@@ -210,8 +210,9 @@ class Resolution(reachableDeps: TreeSeqMap[BareDep, Seq[BareDep]], nonbareDeps: 
       }
       .catchSome { case e: (coursier.error.FetchError.DownloadingArtifacts
                           | coursier.cache.ArtifactError.DownloadError
+                          | coursier.cache.ArtifactError.WrongLength
                           | coursier.cache.ArtifactError.NotFound) =>
-        ZIO.fail(new Sc4pacAbort("Failed to download some assets. " +
+        ZIO.fail(new Sc4pacAbort("Failed to download some assets. Try again later. " +
           f"You may have reached your daily download quota (Simtropolis: 20 files per day) or the file exchange server is currently unavailable: ${e.getMessage}"))
       }
 

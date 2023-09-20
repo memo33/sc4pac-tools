@@ -6,6 +6,8 @@ import java.net.URLConnection
 import coursier.cache as CC
 import zio.{ZIO, Task, IO}
 
+import Downloader.PartialDownloadSpec
+
 class Downloader(
   artifact: coursier.util.Artifact,  // contains the URL
   cacheLocation: java.io.File,
@@ -41,8 +43,8 @@ class Downloader(
       var success = false
       try {
         val res = downloading(url, file)(
-          CC.CacheLocks.withLockOr(
-            cacheLocation, file)(doDownload(file, url, tmp),
+          CC.CacheLocks.withLockOr(cacheLocation, file)(
+            doDownload(file, url, tmp),
             ifLocked = Some(Left(new CC.ArtifactError.Locked(file)))  // should not be an issue as long as just one instance of sc4pac is running
           ),
           ifLocked = Some(Left(new CC.ArtifactError.Locked(file)))  // should not be an issue as long as just one instance of sc4pac is running
@@ -99,16 +101,10 @@ class Downloader(
 
   /** Download in blocking fashion. */
   private def doDownload(file: java.io.File, url: String, tmp: java.io.File): Either[CC.ArtifactError, Unit] = {
-    val alreadyDownloaded = tmp.length()
     var conn: URLConnection = null
 
     try {
-      val (conn0, partialDownload) = Downloader.urlConnectionMaybePartial(url, alreadyDownloaded)  // TODO maxRedirectionsOpt unused?
-        // CC.ConnectionBuilder(url)
-        // .withAlreadyDownloaded(alreadyDownloaded)
-        // .withMethod("GET")
-        // .withMaxRedirectionsOpt(Constants.maxRedirectionsOpt)
-        // .connectionMaybePartial()
+      val (conn0, partialDownload) = Downloader.urlConnectionMaybePartial(url, Downloader.PartialDownloadSpec.initBlocking(tmp))
       conn = conn0
 
       val respCodeOpt = CC.CacheUrl.responseCode(conn)
@@ -122,36 +118,48 @@ class Downloader(
       else {
         val lenOpt: Option[Long] =
           for (len0 <- Option(conn.getContentLengthLong) if len0 >= 0L) yield {
-            val len = if (partialDownload) len0 + alreadyDownloaded else len0  // len0 is remaining length in case of partial download
-            // TODO check that length of partial downloads work as expected
-            // if (alreadyDownloaded > len) {  // TODO there is no effective way to check this here
-            //   ???
-            // }
-            logger.downloadLength(url, len, (if (partialDownload) alreadyDownloaded else 0L), watching = false)
+            val (len, alreadyDownloaded) =
+              partialDownload match {
+                case Some(spec) =>  // len0 is remaining length in case of partial download
+                  (len0 + spec.alreadyDownloaded - Constants.bufferSizeDownloadOverlap, spec.alreadyDownloaded)
+                case None => (len0, 0L)
+              }
+            logger.downloadLength(url, len, alreadyDownloaded, watching = false)
             len
           }
 
         val lastModifiedOpt = Option(conn.getLastModified).filter(_ > 0L)
 
-        val result: Unit = {
+        def consumeStream(): Either[CC.ArtifactError, Unit] = {
           scala.util.Using.resource {
             val baseStream =
               if (conn.getContentEncoding == "gzip") new java.util.zip.GZIPInputStream(conn.getInputStream)
               else conn.getInputStream
             new java.io.BufferedInputStream(baseStream, Constants.bufferSizeDownload)
           } { in =>
-            scala.util.Using.resource(
-              CC.CacheLocks.withStructureLock(cacheLocation) {
-                coursier.paths.Util.createDirectories(tmp.toPath.getParent);
-                new java.io.FileOutputStream(tmp, partialDownload)
+
+            val overlapRegionMatches = partialDownload match {
+              case Some(spec) => Downloader.startsWithBytes(in, spec.trailingBytes)  // consumes leading bytes
+              case None => true
+            }
+
+            if (!overlapRegionMatches) {
+              Left(new CC.ArtifactError.DownloadError(s"Partially downloaded file $tmp does not match remote file $url: delete the file and try again.", None))
+            } else {
+              scala.util.Using.resource(
+                CC.CacheLocks.withStructureLock(cacheLocation) {
+                  coursier.paths.Util.createDirectories(tmp.toPath.getParent);
+                  new java.io.FileOutputStream(tmp, partialDownload.isDefined)
+                }
+              ) { out =>
+                Downloader.readFullyTo(in, out, logger, url, alreadyDownloaded = partialDownload.map(_.alreadyDownloaded).getOrElse(0L))
+                Right(())
               }
-            ) { out =>
-              Downloader.readFullyTo(in, out, logger, url, if (partialDownload) alreadyDownloaded else 0L)
             }
           }
         }
 
-        val lengthCheck: Either[CC.ArtifactError, Unit] =
+        def lengthCheck(): Either[CC.ArtifactError, Unit] =
           lenOpt match {
             case None => Right(())
             case Some(len) =>
@@ -162,7 +170,10 @@ class Downloader(
                 Left(new CC.ArtifactError.WrongLength(tmpLen, len, tmp.getAbsolutePath))
           }
 
-        lengthCheck.flatMap { _ =>
+        for {
+          _ <- consumeStream()
+          _ <- lengthCheck()
+        } yield {
 
           CC.CacheLocks.withStructureLock(cacheLocation) {
             coursier.paths.Util.createDirectories(file.toPath.getParent)
@@ -173,8 +184,6 @@ class Downloader(
             file.setLastModified(lastModified)
 
           doTouchCheckFile(file, url)
-
-          Right(result)
         }
       }
 
@@ -221,6 +230,24 @@ object Downloader {
     helper(alreadyDownloaded)
   }
 
+  /** Consumes the first overlap.length bytes and returns whether input matches. */
+  private def startsWithBytes(in: java.io.InputStream, overlap: Array[Byte]): Boolean = {
+    val b = new Array[Byte](overlap.length)
+
+    @tailrec
+    def helper(count: Int): Boolean = {
+      val read = in.read(b, count, overlap.length - count)
+      if (read == -1) {  // stream ended prematurely
+        false
+      } else if (count + read < overlap.length) {  // continue reading
+        helper(count + read)
+      } else {  // array b has been filled
+        assert(count + read == overlap.length)
+        b.sameElements(overlap)
+      }
+    }
+    helper(0)
+  }
 
   private def closeConn(conn: URLConnection): Unit = {
     scala.util.Try(conn.getInputStream).toOption.filter(_ != null).foreach(_.close())
@@ -233,27 +260,22 @@ object Downloader {
   }
 
 
-  private def shouldStartOver(conn: URLConnection, alreadyDownloaded: Long): Option[Boolean] =
+  /** Set byte-range request property and return:
+    * - Some(true) if response adheres to our range request,
+    * - Some(false) if response does not adhere to our range request, so download starts from beginning,
+    * - None if setting range was not possible since connection is incompatible or alreadyDownloaded is 0.
+    */
+  private def setRangeRequest(conn: URLConnection, alreadyDownloaded: Long): Option[Boolean] =
     if (alreadyDownloaded > 0L)
       conn match {
         case conn0: java.net.HttpURLConnection =>
           conn0.setRequestProperty("Range", s"bytes=$alreadyDownloaded-")
-
-          val startOver = {
-            val isPartial = conn0.getResponseCode == 206 || conn0.getResponseCode == 416
-            !isPartial || {  // TODO Coursier's conditions are different/wrong
-              val hasMatchingHeader = Option(conn0.getHeaderField("Content-Range"))
-                .exists(_.startsWith(s"bytes $alreadyDownloaded-"))
-              !hasMatchingHeader
-            }
-          }
-
-          Some(startOver)
-        case _ =>
-          None
+          val isPartial = conn0.getResponseCode == 206 || conn0.getResponseCode == 416
+          def hasMatchingHeader = Option(conn0.getHeaderField("Content-Range")).exists(_.startsWith(s"bytes $alreadyDownloaded-"))
+          Some(isPartial && hasMatchingHeader)  // TODO Coursier's conditions are different/wrong
+        case _ => None
       }
-    else
-      None
+    else None
 
 
   private def is4xx(conn: URLConnection): Boolean =
@@ -262,19 +284,34 @@ object Downloader {
       case _ => false
     }
 
-  private def urlConnectionMaybePartial(
-    url0: String,
-    alreadyDownloaded: Long
-  ): (URLConnection, Boolean) = {
+  final class PartialDownloadSpec(val alreadyDownloaded: Long, val trailingBytes: Array[Byte])
+  object PartialDownloadSpec {
+    def initBlocking(tmp: java.io.File): Option[PartialDownloadSpec] = {
+      val alreadyDownloaded = tmp.length()
+      if (alreadyDownloaded <= Constants.bufferSizeDownloadOverlap)
+        None
+      else {
+        // TODO use cache lock?
+        scala.util.Using.resource(new java.io.RandomAccessFile(tmp, "r")) { raf =>
+          raf.seek(alreadyDownloaded - Constants.bufferSizeDownloadOverlap)
+          val buf = new Array[Byte](Constants.bufferSizeDownloadOverlap)
+          raf.readFully(buf)
+          Some(PartialDownloadSpec(alreadyDownloaded, trailingBytes = buf))
+        }
+      }
+    }
+  }
+
+  private def urlConnectionMaybePartial(url0: String, specOpt: Option[PartialDownloadSpec]): (URLConnection, Option[PartialDownloadSpec]) = {
 
     var conn: URLConnection = null
 
-    val res: Either[Long, (URLConnection, Boolean)] =
+    val res: Either[Option[PartialDownloadSpec], (URLConnection, Option[PartialDownloadSpec])] =
       try {
         conn = CC.CacheUrl.url(url0).openConnection()
         conn match {  // initialization
           case conn0: java.net.HttpURLConnection =>
-            conn0.setRequestMethod("GET")
+            conn0.setRequestMethod("GET")  // TODO setConnectTimetout?
             conn0.setInstanceFollowRedirects(true)  // TODO yes or no? Coursier sets this to false and handles redirects manually
             conn0.setRequestProperty("User-Agent", Constants.userAgent)
             conn0.setRequestProperty("Accept", "*/*")
@@ -283,19 +320,26 @@ object Downloader {
           case _ =>
         }
 
-        val startOverOpt = shouldStartOver(conn, alreadyDownloaded)  // TODO Coursier itself should check this AFTER redirects
-
-        startOverOpt match {
-          case Some(true) =>
+        def makeResult[A](x: A): Right[A, (URLConnection, A)] = {
+          if (is4xx(conn)) {
             closeConn(conn)
-            Left(0L)  // alreadyDownloaded
-          case _ =>  // no indication for need to start over   // TODO what if file uri connection? --> test this
-            val partialDownload = startOverOpt.nonEmpty
-            if (is4xx(conn)) {
-              closeConn(conn)
-              throw new Exception(s"Connection error 4xx: $conn")
-            } else {
-              Right((conn, partialDownload))
+            throw new Exception(s"Connection error 4xx: $conn")
+          } else {
+            Right((conn, x))
+          }
+        }
+
+        specOpt match {
+          case None =>  // no partial download desired (e.g. if .part file does not exist or is too short)
+            makeResult(None)
+          case Some(spec) =>  // partial download desired
+            val rangeOffset = spec.alreadyDownloaded - Constants.bufferSizeDownloadOverlap  // small overlapping region for checking that partial file is still up-to-date
+            setRangeRequest(conn, rangeOffset) match {
+              case None | Some(false) =>  // established connection does not refer to a partial download, so we start a new connection without range request
+                closeConn(conn)
+                Left(None)  // next specOpt
+              case Some(true) =>  // connection refers to a partial download
+                makeResult(Some(spec))
             }
         }
       } catch {
@@ -306,8 +350,8 @@ object Downloader {
       }
 
     res match {
-      case Left(alreadyDownloaded) =>
-        urlConnectionMaybePartial(url0, alreadyDownloaded)
+      case Left(specOpt) =>
+        urlConnectionMaybePartial(url0, specOpt)  // reconnect, possibly starting from 0
       case Right(ret) =>
         ret
     }

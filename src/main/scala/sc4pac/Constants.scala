@@ -18,6 +18,7 @@ object Constants {
   val defaultChannelUrls = Seq(MetadataRepository.parseChannelUrl("https://raw.githubusercontent.com/memo33/sc4pac-tools/main/channel/json").toOption.get)  // temporary
   val bufferSizeExtract = 64 * 1024  // 64 kiB, bounded by disk speed
   val bufferSizeDownload = 1024 * 1024  // 1 MiB, bounded by download speed
+  val bufferSizeDownloadOverlap = 4 * 1024  // for file validity check when resuming partial download
   val maxRedirectionsOpt = Some(20)
   val sslRetryCount = 3  // Coursier legacy
   val resumeIncompleteDownloadAttemps = 4
