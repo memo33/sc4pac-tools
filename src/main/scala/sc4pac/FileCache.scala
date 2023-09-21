@@ -37,13 +37,31 @@ class FileCache private (csCache: CC.FileCache[Task]) extends CC.Cache[Task] {
   def localFile(url: String): java.io.File =
     csCache.localFile(url, user = None)
 
+  // blocking
+  private def isStale(file: java.io.File): Boolean = {
+    def lastCheck = for {
+      f <- Some(FileCache.ttlFile(file))
+      if f.exists()
+      ts = f.lastModified()
+      if ts > 0L
+    } yield ts
+
+    ttl match {
+      case None => true
+      case Some(ttl) if !ttl.isFinite => false
+      case Some(ttl) =>
+        val now = System.currentTimeMillis()
+        lastCheck.map(_ + ttl.toMillis < now).getOrElse(true)
+    }
+  }
+
   def file(artifact: coursier.util.Artifact): coursier.util.EitherT[Task, CC.ArtifactError, java.io.File] = {
     val destFile = localFile(artifact.url)
-    if (destFile.exists()) {  // TODO refresh policies and other conditions (TODO such as ttl)
+    if (destFile.exists() && !isStale(destFile)) {  // TODO other refresh policies?
       coursier.util.EitherT.point(destFile)
     } else {
       // TODO implement retry
-      val dl = new Downloader(artifact, cacheLocation = location, localFile = destFile, logger, pool, ttl)
+      val dl = new Downloader(artifact, cacheLocation = location, localFile = destFile, logger, pool)
       coursier.util.EitherT(dl.download.either)
     }
   }

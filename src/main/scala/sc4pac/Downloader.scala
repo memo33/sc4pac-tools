@@ -11,8 +11,7 @@ class Downloader(
   cacheLocation: java.io.File,
   localFile: java.io.File,  // the local file after download
   logger: coursier.cache.CacheLogger,
-  pool: java.util.concurrent.ExecutorService,
-  ttl: Option[scala.concurrent.duration.Duration]
+  pool: java.util.concurrent.ExecutorService
 ) {
 
   def download: IO[CC.ArtifactError, java.io.File] = {
@@ -22,7 +21,6 @@ class Downloader(
       if (url.startsWith("file:/")) {
         ??? // TODO handle local files
       } else {
-        // TODO check (remote?) if update is necessary (TODO ttl)
         remote(localFile, url)
       }
     task.map(_ => localFile)
