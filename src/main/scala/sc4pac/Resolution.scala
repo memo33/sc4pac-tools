@@ -115,7 +115,7 @@ object Resolution {
       } else {
         // Since the .checked file may be missing from cache for various issues
         // outside our conrol, we always delete the file in this case.
-        println(s"The cache file did not exist: $fileChecked")  // TODO logger.warn
+        System.err.println(s"The cache file did not exist: $fileChecked")  // TODO logger.warn
         val success = file.delete()  // we ignore if deletion fails
         Right(())
       }

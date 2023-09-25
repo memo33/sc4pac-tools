@@ -6,7 +6,7 @@ import zio.Task
 
 import sc4pac.CoursierZio.*  // implicit coursier-zio interop
 
-/** A wrapper around Coursier's FileCache providing minimal functionality
+/** A thin wrapper around Coursier's FileCache providing minimal functionality
   * in order to supply a custom downloader implementation.
   */
 class FileCache private (csCache: CC.FileCache[Task]) extends CC.Cache[Task] {
@@ -53,17 +53,18 @@ class FileCache private (csCache: CC.FileCache[Task]) extends CC.Cache[Task] {
     }
   }
 
+  /** Retrieve the file from the cache or download it if necessary. */
   def file(artifact: coursier.util.Artifact): coursier.util.EitherT[Task, CC.ArtifactError, java.io.File] = {
     val destFile = localFile(artifact.url)
     if (destFile.exists() && !isStale(destFile)) {  // TODO other refresh policies?
       coursier.util.EitherT.point(destFile)
     } else {
-      // TODO implement retry
       val dl = new Downloader(artifact, cacheLocation = location, localFile = destFile, logger, pool)
       coursier.util.EitherT(dl.download.either)
     }
   }
 
+  /** Retrieve the file contents as String from the cache or download if necessary. */
   def fetch: coursier.util.Artifact => coursier.util.EitherT[Task, String, String] = { artifact =>
     file(artifact).leftMap(_.toString).flatMap { (f: java.io.File) =>
       coursier.util.EitherT {

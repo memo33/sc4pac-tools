@@ -8,6 +8,11 @@ import zio.{ZIO, Task, IO}
 
 import Downloader.PartialDownloadSpec
 
+/** This downloader implementation is based on Coursier's downloader (released under Apache License Version 2.0):
+  * https://github.com/coursier/coursier/blob/8d93005b56dd84770c062aeae6d7a12c53948596/modules/cache/jvm/src/main/scala/coursier/cache/internal/Downloader.scala
+  *
+  * Our changes of the implementation resolve issues related to timeouts and resuming partial downloads.
+  */
 class Downloader(
   artifact: coursier.util.Artifact,  // contains the URL
   cacheLocation: java.io.File,
@@ -272,7 +277,7 @@ object Downloader {
           conn0.setRequestProperty("Range", s"bytes=$alreadyDownloaded-")
           val isPartial = conn0.getResponseCode == 206 || conn0.getResponseCode == 416
           def hasMatchingHeader = Option(conn0.getHeaderField("Content-Range")).exists(_.startsWith(s"bytes $alreadyDownloaded-"))
-          Some(isPartial && hasMatchingHeader)  // TODO Coursier's conditions are different/wrong
+          Some(isPartial && hasMatchingHeader)  // Coursier's conditions are different/wrong
         case _ => None
       }
     else None
@@ -302,6 +307,9 @@ object Downloader {
     }
   }
 
+  /** Open a URL connection for download, optionally for resuming a partial
+    * download (if byte-serving is supported by the server).
+    */
   private def urlConnectionMaybePartial(url0: String, specOpt: Option[PartialDownloadSpec]): (URLConnection, Option[PartialDownloadSpec]) = {
 
     var conn: URLConnection = null
@@ -311,8 +319,8 @@ object Downloader {
         conn = CC.CacheUrl.url(url0).openConnection()
         conn match {  // initialization
           case conn0: java.net.HttpURLConnection =>
-            conn0.setRequestMethod("GET")  // TODO setConnectTimetout?
-            conn0.setInstanceFollowRedirects(true)  // TODO yes or no? Coursier sets this to false and handles redirects manually
+            conn0.setRequestMethod("GET")
+            conn0.setInstanceFollowRedirects(true)  // Coursier sets this to false and handles redirects manually
             conn0.setRequestProperty("User-Agent", Constants.userAgent)
             conn0.setRequestProperty("Accept", "*/*")
             conn0.setConnectTimeout(Constants.urlConnectTimeout.toMillis.toInt)  // timeout for establishing a connection
