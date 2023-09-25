@@ -45,7 +45,9 @@ class Downloader(
     } //.onExecutionContext(scala.concurrent.ExecutionContext.fromExecutorService(pool))  // TODO this is currently handled in Resolution
   }
 
-  /** Wraps download with ArtifactError.DownloadError and ssl retry attempts. */
+  /** Wraps download with ArtifactError.DownloadError and ssl retry attempts and
+    * resumption attempts.
+    */
   private def downloading[T](url: String, file: java.io.File)(
     f: => Either[CC.ArtifactError, T], ifLocked: => Option[Either[CC.ArtifactError, T]]
   ): Either[CC.ArtifactError, T] = {
@@ -76,6 +78,8 @@ class Downloader(
 
       resOpt match {
         case Right(Left(ex: CC.ArtifactError.WrongLength)) if ex.got < ex.expected && retryResumption >= 1 =>
+          // Thread.sleep(1000 * 10) // TODO for testing
+          System.err.println(s"File transmission incomplete (${ex.got}/${ex.expected}): trying to resume download $url")
           helper(retrySsl, retryResumption - 1)
         case Right(res) => res
         case Left((retrySsl, retryResumption)) => helper(retrySsl, retryResumption)
@@ -90,11 +94,12 @@ class Downloader(
     var conn: URLConnection = null
 
     try {
-      val (conn0, partialDownload) = CC.ConnectionBuilder(url)
-        .withAlreadyDownloaded(alreadyDownloaded)
-        .withMethod("GET")
-        .withMaxRedirectionsOpt(Constants.maxRedirectionsOpt)
-        .connectionMaybePartial()
+      val (conn0, partialDownload) = Downloader.urlConnectionMaybePartial(url, alreadyDownloaded)  // TODO maxRedirectionsOpt unused?
+        // CC.ConnectionBuilder(url)
+        // .withAlreadyDownloaded(alreadyDownloaded)
+        // .withMethod("GET")
+        // .withMaxRedirectionsOpt(Constants.maxRedirectionsOpt)
+        // .connectionMaybePartial()
       conn = conn0
 
       val respCodeOpt = CC.CacheUrl.responseCode(conn)
@@ -214,6 +219,85 @@ object Downloader {
         scala.util.Try(conn0.getErrorStream).toOption.filter(_ != null).foreach(_.close())
         conn0.disconnect()
       case _ =>
+    }
+  }
+
+
+  private def shouldStartOver(conn: URLConnection, alreadyDownloaded: Long): Option[Boolean] =
+    if (alreadyDownloaded > 0L)
+      conn match {
+        case conn0: java.net.HttpURLConnection =>
+          conn0.setRequestProperty("Range", s"bytes=$alreadyDownloaded-")
+
+          val startOver = {
+            val isPartial = conn0.getResponseCode == 206 || conn0.getResponseCode == 416
+            !isPartial || {  // TODO Coursier's conditions are different/wrong
+              val hasMatchingHeader = Option(conn0.getHeaderField("Content-Range"))
+                .exists(_.startsWith(s"bytes $alreadyDownloaded-"))
+              !hasMatchingHeader
+            }
+          }
+
+          Some(startOver)
+        case _ =>
+          None
+      }
+    else
+      None
+
+
+  private def is4xx(conn: URLConnection): Boolean =
+    conn match {
+      case conn0: java.net.HttpURLConnection => conn0.getResponseCode / 100 == 4
+      case _ => false
+    }
+
+  private def urlConnectionMaybePartial(
+    url0: String,
+    alreadyDownloaded: Long
+  ): (URLConnection, Boolean) = {
+
+    var conn: URLConnection = null
+
+    val res: Either[Long, (URLConnection, Boolean)] =
+      try {
+        conn = CC.CacheUrl.url(url0).openConnection()
+        conn match {  // initialization
+          case conn0: java.net.HttpURLConnection =>
+            conn0.setRequestMethod("GET")
+            conn0.setInstanceFollowRedirects(true)  // TODO yes or no? Coursier sets this to false and handles redirects manually
+            conn0.setRequestProperty("User-Agent", "Coursier/2.0")
+            conn0.setRequestProperty("Accept", "*/*")
+          case _ =>
+        }
+
+        val startOverOpt = shouldStartOver(conn, alreadyDownloaded)  // TODO Coursier itself should check this AFTER redirects
+
+        startOverOpt match {
+          case Some(true) =>
+            closeConn(conn)
+            Left(0L)  // alreadyDownloaded
+          case _ =>  // no indication for need to start over   // TODO what if file uri connection? --> test this
+            val partialDownload = startOverOpt.nonEmpty
+            if (is4xx(conn)) {
+              closeConn(conn)
+              throw new Exception(s"Connection error 4xx: $conn")
+            } else {
+              Right((conn, partialDownload))
+            }
+        }
+      } catch {
+        case scala.util.control.NonFatal(e) =>
+          if (conn != null)
+            closeConn(conn)
+          throw e
+      }
+
+    res match {
+      case Left(alreadyDownloaded) =>
+        urlConnectionMaybePartial(url0, alreadyDownloaded)
+      case Right(ret) =>
+        ret
     }
   }
 
