@@ -21,8 +21,6 @@ class FileCache private (csCache: CC.FileCache[Task]) extends CC.Cache[Task] {
 
   def ec = csCache.ec
 
-  def fetch = csCache.fetch
-
   /** Time-to-live before cached files expire and will be checked for updates
     * (only if they are `changing`).
     */
@@ -65,6 +63,17 @@ class FileCache private (csCache: CC.FileCache[Task]) extends CC.Cache[Task] {
       coursier.util.EitherT(dl.download.either)
     }
   }
+
+  def fetch: coursier.util.Artifact => coursier.util.EitherT[Task, String, String] = { artifact =>
+    file(artifact).leftMap(_.toString).flatMap { (f: java.io.File) =>
+      coursier.util.EitherT {
+        zio.ZIO.attemptBlockingIO {
+          new String(java.nio.file.Files.readAllBytes(f.toPath), java.nio.charset.StandardCharsets.UTF_8)
+        }.mapError(_.toString).either
+      }
+    }
+  }
+
 }
 
 object FileCache {
