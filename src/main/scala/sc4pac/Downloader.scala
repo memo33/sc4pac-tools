@@ -276,7 +276,7 @@ object Downloader {
           case conn0: java.net.HttpURLConnection =>
             conn0.setRequestMethod("GET")
             conn0.setInstanceFollowRedirects(true)  // TODO yes or no? Coursier sets this to false and handles redirects manually
-            conn0.setRequestProperty("User-Agent", "Coursier/2.0")
+            conn0.setRequestProperty("User-Agent", Constants.userAgent)
             conn0.setRequestProperty("Accept", "*/*")
             conn0.setConnectTimeout(Constants.urlConnectTimeout.toMillis.toInt)  // timeout for establishing a connection
             conn0.setReadTimeout(Constants.urlReadTimeout.toMillis.toInt)  // timeout in case of internet outage while downloading a file

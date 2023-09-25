@@ -26,6 +26,11 @@ object Constants {
   val urlConnectTimeout = java.time.Duration.ofSeconds(60)
   val urlReadTimeout = java.time.Duration.ofSeconds(60)  // timeout in case of internet outage while downloading a file
 
+  lazy val userAgent = {
+    val majMinVersion = cli.BuildInfo.version.split("\\.", 3).take(2).mkString(".")
+    s"${cli.BuildInfo.name}/$majMinVersion"
+  }
+
   lazy val debugMode: Boolean = System.getenv("SC4PAC_DEBUG") match { case null | "" => false; case _ => true }
 
   lazy val noColor: Boolean = (System.getenv("NO_COLOR") match { case null | "" => false; case _ => true }) ||
