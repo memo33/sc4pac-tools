@@ -122,7 +122,7 @@ class Downloader(
         Left(new CC.ArtifactError.Unauthorized(url, realm = CC.CacheUrl.realm(conn)))
       else {
         val lenOpt: Option[Long] =
-          for (len0 <- Option(conn.getContentLengthLong) if len0 >= 0L) yield {
+          for (len0 <- Option(conn.getContentLengthLong).filter(_ >= 0L).orElse(Downloader.lengthFromContentRange(conn))) yield {
             val (len, alreadyDownloaded) =
               partialDownload match {
                 case Some(spec) =>  // len0 is remaining length in case of partial download
@@ -362,6 +362,20 @@ object Downloader {
         urlConnectionMaybePartial(url0, specOpt)  // reconnect, possibly starting from 0
       case Right(ret) =>
         ret
+    }
+  }
+
+  private val regexContentRange = raw"(?i)bytes (\d+)-(\d+)/(\d+)".r  // case-insensitive regex
+
+  /** Parse length from content-range headers such as
+    * `content-range: bytes 0-7521/7522`
+    * when content-length header is missing (e.g. on STEX).
+    */
+  def lengthFromContentRange(conn: URLConnection): Option[Long] = {
+    Option(conn.getHeaderField("Content-Range")).collect {
+      case regexContentRange(start, end, len) =>
+        // For compatibility with `getContentLengthLong` and partial downloads, return length from `start` offset.
+        len.toLong - start.toLong
     }
   }
 
