@@ -35,7 +35,7 @@ class Downloader(
   )
 
   private def remote(file: java.io.File, url: String): IO[CC.ArtifactError, Unit] = {
-    ZIO.fromEither {
+    val task = ZIO.fromEither {
       val tmp = coursier.paths.CachePath.temporaryFile(file)  // file => .file.part
       logger.downloadingArtifact(url, artifact)
       var success = false
@@ -50,7 +50,11 @@ class Downloader(
         success = res.isRight
         res
       } finally logger.downloadedArtifact(url, success = success)
-    } //.onExecutionContext(scala.concurrent.ExecutionContext.fromExecutorService(pool))  // TODO this is currently handled in Resolution
+    }
+    // By scheduling the downloads on the `cache.pool`, we use max 2 downloads
+    // in parallel (this requires that the tasks are not already on the
+    // `ZIO.blocking` pool, which would start to download EVERYTHING in parallel).
+    task.onExecutionContext(scala.concurrent.ExecutionContext.fromExecutorService(pool))
   }
 
   /** Wraps download with ArtifactError.DownloadError and ssl retry attempts and

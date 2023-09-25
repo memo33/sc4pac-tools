@@ -208,11 +208,6 @@ class Resolution(reachableDeps: TreeSeqMap[BareDep, Seq[BareDep]], nonbareDeps: 
       ZIO.foreachPar(assetsArtifacts) { (dep, art) =>
         context.cache.file(art).run.absolve.map(file => (dep, art, file))
       }
-      // By scheduling the above downloads on the Coursier `cache.pool`, we use
-      // max 2 downloads in parallel (this requires that the previous tasks are
-      // not already on the `ZIO.blocking` pool, which would start to download
-      // EVERYTHING in parallel).
-      .onExecutionContext(scala.concurrent.ExecutionContext.fromExecutorService(context.cache.pool))
       .catchSome { case e: (coursier.error.FetchError.DownloadingArtifacts
                           | coursier.cache.ArtifactError.DownloadError
                           | coursier.cache.ArtifactError.NotFound) =>
