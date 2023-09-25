@@ -29,9 +29,20 @@ class Logger private (out: java.io.PrintStream, useColor: Boolean, isInteractive
 
   override def downloadingArtifact(url: String, artifact: coursier.util.Artifact) =
     out.println("  " + cyan(s"> Downloading $url"))
-  override def downloadedArtifact(url: String, success: Boolean) = {
-    if (!success) out.println("  " + cyan(s"  Download of $url unsuccessful"))
-  }
+  override def downloadedArtifact(url: String, success: Boolean) =
+    if (!success)
+      out.println("  " + cyan(s"  Download of $url unsuccessful"))
+    else if (Constants.debugMode)
+      out.println("  " + gray(s"  Downloaded $url"))
+  override def downloadLength(url: String, len: Long, currentLen: Long, watching: Boolean): Unit =
+    if (Constants.debugMode)
+      out.println(gray(s"--> downloadLength=$currentLen/$len: $url"))
+  override def gettingLength(url: String): Unit =
+    if (Constants.debugMode)
+      out.println(gray(s"--> gettingLength $url"))
+  override def gettingLengthResult(url: String, length: Option[Long]): Unit =
+    if (Constants.debugMode)
+      out.println(gray(s"--> gettingLengthResult=$length: $url"))
 
   def log(msg: String): Unit = out.println(msg)
   def warn(msg: String): Unit = out.println(yellowBold("Warning:") + " " + msg)

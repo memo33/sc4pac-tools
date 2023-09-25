@@ -20,8 +20,18 @@ object Constants {
   val bufferSizeDownload = 1024 * 1024  // 1 MiB, bounded by download speed
   val maxRedirectionsOpt = Some(20)
   val sslRetryCount = 3  // Coursier legacy
+  val resumeIncompleteDownloadAttemps = 4
   val fuzzySearchThreshold = 50  // 0..100
   val interactivePromptTimeout = java.time.Duration.ofSeconds(240)
+  val urlConnectTimeout = java.time.Duration.ofSeconds(60)
+  val urlReadTimeout = java.time.Duration.ofSeconds(60)  // timeout in case of internet outage while downloading a file
+
+  lazy val userAgent = {
+    val majMinVersion = cli.BuildInfo.version.split("\\.", 3).take(2).mkString(".")
+    s"${cli.BuildInfo.name}/$majMinVersion"
+  }
+
+  lazy val debugMode: Boolean = System.getenv("SC4PAC_DEBUG") match { case null | "" => false; case _ => true }
 
   lazy val noColor: Boolean = (System.getenv("NO_COLOR") match { case null | "" => false; case _ => true }) ||
                               (System.getenv("SC4PAC_NO_COLOR") match { case null | "" => false; case _ => true })

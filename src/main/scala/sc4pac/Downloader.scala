@@ -17,17 +17,25 @@ class Downloader(
   def download: IO[CC.ArtifactError, java.io.File] = {
     val url = artifact.url
     logger.checkingArtifact(url, artifact)
-    val task =
-      if (url.startsWith("file:/")) {
-        ??? // TODO handle local files
-      } else {
-        remote(localFile, url)
-      }
-    task.map(_ => localFile)
+    if (url.startsWith("file:/")) {
+      ZIO.attemptBlocking {
+        if (localFile.exists()) Right(localFile)
+        else Left(new CC.ArtifactError.NotFound(localFile.toString))
+      }.catchSome {
+        case scala.util.control.NonFatal(e) => ZIO.succeed(Left(wrapDownloadError(e, url)))
+      }.orDie.absolve
+    } else {
+      remote(localFile, url).map(_ => localFile)
+    }
   }
 
+  private def wrapDownloadError(e: Throwable, url: String): CC.ArtifactError = CC.ArtifactError.DownloadError(
+    s"Caught ${e.getClass().getName()}${Option(e.getMessage).fold("")(" (" + _ + ")")} while downloading $url",
+    Some(e)
+  )
+
   private def remote(file: java.io.File, url: String): IO[CC.ArtifactError, Unit] = {
-    ZIO.fromEither {
+    val task = ZIO.fromEither {
       val tmp = coursier.paths.CachePath.temporaryFile(file)  // file => .file.part
       logger.downloadingArtifact(url, artifact)
       var success = false
@@ -35,26 +43,32 @@ class Downloader(
         val res = downloading(url, file)(
           CC.CacheLocks.withLockOr(
             cacheLocation, file)(doDownload(file, url, tmp),
-            ifLocked = ???
+            ifLocked = Some(Left(new CC.ArtifactError.Locked(file)))  // should not be an issue as long as just one instance of sc4pac is running
           ),
-          ifLocked = ???
+          ifLocked = Some(Left(new CC.ArtifactError.Locked(file)))  // should not be an issue as long as just one instance of sc4pac is running
         )
         success = res.isRight
         res
       } finally logger.downloadedArtifact(url, success = success)
-    } //.onExecutionContext(scala.concurrent.ExecutionContext.fromExecutorService(pool))  // TODO this is currently handled in Resolution
+    }
+    // By scheduling the downloads on the `cache.pool`, we use max 2 downloads
+    // in parallel (this requires that the tasks are not already on the
+    // `ZIO.blocking` pool, which would start to download EVERYTHING in parallel).
+    task.onExecutionContext(scala.concurrent.ExecutionContext.fromExecutorService(pool))
   }
 
-  /** Wraps download with ArtifactError.DownloadError and ssl retry attempts. */
+  /** Wraps download with ArtifactError.DownloadError and ssl retry attempts and
+    * resumption attempts.
+    */
   private def downloading[T](url: String, file: java.io.File)(
     f: => Either[CC.ArtifactError, T], ifLocked: => Option[Either[CC.ArtifactError, T]]
   ): Either[CC.ArtifactError, T] = {
 
     @tailrec
-    def helper(retry: Int): Either[CC.ArtifactError, T] = {
-      require(retry >= 0)
+    def helper(retrySsl: Int, retryResumption: Int): Either[CC.ArtifactError, T] = {
+      require(retrySsl >= 0 && retryResumption >= 0)
 
-      val resOpt: Option[Either[CC.ArtifactError, T]] =
+      val resOpt: Either[(Int, Int), Either[CC.ArtifactError, T]] =
         try {
           val res0 = CC.CacheLocks.withUrlLock(url) {
             try f
@@ -63,23 +77,24 @@ class Downloader(
                 Left(new CC.ArtifactError.NotFound(nfe.getMessage))
             }
           }
-          res0.orElse(ifLocked)
+          res0.orElse(ifLocked).toRight((retrySsl - 1, retryResumption))  // as a safe-guard, we also decrease retry counter here
         } catch {
-          case _: javax.net.ssl.SSLException if retry >= 1 => None
-          case scala.util.control.NonFatal(e) =>
-            val ex = new CC.ArtifactError.DownloadError(
-              s"Caught ${e.getClass().getName()}${Option(e.getMessage).fold("")(" (" + _ + ")")} while downloading $url",
-              Some(e)
-            )
-            Some(Left(ex))
+          case _: javax.net.ssl.SSLException if retrySsl >= 1 => Left(retrySsl - 1, retryResumption)
+          case _: java.net.SocketTimeoutException if retryResumption >= 1 =>
+            System.err.println(s"Connection timeout: trying to resume download $url")
+            Left(retrySsl, retryResumption - 1)
+          case scala.util.control.NonFatal(e) => Right(Left(wrapDownloadError(e, url)))
         }
 
       resOpt match {
-        case Some(res) => res
-        case None      => helper(retry - 1)
+        case Right(Left(ex: CC.ArtifactError.WrongLength)) if ex.got < ex.expected && retryResumption >= 1 =>
+          System.err.println(s"File transmission incomplete (${ex.got}/${ex.expected}): trying to resume download $url")
+          helper(retrySsl, retryResumption - 1)
+        case Right(res) => res
+        case Left((retrySsl, retryResumption)) => helper(retrySsl, retryResumption)
       }
     }
-    helper(Constants.sslRetryCount)
+    helper(Constants.sslRetryCount, Constants.resumeIncompleteDownloadAttemps)
   }
 
   /** Download in blocking fashion. */
@@ -88,11 +103,12 @@ class Downloader(
     var conn: URLConnection = null
 
     try {
-      val (conn0, partialDownload) = CC.ConnectionBuilder(url)
-        .withAlreadyDownloaded(alreadyDownloaded)
-        .withMethod("GET")
-        .withMaxRedirectionsOpt(Constants.maxRedirectionsOpt)
-        .connectionMaybePartial()
+      val (conn0, partialDownload) = Downloader.urlConnectionMaybePartial(url, alreadyDownloaded)  // TODO maxRedirectionsOpt unused?
+        // CC.ConnectionBuilder(url)
+        // .withAlreadyDownloaded(alreadyDownloaded)
+        // .withMethod("GET")
+        // .withMaxRedirectionsOpt(Constants.maxRedirectionsOpt)
+        // .connectionMaybePartial()
       conn = conn0
 
       val respCodeOpt = CC.CacheUrl.responseCode(conn)
@@ -106,8 +122,12 @@ class Downloader(
       else {
         val lenOpt: Option[Long] =
           for (len0 <- Option(conn.getContentLengthLong) if len0 >= 0L) yield {
-            val len = len0 + (if (partialDownload) alreadyDownloaded else 0L)
-            logger.downloadLength(url, len, alreadyDownloaded, watching = false)
+            val len = if (partialDownload) len0 + alreadyDownloaded else len0  // len0 is remaining length in case of partial download
+            // TODO check that length of partial downloads work as expected
+            // if (alreadyDownloaded > len) {  // TODO there is no effective way to check this here
+            //   ???
+            // }
+            logger.downloadLength(url, len, (if (partialDownload) alreadyDownloaded else 0L), watching = false)
             len
           }
 
@@ -209,6 +229,87 @@ object Downloader {
         scala.util.Try(conn0.getErrorStream).toOption.filter(_ != null).foreach(_.close())
         conn0.disconnect()
       case _ =>
+    }
+  }
+
+
+  private def shouldStartOver(conn: URLConnection, alreadyDownloaded: Long): Option[Boolean] =
+    if (alreadyDownloaded > 0L)
+      conn match {
+        case conn0: java.net.HttpURLConnection =>
+          conn0.setRequestProperty("Range", s"bytes=$alreadyDownloaded-")
+
+          val startOver = {
+            val isPartial = conn0.getResponseCode == 206 || conn0.getResponseCode == 416
+            !isPartial || {  // TODO Coursier's conditions are different/wrong
+              val hasMatchingHeader = Option(conn0.getHeaderField("Content-Range"))
+                .exists(_.startsWith(s"bytes $alreadyDownloaded-"))
+              !hasMatchingHeader
+            }
+          }
+
+          Some(startOver)
+        case _ =>
+          None
+      }
+    else
+      None
+
+
+  private def is4xx(conn: URLConnection): Boolean =
+    conn match {
+      case conn0: java.net.HttpURLConnection => conn0.getResponseCode / 100 == 4
+      case _ => false
+    }
+
+  private def urlConnectionMaybePartial(
+    url0: String,
+    alreadyDownloaded: Long
+  ): (URLConnection, Boolean) = {
+
+    var conn: URLConnection = null
+
+    val res: Either[Long, (URLConnection, Boolean)] =
+      try {
+        conn = CC.CacheUrl.url(url0).openConnection()
+        conn match {  // initialization
+          case conn0: java.net.HttpURLConnection =>
+            conn0.setRequestMethod("GET")
+            conn0.setInstanceFollowRedirects(true)  // TODO yes or no? Coursier sets this to false and handles redirects manually
+            conn0.setRequestProperty("User-Agent", Constants.userAgent)
+            conn0.setRequestProperty("Accept", "*/*")
+            conn0.setConnectTimeout(Constants.urlConnectTimeout.toMillis.toInt)  // timeout for establishing a connection
+            conn0.setReadTimeout(Constants.urlReadTimeout.toMillis.toInt)  // timeout in case of internet outage while downloading a file
+          case _ =>
+        }
+
+        val startOverOpt = shouldStartOver(conn, alreadyDownloaded)  // TODO Coursier itself should check this AFTER redirects
+
+        startOverOpt match {
+          case Some(true) =>
+            closeConn(conn)
+            Left(0L)  // alreadyDownloaded
+          case _ =>  // no indication for need to start over   // TODO what if file uri connection? --> test this
+            val partialDownload = startOverOpt.nonEmpty
+            if (is4xx(conn)) {
+              closeConn(conn)
+              throw new Exception(s"Connection error 4xx: $conn")
+            } else {
+              Right((conn, partialDownload))
+            }
+        }
+      } catch {
+        case scala.util.control.NonFatal(e) =>
+          if (conn != null)
+            closeConn(conn)
+          throw e
+      }
+
+    res match {
+      case Left(alreadyDownloaded) =>
+        urlConnectionMaybePartial(url0, alreadyDownloaded)
+      case Right(ret) =>
+        ret
     }
   }
 
