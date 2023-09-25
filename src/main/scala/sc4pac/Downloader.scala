@@ -17,14 +17,22 @@ class Downloader(
   def download: IO[CC.ArtifactError, java.io.File] = {
     val url = artifact.url
     logger.checkingArtifact(url, artifact)
-    val task =
-      if (url.startsWith("file:/")) {
-        ??? // TODO handle local files
-      } else {
-        remote(localFile, url)
-      }
-    task.map(_ => localFile)
+    if (url.startsWith("file:/")) {
+      ZIO.attemptBlocking {
+        if (localFile.exists()) Right(localFile)
+        else Left(new CC.ArtifactError.NotFound(localFile.toString))
+      }.catchSome {
+        case scala.util.control.NonFatal(e) => ZIO.succeed(Left(wrapDownloadError(e, url)))
+      }.orDie.absolve
+    } else {
+      remote(localFile, url).map(_ => localFile)
+    }
   }
+
+  private def wrapDownloadError(e: Throwable, url: String): CC.ArtifactError = CC.ArtifactError.DownloadError(
+    s"Caught ${e.getClass().getName()}${Option(e.getMessage).fold("")(" (" + _ + ")")} while downloading $url",
+    Some(e)
+  )
 
   private def remote(file: java.io.File, url: String): IO[CC.ArtifactError, Unit] = {
     ZIO.fromEither {
@@ -71,12 +79,7 @@ class Downloader(
           case _: java.net.SocketTimeoutException if retryResumption >= 1 =>
             System.err.println(s"Connection timeout: trying to resume download $url")
             Left(retrySsl, retryResumption - 1)
-          case scala.util.control.NonFatal(e) =>
-            val ex = new CC.ArtifactError.DownloadError(
-              s"Caught ${e.getClass().getName()}${Option(e.getMessage).fold("")(" (" + _ + ")")} while downloading $url",
-              Some(e)
-            )
-            Right(Left(ex))
+          case scala.util.control.NonFatal(e) => Right(Left(wrapDownloadError(e, url)))
         }
 
       resOpt match {
