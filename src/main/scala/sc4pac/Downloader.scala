@@ -68,6 +68,9 @@ class Downloader(
           res0.orElse(ifLocked).toRight((retrySsl - 1, retryResumption))  // as a safe-guard, we also decrease retry counter here
         } catch {
           case _: javax.net.ssl.SSLException if retrySsl >= 1 => Left(retrySsl - 1, retryResumption)
+          case _: java.net.SocketTimeoutException if retryResumption >= 1 =>
+            System.err.println(s"Connection timeout: trying to resume download $url")
+            Left(retrySsl, retryResumption - 1)
           case scala.util.control.NonFatal(e) =>
             val ex = new CC.ArtifactError.DownloadError(
               s"Caught ${e.getClass().getName()}${Option(e.getMessage).fold("")(" (" + _ + ")")} while downloading $url",
@@ -78,7 +81,6 @@ class Downloader(
 
       resOpt match {
         case Right(Left(ex: CC.ArtifactError.WrongLength)) if ex.got < ex.expected && retryResumption >= 1 =>
-          // Thread.sleep(1000 * 10) // TODO for testing
           System.err.println(s"File transmission incomplete (${ex.got}/${ex.expected}): trying to resume download $url")
           helper(retrySsl, retryResumption - 1)
         case Right(res) => res
@@ -269,6 +271,8 @@ object Downloader {
             conn0.setInstanceFollowRedirects(true)  // TODO yes or no? Coursier sets this to false and handles redirects manually
             conn0.setRequestProperty("User-Agent", "Coursier/2.0")
             conn0.setRequestProperty("Accept", "*/*")
+            conn0.setConnectTimeout(Constants.urlConnectTimeout.toMillis.toInt)  // timeout for establishing a connection
+            conn0.setReadTimeout(Constants.urlReadTimeout.toMillis.toInt)  // timeout in case of internet outage while downloading a file
           case _ =>
         }
 
