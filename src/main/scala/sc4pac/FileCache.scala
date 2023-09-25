@@ -53,14 +53,20 @@ class FileCache private (csCache: CC.FileCache[Task]) extends CC.Cache[Task] {
     }
   }
 
-  /** Retrieve the file from the cache or download it if necessary. */
+  /** Retrieve the file from the cache or download it if necessary.
+    *
+    * Refresh policy: Download only files that are
+    * - absent, or
+    * - changing and outdated.
+    * Otherwise, return local file.
+    */
   def file(artifact: coursier.util.Artifact): coursier.util.EitherT[Task, CC.ArtifactError, java.io.File] = {
     val destFile = localFile(artifact.url)
-    if (destFile.exists() && !isStale(destFile)) {  // TODO other refresh policies?
-      coursier.util.EitherT.point(destFile)
-    } else {
+    if (!destFile.exists() || (artifact.changing && isStale(destFile))) {
       val dl = new Downloader(artifact, cacheLocation = location, localFile = destFile, logger, pool)
       coursier.util.EitherT(dl.download.either)
+    } else {
+      coursier.util.EitherT.point(destFile)
     }
   }
 
