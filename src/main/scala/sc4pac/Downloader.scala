@@ -112,11 +112,12 @@ class Downloader(
         Left(new CC.ArtifactError.Unauthorized(url, realm = CC.CacheUrl.realm(conn)))
       else {
         val lenOpt: Option[Long] =
-          for (len <- Option(conn.getContentLengthLong) if len >= 0L) yield {
+          for (len0 <- Option(conn.getContentLengthLong) if len0 >= 0L) yield {
+            val len = if (partialDownload) len0 + alreadyDownloaded else len0  // len0 is remaining length in case of partial download
             // TODO check that length of partial downloads work as expected
-            if (alreadyDownloaded > len) {
-              ???
-            }
+            // if (alreadyDownloaded > len) {  // TODO there is no effective way to check this here
+            //   ???
+            // }
             logger.downloadLength(url, len, (if (partialDownload) alreadyDownloaded else 0L), watching = false)
             len
           }
