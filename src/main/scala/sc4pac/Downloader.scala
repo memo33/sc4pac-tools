@@ -43,9 +43,9 @@ class Downloader(
         val res = downloading(url, file)(
           CC.CacheLocks.withLockOr(
             cacheLocation, file)(doDownload(file, url, tmp),
-            ifLocked = ???
+            ifLocked = Some(Left(new CC.ArtifactError.Locked(file)))  // should not be an issue as long as just one instance of sc4pac is running
           ),
-          ifLocked = ???
+          ifLocked = Some(Left(new CC.ArtifactError.Locked(file)))  // should not be an issue as long as just one instance of sc4pac is running
         )
         success = res.isRight
         res
