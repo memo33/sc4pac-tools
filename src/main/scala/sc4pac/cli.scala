@@ -169,8 +169,12 @@ object Commands {
           searchResult <- pac.search(query, options.threshold)
           installed    <- JD.PluginsLock.listInstalled.map(_.map(_.toBareDep).toSet)
         } yield {
-          for (((mod, ratio, description), idx) <- searchResult.zipWithIndex.reverse) {
-            pac.logger.logSearchResult(idx, mod, description, installed(mod))
+          if (searchResult.isEmpty) {
+            error(caseapp.core.Error.Other("No packages found. Try to lower the `--threshold` parameter."))
+          } else {
+            for (((mod, ratio, description), idx) <- searchResult.zipWithIndex.reverse) {
+              pac.logger.logSearchResult(idx, mod, description, installed(mod))
+            }
           }
         }
         runMainExit(task, exit)
