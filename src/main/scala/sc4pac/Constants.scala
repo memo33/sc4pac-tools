@@ -18,7 +18,7 @@ object Constants {
   val defaultChannelUrls = Seq(MetadataRepository.parseChannelUrl("https://raw.githubusercontent.com/memo33/sc4pac-tools/main/channel/json").toOption.get)  // temporary
   val bufferSize = 64 * 1024  // 64 kiB
   val fuzzySearchThreshold = 50  // 0..100
-  val promptTimeout = java.time.Duration.ofSeconds(120)
+  val interactivePromptTimeout = java.time.Duration.ofSeconds(240)
 
   lazy val noColor: Boolean = (System.getenv("NO_COLOR") match { case null | "" => false; case _ => true }) ||
                               (System.getenv("SC4PAC_NO_COLOR") match { case null | "" => false; case _ => true })

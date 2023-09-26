@@ -24,7 +24,7 @@ object Prompt {
   private val readLineTimeout: ZIO[Interactive, IOException, String] = {  // See also https://github.com/zio/zio/pull/6205#issue-1088016373
     // Since Console.readLine is not reliably interruptible on every OS
     // (well-known Java issue), we race two fibers and interrupt the slower one.
-    val sleep = ZIO.sleep(Constants.promptTimeout)
+    val sleep = ZIO.sleep(Constants.interactivePromptTimeout)
     sleep.raceWith(zio.Console.readLine)(
       leftDone = (result, fiberRight) =>  // The forking (interruptFork) is important in order not to wait indefinitely for the blocking non-interruptible readLine.
         fiberRight.interruptFork.zipRight(ZIO.fail(new Sc4pacTimeout("Timeout at prompt."))),  // exit the program
