@@ -49,7 +49,7 @@ object Find {
           val repoUris = context.repositories.map(_.baseUri)
           context.logger.log(s"Could not find metadata of ${module}. Trying to update channel contents.")
           for {
-            repos   <- Sc4pac.initializeRepositories(repoUris, context.cache, channelContentsTtl = Some(30.seconds))
+            repos   <- Sc4pac.initializeRepositories(repoUris, context.cache, channelContentsTtl = Some(60.seconds))
             result  <- tryAllRepos(repos, context)  // 2nd try
           } yield result
       }

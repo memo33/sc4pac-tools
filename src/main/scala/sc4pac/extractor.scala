@@ -61,7 +61,7 @@ class ZipExtractor extends Extractor {
             os.makeDir.all(path / os.up)  // we know that entry refers to a file, not a directory
             // write entry to file
             scala.util.Using.resources(zip.getInputStream(entry), java.nio.file.Files.newOutputStream(path.toNIO, options*)) { (in, out) =>
-              IOUtils.copy(in, out, Constants.bufferSize)
+              IOUtils.copy(in, out, Constants.bufferSizeExtract)
             }
           }
           path
@@ -90,7 +90,7 @@ object ZipExtractor {
     */
   case class JarExtraction(jarsDir: os.Path)
   object JarExtraction {
-    def fromUrl[F[_]](archiveUrl: String, cache: coursier.cache.FileCache[F], jarsRoot: os.Path): JarExtraction = {
+    def fromUrl[F[_]](archiveUrl: String, cache: FileCache, jarsRoot: os.Path): JarExtraction = {
       // we use cache to find a consistent archiveSubPath based on the url
       val archivePath = os.Path(cache.localFile(archiveUrl), os.pwd)
       val cachePath = os.Path(cache.location, os.pwd)

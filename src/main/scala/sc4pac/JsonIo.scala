@@ -47,8 +47,6 @@ object JsonIo {
   // - do some potentially destructive action
   // - if action successful, write json file
 
-  private val utf8 = java.nio.charset.Charset.forName("UTF-8")
-
   def write[S : ReadWriter, A](jsonPath: os.Path, newState: S, origState: Option[S])(action: zio.Task[A]): zio.Task[A] = {
     import java.nio.file.StandardOpenOption
     import zio.nio.channels.AsynchronousFileChannel
@@ -64,7 +62,7 @@ object JsonIo {
     def read0(channel: AsynchronousFileChannel): ZIO[zio.Scope, Throwable, S] = {
       for {
         chunk <- channel.stream(position = 0).runCollect
-        state <- read[S](chunk.asString(utf8): String)
+        state <- read[S](chunk.asString(java.nio.charset.StandardCharsets.UTF_8): String)
       } yield state
     }
 

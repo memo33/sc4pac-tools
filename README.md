@@ -95,7 +95,11 @@ Create a release bundle with `make dist` in a Unix shell.
 
 - [x] Basic functionality
 - [x] Command-line interface with all important commands
-- [ ] Improve robustness of downloading (missing content-length (ST), incomplete downloads (SC4E), non-persistent URLs (Moddb), handling servers that have gone offline)
+- [ ] Improve robustness of downloads
+  - [x] missing content-length (ST)
+  - [x] incomplete downloads (SC4E)
+  - [ ] non-persistent URLs (Moddb)
+  - [ ] handling servers that have gone offline
 - [ ] Collaborative central metadata channel
 - [ ] Website and online documentation
 - [ ] Server API (backend)

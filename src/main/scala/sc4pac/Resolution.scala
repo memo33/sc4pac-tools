@@ -98,47 +98,18 @@ object Resolution {
     }
   }
 
-  // Copied from coursier internals:
-  // https://github.com/coursier/coursier/blob/3e212b42d3bda5d80453b4e7804670ccf75d4197/modules/cache/jvm/src/main/scala/coursier/cache/internal/Downloader.scala#L436
-  // TODO add regression test
-  private def ttlFile(file: java.io.File) = new java.io.File(file.getParent, s".${file.getName}.checked")
-
-  private def deleteStaleCachedFile(file: java.io.File, lastModified: java.time.Instant, cache: coursier.cache.FileCache[Task]): IO[coursier.cache.ArtifactError | Throwable, Unit] = {
-    ZIO.attemptBlocking(coursier.cache.CacheLocks.withLockFor(cache.location, file) {
-      // Since `file.lastModified()` can be older than the download time,
-      // we use coursier's internally used `.checked` file to obtain the
-      // actual download time.
-      val fileChecked = ttlFile(file)
-      if (!file.exists()) {
-        Right(())  // nothing to delete
-      } else if (fileChecked.exists()) {
-        val downloadedAt = java.time.Instant.ofEpochMilli(fileChecked.lastModified())
-        if (downloadedAt.isBefore(lastModified)) {
-          val success = file.delete()  // we ignore if deletion fails
-        }
-        Right(())
-      } else {
-        // Since the .checked file may be missing from cache for various issues
-        // outside our conrol, we always delete the file in this case.
-        println(s"The cache file did not exist: $fileChecked")  // TODO logger.warn
-        val success = file.delete()  // we ignore if deletion fails
-        Right(())
-      }
-    }).absolve
-  }
-
   /** This transforms the resolution.
     * In case of coursier.cache.ArtifactError,
     * the file was locked, so could not be deleted (hint: if error persists, manually delete the .lock file)
     */
-  private def deleteStaleCachedFiles(assetsArtifacts: Seq[(DepAsset, Artifact)], cache: coursier.cache.FileCache[Task]): Task[Unit] = {
-    ZIO.foreachDiscard(assetsArtifacts) { case (dep, artifact) =>
+  private def deleteStaleCachedFiles(assetsArtifacts: Seq[(DepAsset, Artifact)], cache: FileCache): Task[Unit] = {
+    ZIO.foreachParDiscard(assetsArtifacts) { case (dep, artifact) =>
       if (artifact.changing) {
         ZIO.succeed(())  // artifact is changing, so cache.ttl (time-to-live) determines how long a file is cached
       } else {
         val lastModifiedOpt = dep.lastModified
         assert(lastModifiedOpt.isDefined, s"non-changing assets should have lastModified defined: $artifact $dep")
-        deleteStaleCachedFile(cache.localFile(artifact.url, user=None), lastModifiedOpt.get, cache)
+        cache.purgeFileIfOlderThan(artifact.url, lastModifiedOpt.get)
       }
     }
   }
@@ -213,15 +184,11 @@ class Resolution(reachableDeps: TreeSeqMap[BareDep, Seq[BareDep]], nonbareDeps: 
       ZIO.foreachPar(assetsArtifacts) { (dep, art) =>
         context.cache.file(art).run.absolve.map(file => (dep, art, file))
       }
-      // By scheduling the above downloads on the Coursier `cache.pool`, we use
-      // max 2 downloads in parallel (this requires that the previous tasks are
-      // not already on the `ZIO.blocking` pool, which would start to download
-      // EVERYTHING in parallel).
-      .onExecutionContext(scala.concurrent.ExecutionContext.fromExecutorService(context.cache.pool))
       .catchSome { case e: (coursier.error.FetchError.DownloadingArtifacts
                           | coursier.cache.ArtifactError.DownloadError
+                          | coursier.cache.ArtifactError.WrongLength
                           | coursier.cache.ArtifactError.NotFound) =>
-        ZIO.fail(new Sc4pacAbort("Failed to download some assets. " +
+        ZIO.fail(new Sc4pacAbort("Failed to download some assets. Try again later. " +
           f"You may have reached your daily download quota (Simtropolis: 20 files per day) or the file exchange server is currently unavailable: ${e.getMessage}"))
       }
 
