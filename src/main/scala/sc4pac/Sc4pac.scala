@@ -43,6 +43,9 @@ class Logger private (out: java.io.PrintStream, useColor: Boolean, isInteractive
   override def gettingLengthResult(url: String, length: Option[Long]): Unit =
     if (Constants.debugMode)
       out.println(gray(s"--> gettingLengthResult=$length: $url"))
+  def concurrentCacheAccess(url: String): Unit =
+    if (Constants.debugMode)
+      out.println(gray(s"--> concurrentCacheAccess $url"))
 
   def log(msg: String): Unit = out.println(msg)
   def warn(msg: String): Unit = out.println(yellowBold("Warning:") + " " + msg)

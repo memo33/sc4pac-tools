@@ -1,19 +1,22 @@
 package io.github.memo33
 package sc4pac
 
+import java.util.concurrent.ConcurrentHashMap
 import coursier.cache as CC
-import zio.Task
+import zio.{ZIO, IO, Task, Promise}
 
 import sc4pac.CoursierZio.*  // implicit coursier-zio interop
 
 /** A thin wrapper around Coursier's FileCache providing minimal functionality
   * in order to supply a custom downloader implementation.
   */
-class FileCache private (csCache: CC.FileCache[Task]) extends CC.Cache[Task] {
+class FileCache private (
+  csCache: CC.FileCache[Task],
+  val logger: Logger,
+  runningTasks: ConcurrentHashMap[String, Promise[CC.ArtifactError, java.io.File]]
+) extends CC.Cache[Task] {
 
   def location: java.io.File = csCache.location
-
-  def logger: CC.CacheLogger = csCache.logger
 
   override def loggerOpt = Some(logger)
 
@@ -25,7 +28,7 @@ class FileCache private (csCache: CC.FileCache[Task]) extends CC.Cache[Task] {
     * (only if they are `changing`).
     */
   def withTtl(ttl: Option[scala.concurrent.duration.Duration]): FileCache =
-    new FileCache(csCache.withTtl(ttl))
+    new FileCache(csCache.withTtl(ttl), logger, runningTasks)
 
   def ttl: Option[scala.concurrent.duration.Duration] = csCache.ttl
 
@@ -61,13 +64,41 @@ class FileCache private (csCache: CC.FileCache[Task]) extends CC.Cache[Task] {
     * Otherwise, return local file.
     */
   def file(artifact: coursier.util.Artifact): coursier.util.EitherT[Task, CC.ArtifactError, java.io.File] = {
-    val destFile = localFile(artifact.url)
-    if (!destFile.exists() || (artifact.changing && isStale(destFile))) {
-      val dl = new Downloader(artifact, cacheLocation = location, localFile = destFile, logger, pool)
-      coursier.util.EitherT(dl.download.either)
-    } else {
-      coursier.util.EitherT.point(destFile)
+    def task0: IO[CC.ArtifactError, java.io.File] = {
+      val destFile = localFile(artifact.url)
+      ZIO.ifZIO(ZIO.attemptBlockingIO(!destFile.exists() || (artifact.changing && isStale(destFile))))(
+        onTrue = new Downloader(artifact, cacheLocation = location, localFile = destFile, logger, pool).download,
+        onFalse = ZIO.succeed(destFile)
+      ).mapError {
+        case e: CC.ArtifactError => e
+        case e: java.io.IOException => new CC.ArtifactError.DownloadError(
+          s"Caught ${e.getClass().getName()}${Option(e.getMessage).fold("")(" (" + _ + ")")} while accessing $destFile",
+          Some(e)
+        )
+      }
     }
+
+    // Since we did not implement `ifLocked` in Downloader, we use an in-memory
+    // cache of concurrently running tasks in order to avoid concurrent download
+    // requests for the same URL.
+    // (For example, this can happen when updating the sc4pac-channel-contents.json due to several missing packages.)
+    // This assumes that only a single sc4pac instance is running.
+
+    // First check if there is a concurrently running task.
+    // If so, await its result, otherwise compute the result by running `task0`.
+    coursier.util.EitherT(for {
+      p0     <- Promise.make[CC.ArtifactError, java.io.File]
+      result <- ZIO.acquireReleaseWith(
+                  acquire = ZIO.succeed(runningTasks.putIfAbsent(artifact.url, p0))
+                )(
+                  release = _ => ZIO.succeed(runningTasks.remove(artifact.url, p0))  // remove only if equal to our p0
+                ){ p1 =>
+                  if (p1 != null)  // key was present: there was already a running task for url
+                    p1.await.either.zipLeft(ZIO.succeed(logger.concurrentCacheAccess(artifact.url)))
+                  else
+                    p0.complete(task0).flatMap(_ => p0.await.either)  // Note that `complete` also handles failure of `task0`
+                }
+    } yield (result: Either[CC.ArtifactError, java.io.File]))
   }
 
   /** Retrieve the file contents as String from the cache or download if necessary. */
@@ -84,9 +115,9 @@ class FileCache private (csCache: CC.FileCache[Task]) extends CC.Cache[Task] {
 }
 
 object FileCache {
-  def apply(location: java.io.File, logger: CC.CacheLogger, pool: java.util.concurrent.ExecutorService): FileCache = {
+  def apply(location: java.io.File, logger: Logger, pool: java.util.concurrent.ExecutorService): FileCache = {
     val csCache = CC.FileCache[Task]().withLocation(location).withLogger(logger).withPool(pool)
-    new FileCache(csCache)
+    new FileCache(csCache, logger, runningTasks = new ConcurrentHashMap())
   }
 
   // Copied from coursier internals:
