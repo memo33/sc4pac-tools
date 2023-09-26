@@ -60,7 +60,7 @@ object Find {
 
     def pickVariant(pkgOpt: Option[JD.Package]): Task[(JD.Package, JD.VariantData)] = pkgOpt match {
       case None => ZIO.fail(new Sc4pacVersionNotFound(s"Could not find metadata of ${module.orgName} or suitable variant." +
-                                                      " Most likely the metadata stored in the corresponding channel is incorrect or incomplete."))
+                                                      " Either the package name is spelled incorrectly or the metadata stored in the corresponding channel is incorrect or incomplete."))
       case Some(pkgData) =>
         pkgData.variants.find(vd => isSubMap(vd.variant, globalVariant)) match {
           case Some(vd) => ZIO.succeed((pkgData, vd))
