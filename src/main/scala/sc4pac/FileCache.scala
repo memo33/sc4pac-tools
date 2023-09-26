@@ -38,21 +38,51 @@ class FileCache private (
   def localFile(url: String): java.io.File =
     csCache.localFile(url, user = None)
 
+  /** Remove a file from the cache if it is too old, so that the next cache
+    * access retrieves a new copy of it.
+    */
+  def purgeFileIfOlderThan(url: String, timestamp: java.time.Instant): IO[CC.ArtifactError | java.io.IOException, Unit] = {
+    val file = localFile(url)
+    ZIO.attemptBlockingIO(CC.CacheLocks.withLockFor(location, file) {
+      if (!file.exists()) {
+        Right(())  // nothing to delete
+      } else {
+        lastCheck(file) match {
+          case Some(downloadedAt) =>
+            if (downloadedAt.isBefore(timestamp)) {
+              val success = file.delete()  // we ignore if deletion fails
+            }
+            Right(())
+          case None =>
+            // Since the .checked file may be missing from cache for various issues
+            // outside our conrol, we always delete the file in this case.
+            System.err.println(s"The cache ttl-file for $file did not exist.")  // TODO logger.warn
+            val success = file.delete()  // we ignore if deletion fails
+            Right(())
+        }
+      }
+    }).absolve
+  }
+
   // blocking
-  private def isStale(file: java.io.File): Boolean = {
-    def lastCheck = for {
+  private def lastCheck(file: java.io.File): Option[java.time.Instant] = {
+    for {
       f <- Some(FileCache.ttlFile(file))
       if f.exists()
       ts = f.lastModified()
       if ts > 0L
-    } yield ts
+    } yield java.time.Instant.ofEpochMilli(ts)
+  }
 
+  // blocking
+  private def isStale(file: java.io.File): Boolean = {
     ttl match {
-      case None => true
-      case Some(ttl) if !ttl.isFinite => false
-      case Some(ttl) =>
-        val now = System.currentTimeMillis()
-        lastCheck.map(_ + ttl.toMillis < now).getOrElse(true)
+      case None => true  // if ttl-file does not exist, consider the file outdated
+      case Some(ttl: scala.concurrent.duration.Duration.Infinite) => false
+      case Some(ttl: scala.concurrent.duration.FiniteDuration) =>
+        import scala.jdk.DurationConverters.*
+        val now = java.time.Instant.now()
+        lastCheck(file).map(_.isBefore(now.minus(ttl.toJava))).getOrElse(true)
     }
   }
 

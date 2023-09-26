@@ -98,42 +98,18 @@ object Resolution {
     }
   }
 
-  private def deleteStaleCachedFile(file: java.io.File, lastModified: java.time.Instant, cache: FileCache): IO[coursier.cache.ArtifactError | Throwable, Unit] = {
-    ZIO.attemptBlocking(coursier.cache.CacheLocks.withLockFor(cache.location, file) {
-      // Since `file.lastModified()` can be older than the download time,
-      // we use coursier's internally used `.checked` file to obtain the
-      // actual download time.
-      val fileChecked = FileCache.ttlFile(file)
-      if (!file.exists()) {
-        Right(())  // nothing to delete
-      } else if (fileChecked.exists()) {
-        val downloadedAt = java.time.Instant.ofEpochMilli(fileChecked.lastModified())
-        if (downloadedAt.isBefore(lastModified)) {
-          val success = file.delete()  // we ignore if deletion fails
-        }
-        Right(())
-      } else {
-        // Since the .checked file may be missing from cache for various issues
-        // outside our conrol, we always delete the file in this case.
-        System.err.println(s"The cache file did not exist: $fileChecked")  // TODO logger.warn
-        val success = file.delete()  // we ignore if deletion fails
-        Right(())
-      }
-    }).absolve
-  }
-
   /** This transforms the resolution.
     * In case of coursier.cache.ArtifactError,
     * the file was locked, so could not be deleted (hint: if error persists, manually delete the .lock file)
     */
   private def deleteStaleCachedFiles(assetsArtifacts: Seq[(DepAsset, Artifact)], cache: FileCache): Task[Unit] = {
-    ZIO.foreachDiscard(assetsArtifacts) { case (dep, artifact) =>
+    ZIO.foreachParDiscard(assetsArtifacts) { case (dep, artifact) =>
       if (artifact.changing) {
         ZIO.succeed(())  // artifact is changing, so cache.ttl (time-to-live) determines how long a file is cached
       } else {
         val lastModifiedOpt = dep.lastModified
         assert(lastModifiedOpt.isDefined, s"non-changing assets should have lastModified defined: $artifact $dep")
-        deleteStaleCachedFile(cache.localFile(artifact.url), lastModifiedOpt.get, cache)
+        cache.purgeFileIfOlderThan(artifact.url, lastModifiedOpt.get)
       }
     }
   }
