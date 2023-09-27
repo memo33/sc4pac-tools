@@ -198,7 +198,7 @@ class Sc4pac(val repositories: Seq[MetadataRepository], val cache: FileCache, va
           }
         }
       }
-    results.sortBy(_._2)(Ordering.Int.reverse).distinctBy(_._1)
+    results.sortBy((mod, ratio, desc) => (-ratio, mod.group.value, mod.name.value)).distinctBy(_._1)
   }
 
   def info(module: BareModule): Task[Option[Seq[(String, String)]]] = {
