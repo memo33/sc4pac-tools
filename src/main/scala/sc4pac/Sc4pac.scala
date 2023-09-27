@@ -186,7 +186,7 @@ class Sc4pac(val repositories: Seq[MetadataRepository], val cache: FileCache, va
   def search(query: String, threshold: Int): Task[Seq[(BareModule, Int, Option[String])]] = ZIO.attempt {
     val results: Seq[(BareModule, Int, Option[String])] =
       repositories.flatMap { repo =>
-        repo.channelData.contents.iterator.flatMap { item =>
+        repo.iterateChannelContents.flatMap { item =>
           if (item.isSc4pacAsset) {
             None
           } else {
@@ -530,14 +530,12 @@ object Sc4pac {
     val artifact = Artifact(contentsUrl).withChanging(true)  // changing as the remote file is updated whenever any remote package is added or updated
     cache
       .withTtl(channelContentsTtl.orElse(cache.ttl))
-      .fetch(artifact)  // requires initialized logger
-      .toZioRefine { case e: coursier.error.FetchError.DownloadingArtifacts =>  // TODO don't die on everything else
-        ZIO.fail(f"could not access remote channel $repoUri%n$e")
-      }  // dies on all throwables; TODO catch which Exceptions?
-      .flatMap((jsonStr: String) => ZIO.fromEither {
-        JsonIo.readBlocking[JD.Channel](jsonStr, errMsg = contentsUrl)  // TODO does this really give the jsonStr directly instead of a path to a jsonFile?
-          .map(channelData => MetadataRepository(repoUri, channelData, globalVariant = Map.empty))
-      })
+      .file(artifact)  // requires initialized logger
+      .run.absolve
+      .mapError { case e @ (_: coursier.cache.ArtifactError | scala.util.control.NonFatal(_)) => e.getMessage }
+      .flatMap { (channelContentsFile: java.io.File) =>
+        MetadataRepository.create(os.Path(channelContentsFile, os.pwd), repoUri, globalVariant = Map.empty)
+      }
   }
 
   private[sc4pac] def initializeRepositories(repoUris: Seq[java.net.URI], cache: FileCache, channelContentsTtl: Option[scala.concurrent.duration.Duration]): Task[Seq[MetadataRepository]] = {

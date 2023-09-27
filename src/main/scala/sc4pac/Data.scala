@@ -182,6 +182,20 @@ object JsonData {
     lazy val versions: Map[BareDep, Seq[String]] =
       contents.map(item => item.toBareDep -> item.versions).toMap
   }
+  object Channel {
+    def create(channelData: Iterable[(BareDep, Iterable[(String, Package | Asset)])]): Channel = {  // name -> version -> json
+      Channel(channelData.iterator.collect {
+        case (dep, versions) if versions.nonEmpty =>
+          val (g, n) = dep match {
+            case m: BareModule => (m.group.value, m.name.value)
+            case a: BareAsset => (Constants.sc4pacAssetOrg.value, a.assetId.value)
+          }
+          // we arbitrarily pick the summary of the first item (usually there is just one version anyway)
+          val summaryOpt = versions.iterator.collectFirst { case (_, pkg: Package) if pkg.info.summary.nonEmpty => pkg.info.summary }
+          ChannelItem(group = g, name = n, versions = versions.iterator.map(_._1).toSeq, summary = summaryOpt.getOrElse(""))
+      }.toSeq)
+    }
+  }
 
   case class Config(
     pluginsRoot: NioPath,

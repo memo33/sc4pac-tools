@@ -4,9 +4,11 @@ package sc4pac
 import io.circe.{ParsingFailure, Json}
 import upickle.default.{Reader, ReadWriter, writeTo}
 import zio.{ZIO, IO}
+import coursier.core as C
 
 import sc4pac.JsonData as JD
 import sc4pac.JsonData.osSubPathRw
+import sc4pac.Resolution.{BareDep, BareModule, BareAsset}
 
 object ChannelUtil {
 
@@ -65,13 +67,12 @@ object ChannelUtil {
       .mapError(errs => errs.mkString("(", " | ", ")"))
   }
 
-  private def readAndParsePkgData(path: os.Path): IndexedSeq[JD.Package | JD.Asset] = {
+  def readAndParsePkgData(path: os.Path): IO[ErrStr, IndexedSeq[JD.Package | JD.Asset]] = {
     val docs: IndexedSeq[Either[ParsingFailure, Json]] =
       scala.util.Using.resource(new java.io.FileReader(path.toIO))(io.circe.yaml.parser.parseDocuments(_).toIndexedSeq)
-    val task: IO[ErrStr, IndexedSeq[JD.Package | JD.Asset]] = ZIO.validatePar(docs) { doc =>
+    ZIO.validatePar(docs) { doc =>
       ZIO.fromEither(doc).flatMap(parsePkgData)
     }.mapError(errs => s"format error in $path: ${errs.mkString(", ")}")
-    unsafeRun(task)  // TODO unsafe
   }
 
   /** This function reads the yaml package metadata and writes
@@ -87,16 +88,16 @@ object ChannelUtil {
     os.makeDir.all(outputDir)
     val tempJsonDir = os.temp.dir(outputDir, prefix = "json", deleteOnExit = true)
     try {
-      val packages: Map[(String, String), (Seq[String], Seq[Option[String]])] = inputDirs.flatMap { inputDir =>
+      val packages: Map[BareDep, Seq[(String, JD.Package | JD.Asset)]] = inputDirs.flatMap { inputDir =>
         os.walk.stream(inputDir)
           .filter(_.last.endsWith(".yaml"))
-          .flatMap(readAndParsePkgData)
+          .flatMap(path => unsafeRun(readAndParsePkgData(path)): IndexedSeq[JD.Package | JD.Asset])  // TODO unsafe
           .map { pkgData =>
-            val (g, n, v, s) = pkgData match {
-              case data: JD.Package => (data.group, data.name, data.version, Option(data.info.summary).filter(_.nonEmpty))
-              case data: JD.Asset => (Constants.sc4pacAssetOrg.value, data.assetId, data.version, None)
+            val (d, v) = pkgData match {
+              case data: JD.Package => (BareModule(C.Organization(data.group), C.ModuleName(data.name)), data.version)
+              case data: JD.Asset => (BareAsset(C.ModuleName(data.assetId)), data.version)
             }
-            val subpath = MetadataRepository.jsonSubPath(g, n, v)
+            val subpath = MetadataRepository.jsonSubPath(d, v)
             val target = tempJsonDir / "metadata" / subpath
             os.makeDir.all(target / os.up)
             scala.util.Using.resource(java.nio.file.Files.newBufferedWriter(target.toNIO)) { out =>
@@ -105,20 +106,17 @@ object ChannelUtil {
                 case data: JD.Asset => writeTo(data, out, indent=2)  // writes asset json file
               }
             }
-            ((g, n), (v, s))
+            (d, (v, pkgData))
           }.toSeq
-      }.groupMap(_._1)(_._2).view.mapValues(_.unzip).toMap
+      }.groupMap(_._1)(_._2)
 
-      val contents = JD.Channel(contents = packages.toSeq.map { case ((group, name), (versions, summaries)) =>
-        JD.ChannelItem(
-          group = group,
-          name = name,
-          versions = versions.distinct,
-          summary = summaries.headOption.flatten.getOrElse(""))  // TODO we arbitrarily picked the summary of the first item (usually there is just one version anyway)
-      }.sortBy(item => (item.group, item.name)))
+      val channel = {
+        val c = JD.Channel.create(packages)
+        c.copy(contents = c.contents.sortBy(item => (item.group, item.name)))
+      }
 
       scala.util.Using.resource(java.nio.file.Files.newBufferedWriter((tempJsonDir / MetadataRepository.channelContentsFilename).toNIO)) { out =>
-        writeTo(contents, out, indent=2)  // writes channel contents json file
+        writeTo(channel, out, indent=2)  // writes channel contents json file
       }
 
       // Finally, we are sure that everything was formatted correctly, so we can
