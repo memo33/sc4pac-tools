@@ -534,7 +534,7 @@ object Sc4pac {
       .run.absolve
       .mapError { case e @ (_: coursier.cache.ArtifactError | scala.util.control.NonFatal(_)) => e.getMessage }
       .flatMap { (channelContentsFile: java.io.File) =>
-        MetadataRepository.create(os.Path(channelContentsFile, os.pwd), repoUri, globalVariant = Map.empty)
+        MetadataRepository.create(os.Path(channelContentsFile, os.pwd), repoUri/*, globalVariant = Map.empty*/)
       }
   }
 

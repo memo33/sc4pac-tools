@@ -12,7 +12,7 @@ import sc4pac.Constants.isSc4pacAsset
 import sc4pac.JsonData as JD
 import sc4pac.Resolution.{BareDep, BareModule, BareAsset}
 
-sealed abstract class MetadataRepository(val baseUri: java.net.URI, globalVariant: Variant) extends Repository {
+sealed abstract class MetadataRepository(val baseUri: java.net.URI /*, globalVariant: Variant*/) extends Repository {
 
   /** Obtain the raw version strings of `dep` contained in this repository. */
   def getRawVersions(dep: BareDep): Seq[String]
@@ -55,6 +55,8 @@ sealed abstract class MetadataRepository(val baseUri: java.net.URI, globalVarian
     * corresponding `Repository`.
     */
   def find[F[_] : Monad](module: Module, version: String, fetch: Repository.Fetch[F]): EitherT[F, ErrStr, (ArtifactSource, Project)] = {
+    ???  // TODO unused implementation
+    /*
     if (isSc4pacAsset(module)) {
       // EitherT.fromEither(Right((this, MetadataRepository.sc4pacAssetProject(module, version))))
       fetchModuleJson[F, JD.Asset](module, version, fetch)
@@ -69,9 +71,12 @@ sealed abstract class MetadataRepository(val baseUri: java.net.URI, globalVarian
         }
         // TODO in case of error, we should not cache faulty file
     }
+    */
   }
 
   def artifacts(dependency: Dependency, project: Project, overrideClassifiers: Option[Seq[Classifier]]): Seq[(Publication, Artifact)] = {
+    ???  // TODO unused implementation
+    /*
     if (overrideClassifiers.nonEmpty) ???  // TODO
 
     if (!isSc4pacAsset(dependency.module)) {
@@ -95,7 +100,7 @@ sealed abstract class MetadataRepository(val baseUri: java.net.URI, globalVarian
       val lastModifiedOpt: Option[java.time.Instant] = mod.attributes.get(Constants.lastModifiedKey).flatMap(JD.Asset.parseLastModified)
       Seq((pub, MetadataRepository.createArtifact(url, lastModifiedOpt)))
     }
-
+    */
   }
 
   def iterateChannelContents: Iterator[JD.ChannelItem]
@@ -122,7 +127,7 @@ object MetadataRepository {
     case e: java.net.URISyntaxException => Left(e.getMessage)
   }
 
-  def create(channelContentsFile: os.Path, baseUri: java.net.URI, globalVariant: Variant): IO[ErrStr, MetadataRepository] = {
+  def create(channelContentsFile: os.Path, baseUri: java.net.URI /*, globalVariant: Variant*/): IO[ErrStr, MetadataRepository] = {
     if (baseUri.getPath.endsWith(".yaml")) {  // yaml repository
       for {
         contents <- ChannelUtil.readAndParsePkgData(channelContentsFile)
@@ -132,14 +137,14 @@ object MetadataRepository {
             case data: JD.Package => BareModule(Organization(data.group), ModuleName(data.name)) -> (data.version, data)
             case data: JD.Asset => BareAsset(ModuleName(data.assetId)) -> (data.version, data)
           }.groupMap(_._1)(_._2).view.mapValues(_.toMap).toMap
-        new YamlRepository(baseUri, channelData, globalVariant)
+        new YamlRepository(baseUri, channelData /*, globalVariant*/)
       }
     } else {  // json repository
       val contentsUrl = channelContentsUrl(baseUri).toString
       ZIO.attemptBlockingIO(JsonIo.readBlocking[JD.Channel](channelContentsFile.toNIO, errMsg = contentsUrl))
         .mapError(e => s"Failed to read channel contents: $e")
         .absolve
-        .map(new JsonRepository(baseUri, _, globalVariant))
+        .map(new JsonRepository(baseUri, _/*, globalVariant*/))
     }
   }
 
@@ -171,9 +176,9 @@ object MetadataRepository {
   */
 private class JsonRepository(
   baseUri: java.net.URI,
-  channelData: JD.Channel,
-  globalVariant: Variant
-) extends MetadataRepository(baseUri, globalVariant) {
+  channelData: JD.Channel
+  // globalVariant: Variant
+) extends MetadataRepository(baseUri/*, globalVariant*/) {
 
   /** Obtain the raw version strings of `dep` contained in this repository. */
   def getRawVersions(dep: BareDep): Seq[String] = channelData.versions.get(dep).getOrElse(Seq.empty)
@@ -211,9 +216,9 @@ private class JsonRepository(
   */
 private class YamlRepository(
   baseUri: java.net.URI,
-  channelData: Map[BareDep, Map[String, JD.Package | JD.Asset]],  // name -> version -> json
-  globalVariant: Variant
-) extends MetadataRepository(baseUri, globalVariant) {
+  channelData: Map[BareDep, Map[String, JD.Package | JD.Asset]]  // name -> version -> json
+  // globalVariant: Variant
+) extends MetadataRepository(baseUri/*, globalVariant*/) {
 
   def getRawVersions(dep: BareDep): Seq[String] = {
     channelData.get(dep).map(_.keys.toSeq).getOrElse(Seq.empty)
