@@ -115,7 +115,7 @@ object ChannelUtil {
           name = name,
           versions = versions.distinct,
           summary = summaries.headOption.flatten.getOrElse(""))  // TODO we arbitrarily picked the summary of the first item (usually there is just one version anyway)
-      })
+      }.sortBy(item => (item.group, item.name)))
 
       scala.util.Using.resource(java.nio.file.Files.newBufferedWriter((tempJsonDir / MetadataRepository.channelContentsFilename).toNIO)) { out =>
         writeTo(contents, out, indent=2)  // writes channel contents json file
