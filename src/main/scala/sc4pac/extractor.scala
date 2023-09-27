@@ -11,7 +11,7 @@ trait Extractor {
   // def extract(archive: java.io.File, destination: os.Path, recipe: InstallRecipe): Boolean
 }
 
-class ZipExtractor extends Extractor {
+class ZipExtractor(logger: Logger) extends Extractor {
 
   private def commonPrefix(p: os.SubPath, q: os.SubPath): os.SubPath = {
     var i = 0
@@ -31,7 +31,15 @@ class ZipExtractor extends Extractor {
       import scala.jdk.CollectionConverters.*
       val entries: Seq[(ZipArchiveEntry, os.SubPath)] = zip.getEntries.asScala
         .map(e => e -> os.SubPath(e.getName))
-        .filter((e, p) => !e.isDirectory() && !e.isUnixSymlink() && predicate(p))  // skip symlinks as precaution
+        .filter { (e, p) =>
+          if (e.isDirectory() || e.isUnixSymlink()) {  // skip symlinks as precaution
+            false
+          } else {
+            val include = predicate(p)
+            logger.extractArchiveEntry(p, include)
+            include
+          }
+        }
         .toSeq
 
       if (entries.isEmpty) {

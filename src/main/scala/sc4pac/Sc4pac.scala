@@ -46,6 +46,9 @@ class Logger private (out: java.io.PrintStream, useColor: Boolean, isInteractive
   def concurrentCacheAccess(url: String): Unit =
     if (Constants.debugMode)
       out.println(gray(s"--> concurrentCacheAccess $url"))
+  def extractArchiveEntry(entry: os.SubPath, include: Boolean): Unit =
+    if (Constants.debugMode)
+      out.println(gray(s"--> [${if (include) "include" else "exclude"}] $entry"))
 
   def log(msg: String): Unit = out.println(msg)
   def warn(msg: String): Unit = out.println(yellowBold("Warning:") + " " + msg)
@@ -279,7 +282,7 @@ trait UpdateService { this: Sc4pac =>
           // TODO skip symlinks as a precaution
 
           // TODO check if archive type is zip
-          val extractor = new ZipExtractor()
+          val extractor = new ZipExtractor(logger)
           extractor.extract(
             archive,
             tempPluginsRoot / pkgFolder,
@@ -295,12 +298,13 @@ trait UpdateService { this: Sc4pac =>
     for {
       (pkgData, variant) <- Find.matchingVariant(dependency.toBareDep, dependency.version, dependency.variant)
       pkgFolder          =  pkgData.subfolder / packageFolderName(dependency)
-      _                  <- logger.withSpinner(Some(s"$progress Extracting ${dependency.orgName} ${dependency.version}"), sameLine = false) {
-                              for {
-                                _ <- ZIO.attemptBlocking(os.makeDir.all(tempPluginsRoot / pkgFolder))  // create folder even if package does not have any assets or files
-                                _ <- ZIO.foreachDiscard(variant.assets)(extract(_, pkgFolder))
-                              } yield ()
-                            }
+      _                  <- logger.withSpinner(
+                              Some(s"$progress Extracting ${dependency.orgName} ${dependency.version}"),
+                              sameLine = Constants.debugMode  // due to debug output
+                            )(for {
+                              _ <- ZIO.attemptBlocking(os.makeDir.all(tempPluginsRoot / pkgFolder))  // create folder even if package does not have any assets or files
+                              _ <- ZIO.foreachDiscard(variant.assets)(extract(_, pkgFolder))
+                            } yield ())
       warnings           <- if (pkgData.info.warning.nonEmpty) ZIO.attempt { logger.warn(pkgData.info.warning); true } else ZIO.succeed(false)
     } yield (Seq(pkgFolder), warnings)  // for now, everything is installed into this folder only, so we do not need to list individual files
   }
