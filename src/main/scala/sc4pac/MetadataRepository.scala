@@ -45,7 +45,7 @@ sealed abstract class MetadataRepository(val baseUri: java.net.URI /*, globalVar
   /** For a module (no asset, no variant) of a given version, fetch the
     * corresponding `JD.Package` contained in its json file.
     */
-  def fetchModuleJson[F[_] : Monad, A <: JD.Package | JD.Asset : Reader](module: Module, version: String, fetch: Repository.Fetch[F]): EitherT[F, ErrStr, A]
+  def fetchModuleJson[F[_] : Monad, A <: JD.PackageAsset : Reader](module: Module, version: String, fetch: Repository.Fetch[F]): EitherT[F, ErrStr, A]
 
   /** For a module of a given version, find its metadata (parsed from its json
     * file) and return it as a `Project` (Coursier's representation of package
@@ -132,11 +132,8 @@ object MetadataRepository {
       for {
         contents <- ChannelUtil.readAndParsePkgData(channelContentsFile)
       } yield {
-        val channelData: Map[BareDep, Map[String, JD.Package | JD.Asset]] =
-          contents.map {
-            case data: JD.Package => BareModule(Organization(data.group), ModuleName(data.name)) -> (data.version, data)
-            case data: JD.Asset => BareAsset(ModuleName(data.assetId)) -> (data.version, data)
-          }.groupMap(_._1)(_._2).view.mapValues(_.toMap).toMap
+        val channelData: Map[BareDep, Map[String, JD.PackageAsset]] =
+          contents.groupMap(_.toBareDep)(data => data.version -> data).view.mapValues(_.toMap).toMap
         new YamlRepository(baseUri, channelData /*, globalVariant*/)
       }
     } else {  // json repository
@@ -192,7 +189,7 @@ private class JsonRepository(
   /** For a module (no asset, no variant) of a given version, fetch the
     * corresponding `JD.Package` contained in its json file.
     */
-  def fetchModuleJson[F[_] : Monad, A <: JD.Package | JD.Asset : Reader](module: Module, version: String, fetch: Repository.Fetch[F]): EitherT[F, ErrStr, A] = {
+  def fetchModuleJson[F[_] : Monad, A <: JD.PackageAsset : Reader](module: Module, version: String, fetch: Repository.Fetch[F]): EitherT[F, ErrStr, A] = {
     val dep = BareDep.fromModule(module)
     if (!containsVersion(dep, version)) {
       EitherT.fromEither(Left(s"no versions of $module found in repository $baseUri"))
@@ -216,7 +213,7 @@ private class JsonRepository(
   */
 private class YamlRepository(
   baseUri: java.net.URI,
-  channelData: Map[BareDep, Map[String, JD.Package | JD.Asset]]  // name -> version -> json
+  channelData: Map[BareDep, Map[String, JD.PackageAsset]]  // name -> version -> json
   // globalVariant: Variant
 ) extends MetadataRepository(baseUri/*, globalVariant*/) {
 
@@ -224,11 +221,11 @@ private class YamlRepository(
     channelData.get(dep).map(_.keys.toSeq).getOrElse(Seq.empty)
   }
 
-  def fetchModuleJson[F[_] : Monad, A <: JD.Package | JD.Asset : Reader](module: Module, version: String, fetch: Repository.Fetch[F]): EitherT[F, ErrStr, A] = {
+  def fetchModuleJson[F[_] : Monad, A <: JD.PackageAsset : Reader](module: Module, version: String, fetch: Repository.Fetch[F]): EitherT[F, ErrStr, A] = {
     val dep = BareDep.fromModule(module)
     channelData.get(dep).flatMap(_.get(version)) match {
       case None => EitherT.fromEither(Left(s"no versions of $module found in repository $baseUri"))
-      case Some(pkgData: (JD.Package | JD.Asset)) =>
+      case Some(pkgData: JD.PackageAsset) =>
         EitherT.point(pkgData.asInstanceOf[A])  // as long as we do not mix up Assets and Packages, casting should not be an issue (could be fixed using type classes)
     }
   }
