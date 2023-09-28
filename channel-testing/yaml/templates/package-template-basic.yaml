@@ -7,7 +7,7 @@ assetId: "memo-testing-file-d-zip"  # A unique identifier (lowercase, hyphenated
 # asset has changed, so that all packages depending on it can be reinstalled.
 version: "1.0-1"  # increment the -1 patch version if the remote file is updated without incrementing the version
 lastModified: "2023-07-29T21:33:57Z"
-# The direct download link to the artifact (supports zip files, jar files, and jar files containd in zip files)
+# The direct download link to the artifact (supports zip files, jar files, and jar or zip files contained in zip files)
 url: "http://localhost:8090/files/package-d.zip"
 
 ---

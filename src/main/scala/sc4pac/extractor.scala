@@ -83,9 +83,10 @@ class ZipExtractor(logger: Logger) extends Extractor {
     extractByPredicate(archive, destination, recipe.accepts, overwrite = true, flatten = false)
     // additionally, extract jar files contained in the zip file to a temporary location
     for (ZipExtractor.JarExtraction(jarsDir) <- jarExtractionOpt) {
-      val jarFiles = extractByPredicate(archive, jarsDir, predicate = _.last.endsWith(".jar"), overwrite = false, flatten = true)  // overwrite=false, as we want to extract any given jar only once per staging process
+      val jarZipPredicate = (p: os.BasePath) => p.last.endsWith(".jar") || p.last.endsWith(".zip")
+      val jarFiles = extractByPredicate(archive, jarsDir, jarZipPredicate, overwrite = false, flatten = true)  // overwrite=false, as we want to extract any given jar only once per staging process
       // finally extract the jar files themselves (without recursively extracting jars contained inside)
-      for (jarFile <- jarFiles if jarFile.last.endsWith(".jar")) {
+      for (jarFile <- jarFiles if jarZipPredicate(jarFile)) {
         extract(jarFile.toIO, destination, recipe, jarExtractionOpt = None)
       }
     }
