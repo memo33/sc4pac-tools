@@ -1,0 +1,17 @@
+group: "ncd"
+name: "rail-yard-and-spur-mega-pak-1"
+version: "2"
+subfolder: "100-props-textures"
+assets:
+- assetId: "ncd-rail-yard-and-spur-mega-pak"
+info:
+  summary: "Textures for realistic railyards and industrial lots (aka version 1.02)"  # meant as Vol. 1 version 2
+  # Note that this is a remaster of Vol. 1 version 1 using different IDs. Therefore, some old lots may require the original.
+  author: "north country dude"
+  website: "https://community.simtropolis.com/files/file/22325-rail-yard-and-spur-mega-pak-1-version-2/"
+
+---
+assetId: "ncd-rail-yard-and-spur-mega-pak"
+version: "1.02"
+lastModified: "2009-08-22T16:03:45Z"
+url: "https://community.simtropolis.com/files/file/22325-rail-yard-and-spur-mega-pak-1-version-2/?do=download"

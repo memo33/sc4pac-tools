@@ -1,0 +1,34 @@
+group: "peg"
+name: "mtp-super-pack"
+version: "1.5"
+subfolder: "100-props-textures"
+variants:
+- variant: { roadstyle: "US" }
+  assets:
+  - assetId: "peg-mtp-super-pack"
+    include:
+    - "/Mountain Theme Pack/"
+    - "/PEG-SUPER_TEXTURES_RRWOverride.dat"  # we always include RRW since it is a standard component of the NAM
+- variant: { roadstyle: "EU" }
+  assets:
+  - assetId: "peg-mtp-super-pack"
+    include:
+    - "/Mountain Theme Pack/"
+    - "/PEG-SUPER_TEXTURES_RRWOverride.dat"
+    - "/PEG-SUPER_TEXTURES_EUOverride.dat"  # conained in /_Documents/ so loads after main files in /PEGPROD/
+
+variantDescriptions:
+  roadstyle:
+    "US": "Maxis-default style"
+    "EU": "if you have installed the NAM Euro Road Textures"
+
+info:
+  summary: "Mountain Theme Pack props and textures"
+  author: "Pegasus"
+  website: "https://community.simtropolis.com/files/file/20966-peg-mtp-super-pack/"
+
+---
+assetId: "peg-mtp-super-pack"
+version: "1.5"
+lastModified: "2022-07-04T23:43:31Z"
+url: "https://community.simtropolis.com/files/file/20966-peg-mtp-super-pack/?do=download"
