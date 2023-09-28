@@ -217,6 +217,10 @@ class Sc4pac(val repositories: Seq[MetadataRepository], val cache: FileCache, va
           b += "Description" -> pkg.info.description
         if (pkg.info.warning.nonEmpty)
           b += "Warning" -> pkg.info.warning
+        if (pkg.info.conflicts.nonEmpty)
+          b += "Conflicts" -> pkg.info.conflicts
+        if (pkg.info.author.nonEmpty)
+          b += "Author" -> pkg.info.author
         if (pkg.info.website.nonEmpty)
           b += "Website" -> pkg.info.website
 

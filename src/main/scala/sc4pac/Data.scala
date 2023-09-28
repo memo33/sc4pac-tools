@@ -164,7 +164,9 @@ object JsonData {
   case class Info(
     summary: String = "",
     warning: String = "",
+    conflicts: String = "",
     description: String = "",
+    author: String = "",
     images: Seq[String] = Seq.empty,
     website: String = ""
   ) derives ReadWriter

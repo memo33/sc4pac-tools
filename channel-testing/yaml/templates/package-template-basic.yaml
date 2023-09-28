@@ -47,10 +47,12 @@ info:
   summary: "One-line summary"
   warning: >
     Special instructions to display before installation, such as bulldozing requirements.
+  conflicts: "Notes about incompatibilities"
   description: >
     Longer text with some details.
 
     Yet more text…
+  author: ""  # original author of the content, if useful
   images: [ "img1.png", "img2.png" ]
   website: "example.org"
 

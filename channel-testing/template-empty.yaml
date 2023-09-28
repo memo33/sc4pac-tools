@@ -10,7 +10,9 @@ assets:
 info:
   summary: "<one-line summary>"
   warning: ""
+  conflicts: ""
   description: ""
+  author: ""
   images: []
   website: ""
 
