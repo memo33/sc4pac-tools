@@ -1,0 +1,56 @@
+assetId: "bsc-no-maxis"
+version: "1"
+lastModified: "2023-07-20T00:44:36Z"
+url: "https://www.sc4evermore.com/index.php/downloads?task=download.send&id=26:bsc-no-maxis"
+
+---
+group: "bsc"
+name: "no-maxis-i-d"
+version: "1"
+subfolder: "900-overrides"
+assets:
+- assetId: "bsc-no-maxis"
+  include: [ "/Stop_Maxis_I-d[123].dat" ]
+info:
+  summary: "Stop dirty industry Lots from growing (I-d1, I-d2, I-d3)"
+  conflicts: Must load after other Maxis Lot replacement mods such as CAM.
+  website: "https://www.sc4evermore.com/index.php/downloads/download/26-gameplay-mods/26-bsc-no-maxis"
+
+---
+group: "bsc"
+name: "no-maxis-i-m"
+version: "1"
+subfolder: "900-overrides"
+assets:
+- assetId: "bsc-no-maxis"
+  include: [ "/Stop_Maxis_I-m[123].dat" ]
+info:
+  summary: "Stop manufacturing industry Lots from growing (I-m1, I-m2, I-m3)"
+  conflicts: Must load after other Maxis Lot replacement mods such as CAM.
+  website: "https://www.sc4evermore.com/index.php/downloads/download/26-gameplay-mods/26-bsc-no-maxis"
+
+---
+group: "bsc"
+name: "no-maxis-i-ht"
+version: "1"
+subfolder: "900-overrides"
+assets:
+- assetId: "bsc-no-maxis"
+  include: [ "/Stop_Maxis_I-ht[123].dat" ]
+info:
+  summary: "Stop high-tech industry Lots from growing (I-ht1, I-ht2, I-ht3)"
+  conflicts: Must load after other Maxis Lot replacement mods such as CAM.
+  website: "https://www.sc4evermore.com/index.php/downloads/download/26-gameplay-mods/26-bsc-no-maxis"
+
+---
+group: "bsc"
+name: "no-maxis-farms"
+version: "1"
+subfolder: "900-overrides"
+assets:
+- assetId: "bsc-no-maxis"
+  include: [ "/Prevent_I-r_Lots.dat" ]
+info:
+  summary: "Stop agricultural industry Lots from growing (I-R)"
+  conflicts: Must load after other Maxis Lot replacement mods such as CAM.
+  website: "https://www.sc4evermore.com/index.php/downloads/download/26-gameplay-mods/26-bsc-no-maxis"
