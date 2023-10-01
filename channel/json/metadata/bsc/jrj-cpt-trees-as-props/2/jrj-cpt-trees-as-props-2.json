@@ -1,0 +1,22 @@
+{
+  "group": "bsc",
+  "name": "jrj-cpt-trees-as-props",
+  "version": "2",
+  "subfolder": "100-props-textures",
+  "info": {
+    "summary": "JRJ_CPT_Trees_as_props_V2 by jeronij"
+  },
+  "variants": [
+    {
+      "variant": {},
+      "assets": [
+        {
+          "assetId": "sc4d-lex-legacy-bsc-common-dependencies-pack",
+          "include": [
+            "/JRJ_CPT_Trees_as_props_V2.dat"
+          ]
+        }
+      ]
+    }
+  ]
+}

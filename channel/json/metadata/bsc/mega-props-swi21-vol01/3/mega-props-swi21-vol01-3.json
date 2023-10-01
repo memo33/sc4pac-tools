@@ -1,0 +1,22 @@
+{
+  "group": "bsc",
+  "name": "mega-props-swi21-vol01",
+  "version": "3",
+  "subfolder": "100-props-textures",
+  "info": {
+    "summary": "BSC MEGA Props - swi21 Vol01 v3 by swi21"
+  },
+  "variants": [
+    {
+      "variant": {},
+      "assets": [
+        {
+          "assetId": "sc4d-lex-legacy-bsc-common-dependencies-pack",
+          "include": [
+            "/BSC MEGA Props - swi21 Vol01 v3.dat"
+          ]
+        }
+      ]
+    }
+  ]
+}

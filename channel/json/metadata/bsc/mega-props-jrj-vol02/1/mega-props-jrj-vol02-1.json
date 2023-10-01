@@ -1,0 +1,22 @@
+{
+  "group": "bsc",
+  "name": "mega-props-jrj-vol02",
+  "version": "1",
+  "subfolder": "100-props-textures",
+  "info": {
+    "summary": "BSC MEGA Props JRJ Vol02 by jeronij"
+  },
+  "variants": [
+    {
+      "variant": {},
+      "assets": [
+        {
+          "assetId": "sc4d-lex-legacy-bsc-common-dependencies-pack",
+          "include": [
+            "/BSC MEGA Props JRJ Vol02.dat"
+          ]
+        }
+      ]
+    }
+  ]
+}

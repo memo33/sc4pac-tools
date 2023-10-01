@@ -1,0 +1,22 @@
+{
+  "group": "bsc",
+  "name": "mega-props-aln-vol03",
+  "version": "2",
+  "subfolder": "100-props-textures",
+  "info": {
+    "summary": "BSC MEGA Props - ALN Vol03 v2 by ChrisAdams3997"
+  },
+  "variants": [
+    {
+      "variant": {},
+      "assets": [
+        {
+          "assetId": "sc4d-lex-legacy-bsc-common-dependencies-pack",
+          "include": [
+            "/BSC MEGA Props - ALN Vol03 v2.dat"
+          ]
+        }
+      ]
+    }
+  ]
+}

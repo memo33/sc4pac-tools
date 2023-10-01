@@ -1,0 +1,22 @@
+{
+  "group": "csx",
+  "name": "mega-props-vol07",
+  "version": "2",
+  "subfolder": "100-props-textures",
+  "info": {
+    "summary": "CSX MEGA Props Vol07 by Colyn"
+  },
+  "variants": [
+    {
+      "variant": {},
+      "assets": [
+        {
+          "assetId": "sc4d-lex-legacy-bsc-common-dependencies-pack",
+          "include": [
+            "/CSX MEGA Props - Vol07_v2.dat"
+          ]
+        }
+      ]
+    }
+  ]
+}

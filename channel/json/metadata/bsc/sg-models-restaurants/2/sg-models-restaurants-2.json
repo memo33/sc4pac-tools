@@ -1,0 +1,22 @@
+{
+  "group": "bsc",
+  "name": "sg-models-restaurants",
+  "version": "2",
+  "subfolder": "100-props-textures",
+  "info": {
+    "summary": "SG_Models_Restaurants v2 by SimGoober"
+  },
+  "variants": [
+    {
+      "variant": {},
+      "assets": [
+        {
+          "assetId": "sc4d-lex-legacy-bsc-common-dependencies-pack",
+          "include": [
+            "/SG_Models_Restaurants v2.dat"
+          ]
+        }
+      ]
+    }
+  ]
+}

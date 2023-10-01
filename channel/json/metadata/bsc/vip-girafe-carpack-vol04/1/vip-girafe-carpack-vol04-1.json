@@ -1,0 +1,23 @@
+{
+  "group": "bsc",
+  "name": "vip-girafe-carpack-vol04",
+  "version": "1",
+  "subfolder": "100-props-textures",
+  "info": {
+    "summary": "Carpack vol. 4 by Girafe",
+    "description": "See also bsc:vip-girafe-urbanpack-vol01 which includes this carpack as a dependency."
+  },
+  "variants": [
+    {
+      "variant": {},
+      "assets": [
+        {
+          "assetId": "sc4d-lex-legacy-bsc-common-dependencies-pack",
+          "include": [
+            "/Carpack vol. 4.dat"
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -1,6 +1,6 @@
 group: "memo"
 name: "essential-fixes"
-version: "0.1.0"
+version: "0.1.1"
 subfolder: "150-mods"
 info:
   summary: "A collection of important fixes everyone should have"
@@ -10,5 +10,5 @@ dependencies:
 - "t-wrecks:maxis-prop-names-and-query-fix"
 - "heinbloed4711:hi-tech-missing-high-wealth-jobs"
 - "fanta1990:automata-fix-pack-vol1"
-- "fukuda:ir-placement-mod"
+- "scoty:zoning-mod-maxis"
 - "smp:yellow-pause-thingy-remover"

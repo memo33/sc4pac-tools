@@ -1,0 +1,22 @@
+{
+  "group": "bsc",
+  "name": "mega-props-rt-wfk-n-vol01",
+  "version": "1",
+  "subfolder": "100-props-textures",
+  "info": {
+    "summary": "BSC MEGA Props - RT WFK N Vol01 by Ripptide, Waterfront Kit"
+  },
+  "variants": [
+    {
+      "variant": {},
+      "assets": [
+        {
+          "assetId": "sc4d-lex-legacy-bsc-common-dependencies-pack",
+          "include": [
+            "/BSC MEGA Props - RT WFK N Vol01.dat"
+          ]
+        }
+      ]
+    }
+  ]
+}

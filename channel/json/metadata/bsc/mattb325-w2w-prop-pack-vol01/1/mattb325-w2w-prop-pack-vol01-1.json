@@ -1,0 +1,22 @@
+{
+  "group": "bsc",
+  "name": "mattb325-w2w-prop-pack-vol01",
+  "version": "1",
+  "subfolder": "100-props-textures",
+  "info": {
+    "summary": "Mattb325_W2W_Prop_Pack_Vol01"
+  },
+  "variants": [
+    {
+      "variant": {},
+      "assets": [
+        {
+          "assetId": "sc4d-lex-legacy-bsc-common-dependencies-pack",
+          "include": [
+            "/Mattb325_W2W_Prop_Pack_Vol01.dat"
+          ]
+        }
+      ]
+    }
+  ]
+}

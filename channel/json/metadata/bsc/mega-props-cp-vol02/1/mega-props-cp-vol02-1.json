@@ -1,0 +1,22 @@
+{
+  "group": "bsc",
+  "name": "mega-props-cp-vol02",
+  "version": "1",
+  "subfolder": "100-props-textures",
+  "info": {
+    "summary": "BSC Mega Props - CP Vol02 by cycledogg/c.p."
+  },
+  "variants": [
+    {
+      "variant": {},
+      "assets": [
+        {
+          "assetId": "sc4d-lex-legacy-bsc-common-dependencies-pack",
+          "include": [
+            "/BSC Mega Props - CP Vol02.dat"
+          ]
+        }
+      ]
+    }
+  ]
+}

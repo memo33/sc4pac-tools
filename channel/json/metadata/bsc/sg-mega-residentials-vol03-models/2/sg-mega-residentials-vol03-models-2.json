@@ -1,0 +1,22 @@
+{
+  "group": "bsc",
+  "name": "sg-mega-residentials-vol03-models",
+  "version": "2",
+  "subfolder": "100-props-textures",
+  "info": {
+    "summary": "SG_MEGA_Residentials_Vol03_Models_v2 by SimGoober"
+  },
+  "variants": [
+    {
+      "variant": {},
+      "assets": [
+        {
+          "assetId": "sc4d-lex-legacy-bsc-common-dependencies-pack",
+          "include": [
+            "/SG_MEGA_Residentials_Vol03_Models_v2.dat"
+          ]
+        }
+      ]
+    }
+  ]
+}

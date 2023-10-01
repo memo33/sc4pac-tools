@@ -1,0 +1,22 @@
+{
+  "group": "bsc",
+  "name": "mega-props-newmaninc-vol04",
+  "version": "1",
+  "subfolder": "100-props-textures",
+  "info": {
+    "summary": "BSC MEGA Props - NewmanInc Vol04 by Citynut"
+  },
+  "variants": [
+    {
+      "variant": {},
+      "assets": [
+        {
+          "assetId": "sc4d-lex-legacy-bsc-common-dependencies-pack",
+          "include": [
+            "/BSC MEGA Props - NewmanInc Vol04.dat"
+          ]
+        }
+      ]
+    }
+  ]
+}

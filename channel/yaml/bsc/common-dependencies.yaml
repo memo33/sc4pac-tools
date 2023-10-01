@@ -1,0 +1,1808 @@
+assetId: "sc4d-lex-legacy-bsc-common-dependencies-pack"
+version: "6"
+lastModified: "2023-08-24T05:00:25Z"
+url: "https://www.sc4evermore.com/index.php/downloads?task=download.send&id=3:sc4d-lex-legacy-bsc-common-dependencies-pack"
+
+---
+group: "bsc"
+name: "essentials"
+version: "2022a"
+subfolder: "100-props-textures"
+assets:
+- assetId: "sc4d-lex-legacy-bsc-common-dependencies-pack"
+  include:
+  - "/BSC Essentials"
+  - "/BSC_Reward_essential.*dat"
+info:
+  summary: "BSC queries, rewards and other related files"
+
+---
+group: "bsc"
+name: "prop-family-names"
+version: "1"
+subfolder: "100-props-textures"
+assets:
+- assetId: "sc4d-lex-legacy-bsc-common-dependencies-pack"
+  include: [ "/BSC_PropFamilyNames.dat" ]
+info:
+  summary: "BSC_PropFamilyNames"
+
+---
+group: "bsc"
+name: "textures-vol01"
+version: "1"
+subfolder: "100-props-textures"
+assets:
+- assetId: "sc4d-lex-legacy-bsc-common-dependencies-pack"
+  include: [ "/BSC Textures Vol 01.dat" ]
+info:
+  summary: "BSC Textures Vol 01"
+
+---
+group: "bsc"
+name: "textures-vol02"
+version: "1"
+subfolder: "100-props-textures"
+assets:
+- assetId: "sc4d-lex-legacy-bsc-common-dependencies-pack"
+  include: [ "/BSC Textures Vol 02.dat" ]
+info:
+  summary: "BSC Textures Vol 02"
+
+---
+group: "bsc"
+name: "textures-vol03"
+version: "3"
+subfolder: "100-props-textures"
+assets:
+- assetId: "sc4d-lex-legacy-bsc-common-dependencies-pack"
+  include: [ "/BSC Textures vol03 v3.dat" ]
+info:
+  summary: "BSC Textures Vol 03"
+
+---
+group: "bsc"
+name: "texturepack-cycledogg-vol01"
+version: "1"
+subfolder: "100-props-textures"
+assets:
+- assetId: "sc4d-lex-legacy-bsc-common-dependencies-pack"
+  include: [ "/BSC_TexturePack_Cycledogg_V 01.dat" ]
+info:
+  summary: "BSC_TexturePack_Cycledogg_V 01"
+
+---
+group: "bsc"
+name: "flags"
+version: "1"
+subfolder: "100-props-textures"
+assets:
+- assetId: "sc4d-lex-legacy-bsc-common-dependencies-pack"
+  include: [ "/BSC Flags/" ]
+info:
+  summary: "Packs 1 and 2 and Pride and EU flags"
+
+---
+group: "bsc"
+name: "bat-props-d66-vol10"
+version: "1"
+subfolder: "100-props-textures"
+assets:
+- assetId: "sc4d-lex-legacy-bsc-common-dependencies-pack"
+  include: [ "/BSCBATProps D66 Vol10.dat" ]
+info:
+  summary: "BSCBATProps D66 Vol10 by Dolphin66"
+
+---
+group: "bsc"
+name: "bat-props-d66-vol11"
+version: "1"
+subfolder: "100-props-textures"
+assets:
+- assetId: "sc4d-lex-legacy-bsc-common-dependencies-pack"
+  include: [ "/BSCBAT Props D66 Vol11.dat" ]
+info:
+  summary: "BSCBAT Props D66 Vol11 by Dolphin66"
+
+---
+group: "bsc"
+name: "bat-props-jenx-tree-props-vol02"
+version: "1"
+subfolder: "100-props-textures"
+assets:
+- assetId: "sc4d-lex-legacy-bsc-common-dependencies-pack"
+  include: [ "/BSC BATProps JENX Tree Props Vol02 \\(SD\\).dat" ]
+info:
+  summary: "BSC BATProps JENX Tree Props Vol02 (SD) by xannepan"
+
+---
+group: "bsc"
+name: "bat-props-jenx-tree-props-vol03"
+version: "1"
+subfolder: "100-props-textures"
+assets:
+- assetId: "sc4d-lex-legacy-bsc-common-dependencies-pack"
+  include: [ "/BSC BATProps JENX Tree Props Vol03 \\(HD\\).dat" ]
+info:
+  summary: "BSC BATProps JENX Tree Props Vol03 (HD) by xannepan"
+
+---
+group: "bsc"
+name: "bat-props-jenx-vol02"
+version: "1"
+subfolder: "100-props-textures"
+assets:
+- assetId: "sc4d-lex-legacy-bsc-common-dependencies-pack"
+  include: [ "/BSCBATProps JENX Vol02.dat" ]
+info:
+  summary: "BSCBATProps JENX Vol02 by xannepan"
+
+---
+group: "bsc"
+name: "bat-props-kwk-vol03"
+version: "1"
+subfolder: "100-props-textures"
+assets:
+- assetId: "sc4d-lex-legacy-bsc-common-dependencies-pack"
+  include: [ "/BSCBATProps KWK Vol03.dat" ]
+info:
+  summary: "BSCBATProps KWK Vol03 by Kwakelaar"
+
+---
+group: "bsc"
+name: "bat-props-kwk-vol04"
+version: "1"
+subfolder: "100-props-textures"
+assets:
+- assetId: "sc4d-lex-legacy-bsc-common-dependencies-pack"
+  include: [ "/BSCBATProps KWK Vol 04.dat" ]
+info:
+  summary: "BSCBATProps KWK Vol 04 by Kwakelaar"
+
+---
+group: "bsc"
+name: "bat-props-lil-vol2"
+version: "1"
+subfolder: "100-props-textures"
+assets:
+- assetId: "sc4d-lex-legacy-bsc-common-dependencies-pack"
+  include: [ "/BSC BAT Props LiL Vol2.DAT" ]
+info:
+  summary: "BSC BAT Props LiL Vol2 by Lilith"
+
+---
+group: "bsc"
+name: "bat-props-t1-vol1"
+version: "1"
+subfolder: "100-props-textures"
+assets:
+- assetId: "sc4d-lex-legacy-bsc-common-dependencies-pack"
+  include: [ "/BSC BAT Props - T1 Vol1.dat" ]
+info:
+  summary: "BSC BAT Props - T1 Vol1 by tag_one by tag_one"
+
+---
+group: "bsc"
+name: "bat-props-t1-vol3"
+version: "1"
+subfolder: "100-props-textures"
+assets:
+- assetId: "sc4d-lex-legacy-bsc-common-dependencies-pack"
+  include: [ "/BSC BAT Props - T1 Vol3.dat" ]
+info:
+  summary: "BSC BAT Props - T1 Vol3 by tag_one by tag_one"
+
+---
+group: "bsc"
+name: "bat-props-t1-vol4"
+version: "1"
+subfolder: "100-props-textures"
+assets:
+- assetId: "sc4d-lex-legacy-bsc-common-dependencies-pack"
+  include: [ "/BSC BAT Props - T1 Vol4.dat" ]
+info:
+  summary: "BSC BAT Props - T1 Vol4 by tag_one"
+
+---
+group: "bsc"
+name: "bat-props-t1-vol5"
+version: "1"
+subfolder: "100-props-textures"
+assets:
+- assetId: "sc4d-lex-legacy-bsc-common-dependencies-pack"
+  include: [ "/BSC BAT Props - T1 Vol5.dat" ]
+info:
+  summary: "BSC BAT Props - T1 Vol5 by tag_one"
+
+---
+group: "bsc"
+name: "bat-props-t1-vol6"
+version: "1"
+subfolder: "100-props-textures"
+assets:
+- assetId: "sc4d-lex-legacy-bsc-common-dependencies-pack"
+  include: [ "/BSC BAT Props - T1 Vol6.dat" ]
+info:
+  summary: "BSC BAT Props - T1 Vol6 by tag_one"
+
+---
+group: "bsc"
+name: "bat-props-t1-vol7"
+version: "1"
+subfolder: "100-props-textures"
+assets:
+- assetId: "sc4d-lex-legacy-bsc-common-dependencies-pack"
+  include: [ "/BSC BAT Props - T1 Vol7.dat" ]
+info:
+  summary: "BSC BAT Props - T1 Vol7 by tag_one"
+
+---
+group: "bsc"
+name: "bat-props-t1-vol8"
+version: "1"
+subfolder: "100-props-textures"
+assets:
+- assetId: "sc4d-lex-legacy-bsc-common-dependencies-pack"
+  include: [ "/BSC BAT Props - T1 Vol8.dat" ]
+info:
+  summary: "BSC BAT Props - T1 Vol8 by tag_one"
+
+---
+group: "bsc"
+name: "mega-props-aln-vol01"
+version: "2"
+subfolder: "100-props-textures"
+assets:
+- assetId: "sc4d-lex-legacy-bsc-common-dependencies-pack"
+  include: [ "/BSC MEGA Props - ALN Vol01 v2.dat" ]
+info:
+  summary: "BSC MEGA Props - ALN Vol01 v2 by ChrisAdams3997"
+
+---
+group: "bsc"
+name: "mega-props-aln-vol02"
+version: "1"
+subfolder: "100-props-textures"
+assets:
+- assetId: "sc4d-lex-legacy-bsc-common-dependencies-pack"
+  include: [ "/BSC MEGA Props - ALN Vol02.dat" ]
+info:
+  summary: "BSC MEGA Props - ALN Vol02 by ChrisAdams3997"
+
+---
+group: "bsc"
+name: "mega-props-aln-vol03"
+version: "2"
+subfolder: "100-props-textures"
+assets:
+- assetId: "sc4d-lex-legacy-bsc-common-dependencies-pack"
+  include: [ "/BSC MEGA Props - ALN Vol03 v2.dat" ]
+info:
+  summary: "BSC MEGA Props - ALN Vol03 v2 by ChrisAdams3997"
+
+---
+group: "bsc"
+name: "mega-props-cal-vol01"
+version: "2"
+subfolder: "100-props-textures"
+assets:
+- assetId: "sc4d-lex-legacy-bsc-common-dependencies-pack"
+  include: [ "/BSC MEGA Props - CAL vol01 v2.dat" ]
+info:
+  summary: "BSC MEGA Props - CAL vol01 v2 by callagrafx"
+
+---
+group: "bsc"
+name: "mega-props-cp-vol01"
+version: "1"
+subfolder: "100-props-textures"
+assets:
+- assetId: "sc4d-lex-legacy-bsc-common-dependencies-pack"
+  include:
+  - "/BSC MEGA Props - CP Vol01.dat"
+  - "/CP_Essentials_FamilyNames.dat"
+info:
+  summary: "BSC MEGA Props - CP Vol01 and CP_Essentials_FamilyNames by cycledogg/c.p."
+
+---
+group: "bsc"
+name: "mega-props-d66-vol01"
+version: "2"
+subfolder: "100-props-textures"
+assets:
+- assetId: "sc4d-lex-legacy-bsc-common-dependencies-pack"
+  include: [ "/BSC MEGA Props - D66 Vol01 v2.dat" ]
+info:
+  summary: "BSC MEGA Props - D66 Vol01 v2 by Dolphin66"
+
+---
+group: "bsc"
+name: "mega-props-dae-vol01"
+version: "2"
+subfolder: "100-props-textures"
+assets:
+- assetId: "sc4d-lex-legacy-bsc-common-dependencies-pack"
+  include: [ "/BSC MEGA Props - DAE Vol01 v2.dat" ]
+info:
+  summary: "BSC MEGA Props - DAE Vol01 v2 by deadwoods"
+
+---
+group: "bsc"
+name: "mega-props-gascooker-vol01"
+version: "1"
+subfolder: "100-props-textures"
+assets:
+- assetId: "sc4d-lex-legacy-bsc-common-dependencies-pack"
+  include: [ "/BSC MEGA Props - Gascooker Vol01.dat" ]
+info:
+  summary: "BSC MEGA Props - Gascooker Vol01"
+
+---
+group: "bsc"
+name: "mega-props-gascooker-vol02"
+version: "2"
+subfolder: "100-props-textures"
+assets:
+- assetId: "sc4d-lex-legacy-bsc-common-dependencies-pack"
+  include: [ "/BSC MEGA Props - Gascooker vol02 v2.dat" ]
+info:
+  summary: "BSC MEGA Props - Gascooker vol02 v2"
+
+---
+group: "bsc"
+name: "mega-props-jenx-vol01"
+version: "1"
+subfolder: "100-props-textures"
+assets:
+- assetId: "sc4d-lex-legacy-bsc-common-dependencies-pack"
+  include: [ "/BSC MEGA Props - JENX Vol01.dat" ]
+info:
+  summary: "BSC MEGA Props - JENX Vol01 by xannepan"
+
+---
+group: "bsc"
+name: "mega-props-jenx-vol02-paris"
+version: "1"
+subfolder: "100-props-textures"
+assets:
+- assetId: "sc4d-lex-legacy-bsc-common-dependencies-pack"
+  include: [ "/BSC MEGA Props - JENX Vol02 - PARIS.dat" ]
+info:
+  summary: "BSC MEGA Props - JENX Vol02 - PARIS by xannepan"
+
+---
+group: "bsc"
+name: "mega-props-jenx-vol03"
+version: "1"
+subfolder: "100-props-textures"
+assets:
+- assetId: "sc4d-lex-legacy-bsc-common-dependencies-pack"
+  include: [ "/BSC MEGA Props - JENX Vol03.dat" ]
+info:
+  summary: "BSC MEGA Props - JENX Vol03 by xannepan"
+
+---
+group: "bsc"
+name: "mega-props-jmyers-agriculture-vol01"
+version: "2"
+subfolder: "100-props-textures"
+assets:
+- assetId: "sc4d-lex-legacy-bsc-common-dependencies-pack"
+  include: [ "/BSC MEGA Props - JMyersAgriculture01 v2.dat" ]
+info:
+  summary: "BSC MEGA Props - JMyersAgriculture01 v2 by JMyers2043"
+
+---
+group: "bsc"
+name: "mega-props-jmyers-agriculture-vol02"
+version: "2"
+subfolder: "100-props-textures"
+assets:
+- assetId: "sc4d-lex-legacy-bsc-common-dependencies-pack"
+  include: [ "/BSC MEGA Props - JMyersAgriculture02 v2.dat" ]
+info:
+  summary: "BSC MEGA Props - JMyersAgriculture02 v2 by JMyers2043"
+
+---
+group: "bsc"
+name: "mega-props-kevdan25-vol01"
+version: "2"
+subfolder: "100-props-textures"
+assets:
+- assetId: "sc4d-lex-legacy-bsc-common-dependencies-pack"
+  include: [ "/BSC MEGA Props - KevDan25  Vol01 v2.dat" ]
+info:
+  summary: "BSC MEGA Props - KevDan25  Vol01 v2"
+
+---
+group: "bsc"
+name: "mega-props-mbear-vol01"
+version: "3"
+subfolder: "100-props-textures"
+assets:
+- assetId: "sc4d-lex-legacy-bsc-common-dependencies-pack"
+  include: [ "/BSC MEGA Props - MBEAR Vol01 v3.dat" ]
+info:
+  summary: "BSC MEGA Props - MBEAR Vol01 v3 by Mickebear"
+
+---
+group: "bsc"
+name: "mega-props-mbear-vol02"
+version: "2"
+subfolder: "100-props-textures"
+assets:
+- assetId: "sc4d-lex-legacy-bsc-common-dependencies-pack"
+  include: [ "/BSC MEGA Props - MBEAR Vol02 v2.dat" ]
+info:
+  summary: "BSC MEGA Props - MBEAR Vol02 v2 by Mickebear"
+
+---
+group: "bsc"
+name: "mega-props-mbear-vol03"
+version: "2"
+subfolder: "100-props-textures"
+assets:
+- assetId: "sc4d-lex-legacy-bsc-common-dependencies-pack"
+  include: [ "/BSC MEGA Props - MBEAR Vol03 v2.dat" ]
+info:
+  summary: "BSC MEGA Props - MBEAR Vol03 v2 by Mickebear"
+
+---
+group: "bsc"
+name: "mega-props-mbear-vol04"
+version: "2"
+subfolder: "100-props-textures"
+assets:
+- assetId: "sc4d-lex-legacy-bsc-common-dependencies-pack"
+  include: [ "/BSC MEGA Props - MBEAR Vol04 v2.dat" ]
+info:
+  summary: "BSC MEGA Props - MBEAR Vol04 v2 by Mickebear"
+
+---
+group: "bsc"
+name: "mega-props-mjb-vol01"
+version: "2"
+subfolder: "100-props-textures"
+assets:
+- assetId: "sc4d-lex-legacy-bsc-common-dependencies-pack"
+  include: [ "/BSC MEGA Props - MJB Vol01 v2.dat" ]
+info:
+  summary: "BSC MEGA Props - MJB Vol01 v2 by Couchpotato"
+
+---
+group: "bsc"
+name: "mega-props-mjb-vol02"
+version: "1"
+subfolder: "100-props-textures"
+assets:
+- assetId: "sc4d-lex-legacy-bsc-common-dependencies-pack"
+  include: [ "/BSC MEGA Props -  MJB Vol02.dat" ]
+info:
+  summary: "BSC MEGA Props -  MJB Vol02 by Couchpotato"
+
+---
+group: "bsc"
+name: "mega-props-misc-vol01"
+version: "1"
+subfolder: "100-props-textures"
+assets:
+- assetId: "sc4d-lex-legacy-bsc-common-dependencies-pack"
+  include: [ "/BSC MEGA Props - Misc Vol01.dat" ]
+info:
+  summary: "BSC MEGA Props - Misc Vol01"
+
+---
+group: "bsc"
+name: "mega-props-misc-vol02"
+version: "3"
+subfolder: "100-props-textures"
+assets:
+- assetId: "sc4d-lex-legacy-bsc-common-dependencies-pack"
+  include: [ "/BSC MEGA Props - Misc Vol02 v3.dat" ]
+info:
+  summary: "BSC MEGA Props - Misc Vol02 v3"
+
+---
+group: "bsc"
+name: "mega-props-newmaninc-vol01"
+version: "2"
+subfolder: "100-props-textures"
+assets:
+- assetId: "sc4d-lex-legacy-bsc-common-dependencies-pack"
+  include: [ "/BSC MEGA Props - NewmanInc Vol01_v2.dat" ]
+info:
+  summary: "BSC MEGA Props - NewmanInc Vol01_v2 by Citynut"
+
+---
+group: "bsc"
+name: "mega-props-newmaninc-vol02"
+version: "2"
+subfolder: "100-props-textures"
+assets:
+- assetId: "sc4d-lex-legacy-bsc-common-dependencies-pack"
+  include: [ "/BSC MEGA Props - NewmanInc Vol02_v2.dat" ]
+info:
+  summary: "BSC MEGA Props - NewmanInc Vol02_v2 by Citynut"
+
+---
+group: "bsc"
+name: "mega-props-newmaninc-vol03"
+version: "2"
+subfolder: "100-props-textures"
+assets:
+- assetId: "sc4d-lex-legacy-bsc-common-dependencies-pack"
+  include: [ "/BSC MEGA Props - NewmanInc Vol03_v2.dat" ]
+info:
+  summary: "BSC MEGA Props - NewmanInc Vol03_v2 by Citynut"
+
+---
+group: "bsc"
+name: "mega-props-newmaninc-vol04"
+version: "1"
+subfolder: "100-props-textures"
+assets:
+- assetId: "sc4d-lex-legacy-bsc-common-dependencies-pack"
+  include: [ "/BSC MEGA Props - NewmanInc Vol04.dat" ]
+info:
+  summary: "BSC MEGA Props - NewmanInc Vol04 by Citynut"
+
+---
+group: "bsc"
+name: "mega-props-newmaninc-vol05"
+version: "1"
+subfolder: "100-props-textures"
+assets:
+- assetId: "sc4d-lex-legacy-bsc-common-dependencies-pack"
+  include: [ "/BSC MEGA Props - NewmanInc Vol05.dat" ]
+info:
+  summary: "BSC MEGA Props - NewmanInc Vol05 by Citynut"
+
+---
+group: "bsc"
+name: "mega-props-rt-vol01"
+version: "2"
+subfolder: "100-props-textures"
+assets:
+- assetId: "sc4d-lex-legacy-bsc-common-dependencies-pack"
+  include: [ "/BSC MEGA Props - RT Vol01 v2.dat" ]
+info:
+  summary: "BSC MEGA Props - RT Vol01 v2 by Ripptide"
+
+---
+group: "bsc"
+name: "mega-props-rt-vol02"
+version: "1"
+subfolder: "100-props-textures"
+assets:
+- assetId: "sc4d-lex-legacy-bsc-common-dependencies-pack"
+  include: [ "/BSC MEGA Props - RT Vol02.dat" ]
+info:
+  summary: "BSC MEGA Props - RT Vol02 by Ripptide"
+
+---
+group: "bsc"
+name: "mega-props-rt-vol03"
+version: "1"
+subfolder: "100-props-textures"
+assets:
+- assetId: "sc4d-lex-legacy-bsc-common-dependencies-pack"
+  include: [ "/BSC MEGA Props RT Vol03.dat" ]
+info:
+  summary: "BSC MEGA Props RT Vol03 by Ripptide"
+
+---
+group: "bsc"
+name: "mega-props-rt-vol04"
+version: "1"
+subfolder: "100-props-textures"
+assets:
+- assetId: "sc4d-lex-legacy-bsc-common-dependencies-pack"
+  include: [ "/BSC MEGA Props RT Vol04.dat" ]
+info:
+  summary: "BSC MEGA Props RT Vol04 by Ripptide"
+
+---
+group: "bsc"
+name: "mega-props-rt-wfk-n-vol01"
+version: "1"
+subfolder: "100-props-textures"
+assets:
+- assetId: "sc4d-lex-legacy-bsc-common-dependencies-pack"
+  include: [ "/BSC MEGA Props - RT WFK N Vol01.dat" ]
+info:
+  summary: "BSC MEGA Props - RT WFK N Vol01 by Ripptide, Waterfront Kit"
+
+---
+group: "bsc"
+name: "mega-props-rt-wfk-vol01"
+version: "1"
+subfolder: "100-props-textures"
+assets:
+- assetId: "sc4d-lex-legacy-bsc-common-dependencies-pack"
+  include: [ "/BSC MEGA Props - RT WFK Vol01.dat" ]
+info:
+  summary: "BSC MEGA Props - RT WFK Vol01 by Ripptide, Waterfront Kit"
+
+---
+group: "bsc"
+name: "mega-props-sg-vol01"
+version: "2"
+subfolder: "100-props-textures"
+assets:
+- assetId: "sc4d-lex-legacy-bsc-common-dependencies-pack"
+  include: [ "/BSC MEGA Props - SG Vol01_v2.dat" ]
+info:
+  summary: "BSC MEGA Props - SG Vol01_v2 by SimGoober"
+
+---
+group: "bsc"
+name: "mega-props-snm-vol01"
+version: "1"
+subfolder: "100-props-textures"
+assets:
+- assetId: "sc4d-lex-legacy-bsc-common-dependencies-pack"
+  include: [ "/BSC MEGA Props - SNM Vol01.dat" ]
+info:
+  summary: "BSC MEGA Props - SNM Vol01, SimNation Military"
+
+---
+group: "bsc"
+name: "mega-props-snm-vol02-naval"
+version: "1"
+subfolder: "100-props-textures"
+assets:
+- assetId: "sc4d-lex-legacy-bsc-common-dependencies-pack"
+  include: [ "/BSC MEGA Props - SNM Vol02 - Naval.dat" ]
+info:
+  summary: "BSC MEGA Props - SNM Vol02 - Naval, SimNation Military"
+
+---
+group: "bsc"
+name: "mega-props-w2w-vol01"
+version: "1"
+subfolder: "100-props-textures"
+assets:
+- assetId: "sc4d-lex-legacy-bsc-common-dependencies-pack"
+  include: [ "/BSC MEGA Props - W2W Vol01.dat" ]
+info:
+  summary: "BSC MEGA Props - W2W Vol01"
+
+---
+group: "bsc"
+name: "mega-props-prepo-vol01"
+version: "1"
+subfolder: "100-props-textures"
+assets:
+- assetId: "sc4d-lex-legacy-bsc-common-dependencies-pack"
+  include: [ "/BSC MEGA Props - prepo Vol01.dat" ]
+info:
+  summary: "BSC MEGA Props - prepo Vol01 by prepo"
+
+---
+group: "bsc"
+name: "mega-props-swi21-vol01"
+version: "3"
+subfolder: "100-props-textures"
+assets:
+- assetId: "sc4d-lex-legacy-bsc-common-dependencies-pack"
+  include: [ "/BSC MEGA Props - swi21 Vol01 v3.dat" ]
+info:
+  summary: "BSC MEGA Props - swi21 Vol01 v3 by swi21"
+
+---
+group: "bsc"
+name: "mega-props-swi21-vol02"
+version: "1"
+subfolder: "100-props-textures"
+assets:
+- assetId: "sc4d-lex-legacy-bsc-common-dependencies-pack"
+  include: [ "/BSC MEGA Props - swi21 Vol02.dat" ]
+info:
+  summary: "BSC MEGA Props - swi21 Vol02 by swi21"
+
+---
+group: "bsc"
+name: "mega-props-carch-vol01"
+version: "2"
+subfolder: "100-props-textures"
+assets:
+- assetId: "sc4d-lex-legacy-bsc-common-dependencies-pack"
+  include: [ "/BSC MEGA Props - CARCH Vol01 v2.dat" ]
+info:
+  summary: "BSC MEGA Props - CARCH Vol01 v2 by Cerulean"
+
+---
+group: "bsc"
+name: "mega-props-carch-vol02"
+version: "1"
+subfolder: "100-props-textures"
+assets:
+- assetId: "sc4d-lex-legacy-bsc-common-dependencies-pack"
+  include: [ "/BSC MEGA Props CARCH Vol02.dat" ]
+info:
+  summary: "BSC MEGA Props CARCH Vol02 by Cerulean"
+
+---
+group: "bsc"
+name: "mega-props-carch-vol03"
+version: "1"
+subfolder: "100-props-textures"
+assets:
+- assetId: "sc4d-lex-legacy-bsc-common-dependencies-pack"
+  include: [ "/BSC MEGA Props CARCH Vol03.dat" ]
+info:
+  summary: "BSC MEGA Props CARCH Vol03 by Cerulean"
+
+---
+group: "bsc"
+name: "mega-props-carch-vol04"
+version: "1"
+subfolder: "100-props-textures"
+assets:
+- assetId: "sc4d-lex-legacy-bsc-common-dependencies-pack"
+  include: [ "/BSC MEGA Props CARCH Vol04.dat" ]
+info:
+  summary: "BSC MEGA Props CARCH Vol04 by Cerulean"
+
+---
+group: "bsc"
+name: "mega-props-carch-vol05"
+version: "1"
+subfolder: "100-props-textures"
+assets:
+- assetId: "sc4d-lex-legacy-bsc-common-dependencies-pack"
+  include: [ "/BSC MEGA Props CARCH Vol05.dat" ]
+info:
+  summary: "BSC MEGA Props CARCH Vol05 by Cerulean"
+
+---
+group: "bsc"
+name: "mega-props-carch-vol06"
+version: "1"
+subfolder: "100-props-textures"
+assets:
+- assetId: "sc4d-lex-legacy-bsc-common-dependencies-pack"
+  include: [ "/BSC MEGA Props CARCH Vol06.dat" ]
+info:
+  summary: "BSC MEGA Props CARCH Vol06 by Cerulean"
+
+---
+group: "bsc"
+name: "mega-props-carch-vol07"
+version: "1"
+subfolder: "100-props-textures"
+assets:
+- assetId: "sc4d-lex-legacy-bsc-common-dependencies-pack"
+  include: [ "/BSC MEGA Props CARCH Vol07.dat" ]
+info:
+  summary: "BSC MEGA Props CARCH Vol07 by Cerulean"
+
+---
+group: "bsc"
+name: "mega-props-carch-vol08"
+version: "1"
+subfolder: "100-props-textures"
+assets:
+- assetId: "sc4d-lex-legacy-bsc-common-dependencies-pack"
+  include: [ "/BSC MEGA Props CARCH Vol08.dat" ]
+info:
+  summary: "BSC MEGA Props CARCH Vol08 by Cerulean"
+
+---
+group: "bsc"
+name: "mega-props-d66-vol02"
+version: "1"
+subfolder: "100-props-textures"
+assets:
+- assetId: "sc4d-lex-legacy-bsc-common-dependencies-pack"
+  include: [ "/BSC MEGA Props D66 Vol02.dat" ]
+info:
+  summary: "BSC MEGA Props D66 Vol02 by Dolphin66"
+
+---
+group: "bsc"
+name: "mega-props-dbssymn-vol01"
+version: "1"
+subfolder: "100-props-textures"
+assets:
+- assetId: "sc4d-lex-legacy-bsc-common-dependencies-pack"
+  include: [ "/BSC MEGA Props DBSSYMN Vol01.dat" ]
+info:
+  summary: "BSC MEGA Props DBSSYMN Vol01 by DebussyMan"
+
+---
+group: "bsc"
+name: "mega-props-dbssymn-vol02"
+version: "1"
+subfolder: "100-props-textures"
+assets:
+- assetId: "sc4d-lex-legacy-bsc-common-dependencies-pack"
+  include: [ "/BSC MEGA Props DBSSYMN Vol02.dat" ]
+info:
+  summary: "BSC MEGA Props DBSSYMN Vol02 by DebussyMan"
+
+---
+group: "bsc"
+name: "mega-props-gaz-vol01"
+version: "1"
+subfolder: "100-props-textures"
+assets:
+- assetId: "sc4d-lex-legacy-bsc-common-dependencies-pack"
+  include: [ "/BSC MEGA Props GAZ  Vol01.dat" ]
+info:
+  summary: "BSC MEGA Props GAZ  Vol01 by GaryReggae"
+
+---
+group: "bsc"
+name: "mega-props-jrj-vol01"
+version: "1"
+subfolder: "100-props-textures"
+assets:
+- assetId: "sc4d-lex-legacy-bsc-common-dependencies-pack"
+  include: [ "/BSC MEGA Props JRJ Vol01.dat" ]
+info:
+  summary: "BSC MEGA Props JRJ Vol01 by jeronij"
+
+---
+group: "bsc"
+name: "mega-props-jrj-vol02"
+version: "1"
+subfolder: "100-props-textures"
+assets:
+- assetId: "sc4d-lex-legacy-bsc-common-dependencies-pack"
+  include: [ "/BSC MEGA Props JRJ Vol02.dat" ]
+info:
+  summary: "BSC MEGA Props JRJ Vol02 by jeronij"
+
+---
+group: "bsc"
+name: "mega-props-jrj-vol03"
+version: "1"
+subfolder: "100-props-textures"
+assets:
+- assetId: "sc4d-lex-legacy-bsc-common-dependencies-pack"
+  include: [ "/BSC MEGA Props JRJ Vol03.dat" ]
+info:
+  summary: "BSC MEGA Props JRJ Vol03 by jeronij"
+
+---
+group: "bsc"
+name: "mega-props-jrj-vol04"
+version: "1"
+subfolder: "100-props-textures"
+assets:
+- assetId: "sc4d-lex-legacy-bsc-common-dependencies-pack"
+  include: [ "/BSC MEGA Props JRJ Vol04.dat" ]
+info:
+  summary: "BSC MEGA Props JRJ Vol04 by jeronij"
+
+---
+group: "bsc"
+name: "mega-props-jrj-vol05"
+version: "1"
+subfolder: "100-props-textures"
+assets:
+- assetId: "sc4d-lex-legacy-bsc-common-dependencies-pack"
+  include: [ "/BSC MEGA Props JRJ Vol05.dat" ]
+info:
+  summary: "BSC MEGA Props JRJ Vol05 by jeronij"
+
+---
+group: "bsc"
+name: "mega-props-jrj-vol06"
+version: "1"
+subfolder: "100-props-textures"
+assets:
+- assetId: "sc4d-lex-legacy-bsc-common-dependencies-pack"
+  include: [ "/BSC MEGA Props JRJ Vol06.dat" ]
+info:
+  summary: "BSC MEGA Props JRJ Vol06 by jeronij"
+
+---
+group: "bsc"
+name: "mega-props-jen-p-vol01"
+version: "1"
+subfolder: "100-props-textures"
+assets:
+- assetId: "sc4d-lex-legacy-bsc-common-dependencies-pack"
+  include: [ "/BSC MEGA Props Jen_P Vol01.dat" ]
+info:
+  summary: "BSC MEGA Props Jen_P Vol01"
+
+---
+group: "bsc"
+name: "mega-props-kwk-vol01"
+version: "1"
+subfolder: "100-props-textures"
+assets:
+- assetId: "sc4d-lex-legacy-bsc-common-dependencies-pack"
+  include: [ "/BSC MEGA Props KWK Vol01.dat" ]
+info:
+  summary: "BSC MEGA Props KWK Vol01 by Kwakelaar"
+
+---
+group: "bsc"
+name: "mega-props-kwk-vol02"
+version: "1"
+subfolder: "100-props-textures"
+assets:
+- assetId: "sc4d-lex-legacy-bsc-common-dependencies-pack"
+  include: [ "/BSC MEGA Props - KWKVol02.dat" ]
+info:
+  summary: "BSC MEGA Props - KWKVol02 by Kwakelaar"
+
+---
+group: "bsc"
+name: "mega-props-rubik3-vol01-wtc-props"
+version: "1"
+subfolder: "100-props-textures"
+assets:
+- assetId: "sc4d-lex-legacy-bsc-common-dependencies-pack"
+  include: [ "/BSC MEGA Props Rubik3 Vol01 - WTC Props.dat" ]
+info:
+  summary: "BSC MEGA Props Rubik3 Vol01 - WTC Props by Rubik3"
+
+---
+group: "bsc"
+name: "mega-props-jbsimio-vol01"
+version: "1"
+subfolder: "100-props-textures"
+assets:
+- assetId: "sc4d-lex-legacy-bsc-common-dependencies-pack"
+  include: [ "/BSC MEGA Props_JBSimio_Vol01.dat" ]
+info:
+  summary: "BSC MEGA Props_JBSimio_Vol01"
+
+---
+group: "bsc"
+name: "mega-props-jbsimio-vol02"
+version: "1"
+subfolder: "100-props-textures"
+assets:
+- assetId: "sc4d-lex-legacy-bsc-common-dependencies-pack"
+  include: [ "/BSC MEGA Props_JBSimio_Vol02.dat" ]
+info:
+  summary: "BSC MEGA Props_JBSimio_Vol02"
+
+---
+group: "bsc"
+name: "mega-props-jbsimio-vol03"
+version: "2"
+subfolder: "100-props-textures"
+assets:
+- assetId: "sc4d-lex-legacy-bsc-common-dependencies-pack"
+  include: [ "/BSC MEGA Props - JBSimio vol03 v2.dat" ]
+info:
+  summary: "BSC MEGA Props - JBSimio vol03 v2"
+
+---
+group: "bsc"
+name: "mega-props-cp-vol02"
+version: "1"
+subfolder: "100-props-textures"
+assets:
+- assetId: "sc4d-lex-legacy-bsc-common-dependencies-pack"
+  include: [ "/BSC Mega Props - CP Vol02.dat" ]
+info:
+  summary: "BSC Mega Props - CP Vol02 by cycledogg/c.p."
+
+---
+group: "bsc"
+name: "mega-props-jes-vol01"
+version: "1"
+subfolder: "100-props-textures"
+assets:
+- assetId: "sc4d-lex-legacy-bsc-common-dependencies-pack"
+  include: [ "/BSC Mega Props - JES Vol01.dat" ]
+info:
+  summary: "BSC Mega Props - JES Vol01 by jestarr"
+
+---
+group: "bsc"
+name: "mega-props-jes-vol02"
+version: "1"
+subfolder: "100-props-textures"
+assets:
+- assetId: "sc4d-lex-legacy-bsc-common-dependencies-pack"
+  include: [ "/BSC Mega Props - JES Vol02.dat" ]
+info:
+  summary: "BSC Mega Props - JES Vol02 by jestarr"
+
+---
+group: "bsc"
+name: "mega-props-jes-vol03"
+version: "1"
+subfolder: "100-props-textures"
+assets:
+- assetId: "sc4d-lex-legacy-bsc-common-dependencies-pack"
+  include: [ "/BSC Mega Props - JES Vol03.dat" ]
+info:
+  summary: "BSC Mega Props - JES Vol03 by jestarr"
+
+---
+group: "bsc"
+name: "mega-props-jes-vol04"
+version: "1"
+subfolder: "100-props-textures"
+assets:
+- assetId: "sc4d-lex-legacy-bsc-common-dependencies-pack"
+  include: [ "/BSC Mega Props - JES Vol04.dat" ]
+info:
+  summary: "BSC Mega Props - JES Vol04 by jestarr"
+
+---
+group: "bsc"
+name: "mega-props-jes-vol05"
+version: "1"
+subfolder: "100-props-textures"
+assets:
+- assetId: "sc4d-lex-legacy-bsc-common-dependencies-pack"
+  include: [ "/BSC Mega Props - JES Vol05.dat" ]
+info:
+  summary: "BSC Mega Props - JES Vol05 by jestarr"
+
+---
+group: "bsc"
+name: "mega-props-jes-vol06"
+version: "1"
+subfolder: "100-props-textures"
+assets:
+- assetId: "sc4d-lex-legacy-bsc-common-dependencies-pack"
+  include: [ "/BSC Mega Props - JES Vol06.dat" ]
+info:
+  summary: "BSC Mega Props - JES Vol06 by jestarr"
+
+---
+group: "bsc"
+name: "mega-props-jes-vol07"
+version: "1"
+subfolder: "100-props-textures"
+assets:
+- assetId: "sc4d-lex-legacy-bsc-common-dependencies-pack"
+  include: [ "/BSC Mega Props - JES Vol07.dat" ]
+info:
+  summary: "BSC Mega Props - JES Vol07 by jestarr"
+
+---
+group: "bsc"
+name: "mega-props-jes-vol08"
+version: "1"
+subfolder: "100-props-textures"
+assets:
+- assetId: "sc4d-lex-legacy-bsc-common-dependencies-pack"
+  include: [ "/BSC Mega Props - JES Vol08.dat" ]
+info:
+  summary: "BSC Mega Props - JES Vol08 by jestarr"
+
+---
+group: "bsc"
+name: "mega-props-jes-vol09"
+version: "1"
+subfolder: "100-props-textures"
+assets:
+- assetId: "sc4d-lex-legacy-bsc-common-dependencies-pack"
+  include: [ "/BSC Mega Props - JES Vol09.dat" ]
+info:
+  summary: "BSC Mega Props - JES Vol09 by jestarr"
+
+---
+group: "bsc"
+name: "mega-props-mikeseith-vol01"
+version: "1"
+subfolder: "100-props-textures"
+assets:
+- assetId: "sc4d-lex-legacy-bsc-common-dependencies-pack"
+  include: [ "/BSC MEGA Props - Mikeseith vol01.dat" ]
+info:
+  summary: "BSC MEGA Props - Mikeseith vol01"
+
+---
+group: "bsc"
+name: "mega-props-mikeseith-vol02"
+version: "1"
+subfolder: "100-props-textures"
+assets:
+- assetId: "sc4d-lex-legacy-bsc-common-dependencies-pack"
+  include: [ "/BSC Mega Props - Mikeseith vol02.dat" ]
+info:
+  summary: "BSC Mega Props - Mikeseith vol02"
+
+---
+group: "bsc"
+name: "vip-girafe-carpack-vol01-vol02"
+version: "1"
+subfolder: "100-props-textures"
+assets:
+- assetId: "sc4d-lex-legacy-bsc-common-dependencies-pack"
+  include: [ "/Grfe_Carpack_vol. 1 & 2.dat" ]
+info:
+  summary: "Grfe_Carpack_vol. 1 & 2 by Girafe, original version"
+  description: See also bsc:vip-girafe-carpack-vol01-vol02-remastered which uses separate IDs.
+
+---
+group: "bsc"
+name: "vip-girafe-carpack-vol01-vol02-remastered"
+version: "1"
+subfolder: "100-props-textures"
+assets:
+- assetId: "sc4d-lex-legacy-bsc-common-dependencies-pack"
+  include: [ "/Grfe_props_pack_Carpack_vol01-vol02_remastered.dat" ]
+info:
+  summary: "Grfe_props_pack_Carpack_vol01-vol02_remastered by Girafe, uses separate IDs from the original"
+  description: See also bsc:vip-girafe-carpack-vol01-vol02.
+
+---
+group: "bsc"
+name: "vip-girafe-carpack-vol03"
+version: "1"
+subfolder: "100-props-textures"
+assets:
+- assetId: "sc4d-lex-legacy-bsc-common-dependencies-pack"
+  include: [ "/Grfe_CarPack_vol. 3.dat" ]
+info:
+  summary: "Grfe_CarPack_vol. 3 by Girafe"
+
+---
+group: "bsc"
+name: "vip-girafe-carpack-vol04"
+version: "1"
+subfolder: "100-props-textures"
+assets:
+- assetId: "sc4d-lex-legacy-bsc-common-dependencies-pack"
+  include: [ "/Carpack vol. 4.dat" ]
+info:
+  summary: "Carpack vol. 4 by Girafe"
+  description: See also bsc:vip-girafe-urbanpack-vol01 which includes this carpack as a dependency.
+
+---
+group: "bsc"
+name: "vip-girafe-urbanpack-vol01"
+version: "1"
+subfolder: "100-props-textures"
+dependencies:
+- "bsc:vip-girafe-carpack-vol04"  # originally included in this urbanpack -> split off for consistency
+assets:
+- assetId: "sc4d-lex-legacy-bsc-common-dependencies-pack"
+  include:
+  - "/Urbanpack.dat"
+  - "/Grfe_Props_Pack_Wood_Fence_4m.dat"
+info:
+  summary: "Urban props and Grfe_Props_Pack_Wood_Fence_4m by Girafe"
+
+---
+group: "bsc"
+name: "bat-props-newmaninc-rpk-vol01"
+version: "1"
+subfolder: "100-props-textures"
+assets:
+- assetId: "sc4d-lex-legacy-bsc-common-dependencies-pack"
+  include: [ "/BSCBATPRops NewmanInc RPK Vol01.dat" ]
+info:
+  summary: "BSCBATPRops NewmanInc RPK Vol01 by Citynut"
+
+---
+group: "bsc"
+name: "bat-props-newman-inc-wfk-vol01"
+version: "1"
+subfolder: "100-props-textures"
+assets:
+- assetId: "sc4d-lex-legacy-bsc-common-dependencies-pack"
+  include: [ "/BSCBATProps Newman Inc WFK Vol01.dat" ]
+info:
+  summary: "BSCBATProps Newman Inc WFK Vol01, Waterfront Kit"
+
+---
+group: "bsc"
+name: "bat-props-vdk-vol01"
+version: "1"
+subfolder: "100-props-textures"
+assets:
+- assetId: "sc4d-lex-legacy-bsc-common-dependencies-pack"
+  include: [ "/BSCBATProps VDK Vol01.dat" ]
+info:
+  summary: "BSCBATProps VDK Vol01 by vester"
+
+---
+group: "bsc"
+name: "bat-props-vdk-vol02"
+version: "1"
+subfolder: "100-props-textures"
+assets:
+- assetId: "sc4d-lex-legacy-bsc-common-dependencies-pack"
+  include: [ "/BSCBATProps VDK Vol02.dat" ]
+info:
+  summary: "BSCBATProps VDK Vol02 by vester"
+
+---
+group: "bsc"
+name: "bat-props-mattb325-vol02"
+version: "1"
+subfolder: "100-props-textures"
+assets:
+- assetId: "sc4d-lex-legacy-bsc-common-dependencies-pack"
+  include: [ "/BSCBATPropsMattb325_Vol02.dat" ]
+info:
+  summary: "BSCBATPropsMattb325_Vol02"
+
+---
+group: "bsc"
+name: "bat-props-mattb325-vol03"
+version: "1"
+subfolder: "100-props-textures"
+assets:
+- assetId: "sc4d-lex-legacy-bsc-common-dependencies-pack"
+  include: [ "/BSCBATPropsMattb325_Vol03.dat" ]
+info:
+  summary: "BSCBATPropsMattb325_Vol03"
+
+---
+group: "bsc"
+name: "bat-props-mattb325-vol04"
+version: "1"
+subfolder: "100-props-textures"
+assets:
+- assetId: "sc4d-lex-legacy-bsc-common-dependencies-pack"
+  include: [ "/Mattb325_PropPack_Vol04.dat" ]
+info:
+  summary: "Mattb325_PropPack_Vol04"
+
+---
+group: "bsc"
+name: "bat-props-mattb325-london-w2w-vol01"
+version: "1"
+subfolder: "100-props-textures"
+assets:
+- assetId: "sc4d-lex-legacy-bsc-common-dependencies-pack"
+  include: [ "/BSCBATProps_Mattb325_LondonW2W_Vol01.dat" ]
+info:
+  summary: "BSCBATProps_Mattb325_LondonW2W_Vol01"
+
+---
+group: "bsc"
+name: "mattb325-cottages-ornee-vol01"
+version: "1"
+subfolder: "100-props-textures"
+assets:
+- assetId: "sc4d-lex-legacy-bsc-common-dependencies-pack"
+  include: [ "/Mattb325_Cottages_Ornee.dat" ]
+info:
+  summary: "Mattb325_Cottages_Ornee"
+
+---
+group: "bsc"
+name: "mattb325-cottages-ornee-vol02"
+version: "1"
+subfolder: "100-props-textures"
+assets:
+- assetId: "sc4d-lex-legacy-bsc-common-dependencies-pack"
+  include: [ "/Mattb325_Cottages_Ornee_Vol02.dat" ]
+info:
+  summary: "Mattb325_Cottages_Ornee_Vol02"
+
+---
+group: "bsc"
+name: "mattb325-mcmansion-pack-vol01"
+version: "1"
+subfolder: "100-props-textures"
+assets:
+- assetId: "sc4d-lex-legacy-bsc-common-dependencies-pack"
+  include: [ "/Mattb325_McMansion_Pack_Vol01.dat" ]
+info:
+  summary: "Mattb325_McMansion_Pack_Vol01"
+
+---
+group: "bsc"
+name: "mattb325-w2w-prop-pack-vol01"
+version: "1"
+subfolder: "100-props-textures"
+assets:
+- assetId: "sc4d-lex-legacy-bsc-common-dependencies-pack"
+  include: [ "/Mattb325_W2W_Prop_Pack_Vol01.dat" ]
+info:
+  summary: "Mattb325_W2W_Prop_Pack_Vol01"
+
+---
+group: "bsc"
+name: "mattb325-shoppingmall-pack-vol01"
+version: "1"
+subfolder: "100-props-textures"
+assets:
+- assetId: "sc4d-lex-legacy-bsc-common-dependencies-pack"
+  include: [ "/Mattb325ShoppingMallPack_Vol01.dat" ]
+info:
+  summary: "Mattb325ShoppingMallPack_Vol01"
+
+---
+group: "bsc"
+name: "mattb325-small-lowmidwealth-homes"
+version: "1"
+subfolder: "100-props-textures"
+assets:
+- assetId: "sc4d-lex-legacy-bsc-common-dependencies-pack"
+  include: [ "/Mattb325SmallLowMidWealthHomes.dat" ]
+info:
+  summary: "Mattb325SmallLowMidWealthHomes"
+
+---
+group: "bsc"
+name: "jrj-cpt-trees-as-props"
+version: "2"
+subfolder: "100-props-textures"
+assets:
+- assetId: "sc4d-lex-legacy-bsc-common-dependencies-pack"
+  include: [ "/JRJ_CPT_Trees_as_props_V2.dat" ]
+info:
+  summary: "JRJ_CPT_Trees_as_props_V2 by jeronij"
+
+---
+group: "bsc"
+name: "sg-mega-residentials-vol01-models"
+version: "2"
+subfolder: "100-props-textures"
+assets:
+- assetId: "sc4d-lex-legacy-bsc-common-dependencies-pack"
+  include: [ "/SG_MEGA_Residentials_Vol01_Models_v2.dat" ]
+info:
+  summary: "SG_MEGA_Residentials_Vol01_Models_v2 by SimGoober"
+
+---
+group: "bsc"
+name: "sg-mega-residentials-vol02-models"
+version: "2"
+subfolder: "100-props-textures"
+assets:
+- assetId: "sc4d-lex-legacy-bsc-common-dependencies-pack"
+  include: [ "/SG_MEGA_Residentials_Vol02_Models_v2.dat" ]
+info:
+  summary: "SG_MEGA_Residentials_Vol02_Models_v2 by SimGoober"
+
+---
+group: "bsc"
+name: "sg-mega-residentials-vol03-models"
+version: "2"
+subfolder: "100-props-textures"
+assets:
+- assetId: "sc4d-lex-legacy-bsc-common-dependencies-pack"
+  include: [ "/SG_MEGA_Residentials_Vol03_Models_v2.dat" ]
+info:
+  summary: "SG_MEGA_Residentials_Vol03_Models_v2 by SimGoober"
+
+---
+group: "bsc"
+name: "sg-mega-residentials-vol04-models"
+version: "2"
+subfolder: "100-props-textures"
+assets:
+- assetId: "sc4d-lex-legacy-bsc-common-dependencies-pack"
+  include: [ "/SG_MEGA_Residentials_Vol04_Models_v2.dat" ]
+info:
+  summary: "SG_MEGA_Residentials_Vol04_Models_v2 by SimGoober"
+
+---
+group: "bsc"
+name: "sg-models-adult"
+version: "2"
+subfolder: "100-props-textures"
+assets:
+- assetId: "sc4d-lex-legacy-bsc-common-dependencies-pack"
+  include: [ "/SG_Models_Adult v2.dat" ]
+info:
+  summary: "SG_Models_Adult v2 by SimGoober"
+
+---
+group: "bsc"
+name: "sg-models-agriculture"
+version: "2"
+subfolder: "100-props-textures"
+assets:
+- assetId: "sc4d-lex-legacy-bsc-common-dependencies-pack"
+  include: [ "/SG_Models_Agriculture v2.dat" ]
+info:
+  summary: "SG_Models_Agriculture v2 by SimGoober"
+
+---
+group: "bsc"
+name: "sg-models-civic-rewards"
+version: "1"
+subfolder: "100-props-textures"
+assets:
+- assetId: "sc4d-lex-legacy-bsc-common-dependencies-pack"
+  include: [ "/SG_Models_Civic_Rewards.dat" ]
+info:
+  summary: "SG_Models_Civic_Rewards by SimGoober"
+
+---
+group: "bsc"
+name: "sg-models-civic-services"
+version: "1"
+subfolder: "100-props-textures"
+assets:
+- assetId: "sc4d-lex-legacy-bsc-common-dependencies-pack"
+  include: [ "/SG_Models_Civic_Services.dat" ]
+info:
+  summary: "SG_Models_Civic_Services by SimGoober"
+
+---
+group: "bsc"
+name: "sg-models-department-stores"
+version: "2"
+subfolder: "100-props-textures"
+assets:
+- assetId: "sc4d-lex-legacy-bsc-common-dependencies-pack"
+  include: [ "/SG_Models_Department_Stores v2.dat" ]
+info:
+  summary: "SG_Models_Department_Stores v2 by SimGoober"
+
+---
+group: "bsc"
+name: "sg-models-education"
+version: "2"
+subfolder: "100-props-textures"
+assets:
+- assetId: "sc4d-lex-legacy-bsc-common-dependencies-pack"
+  include: [ "/SG_Models_Education v2.dat" ]
+info:
+  summary: "SG_Models_Education v2 by SimGoober"
+
+---
+group: "bsc"
+name: "sg-models-entertainment"
+version: "2"
+subfolder: "100-props-textures"
+assets:
+- assetId: "sc4d-lex-legacy-bsc-common-dependencies-pack"
+  include: [ "/SG_Models_Entertainment v2.dat" ]
+info:
+  summary: "SG_Models_Entertainment v2 by SimGoober"
+
+---
+group: "bsc"
+name: "sg-models-grocery-stores"
+version: "2"
+subfolder: "100-props-textures"
+assets:
+- assetId: "sc4d-lex-legacy-bsc-common-dependencies-pack"
+  include: [ "/SG_Models_Grocery_Stores v2.dat" ]
+info:
+  summary: "SG_Models_Grocery_Stores v2 by SimGoober"
+
+---
+group: "bsc"
+name: "sg-models-hotels1"
+version: "2"
+subfolder: "100-props-textures"
+assets:
+- assetId: "sc4d-lex-legacy-bsc-common-dependencies-pack"
+  include: [ "/SG_Models_Hotels1 v2.dat" ]
+info:
+  summary: "SG_Models_Hotels1 v2 by SimGoober"
+
+---
+group: "bsc"
+name: "sg-models-hotels2"
+version: "2"
+subfolder: "100-props-textures"
+assets:
+- assetId: "sc4d-lex-legacy-bsc-common-dependencies-pack"
+  include: [ "/SG_Models_Hotels2 v2.dat" ]
+info:
+  summary: "SG_Models_Hotels2 v2 by SimGoober"
+
+---
+group: "bsc"
+name: "sg-models-iht"
+version: "2"
+subfolder: "100-props-textures"
+assets:
+- assetId: "sc4d-lex-legacy-bsc-common-dependencies-pack"
+  include: [ "/SG_Models_I-HT v2.dat" ]
+info:
+  summary: "SG_Models_I-HT v2 by SimGoober"
+
+---
+group: "bsc"
+name: "sg-models-im1"
+version: "2"
+subfolder: "100-props-textures"
+assets:
+- assetId: "sc4d-lex-legacy-bsc-common-dependencies-pack"
+  include: [ "/SG_Models_IM1 v2.dat" ]
+info:
+  summary: "SG_Models_IM1 v2 by SimGoober"
+
+---
+group: "bsc"
+name: "sg-models-im2"
+version: "2"
+subfolder: "100-props-textures"
+assets:
+- assetId: "sc4d-lex-legacy-bsc-common-dependencies-pack"
+  include: [ "/SG_Models_IM2 v2.dat" ]
+info:
+  summary: "SG_Models_IM2 v2 by SimGoober"
+
+---
+group: "bsc"
+name: "sg-models-large-stores"
+version: "1"
+subfolder: "100-props-textures"
+assets:
+- assetId: "sc4d-lex-legacy-bsc-common-dependencies-pack"
+  include: [ "/SG_Models_Large_Stores.dat" ]
+info:
+  summary: "SG_Models_Large_Stores by SimGoober"
+
+---
+group: "bsc"
+name: "sg-models-malls"
+version: "2"
+subfolder: "100-props-textures"
+assets:
+- assetId: "sc4d-lex-legacy-bsc-common-dependencies-pack"
+  include: [ "/SG_Models_Malls v2.dat" ]
+info:
+  summary: "SG_Models_Malls v2 by SimGoober"
+
+---
+group: "bsc"
+name: "sg-models-medium-shops1"
+version: "1"
+subfolder: "100-props-textures"
+assets:
+- assetId: "sc4d-lex-legacy-bsc-common-dependencies-pack"
+  include: [ "/SG_Models_Medium_Shops1.dat" ]
+info:
+  summary: "SG_Models_Medium_Shops1 by SimGoober"
+
+---
+group: "bsc"
+name: "sg-models-motels"
+version: "1"
+subfolder: "100-props-textures"
+assets:
+- assetId: "sc4d-lex-legacy-bsc-common-dependencies-pack"
+  include: [ "/SG_Models_Motels.dat" ]
+info:
+  summary: "SG_Models_Motels by SimGoober"
+
+---
+group: "bsc"
+name: "sg-models-offices-hirise1"
+version: "2"
+subfolder: "100-props-textures"
+assets:
+- assetId: "sc4d-lex-legacy-bsc-common-dependencies-pack"
+  include: [ "/SG_Models_Offices_HiRise1 v2.dat" ]
+info:
+  summary: "SG_Models_Offices_HiRise1 v2 by SimGoober"
+
+---
+group: "bsc"
+name: "sg-models-offices-hirise2"
+version: "2"
+subfolder: "100-props-textures"
+assets:
+- assetId: "sc4d-lex-legacy-bsc-common-dependencies-pack"
+  include: [ "/SG_Models_Offices_HiRise2 v2.dat" ]
+info:
+  summary: "SG_Models_Offices_HiRise2 v2 by SimGoober"
+
+---
+group: "bsc"
+name: "sg-models-offices-medium"
+version: "2"
+subfolder: "100-props-textures"
+assets:
+- assetId: "sc4d-lex-legacy-bsc-common-dependencies-pack"
+  include: [ "/SG_Models_Offices_Medium v2.dat" ]
+info:
+  summary: "SG_Models_Offices_Medium v2 by SimGoober"
+
+---
+group: "bsc"
+name: "sg-models-restaurants"
+version: "2"
+subfolder: "100-props-textures"
+assets:
+- assetId: "sc4d-lex-legacy-bsc-common-dependencies-pack"
+  include: [ "/SG_Models_Restaurants v2.dat" ]
+info:
+  summary: "SG_Models_Restaurants v2 by SimGoober"
+
+---
+group: "bsc"
+name: "sg-models-sainsbury"
+version: "1"
+subfolder: "100-props-textures"
+assets:
+- assetId: "sc4d-lex-legacy-bsc-common-dependencies-pack"
+  include: [ "/SG_Models_Sainsbury.dat" ]
+info:
+  summary: "SG_Models_Sainsbury by SimGoober"
+
+---
+group: "bsc"
+name: "sg-models-small-shops"
+version: "2"
+subfolder: "100-props-textures"
+assets:
+- assetId: "sc4d-lex-legacy-bsc-common-dependencies-pack"
+  include: [ "/SG_Models_Small_Shops v2.dat" ]
+info:
+  summary: "SG_Models_Small_Shops v2 by SimGoober"
+
+---
+group: "bsc"
+name: "sg-models-transportation"
+version: "1"
+subfolder: "100-props-textures"
+assets:
+- assetId: "sc4d-lex-legacy-bsc-common-dependencies-pack"
+  include: [ "/SG_Models_Transportation.dat" ]
+info:
+  summary: "SG_Models_Transportation by SimGoober"
+
+---
+group: "bsc"
+name: "sg-models-utilities"
+version: "1"
+subfolder: "100-props-textures"
+assets:
+- assetId: "sc4d-lex-legacy-bsc-common-dependencies-pack"
+  include: [ "/SG_Models_Utilities.dat" ]
+info:
+  summary: "SG_Models_Utilities by SimGoober"
+
+---
+group: "cobb"
+name: "mega-props-vol01"
+version: "1"
+subfolder: "100-props-textures"
+assets:
+- assetId: "sc4d-lex-legacy-bsc-common-dependencies-pack"
+  include: [ "/COBB MEGA Props Vol01.dat" ]
+info:
+  summary: "COBB MEGA Props Vol01 by Cobb32118"
+
+---
+group: "cobb"
+name: "mega-props-vol02"
+version: "1"
+subfolder: "100-props-textures"
+assets:
+- assetId: "sc4d-lex-legacy-bsc-common-dependencies-pack"
+  include: [ "/COBB MEGA Props Vol02.dat" ]
+info:
+  summary: "COBB MEGA Props Vol02 by Cobb32118"
+
+---
+group: "cobb"
+name: "mega-props-vol03"
+version: "1"
+subfolder: "100-props-textures"
+assets:
+- assetId: "sc4d-lex-legacy-bsc-common-dependencies-pack"
+  include: [ "/COBB MEGA Props Vol03.dat" ]
+info:
+  summary: "COBB MEGA Props Vol03 by Cobb32118"
+
+---
+group: "cobb"
+name: "mega-props-vol04"
+version: "1"
+subfolder: "100-props-textures"
+assets:
+- assetId: "sc4d-lex-legacy-bsc-common-dependencies-pack"
+  include: [ "/COBB MEGA Props Vol04.dat" ]
+info:
+  summary: "COBB MEGA Props Vol04 by Cobb32118"
+
+---
+group: "cobb"
+name: "mega-props-vol05"
+version: "1"
+subfolder: "100-props-textures"
+assets:
+- assetId: "sc4d-lex-legacy-bsc-common-dependencies-pack"
+  include: [ "/COBB MEGA Props Vol05.dat" ]
+info:
+  summary: "COBB MEGA Props Vol05 by Cobb32118"
+
+---
+group: "csx"
+name: "mega-props-vol01"
+version: "2"
+subfolder: "100-props-textures"
+assets:
+- assetId: "sc4d-lex-legacy-bsc-common-dependencies-pack"
+  include: [ "/CSX MEGA Props - Vol01_v2.dat" ]
+info:
+  summary: "CSX MEGA Props Vol01 by Colyn"
+
+---
+group: "csx"
+name: "mega-props-vol02"
+version: "2"
+subfolder: "100-props-textures"
+assets:
+- assetId: "sc4d-lex-legacy-bsc-common-dependencies-pack"
+  include: [ "/CSX MEGA Props - Vol02_v2.dat" ]
+info:
+  summary: "CSX MEGA Props Vol02 by Colyn"
+
+---
+group: "csx"
+name: "mega-props-vol03"
+version: "2"
+subfolder: "100-props-textures"
+assets:
+- assetId: "sc4d-lex-legacy-bsc-common-dependencies-pack"
+  include: [ "/CSX MEGA Props - Vol03_v2.dat" ]
+info:
+  summary: "CSX MEGA Props Vol03 by Colyn"
+
+---
+group: "csx"
+name: "mega-props-vol04"
+version: "2"
+subfolder: "100-props-textures"
+assets:
+- assetId: "sc4d-lex-legacy-bsc-common-dependencies-pack"
+  include: [ "/CSX MEGA Props - Vol04_v2.dat" ]
+info:
+  summary: "CSX MEGA Props Vol04 by Colyn"
+
+---
+group: "csx"
+name: "mega-props-vol05"
+version: "2"
+subfolder: "100-props-textures"
+assets:
+- assetId: "sc4d-lex-legacy-bsc-common-dependencies-pack"
+  include: [ "/CSX MEGA Props - Vol05_v2.dat" ]
+info:
+  summary: "CSX MEGA Props Vol05 by Colyn"
+
+---
+group: "csx"
+name: "mega-props-vol06"
+version: "2"
+subfolder: "100-props-textures"
+assets:
+- assetId: "sc4d-lex-legacy-bsc-common-dependencies-pack"
+  include: [ "/CSX MEGA Props - Vol06_v2.dat" ]
+info:
+  summary: "CSX MEGA Props Vol06 by Colyn"
+
+---
+group: "csx"
+name: "mega-props-vol07"
+version: "2"
+subfolder: "100-props-textures"
+assets:
+- assetId: "sc4d-lex-legacy-bsc-common-dependencies-pack"
+  include: [ "/CSX MEGA Props - Vol07_v2.dat" ]
+info:
+  summary: "CSX MEGA Props Vol07 by Colyn"
+
+---
+group: "csx"
+name: "mega-props-vol08"
+version: "2"
+subfolder: "100-props-textures"
+assets:
+- assetId: "sc4d-lex-legacy-bsc-common-dependencies-pack"
+  include: [ "/CSX MEGA Props - Vol08_v2.dat" ]
+info:
+  summary: "CSX MEGA Props Vol08 by Colyn"
+
+---
+group: "csx"
+name: "mega-props-vol09"
+version: "2"
+subfolder: "100-props-textures"
+assets:
+- assetId: "sc4d-lex-legacy-bsc-common-dependencies-pack"
+  include: [ "/CSX MEGA Props - Vol09_v2.dat" ]
+info:
+  summary: "CSX MEGA Props Vol09 by Colyn"

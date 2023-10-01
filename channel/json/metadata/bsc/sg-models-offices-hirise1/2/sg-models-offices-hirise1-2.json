@@ -1,0 +1,22 @@
+{
+  "group": "bsc",
+  "name": "sg-models-offices-hirise1",
+  "version": "2",
+  "subfolder": "100-props-textures",
+  "info": {
+    "summary": "SG_Models_Offices_HiRise1 v2 by SimGoober"
+  },
+  "variants": [
+    {
+      "variant": {},
+      "assets": [
+        {
+          "assetId": "sc4d-lex-legacy-bsc-common-dependencies-pack",
+          "include": [
+            "/SG_Models_Offices_HiRise1 v2.dat"
+          ]
+        }
+      ]
+    }
+  ]
+}

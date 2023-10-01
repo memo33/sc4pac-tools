@@ -1,0 +1,22 @@
+{
+  "group": "bsc",
+  "name": "mega-props-jbsimio-vol01",
+  "version": "1",
+  "subfolder": "100-props-textures",
+  "info": {
+    "summary": "BSC MEGA Props_JBSimio_Vol01"
+  },
+  "variants": [
+    {
+      "variant": {},
+      "assets": [
+        {
+          "assetId": "sc4d-lex-legacy-bsc-common-dependencies-pack",
+          "include": [
+            "/BSC MEGA Props_JBSimio_Vol01.dat"
+          ]
+        }
+      ]
+    }
+  ]
+}
