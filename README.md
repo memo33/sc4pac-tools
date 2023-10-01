@@ -26,6 +26,10 @@ A package manager for SimCity 4 plugins.
 
 ![demo-video](https://github.com/memo33/sc4pac-tools/releases/download/0.1.3/demo-video.gif)
 
+- Other available packages:
+  - `memo:industrial-revolution-mod` (base pack including all dependencies [~1.4GB])
+  - BSC Common Dependencies: `sc4pac search bsc` displays all the package names
+
 
 ## Available commands
 
