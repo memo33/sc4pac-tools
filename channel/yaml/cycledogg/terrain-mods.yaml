@@ -1,0 +1,25 @@
+assetId: "cycledogg-terrain-mods-sc4e"
+version: "1"
+lastModified: "2023-07-20T03:15:26Z"
+url: "https://www.sc4evermore.com/index.php/downloads?task=download.send&id=34:cycledogg-terrain-mods"
+
+---
+group: "cycledogg"
+name: "missouri-breaks-terrain"
+version: "1"
+subfolder: "170-terrain"
+assets:
+- assetId: "cycledogg-terrain-mods-sc4e"
+  include:  # TODO consider splitting off essentials and optional components
+  - "/CPT_No3_TerrainTextures_Essential.dat"
+  - "/CPT_No4_TerrainTextures_Essential.dat"
+  - "/CPT_No5_MissouriBreaksRockTextures_EssentialButInterchangableWithOtherNo5.dat"
+  - "/CPT_No6_MissouriBreaksTerrainController.dat"
+  - "/CPT_B_MissouriBreaksBeach_Optional.dat"
+  - "/CPT_C_MissouriBreaksCliff_Optional_EquivalentToPegRockMod.dat"
+  - "/CPT_W_MissouriBreaks_MuddyWater_Optional.dat"
+info:
+  summary: "Badlands terrain mod based on eastern Montana, including Rock, Water & Beach mod"
+  conflicts: "Only one terrain mod can be installed."
+  author: "c.p./Cycledogg"
+  website: "https://www.sc4evermore.com/index.php/downloads/download/37-terrain-mods-and-tree-controllers/34-cycledogg-terrain-mods"
