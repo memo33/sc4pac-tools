@@ -7,7 +7,7 @@ import coursier.core.{Module, Organization, ModuleName, Dependency, Publication,
 import coursier.util.{Artifact, EitherT, Gather}
 import upickle.default.{ReadWriter, readwriter, macroRW, read}
 import java.nio.file.Path
-import zio.{IO, ZIO, UIO, Task}
+import zio.{IO, ZIO, UIO, Task, Scope}
 import org.fusesource.jansi.Ansi
 
 import sc4pac.error.*
@@ -35,23 +35,19 @@ class Logger private (out: java.io.PrintStream, useColor: Boolean, isInteractive
     else if (Constants.debugMode)
       out.println("  " + gray(s"  Downloaded $url"))
   override def downloadLength(url: String, len: Long, currentLen: Long, watching: Boolean): Unit =
-    if (Constants.debugMode)
-      out.println(gray(s"--> downloadLength=$currentLen/$len: $url"))
+    debug(s"downloadLength=$currentLen/$len: $url")
   override def gettingLength(url: String): Unit =
-    if (Constants.debugMode)
-      out.println(gray(s"--> gettingLength $url"))
+    debug(s"gettingLength $url")
   override def gettingLengthResult(url: String, length: Option[Long]): Unit =
-    if (Constants.debugMode)
-      out.println(gray(s"--> gettingLengthResult=$length: $url"))
+    debug(s"gettingLengthResult=$length: $url")
   def concurrentCacheAccess(url: String): Unit =
-    if (Constants.debugMode)
-      out.println(gray(s"--> concurrentCacheAccess $url"))
+    debug(s"concurrentCacheAccess $url")
   def extractArchiveEntry(entry: os.SubPath, include: Boolean): Unit =
-    if (Constants.debugMode)
-      out.println(gray(s"--> [${if (include) "include" else "exclude"}] $entry"))
+    debug(s"[${if (include) "include" else "exclude"}] $entry")
 
   def log(msg: String): Unit = out.println(msg)
   def warn(msg: String): Unit = out.println(yellowBold("Warning:") + " " + msg)
+  def debug(msg: String): Unit = if (Constants.debugMode) out.println(gray(s"--> $msg"))
 
   def logSearchResult(idx: Int, module: BareModule, description: Option[String], installed: Boolean): Unit = {
     val mod = module.formattedDisplayString(gray, bold) + (if (installed) " " + cyanBold("[installed]") else "")
@@ -357,12 +353,24 @@ trait UpdateService { this: Sc4pac =>
       * If everything is properly extracted, the files are later moved to the
       * actual plugins folder in the publication step.
       */
-    def stageAll(deps: Seq[DepModule], artifactsById: Map[BareAsset, (Artifact, java.io.File)]): Task[StageResult] = {
+    def stageAll(deps: Seq[DepModule], artifactsById: Map[BareAsset, (Artifact, java.io.File)]): ZIO[Scope, Throwable, StageResult] = {
 
-      val makeTempStagingDir = ZIO.attemptBlocking {
-        os.makeDir.all(tempRoot)
-        os.temp.dir(tempRoot, prefix = "staging-process", deleteOnExit = true)
-      }
+      val makeTempStagingDir: ZIO[Scope, java.io.IOException, os.Path] =
+        ZIO.acquireRelease(
+          acquire = ZIO.attemptBlockingIO {
+            os.makeDir.all(tempRoot)
+            val res = os.temp.dir(tempRoot, prefix = "staging-process", deleteOnExit = false)  // deleteOnExit does not seem to work reliably, so explicitly delete temp folder
+            logger.debug(s"Creating temp staging dir: $res")
+            res
+          }
+        )(
+          release = (stagingRoot: os.Path) => ZIO.attemptBlockingIO {  // TODO not executed in case of interrupt, so consider cleaning up temp dir from previous runs regularly.
+            logger.debug(s"Deleting temp staging dir: $stagingRoot")
+            os.remove.all(stagingRoot)
+          }.catchAll {
+            case e => ZIO.succeed(logger.warn(s"Failed to remove temp folder $stagingRoot: ${e.getMessage}"))
+          }
+        )
 
       for {
         stagingRoot             <- makeTempStagingDir
@@ -478,9 +486,8 @@ trait UpdateService { this: Sc4pac =>
         depsToStage     =  plan.toInstall.collect{ case d: DepModule => d }.toSeq  // keep only non-assets
         artifactsById   =  assetsToInstall.map((dep, art, file) => dep.toBareDep -> (art, file)).toMap
         _               =  require(artifactsById.size == assetsToInstall.size, s"artifactsById is not 1-to-1: $assetsToInstall")
-        stageResult     <- stageAll(depsToStage, artifactsById)
-        flag            <- publishToPlugins(stageResult, pluginsLockData, plan)
-        _               <- ZIO.attemptBlocking(os.remove.all(stageResult.stagingRoot))  // deleteOnExit does not seem to work reliably, so explicitly delete temp folder  TODO catch and ignore TODO finally
+        flag            <- ZIO.scoped(stageAll(depsToStage, artifactsById)
+                                      .flatMap(publishToPlugins(_, pluginsLockData, plan)))
         _               <- ZIO.attempt(logger.log("Done."))
       } yield flag)
     } yield flagOpt.getOrElse(false)  // TODO decide what flag means
