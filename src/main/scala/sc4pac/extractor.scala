@@ -8,6 +8,7 @@ import org.apache.commons.compress.utils.IOUtils
 import java.nio.file.StandardOpenOption
 
 import JsonData.InstallRecipe
+import sc4pac.error.ExtractionFailed
 
 object Extractor {
 
@@ -17,14 +18,14 @@ object Extractor {
   private object WrappedArchive {
     def apply(file: java.io.File): WrappedArchive[?] = {
       if (file.getName.endsWith(".exe"))  // assume NSIS installer (ClickTeam installer is not supported)
-        // try
-        {
+        try {
           import net.sf.sevenzipjbinding as SZ
           val raf = new java.io.RandomAccessFile(file, "r")
           val inArchive = SZ.SevenZip.openInArchive(null /*autodetect format*/, new SZ.impl.RandomAccessFileInStream(raf))
           new native.Wrapped7zNative(raf, inArchive)
-        // } catch {
-        //   case e: java.lang.UnsatisfiedLinkError => throw e  // TODO catch this for unsupported platforms, e.g. Apple arm
+        } catch {
+          case e: java.lang.UnsatisfiedLinkError =>  // some platforms may be unsupported, e.g. Apple arm
+            throw new ExtractionFailed(s"Failed to load native 7z library: $e")
         }
       else if (file.getName.endsWith(".7z"))
         new Wrapped7z(new SevenZFile(file))
@@ -90,7 +91,7 @@ object Extractor {
       def isDirectory(entry: Int) = archive.getProperty(entry, SZ.PropID.IS_FOLDER).asInstanceOf[Boolean]
       def isUnixSymlink(entry: Int) = archive.getProperty(entry, SZ.PropID.SYM_LINK).asInstanceOf[Boolean]
 
-      def extractSelected(entries: Seq[(Int, os.Path)], overwrite: Boolean) =
+      def extractSelected(entries: Seq[(Int, os.Path)], overwrite: Boolean) = try {
         archive.extract(entries.toArray.map(_._1), false, new SZ.IArchiveExtractCallback {
 
           val getPath: Int => os.Path = entries.toMap  // TODO this does not have linear complexity
@@ -131,6 +132,9 @@ object Extractor {
           def setTotal(total: Long): Unit = {}
 
         })
+      } catch {
+        case e: SZ.SevenZipException => throw new ExtractionFailed(s"Extraction failed: ${e.getMessage}")
+      }
     }
   }
 
@@ -207,7 +211,7 @@ class Extractor(logger: Logger) {
     }
   }
 
-  def extract(archive: java.io.File, destination: os.Path, recipe: InstallRecipe, jarExtractionOpt: Option[Extractor.JarExtraction]): Unit = {
+  def extract(archive: java.io.File, destination: os.Path, recipe: InstallRecipe, jarExtractionOpt: Option[Extractor.JarExtraction]): Unit = try {
     // first extract just the main files
     extractByPredicate(archive, destination, recipe.accepts, overwrite = true, flatten = false)
     // additionally, extract jar files contained in the zip file to a temporary location
@@ -219,5 +223,8 @@ class Extractor(logger: Logger) {
         extract(jarFile.toIO, destination, recipe, jarExtractionOpt = None)
       }
     }
+  } catch {
+    case e: ExtractionFailed => throw e
+    case e: java.io.IOException => throw new ExtractionFailed(s"Failed to extract $archive: ${e.getMessage}")
   }
 }
