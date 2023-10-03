@@ -92,3 +92,7 @@ libraryDependencies += "dev.dirs" % "directories" % "26"  // platform-specific l
 libraryDependencies += "org.fusesource.jansi" % "jansi" % "2.4.0"  // color support
 
 libraryDependencies += "me.xdrop" % "fuzzywuzzy" % "1.4.0"  // fuzzy search
+
+libraryDependencies += "net.sf.sevenzipjbinding" % "sevenzipjbinding" % "16.02-2.01"  // native 7z for NSIS extraction
+
+libraryDependencies += "net.sf.sevenzipjbinding" % "sevenzipjbinding-all-platforms" % "16.02-2.01"  // native 7z for NSIS extraction

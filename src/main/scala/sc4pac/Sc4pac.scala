@@ -25,7 +25,8 @@ class Logger private (out: java.io.PrintStream, useColor: Boolean, isInteractive
   private def cyanBold(msg: String): String = if (useColor) Console.CYAN + Console.BOLD + msg + Console.RESET else msg
   private def yellowBold(msg: String): String = if (useColor) Console.YELLOW + Console.BOLD + msg + Console.RESET else msg
   private def bold(msg: String): String = if (useColor) Console.BOLD + msg + Console.RESET else msg
-  def gray(msg: String): String = if (useColor) s"${27.toChar}[90m" + msg + Console.RESET else msg  // aka bright black
+  def gray(msg: String): String = if (useColor) grayEscape + msg + Console.RESET else msg  // aka bright black
+  private val grayEscape = s"${27.toChar}[90m"
 
   override def downloadingArtifact(url: String, artifact: coursier.util.Artifact) =
     out.println("  " + cyan(s"> Downloading $url"))
@@ -43,7 +44,7 @@ class Logger private (out: java.io.PrintStream, useColor: Boolean, isInteractive
   def concurrentCacheAccess(url: String): Unit =
     debug(s"concurrentCacheAccess $url")
   def extractArchiveEntry(entry: os.SubPath, include: Boolean): Unit =
-    debug(s"[${if (include) "include" else "exclude"}] $entry")
+    debug(s"[${if (include) Console.GREEN + "include" + grayEscape else "exclude"}] $entry")
 
   def log(msg: String): Unit = out.println(msg)
   def warn(msg: String): Unit = out.println(yellowBold("Warning:") + " " + msg)
@@ -282,12 +283,12 @@ trait UpdateService { this: Sc4pac =>
           // TODO skip symlinks as a precaution
 
           // TODO check if archive type is zip
-          val extractor = new ZipExtractor(logger)
+          val extractor = new Extractor(logger)
           extractor.extract(
             archive,
             tempPluginsRoot / pkgFolder,
             recipe,
-            Some(ZipExtractor.JarExtraction.fromUrl(art.url, cache, jarsRoot)))
+            Some(Extractor.JarExtraction.fromUrl(art.url, cache, jarsRoot)))
           // TODO catch IOExceptions
       }
     }
