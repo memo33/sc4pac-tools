@@ -282,12 +282,12 @@ trait UpdateService { this: Sc4pac =>
           // TODO skip symlinks as a precaution
 
           // TODO check if archive type is zip
-          val extractor = new ZipExtractor(logger)
+          val extractor = new Extractor(logger)
           extractor.extract(
             archive,
             tempPluginsRoot / pkgFolder,
             recipe,
-            Some(ZipExtractor.JarExtraction.fromUrl(art.url, cache, jarsRoot)))
+            Some(Extractor.JarExtraction.fromUrl(art.url, cache, jarsRoot)))
           // TODO catch IOExceptions
       }
     }
