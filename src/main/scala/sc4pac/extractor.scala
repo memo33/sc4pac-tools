@@ -11,35 +11,93 @@ import JsonData.InstallRecipe
 
 object Extractor {
 
-  private sealed trait WrappedArchive[A <: ArchiveEntry] extends AutoCloseable {
-    def getEntries: Iterator[A]
-    def getInputStream(entry: A): java.io.InputStream
-    def isUnixSymlink(entry: A): Boolean
-  }
+  def acceptNestedArchive(p: os.BasePath) =
+    p.last.endsWith(".jar") || p.last.endsWith(".zip") || p.last.endsWith(".7z") || p.last.endsWith(".exe")
 
   private object WrappedArchive {
     def apply(file: java.io.File): WrappedArchive[?] = {
-      if (file.getName.endsWith(".7z"))  // does not work for NSIS installer yet
+      if (file.getName.endsWith(".exe"))  // assume NSIS installer (ClickTeam installer is not supported)
+        // try
+        {
+          import net.sf.sevenzipjbinding as SZ
+          val raf = new java.io.RandomAccessFile(file, "r")
+          val inArchive = SZ.SevenZip.openInArchive(null /*autodetect format*/, new SZ.impl.RandomAccessFileInStream(raf))
+          new native.Wrapped7zNative(raf, inArchive.getSimpleInterface())
+        // } catch {
+        //   case e: java.lang.UnsatisfiedLinkError => throw e  // TODO catch this for unsupported platforms, e.g. Apple arm
+        }
+      else if (file.getName.endsWith(".7z"))
         new Wrapped7z(new SevenZFile(file))
       else  // zip or jar
         new WrappedZip(new ZipFile(file))
     }
   }
 
-  def acceptNestedArchive(p: os.BasePath) = p.last.endsWith(".jar") || p.last.endsWith(".zip") || p.last.endsWith(".7z")
+  private sealed trait WrappedArchive[A] extends AutoCloseable {
+    def getEntries: Iterator[A]
+    def getEntryPath(entry: A): String
+    def isDirectory(entry: A): Boolean
+    def isUnixSymlink(entry: A): Boolean
+    def extractTo(entry: A, target: os.Path, overwrite: Boolean): Unit
+  }
 
   private class WrappedZip(archive: ZipFile) extends WrappedArchive[ZipArchiveEntry] {
-    export archive.{close, getInputStream}
+    export archive.close
     import scala.jdk.CollectionConverters.*
     def getEntries = archive.getEntries.asScala
+    def getEntryPath(entry: ZipArchiveEntry): String = entry.getName
+    def isDirectory(entry: ZipArchiveEntry): Boolean = entry.isDirectory
     def isUnixSymlink(entry: ZipArchiveEntry) = entry.isUnixSymlink
+    def extractTo(entry: ZipArchiveEntry, target: os.Path, overwrite: Boolean) =
+      extractToImpl(archive.getInputStream(entry), target, overwrite)
   }
 
   private class Wrapped7z(archive: SevenZFile) extends WrappedArchive[SevenZArchiveEntry] {
-    export archive.{close, getInputStream}
+    export archive.close
     import scala.jdk.CollectionConverters.*
     def getEntries = archive.getEntries.iterator.asScala
+    def getEntryPath(entry: SevenZArchiveEntry): String = entry.getName
+    def isDirectory(entry: SevenZArchiveEntry): Boolean = entry.isDirectory
     def isUnixSymlink(entry: SevenZArchiveEntry) = false
+    def extractTo(entry: SevenZArchiveEntry, target: os.Path, overwrite: Boolean) =
+      extractToImpl(archive.getInputStream(entry), target, overwrite)
+  }
+
+  private def extractToImpl(entryIn: java.io.InputStream, target: os.Path, overwrite: Boolean): Unit = {
+    val options =
+      if (overwrite) Seq(StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.WRITE)
+      else Seq(StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE)
+    scala.util.Using.resources(entryIn, java.nio.file.Files.newOutputStream(target.toNIO, options*)) { (in, out) =>
+      IOUtils.copy(in, out, Constants.bufferSizeExtract)
+    }
+  }
+
+  private object native {
+    import net.sf.sevenzipjbinding.simple.{ISimpleInArchive, ISimpleInArchiveItem}
+    import net.sf.sevenzipjbinding.impl.RandomAccessFileOutStream
+    import net.sf.sevenzipjbinding.PropID
+
+    given releasableRAFOS: scala.util.Using.Releasable[RandomAccessFileOutStream] =
+      new scala.util.Using.Releasable[RandomAccessFileOutStream] {
+        def release(resource: RandomAccessFileOutStream) = resource.close()
+      }
+
+    class Wrapped7zNative(raf: java.io.RandomAccessFile, archive: ISimpleInArchive) extends WrappedArchive[ISimpleInArchiveItem] {
+      def close() = {
+        archive.close()  // might not close raf, so manually close raf here
+        raf.close()
+      }
+      def getEntries = archive.getArchiveItems.iterator
+      def getEntryPath(entry: ISimpleInArchiveItem) = entry.getPath
+      def isDirectory(entry: ISimpleInArchiveItem) = entry.isFolder
+      def isUnixSymlink(entry: ISimpleInArchiveItem) = false
+      def extractTo(entry: ISimpleInArchiveItem, target: os.Path, overwrite: Boolean): Unit =
+        scala.util.Using.resource(new java.io.RandomAccessFile(target.toIO, "rw")): raf =>
+          if (overwrite)
+            raf.setLength(0)  // first truncate existing
+          scala.util.Using.resource(new RandomAccessFileOutStream(raf)): out =>
+            entry.extractSlow(out)  // TODO use standard interface if this is too slow
+    }
   }
 
   /** This class contains information on how to extract a jar contained in a zip file.
@@ -76,9 +134,9 @@ class Extractor(logger: Logger) {
       // first we read the acceptable file names contained in the zip file
       import scala.jdk.CollectionConverters.*
       val entries /*: Seq[(zip.A, os.SubPath)]*/ = zip.getEntries
-        .map(e => e -> os.SubPath(e.getName))
+        .map(e => e -> os.SubPath(zip.getEntryPath(e)))
         .filter { (e, p) =>
-          if (e.isDirectory() || zip.isUnixSymlink(e)) {  // skip symlinks as precaution
+          if (zip.isDirectory(e) || zip.isUnixSymlink(e)) {  // skip symlinks as precaution
             false
           } else {
             val include = predicate(p)
@@ -102,10 +160,6 @@ class Extractor(logger: Logger) {
           (subpath) => subpath.subRelativeTo(prefix)
         }
 
-        val options =
-          if (overwrite) Seq(StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.WRITE)
-          else Seq(StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE)
-
         os.makeDir.all(destination)
         for ((entry, subpath) <- entries) yield {
           val path = destination / mapper(subpath)
@@ -114,9 +168,7 @@ class Extractor(logger: Logger) {
           } else {
             os.makeDir.all(path / os.up)  // we know that entry refers to a file, not a directory
             // write entry to file
-            scala.util.Using.resources(zip.getInputStream(entry), java.nio.file.Files.newOutputStream(path.toNIO, options*)) { (in, out) =>
-              IOUtils.copy(in, out, Constants.bufferSizeExtract)
-            }
+            zip.extractTo(entry, path, overwrite)
           }
           path
         }
