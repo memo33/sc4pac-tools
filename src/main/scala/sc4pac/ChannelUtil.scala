@@ -8,7 +8,6 @@ import coursier.core as C
 
 import sc4pac.JsonData as JD
 import sc4pac.JsonData.{osSubPathRw, instantRw}
-import sc4pac.Resolution.{BareDep, BareModule, BareAsset}
 
 object ChannelUtil {
 

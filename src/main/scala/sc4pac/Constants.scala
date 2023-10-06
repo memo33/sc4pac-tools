@@ -6,7 +6,7 @@ import coursier.core.{Configuration, Organization, Type, Module}
 object Constants {
   val compile = Configuration.compile  // includes only metadata as dependencies
   val link = new Configuration("link")  // extends `compile` with actual assets (TODO rename to `install`?)
-  val sc4pacAssetOrg = Organization("sc4pacAsset")
+  export JsonRepoUtil.sc4pacAssetOrg  // val sc4pacAssetOrg = Organization("sc4pacAsset")
   val sc4pacAssetType = Type("sc4pac-resource")  // TODO
   val urlKey = "url"
   val lastModifiedKey = "lastModified"

@@ -8,7 +8,7 @@ import java.nio.file.{Path as NioPath}
 import zio.{ZIO, IO, Task}
 import java.util.regex.Pattern
 
-import sc4pac.Resolution.{Dep, DepModule, DepAsset, BareModule, BareDep, BareAsset}
+import sc4pac.Resolution.{Dep, DepModule, DepAsset}
 
 /** Contains data types for JSON serialization. */
 object JsonData {
@@ -111,9 +111,9 @@ object JsonData {
     dependencies: Seq[Dependency] = Seq.empty,
     assets: Seq[AssetReference] = Seq.empty
   ) derives ReadWriter {
-    def bareDependencies: Seq[Resolution.BareDep] =
-      dependencies.map(d => Resolution.BareModule(Organization(d.group), ModuleName(d.name)))
-        ++ assets.map(a => Resolution.BareAsset(ModuleName(a.assetId)))
+    def bareDependencies: Seq[BareDep] =
+      dependencies.map(d => BareModule(Organization(d.group), ModuleName(d.name)))
+        ++ assets.map(a => BareAsset(ModuleName(a.assetId)))
   }
   object VariantData {
     def variantToAttributes(variant: Variant): Map[String, String] = {

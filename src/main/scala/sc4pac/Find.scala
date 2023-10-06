@@ -7,7 +7,6 @@ import upickle.default.Reader
 
 import sc4pac.JsonData as JD
 import sc4pac.error.{Sc4pacVersionNotFound, Sc4pacMissingVariant}
-import sc4pac.Resolution.BareModule
 
 object Find {
 
