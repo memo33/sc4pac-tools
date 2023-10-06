@@ -59,7 +59,7 @@ case class MetadataRepository(baseUri: java.net.URI, channelData: JD.Channel, gl
       EitherT.fromEither(Left(s"no versions of $module found in repository $baseUri"))
     } else {
       // TODO use flatter directory (remove version folder, rename maven folder)
-      val remoteUrl = baseUri.resolve("metadata/" + MetadataRepository.jsonSubPath(module.organization.value, module.name.value, version).segments0.mkString("/")).toString
+      val remoteUrl = baseUri.resolve(MetadataRepository.jsonSubPath(module.organization.value, module.name.value, version).segments0.mkString("/")).toString
       // We have complete control over the json metadata files, so for a fixed
       // version, they never change and therefore can be cached indefinitely
       val jsonArtifact = Artifact(remoteUrl).withChanging(false)
@@ -143,7 +143,7 @@ object MetadataRepository {
   }
 
   def jsonSubPath(group: String, name: String, version: String): os.SubPath = {
-    os.SubPath(s"${group}/${name}/${version}/${name}-${version}.json")
+    os.SubPath(s"metadata/${group}/${name}/${version}/${name}-${version}.json")
   }
 
   def createArtifact(url: String, lastModifiedOpt: Option[java.time.Instant]): Artifact = {

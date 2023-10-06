@@ -96,8 +96,7 @@ object ChannelUtil {
               case data: JD.Package => (data.group, data.name, data.version, Option(data.info.summary).filter(_.nonEmpty))
               case data: JD.Asset => (Constants.sc4pacAssetOrg.value, data.assetId, data.version, None)
             }
-            val subpath = MetadataRepository.jsonSubPath(g, n, v)
-            val target = tempJsonDir / "metadata" / subpath
+            val target = tempJsonDir / MetadataRepository.jsonSubPath(g, n, v)
             os.makeDir.all(target / os.up)
             scala.util.Using.resource(java.nio.file.Files.newBufferedWriter(target.toNIO)) { out =>
               pkgData match {
