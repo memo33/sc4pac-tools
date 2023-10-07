@@ -48,14 +48,14 @@ info:
     all Maxis industrial Lots, giving them a complete overhaul and spicing them
     up with custom textures, props, and lighting.
 
-    This package modifies the original mod by T Wrecks' slightly by assigning new
+    This package modifies the original mod by T Wrecks slightly by assigning new
     IDs to all the Lots in order to allow for seamless integration into existing
     regions. This way, it is not required to bulldoze any industrial Lots before
     installing this mod, but every newly growing industrial Lot will have the new
     style.
 
   # conflicts: ""  # No conflicts with CAM due to use of new IDs.
-  author: "T Wrecks and Shadowstrike"
+  author: "T Wrecks, Shadowstrike and memo"
   website: "https://community.simtropolis.com/files/file/28268-industrial-revolution-mod-base-pack-maxis-lots/"
 
 ---
