@@ -24,7 +24,7 @@ object JsonData extends SharedData {
 
 object Hello {
 
-  val channelUrl = "http://localhost:8090/"
+  val channelUrl = "http://localhost:8090/channel/"
 
   lazy val backend = sttp.client4.fetch.FetchBackend()
 
@@ -84,7 +84,7 @@ object Hello {
     val urlParams = new dom.URLSearchParams(dom.window.location.search)
     val pkgName = urlParams.get("pkg")
     if (pkgName == null) {
-      appendPar(document.body, s"Package: pass query pkg=<group>:<name>")
+      appendPar(document.body, s"Pass query ?pkg=<group>:<name>")
     } else parseModule(pkgName) match {
       case Left(err) => appendPar(document.body, s"Package: $err")
       case Right(module) =>
