@@ -5,6 +5,28 @@
     <title>Sc4pac</title>
   </head>
   <body>
+    <style>
+      #pkginfo ul {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+      }
+      #pkginfo p {
+        margin: 0;
+        margin-bottom: 0.25em;
+      }
+      #pkginfo th {
+        vertical-align: text-top;
+        text-align: left;
+      }
+      .codebox {
+        border:1px solid black;
+        background-color:#eeeeff;
+        <!-- width:300px; -->
+        overflow:auto;
+        padding:10px;
+      }
+    </style>
     <!-- Include Scala.js compiled code - TODO drop `-fastopt` -->
     <script type="text/javascript" src="../target/scala-3.3.0/sc4pac-web-fastopt/main.js"></script>
   </body>

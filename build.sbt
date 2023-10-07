@@ -126,8 +126,9 @@ lazy val web = (project in file("web"))
       // "dev.zio" %%% "zio" % "2.0.15",  // IO
       // "io.github.cquiroz" %%% "scala-java-time" % "2.5.0",  // for zio
       // "io.github.cquiroz" %%% "scala-java-time-tzdb" % "2.5.0",  // for zio
-      "com.softwaremill.sttp.client4" %%% "core" % "4.0.0-M5",
-      "com.softwaremill.sttp.client4" %%% "upickle" % "4.0.0-M5",
-      "org.scala-js" %%% "scalajs-dom" % "2.8.0"
+      "com.softwaremill.sttp.client4" %%% "core" % "4.0.0-M5",  // http requests
+      "com.softwaremill.sttp.client4" %%% "upickle" % "4.0.0-M5",  // parsing json
+      "com.lihaoyi" %%% "scalatags" % "0.12.0",  // html templating
+      "org.scala-js" %%% "scalajs-dom" % "2.8.0"  // facades for the DOM
     )
   )
