@@ -36,7 +36,7 @@ object JsonData {
   })
 
   case class Dependency(group: String, name: String, version: String) derives ReadWriter {
-    private[JsonData] def toDependency = C.Dependency(Module(Organization(group), ModuleName(name), attributes = Map.empty), version = version)
+    // private[JsonData] def toDependency = C.Dependency(Module(Organization(group), ModuleName(name), attributes = Map.empty), version = version)
   }
 
   case class AssetReference(
@@ -44,7 +44,7 @@ object JsonData {
     include: Seq[String] = Seq.empty,
     exclude: Seq[String] = Seq.empty
   ) derives ReadWriter {
-    private[JsonData] def toDependency = C.Dependency(Module(Constants.sc4pacAssetOrg, ModuleName(assetId), attributes = Map.empty), version = Constants.versionLatestRelease)
+    // private[JsonData] def toDependency = C.Dependency(Module(Constants.sc4pacAssetOrg, ModuleName(assetId), attributes = Map.empty), version = Constants.versionLatestRelease)
   }
 
   /** Package or Asset */
@@ -74,31 +74,31 @@ object JsonData {
     // private[JsonData] def toDependency = C.Dependency(Module(Constants.sc4pacAssetOrg, ModuleName(assetId), attributes = attributes), version = version)
     def toDepAsset = DepAsset(assetId = ModuleName(assetId), version = version, url = url, lastModified = Option(lastModified))
 
-    /** Create a `C.Project` (contains metadata) for this asset from scratch on the fly. */
-    def toProject: C.Project = {
-      C.Project(
-        module = Module(
-          Constants.sc4pacAssetOrg,
-          ModuleName(assetId),
-          attributes = attributes),  // includes url and lastModified
-        version = version,
-        dependencies = Seq.empty,
-        configurations = Map.empty,  // TODO
-          // Map(
-          //   C.Configuration.compile -> Seq.empty,
-          //   Constants.link -> Seq(C.Configuration.compile)),
-        parent = None,
-        dependencyManagement = Seq.empty,  // ? TODO
-        properties = Seq.empty,  // TODO
-        profiles = Seq.empty,
-        versions = None,  // TODO
-        snapshotVersioning = None,  // TODO
-        packagingOpt = None,  // Option[C.Type],
-        relocated = false,
-        actualVersionOpt = None,
-        publications = Seq.empty,  // Seq[(C.Configuration, C.Publication)],
-        info = C.Info.empty)
-    }
+    // /** Create a `C.Project` (contains metadata) for this asset from scratch on the fly. */
+    // def toProject: C.Project = {
+    //   C.Project(
+    //     module = Module(
+    //       Constants.sc4pacAssetOrg,
+    //       ModuleName(assetId),
+    //       attributes = attributes),  // includes url and lastModified
+    //     version = version,
+    //     dependencies = Seq.empty,
+    //     configurations = Map.empty,  // TODO
+    //       // Map(
+    //       //   C.Configuration.compile -> Seq.empty,
+    //       //   Constants.link -> Seq(C.Configuration.compile)),
+    //     parent = None,
+    //     dependencyManagement = Seq.empty,  // ? TODO
+    //     properties = Seq.empty,  // TODO
+    //     profiles = Seq.empty,
+    //     versions = None,  // TODO
+    //     snapshotVersioning = None,  // TODO
+    //     packagingOpt = None,  // Option[C.Type],
+    //     relocated = false,
+    //     actualVersionOpt = None,
+    //     publications = Seq.empty,  // Seq[(C.Configuration, C.Publication)],
+    //     info = C.Info.empty)
+    // }
   }
   object Asset {
     def parseLastModified(lastModified: String): Option[java.time.Instant] = {
@@ -141,36 +141,36 @@ object JsonData {
 
     def toBareDep: BareModule = BareModule(Organization(group), ModuleName(name))
 
-    /** Create a `C.Project` from the package metadata, usually read from json file. */
-    def toProject(globalVariant: Variant): Either[ErrStr, C.Project] = {
-      variants.find(data => isSubMap(data.variant, globalVariant)) match {
-        case None =>
-          Left(s"no variant found for $group:$name matching [${VariantData.variantString(globalVariant)}]")
-        case Some(matchingVariant) =>
-          Right(C.Project(
-            module = Module(
-              Organization(group),
-              ModuleName(name),
-              attributes = VariantData.variantToAttributes(matchingVariant.variant)),  // TODO add variants to attributes or properties?
-            version = version,
-            dependencies = matchingVariant.dependencies.map(dep => (C.Configuration.compile, dep.toDependency))
-              ++ matchingVariant.assets.map(a => (Constants.link, a.toDependency /*.withConfiguration(Constants.link)*/)),
-            configurations = Map(
-              C.Configuration.compile -> Seq.empty,
-              Constants.link -> Seq(C.Configuration.compile)),
-            parent = None,
-            dependencyManagement = Seq.empty,  // ? TODO
-            properties = Seq.empty,  // TODO
-            profiles = Seq.empty,
-            versions = None,  // TODO
-            snapshotVersioning = None,  // TODO
-            packagingOpt = None,  // Option[C.Type],
-            relocated = false,
-            actualVersionOpt = None,
-            publications = Seq.empty,  // Seq[(C.Configuration, C.Publication)],
-            info = C.Info.empty))
-      }
-    }
+    // /** Create a `C.Project` from the package metadata, usually read from json file. */
+    // def toProject(globalVariant: Variant): Either[ErrStr, C.Project] = {
+    //   variants.find(data => isSubMap(data.variant, globalVariant)) match {
+    //     case None =>
+    //       Left(s"no variant found for $group:$name matching [${VariantData.variantString(globalVariant)}]")
+    //     case Some(matchingVariant) =>
+    //       Right(C.Project(
+    //         module = Module(
+    //           Organization(group),
+    //           ModuleName(name),
+    //           attributes = VariantData.variantToAttributes(matchingVariant.variant)),  // TODO add variants to attributes or properties?
+    //         version = version,
+    //         dependencies = matchingVariant.dependencies.map(dep => (C.Configuration.compile, dep.toDependency))
+    //           ++ matchingVariant.assets.map(a => (Constants.link, a.toDependency /*.withConfiguration(Constants.link)*/)),
+    //         configurations = Map(
+    //           C.Configuration.compile -> Seq.empty,
+    //           Constants.link -> Seq(C.Configuration.compile)),
+    //         parent = None,
+    //         dependencyManagement = Seq.empty,  // ? TODO
+    //         properties = Seq.empty,  // TODO
+    //         profiles = Seq.empty,
+    //         versions = None,  // TODO
+    //         snapshotVersioning = None,  // TODO
+    //         packagingOpt = None,  // Option[C.Type],
+    //         relocated = false,
+    //         actualVersionOpt = None,
+    //         publications = Seq.empty,  // Seq[(C.Configuration, C.Publication)],
+    //         info = C.Info.empty))
+    //   }
+    // }
 
     def unknownVariants(globalVariant: Variant): Map[String, Seq[String]] = {
       val unknownKeys: Set[String] = Set.concat(variants.map(_.variant.keySet) *) &~ globalVariant.keySet
