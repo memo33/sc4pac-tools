@@ -6,25 +6,49 @@
   </head>
   <body>
     <style>
+      html {
+        margin: 0 auto;
+        max-width: 800px;
+      }
+      h2 {
+          font-size: 1.25em;
+          margin-bottom: 0.5em;
+          border-bottom: 1px solid #888;
+      }
       #pkginfo ul {
         list-style: none;
         margin: 0;
         padding: 0;
       }
-      #pkginfo p {
+      #pkginfo th {
+        padding-bottom: 0.25em;
+        padding-right: 0.8em;
+      }
+      #pkginfo td {
+        padding-bottom: 0.25em;
+      }
+      #pkginfo td p {
         margin: 0;
-        margin-bottom: 0.25em;
+      }
+      #pkginfo td p:not(:last-child) {
+        margin-bottom: 0.5em;
       }
       #pkginfo th {
         vertical-align: text-top;
         text-align: left;
       }
       .codebox {
-        border:1px solid black;
+        border:1px solid #888;
         background-color:#eeeeff;
         <!-- width:300px; -->
         overflow:auto;
         padding:10px;
+      }
+      a {
+        text-decoration: none;
+      }
+      a:hover {
+        text-decoration: underline;
       }
     </style>
     <!-- Include Scala.js compiled code - TODO drop `-fastopt` -->

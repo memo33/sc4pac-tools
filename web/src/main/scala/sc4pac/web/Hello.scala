@@ -19,6 +19,7 @@ import scalatags.JsDom.all as H  // html tags
 import scalatags.JsDom.all.stringFrag
 import scalatags.JsDom.all.stringAttr
 import scalatags.JsDom.all.SeqFrag
+import scalatags.JsDom.all.intPixelStyle
 
 object JsonData extends SharedData {
   opaque type Instant = String
@@ -73,54 +74,59 @@ object Hello {
     else H.code(module.orgName)
 
   def pkgInfoFrag(pkg: JsonData.Package) = {
+    val module = pkg.toBareDep
     val b = Seq.newBuilder[H.Frag]
+    def add(label: String, child: H.Frag): Unit =
+      b += H.tr(H.th(label), H.td(child))
 
     def mkPar(text: String) = text.trim.linesIterator.map(H.p(_)).toSeq
 
-    b += H.tr(H.th("Name:"), H.td(pkg.name))
-    b += H.tr(H.th("Group:"), H.td(pkg.group))
-    b += H.tr(H.th("Version:"), H.td(pkg.version))
-    b += H.tr(H.th("Summary:"), H.td(if (pkg.info.summary.nonEmpty) pkg.info.summary else "-"))
+    add("Name", pkg.name)
+    add("Group", pkg.group)
+    add("Version", pkg.version)
+    add("Summary", if (pkg.info.summary.nonEmpty) pkg.info.summary else "-")
     if (pkg.info.description.nonEmpty)
-      b += H.tr(H.th("Description:"))(H.td(mkPar(pkg.info.description)))
+      add("Description", mkPar(pkg.info.description))
     if (pkg.info.warning.nonEmpty)
-      b += H.tr(H.th("Warning:"))(H.td(mkPar(pkg.info.warning)))
+      add("Warning", mkPar(pkg.info.warning))
     if (pkg.info.conflicts.nonEmpty)
-      b += H.tr(H.th("Conflicts:"))(H.td(mkPar(pkg.info.conflicts)))
+      add("Conflicts", mkPar(pkg.info.conflicts))
     if (pkg.info.author.nonEmpty)
-      b += H.tr(H.th("Author:"))(H.td(pkg.info.author))
+      add("Author", pkg.info.author)
     if (pkg.info.website.nonEmpty) {
       var url = uri"${pkg.info.website}"
       if (url.scheme.isEmpty)
         url = url.scheme("https")
-      b += H.tr(H.th("Website:"))(H.td(H.a(H.href := url.toString)(pkg.info.website)))
+      add("Website", H.a(H.href := url.toString)(pkg.info.website))
     }
-    b += H.tr(H.th("Subfolder:"), H.td(H.code(pkg.subfolder.toString)))
+    add("Subfolder", H.code(pkg.subfolder.toString))
 
-    b += H.tr(H.th("Variants:"), H.td(
+    add("Variants",
       if (pkg.variants.length == 1 && pkg.variants.head.variant.isEmpty)
         "None"
       else
         H.ul(
           pkg.variants.map { vd =>
-            H.li(JsonData.VariantData.variantString(vd.variant))
+            H.li(H.code(JsonData.VariantData.variantString(vd.variant)))
           }
         )
-    ))
+    )
+    // TODO add variant descriptions
 
     // TODO add info about which dependencies belong to which variant
     val deps = pkg.variants
       .flatMap(vd => vd.bareDependencies.collect{ case m: BareModule => m })
       .distinct
-    b += H.tr(H.th("Dependencies:"), H.td(
+    add("Dependencies",
       if (deps.isEmpty) "None"
       else H.ul(deps.map(dep => H.li(pkgNameFrag(dep))))
-    ))
+    )
 
     H.div(
+      H.h2(module.orgName),
       H.table(H.id := "pkginfo")(H.tbody(b.result())),
       H.p("Install this package with ", H.a(H.href := sc4pacUrl)(H.code("sc4pac")), ":"),
-      H.pre(H.cls := "codebox")(s"sc4pac add ${pkg.toBareDep.orgName}\nsc4pac update")
+      H.pre(H.cls := "codebox")(s"sc4pac add ${module.orgName}\nsc4pac update")
     )
   }
 
