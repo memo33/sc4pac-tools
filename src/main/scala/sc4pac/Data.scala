@@ -23,12 +23,16 @@ object JsonData {
   implicit val uriRw: ReadWriter[java.net.URI] = readwriter[String].bimap[java.net.URI](_.toString(),
     MetadataRepository.parseChannelUrl(_).left.map(new IllegalArgumentException(_)).toTry.get)
 
-  implicit val bareModuleRw: ReadWriter[BareModule] = readwriter[String].bimap[BareModule](_.orgName, { (s: String) =>
+  private def bareModuleRead(s: String) =
     Sc4pac.parseModules(Seq(s)) match {
       case Right(Seq(mod)) => mod
       case Left(err) => throw new IllegalArgumentException(err)
       case _ => throw new AssertionError
     }
+  implicit val bareModuleRw: ReadWriter[BareModule] = readwriter[String].bimap[BareModule](_.orgName, bareModuleRead)
+  implicit val bareDepRw: ReadWriter[BareDep] = readwriter[String].bimap[BareDep](_.orgName, { (s: String) =>
+    val prefix = Constants.sc4pacAssetOrg.value + ":"
+    if (s.startsWith(prefix)) BareAsset(assetId = C.ModuleName(s.substring(prefix.length))) else bareModuleRead(s)
   })
 
   case class Dependency(group: String, name: String, version: String) derives ReadWriter {
@@ -43,12 +47,19 @@ object JsonData {
     private[JsonData] def toDependency = C.Dependency(Module(Constants.sc4pacAssetOrg, ModuleName(assetId), attributes = Map.empty), version = Constants.versionLatestRelease)
   }
 
+  /** Package or Asset */
+  sealed trait PackageAsset derives ReadWriter {
+    def toBareDep: BareDep
+    def version: String
+  }
+
+  @upickle.implicits.key("Asset")
   case class Asset(
     assetId: String,
     version: String,
     url: String,
     lastModified: java.time.Instant = null
-  ) derives ReadWriter {
+  ) extends PackageAsset derives ReadWriter {
     def attributes: Map[String, String] = {
       val m = Map(Constants.urlKey -> url)
       if (lastModified != null) {
@@ -57,6 +68,8 @@ object JsonData {
         m
       }
     }
+
+    def toBareDep: BareAsset = BareAsset(assetId = ModuleName(assetId))
 
     // private[JsonData] def toDependency = C.Dependency(Module(Constants.sc4pacAssetOrg, ModuleName(assetId), attributes = attributes), version = version)
     def toDepAsset = DepAsset(assetId = ModuleName(assetId), version = version, url = url, lastModified = Option(lastModified))
@@ -115,6 +128,7 @@ object JsonData {
     def variantString(variant: Variant): String = variant.toSeq.sorted.map((k, v) => s"$k=$v").mkString(", ")
   }
 
+  @upickle.implicits.key("Package")
   case class Package(
     group: String,
     name: String,
@@ -123,7 +137,10 @@ object JsonData {
     info: Info = Info.empty,
     variants: Seq[VariantData],
     variantDescriptions: Map[String, Map[String, String]] = Map.empty  // variantKey -> variantValue -> description
-  ) derives ReadWriter {
+  ) extends PackageAsset derives ReadWriter {
+
+    def toBareDep: BareModule = BareModule(Organization(group), ModuleName(name))
+
     /** Create a `C.Project` from the package metadata, usually read from json file. */
     def toProject(globalVariant: Variant): Either[ErrStr, C.Project] = {
       variants.find(data => isSubMap(data.variant, globalVariant)) match {
@@ -183,6 +200,20 @@ object JsonData {
   case class Channel(contents: Seq[ChannelItem]) derives ReadWriter {
     lazy val versions: Map[BareDep, Seq[String]] =
       contents.map(item => item.toBareDep -> item.versions).toMap
+  }
+  object Channel {
+    def create(channelData: Iterable[(BareDep, Iterable[(String, PackageAsset)])]): Channel = {  // name -> version -> json
+      Channel(channelData.iterator.collect {
+        case (dep, versions) if versions.nonEmpty =>
+          val (g, n) = dep match {
+            case m: BareModule => (m.group.value, m.name.value)
+            case a: BareAsset => (Constants.sc4pacAssetOrg.value, a.assetId.value)
+          }
+          // we arbitrarily pick the summary of the first item (usually there is just one version anyway)
+          val summaryOpt = versions.iterator.collectFirst { case (_, pkg: Package) if pkg.info.summary.nonEmpty => pkg.info.summary }
+          ChannelItem(group = g, name = n, versions = versions.iterator.map(_._1).toSeq, summary = summaryOpt.getOrElse(""))
+      }.toSeq)
+    }
   }
 
   case class Config(

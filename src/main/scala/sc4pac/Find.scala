@@ -24,7 +24,7 @@ object Find {
   /** Find the JD.Package or JD.Asset corresponding to module and version,
     * across all repositories. If not found at all, try a second time with the
     * repository channel contents updated. */
-  def packageData[A : Reader](module: C.Module, version: String)(using context: ResolutionContext): Task[Option[A]] = {
+  def packageData[A <: JD.Package | JD.Asset : Reader](module: C.Module, version: String)(using context: ResolutionContext): Task[Option[A]] = {
     import CoursierZio.*  // implicit coursier-zio interop
     def tryAllRepos(repos: Seq[MetadataRepository], context: ResolutionContext): Task[Option[A]] = ZIO.collectFirst(repos) { repo =>
       val task = {

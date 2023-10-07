@@ -10,19 +10,12 @@ import zio.{ZIO, IO}
 import sc4pac.error.*
 import sc4pac.Constants.isSc4pacAsset
 import sc4pac.JsonData as JD
-import sc4pac.Resolution.BareDep
+import sc4pac.Resolution.{BareDep, BareModule, BareAsset}
 
-case class MetadataRepository(baseUri: java.net.URI, channelData: JD.Channel, globalVariant: Variant) extends Repository {
+sealed abstract class MetadataRepository(val baseUri: java.net.URI /*, globalVariant: Variant*/) extends Repository {
 
-  private def getRawVersions(dep: BareDep): Seq[String] = {
-    channelData.versions.get(dep).getOrElse(Seq.empty)
-  }
-
-  // This only works for concrete versions (so not for "latest.release").
-  // The assumption is that all methods of MetadataRepository are only called with concrete versions.
-  private def containsVersion(dep: BareDep, version: String): Boolean = {
-    getRawVersions(dep).exists(_ == version)
-  }
+  /** Obtain the raw version strings of `dep` contained in this repository. */
+  def getRawVersions(dep: BareDep): Seq[String]
 
   /** Reads the repository's channel contents to obtain all available versions
     * of modules.
@@ -51,24 +44,8 @@ case class MetadataRepository(baseUri: java.net.URI, channelData: JD.Channel, gl
 
   /** For a module (no asset, no variant) of a given version, fetch the
     * corresponding `JD.Package` contained in its json file.
-    *
-    * A = JD.Package or JD.Asset
     */
-  def fetchModuleJson[F[_] : Monad, A : Reader](module: Module, version: String, fetch: Repository.Fetch[F]): EitherT[F, ErrStr, A] = {
-    if (!containsVersion(BareDep.fromModule(module), version)) {
-      EitherT.fromEither(Left(s"no versions of $module found in repository $baseUri"))
-    } else {
-      // TODO use flatter directory (remove version folder, rename maven folder)
-      val remoteUrl = baseUri.resolve(MetadataRepository.jsonSubPath(module.organization.value, module.name.value, version).segments0.mkString("/")).toString
-      // We have complete control over the json metadata files, so for a fixed
-      // version, they never change and therefore can be cached indefinitely
-      val jsonArtifact = Artifact(remoteUrl).withChanging(false)
-
-      fetch(jsonArtifact).flatMap((jsonStr: String) => EitherT.fromEither {
-        JsonIo.readBlocking[A](jsonStr, errMsg = remoteUrl)
-      })
-    }
-  }
+  def fetchModuleJson[F[_] : Monad, A <: JD.PackageAsset : Reader](module: Module, version: String, fetch: Repository.Fetch[F]): EitherT[F, ErrStr, A]
 
   /** For a module of a given version, find its metadata (parsed from its json
     * file) and return it as a `Project` (Coursier's representation of package
@@ -78,6 +55,8 @@ case class MetadataRepository(baseUri: java.net.URI, channelData: JD.Channel, gl
     * corresponding `Repository`.
     */
   def find[F[_] : Monad](module: Module, version: String, fetch: Repository.Fetch[F]): EitherT[F, ErrStr, (ArtifactSource, Project)] = {
+    ???  // TODO unused implementation
+    /*
     if (isSc4pacAsset(module)) {
       // EitherT.fromEither(Right((this, MetadataRepository.sc4pacAssetProject(module, version))))
       fetchModuleJson[F, JD.Asset](module, version, fetch)
@@ -92,9 +71,12 @@ case class MetadataRepository(baseUri: java.net.URI, channelData: JD.Channel, gl
         }
         // TODO in case of error, we should not cache faulty file
     }
+    */
   }
 
   def artifacts(dependency: Dependency, project: Project, overrideClassifiers: Option[Seq[Classifier]]): Seq[(Publication, Artifact)] = {
+    ???  // TODO unused implementation
+    /*
     if (overrideClassifiers.nonEmpty) ???  // TODO
 
     if (!isSc4pacAsset(dependency.module)) {
@@ -118,22 +100,25 @@ case class MetadataRepository(baseUri: java.net.URI, channelData: JD.Channel, gl
       val lastModifiedOpt: Option[java.time.Instant] = mod.attributes.get(Constants.lastModifiedKey).flatMap(JD.Asset.parseLastModified)
       Seq((pub, MetadataRepository.createArtifact(url, lastModifiedOpt)))
     }
-
+    */
   }
+
+  def iterateChannelContents: Iterator[JD.ChannelItem]
 }
 
 object MetadataRepository {
-  val channelContentsFilename = "sc4pac-channel-contents.json"
-  def channelContentsUrl(baseUri: java.net.URI): java.net.URI = baseUri.resolve(channelContentsFilename)
+  val channelContentsFilename = "sc4pac-channel-contents.json"  // only for JSON repositories
+  def channelContentsUrl(baseUri: java.net.URI): java.net.URI =
+    if (baseUri.getPath.endsWith(".yaml")) baseUri else baseUri.resolve(channelContentsFilename)
 
   /** Sanitize URL.
     */
   def parseChannelUrl(url: String): Either[ErrStr, java.net.URI] = try {
     val uri = new java.net.URI(url)
-    if (uri.getScheme == null) Left(s"channel URL must start with https://, http:// or file:// ($uri)")  // coursier-cache requirement
+    if (uri.getScheme == null) Left(s"channel URL must start with https://, http:// or file:/// ($uri)")  // coursier-cache requirement
     else if (uri.getRawQuery != null) Left(s"channel URL must not have query: $uri")
     else if (uri.getRawFragment != null) Left(s"channel URL must not have fragment: $uri")
-    else if (uri.getPath.endsWith("/")) {
+    else if (uri.getPath.endsWith("/") || uri.getPath.endsWith(".yaml")) {
       Right(uri)
     } else {
       Right(java.net.URI.create(url + "/"))  // add a slash for proper subdirectory resolution
@@ -142,7 +127,29 @@ object MetadataRepository {
     case e: java.net.URISyntaxException => Left(e.getMessage)
   }
 
-  def jsonSubPath(group: String, name: String, version: String): os.SubPath = {
+  def create(channelContentsFile: os.Path, baseUri: java.net.URI /*, globalVariant: Variant*/): IO[ErrStr, MetadataRepository] = {
+    if (baseUri.getPath.endsWith(".yaml")) {  // yaml repository
+      for {
+        contents <- ChannelUtil.readAndParsePkgData(channelContentsFile)
+      } yield {
+        val channelData: Map[BareDep, Map[String, JD.PackageAsset]] =
+          contents.groupMap(_.toBareDep)(data => data.version -> data).view.mapValues(_.toMap).toMap
+        new YamlRepository(baseUri, channelData /*, globalVariant*/)
+      }
+    } else {  // json repository
+      val contentsUrl = channelContentsUrl(baseUri).toString
+      ZIO.attemptBlockingIO(JsonIo.readBlocking[JD.Channel](channelContentsFile.toNIO, errMsg = contentsUrl))
+        .mapError(e => s"Failed to read channel contents: $e")
+        .absolve
+        .map(new JsonRepository(baseUri, _/*, globalVariant*/))
+    }
+  }
+
+  def jsonSubPath(dep: BareDep, version: String): os.SubPath = {
+    val (group, name) = dep match {
+      case m: BareModule => (m.group.value, m.name.value)
+      case a: BareAsset => (Constants.sc4pacAssetOrg.value, a.assetId.value)
+    }
     os.SubPath(s"metadata/${group}/${name}/${version}/${name}-${version}.json")
   }
 
@@ -160,4 +167,70 @@ object MetadataRepository {
     }
     Artifact(url).withChanging(changing)
   }
+}
+
+/** This repository operates on a hierarchy of JSON files. The JSON files are loaded on demand.
+  */
+private class JsonRepository(
+  baseUri: java.net.URI,
+  channelData: JD.Channel
+  // globalVariant: Variant
+) extends MetadataRepository(baseUri/*, globalVariant*/) {
+
+  /** Obtain the raw version strings of `dep` contained in this repository. */
+  def getRawVersions(dep: BareDep): Seq[String] = channelData.versions.get(dep).getOrElse(Seq.empty)
+
+  // This only works for concrete versions (so not for "latest.release").
+  // The assumption is that all methods of MetadataRepository are only called with concrete versions.
+  private def containsVersion(dep: BareDep, version: String): Boolean = {
+    getRawVersions(dep).exists(_ == version)
+  }
+
+  /** For a module (no asset, no variant) of a given version, fetch the
+    * corresponding `JD.Package` contained in its json file.
+    */
+  def fetchModuleJson[F[_] : Monad, A <: JD.PackageAsset : Reader](module: Module, version: String, fetch: Repository.Fetch[F]): EitherT[F, ErrStr, A] = {
+    val dep = BareDep.fromModule(module)
+    if (!containsVersion(dep, version)) {
+      EitherT.fromEither(Left(s"no versions of $module found in repository $baseUri"))
+    } else {
+      // TODO use flatter directory (remove version folder, rename maven folder)
+      val remoteUrl = baseUri.resolve(MetadataRepository.jsonSubPath(dep, version).segments0.mkString("/")).toString
+      // We have complete control over the json metadata files, so for a fixed
+      // version, they never change and therefore can be cached indefinitely
+      val jsonArtifact = Artifact(remoteUrl).withChanging(false)
+
+      fetch(jsonArtifact).flatMap((jsonStr: String) => EitherT.fromEither {
+        JsonIo.readBlocking[A](jsonStr, errMsg = remoteUrl)
+      })
+    }
+  }
+
+  def iterateChannelContents: Iterator[JD.ChannelItem] = channelData.contents.iterator
+}
+
+/** This repository is read from a single YAML file. All its data is held in memory.
+  */
+private class YamlRepository(
+  baseUri: java.net.URI,
+  channelData: Map[BareDep, Map[String, JD.PackageAsset]]  // name -> version -> json
+  // globalVariant: Variant
+) extends MetadataRepository(baseUri/*, globalVariant*/) {
+
+  def getRawVersions(dep: BareDep): Seq[String] = {
+    channelData.get(dep).map(_.keys.toSeq).getOrElse(Seq.empty)
+  }
+
+  def fetchModuleJson[F[_] : Monad, A <: JD.PackageAsset : Reader](module: Module, version: String, fetch: Repository.Fetch[F]): EitherT[F, ErrStr, A] = {
+    val dep = BareDep.fromModule(module)
+    channelData.get(dep).flatMap(_.get(version)) match {
+      case None => EitherT.fromEither(Left(s"no versions of $module found in repository $baseUri"))
+      case Some(pkgData: JD.PackageAsset) =>
+        EitherT.point(pkgData.asInstanceOf[A])  // as long as we do not mix up Assets and Packages, casting should not be an issue (could be fixed using type classes)
+    }
+  }
+
+  lazy private val channel = JD.Channel.create(channelData)
+
+  def iterateChannelContents: Iterator[JD.ChannelItem] = channel.contents.iterator
 }
