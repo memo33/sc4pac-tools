@@ -39,7 +39,7 @@ object Hello {
 
     appendPar(document.body, "Hello World")
 
-    val urlParams = new URLSearchParams(js.Dynamic.global.window.location.search)
+    val urlParams = new dom.URLSearchParams(dom.window.location.search)
     val pkgName = urlParams.get("pkg")
     if (pkgName == null) {
       appendPar(document.body, s"Package: pass query pkg=<group>:<name>")
@@ -47,11 +47,6 @@ object Hello {
       case Left(err) => appendPar(document.body, s"Package: $err")
       case Right(mod) => appendPar(document.body, s"Package: $mod")
     }
-  }
-
-  @js.native @JSGlobal
-  class URLSearchParams(options: Any) extends js.Object {
-    def get(key: String): String = js.native
   }
 }
 
