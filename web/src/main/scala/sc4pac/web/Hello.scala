@@ -46,7 +46,7 @@ object Hello {
     }
 
   def fetchPackage(module: BareModule): Future[Option[Dummy]] = {
-    val url = uri"${channelUrl}${JsonRepoUtil.packageSubPath($module, version = "1.0")}"  // TODO version latest
+    val url = sttp.model.Uri(java.net.URI.create(s"${channelUrl}${JsonRepoUtil.packageSubPath(module, version = "latest")}"))
     for {
       response <- basicRequest.get(url).response(asJson[Dummy]).send(backend)
     } yield {
