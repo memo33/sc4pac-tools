@@ -19,7 +19,7 @@ object JsonRepoUtil {
       case m: BareModule => (m.group.value, m.name.value)
       case a: BareAsset => (sc4pacAssetOrg.value, a.assetId.value)
     }
-    s"metadata/${group}/${name}/${version}/${name}-${version}.json"
+    s"metadata/${group}/${name}/${version}/pkg.json"
   }
 
   val sc4pacAssetOrg = Organization("sc4pacAsset")

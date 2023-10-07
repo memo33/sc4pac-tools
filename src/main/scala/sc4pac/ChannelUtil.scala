@@ -123,6 +123,12 @@ object ChannelUtil {
         writeTo(channel, out, indent=2)  // writes channel contents json file
       }
 
+      // create symlinks for latest versions
+      channel.contents.foreach { item =>
+        val latest = item.versions.map(coursier.core.Version(_)).max
+        os.symlink(tempJsonDir / MetadataRepository.latestSubPath(item.group, item.name), os.rel / latest.repr)
+      }
+
       // Finally, we are sure that everything was formatted correctly, so we can
       // move the temp folder to its final destination.
       os.move.over(tempJsonDir / "metadata", outputDir / "metadata", createFolders = true)

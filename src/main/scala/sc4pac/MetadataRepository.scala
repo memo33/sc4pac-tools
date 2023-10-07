@@ -148,6 +148,11 @@ object MetadataRepository {
     os.SubPath(JsonRepoUtil.packageSubPath(dep, version))
   }
 
+  // use jsonSubPath(group, name, "latest") for the json file
+  def latestSubPath(group: String, name: String): os.SubPath = {
+    os.SubPath(s"metadata/$group/$name/latest")
+  }
+
   def createArtifact(url: String, lastModifiedOpt: Option[java.time.Instant]): Artifact = {
     val changing = if (lastModifiedOpt.isEmpty) {
       // We do not know when the remote artifact is updated, so we set the artifact
