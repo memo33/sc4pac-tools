@@ -7,7 +7,21 @@ import scala.scalajs.js.annotation.JSGlobal
 import org.scalajs.dom
 import org.scalajs.dom.document
 
+import scala.concurrent.Future
+import concurrent.ExecutionContext.Implicits.global
+
+import upickle.default as UP
+
+import sttp.client4.{basicRequest, Request, UriContext, Response, ResponseException}
+import sttp.client4.upicklejson.asJson
+
 object Hello {
+
+  val channelUrl = "http://localhost:8090/"
+
+  lazy val backend = sttp.client4.fetch.FetchBackend()
+
+  case class Dummy(group: String, name: String, version: String) derives UP.ReadWriter
 
   def appendPar(targetNode: dom.Node, text: String): Unit = {
     val parNode = document.createElement("p")
@@ -31,7 +45,30 @@ object Hello {
       case _ => Left("malformed package name: <group>:<name>")
     }
 
+  def fetchPackage(module: BareModule): Future[Option[Dummy]] = {
+    val url = uri"${channelUrl}${JsonRepoUtil.packageSubPath($module, version = "1.0")}"  // TODO version latest
+    for {
+      response <- basicRequest.get(url).response(asJson[Dummy]).send(backend)
+    } yield {
+      if (!response.is200)
+        None
+      else response.body.toOption
+    }
+  }
+
   def setupUI(): Unit = {
+
+    // val response: Future[Response[Either[ResponseException[String, Exception], Dummy]]] =
+    //   basicRequest
+    //     .get(uri"http://localhost:8090/metadata/memo/demo-package/1.0/demo-package-1.0.json")
+    //     .response(asJson[Dummy])
+    //     .send(backend)
+
+    // response.foreach(resp => {
+    //   println(resp.code)
+    //   println(resp.body)
+    // })
+
     val button = document.createElement("button")
     button.textContent = "Click me!"
     button.addEventListener("click", (e: dom.MouseEvent) => addClickedMessage())
@@ -45,7 +82,14 @@ object Hello {
       appendPar(document.body, s"Package: pass query pkg=<group>:<name>")
     } else parseModule(pkgName) match {
       case Left(err) => appendPar(document.body, s"Package: $err")
-      case Right(mod) => appendPar(document.body, s"Package: $mod")
+      case Right(module) =>
+        appendPar(document.body, s"Loading package ${module.orgName}...")
+        fetchPackage(module) foreach {
+          case None =>
+            appendPar(document.body, "Package: not found")
+          case Some(pkg) =>
+            appendPar(document.body, pkg.toString)
+        }
     }
   }
 }
