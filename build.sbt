@@ -120,5 +120,10 @@ lazy val web = (project in file("web"))
   .settings(
     name := "sc4pac-web",
     scalaJSUseMainModuleInitializer := true,
-    libraryDependencies += "org.scala-js" %%% "scalajs-dom" % "2.8.0"
+    libraryDependencies ++= Seq(
+      // "dev.zio" %%% "zio" % "2.0.15",  // IO
+      // "io.github.cquiroz" %%% "scala-java-time" % "2.5.0",  // for zio
+      // "io.github.cquiroz" %%% "scala-java-time-tzdb" % "2.5.0",  // for zio
+      "org.scala-js" %%% "scalajs-dom" % "2.8.0"
+    )
   )

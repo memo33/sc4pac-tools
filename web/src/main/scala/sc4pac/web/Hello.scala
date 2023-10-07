@@ -54,3 +54,37 @@ object Hello {
     def get(key: String): String = js.native
   }
 }
+
+/*
+import org.scalajs.dom
+import org.scalajs.dom.document
+import zio.*
+import zio.Clock.*
+
+object Hello extends zio.ZIOAppDefault {
+
+  def run = {
+    for {
+      _      <- Console.printLine("Starting progress bar demo.")
+      target <- ZIO.succeed(document.createElement("pre"))
+      _      <- ZIO.succeed(document.body.appendChild(target))
+      _      <- update(target).repeat(Schedule.spaced(1.seconds))
+    } yield ExitCode.success
+  }
+
+  def update(target: dom.Element) = {
+    for {
+      time   <- currentTime(java.util.concurrent.TimeUnit.SECONDS)
+      output <- ZIO.succeed(progress((time % 11).toInt, 10))
+      _      <- ZIO.succeed(target.innerHTML = output)
+    } yield ()
+  }
+
+  def progress(tick: Int, size: Int) = {
+    val bar_length = tick
+    val empty_length = size - tick
+    val bar = "#" * bar_length + " " * empty_length
+    s"$bar $bar_length%"
+  }
+}
+*/
