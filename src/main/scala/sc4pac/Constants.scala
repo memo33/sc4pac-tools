@@ -8,9 +8,6 @@ object Constants {
   val link = new Configuration("link")  // extends `compile` with actual assets (TODO rename to `install`?)
   export JsonRepoUtil.sc4pacAssetOrg  // val sc4pacAssetOrg = Organization("sc4pacAsset")
   val sc4pacAssetType = Type("sc4pac-resource")  // TODO
-  val urlKey = "url"
-  val lastModifiedKey = "lastModified"
-  val variantPrefix = "variant."
   val defaultInclude = """."""  // includes everything
   val defaultExclude = """(?<!\.dat|\.sc4model|\.sc4lot|\.sc4desc|\.sc4)$"""  // excludes files with other file types
   val versionLatestRelease = "latest.release"

@@ -48,7 +48,7 @@ object Resolution {
           .flatMap(Find.packageData[JD.Asset](mod, _))
           .flatMap {
             case None => ZIO.fail(new Sc4pacIoException(s"could not find attribute for ${mod}"))
-            case Some(data) => ZIO.succeed(data.toDepAsset)
+            case Some(data) => ZIO.succeed(DepAsset.fromAsset(data))
           }
       case bareMod @ BareModule(group, name) =>
         val mod = C.Module(group, name, attributes = Map.empty)
@@ -68,6 +68,10 @@ object Resolution {
   ) extends Dep {
     def isSc4pacAsset: Boolean = true
     def toBareDep: BareAsset = BareAsset(assetId)
+  }
+  object DepAsset {
+    def fromAsset(asset: JD.Asset): DepAsset =
+      DepAsset(assetId = ModuleName(asset.assetId), version = asset.version, url = asset.url, lastModified = Option(asset.lastModified))
   }
 
   /** An sc4pac metadata package dependency. */

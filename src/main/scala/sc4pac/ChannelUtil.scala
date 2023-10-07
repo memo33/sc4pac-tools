@@ -7,7 +7,7 @@ import zio.{ZIO, IO}
 import coursier.core as C
 
 import sc4pac.JsonData as JD
-import sc4pac.JsonData.{osSubPathRw, instantRw}
+import sc4pac.JsonData.{subPathRw, instantRw}
 
 object ChannelUtil {
 

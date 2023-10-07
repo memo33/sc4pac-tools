@@ -103,7 +103,9 @@ libraryDependencies += "net.sf.sevenzipjbinding" % "sevenzipjbinding-all-platfor
 lazy val shared = (crossProject(JSPlatform, JVMPlatform) in file("shared"))
   .settings(
     name := "sc4pac-shared",
-    libraryDependencies ++= Seq()
+    libraryDependencies ++= Seq(
+      "com.lihaoyi" %%% "upickle" % "3.1.2"  // json serialization
+    )
   )
   .jvmSettings(
     libraryDependencies ++= Seq(

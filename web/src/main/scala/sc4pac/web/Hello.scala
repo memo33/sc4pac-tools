@@ -15,13 +15,18 @@ import upickle.default as UP
 import sttp.client4.{basicRequest, Request, UriContext, Response, ResponseException}
 import sttp.client4.upicklejson.asJson
 
+object JsonData extends SharedData {
+  opaque type Instant = String
+  val instantRw = UP.readwriter[String]
+  opaque type SubPath = String
+  val subPathRw = UP.readwriter[String]
+}
+
 object Hello {
 
   val channelUrl = "http://localhost:8090/"
 
   lazy val backend = sttp.client4.fetch.FetchBackend()
-
-  case class Dummy(group: String, name: String, version: String) derives UP.ReadWriter
 
   def appendPar(targetNode: dom.Node, text: String): Unit = {
     val parNode = document.createElement("p")
@@ -45,10 +50,10 @@ object Hello {
       case _ => Left("malformed package name: <group>:<name>")
     }
 
-  def fetchPackage(module: BareModule): Future[Option[Dummy]] = {
+  def fetchPackage(module: BareModule): Future[Option[JsonData.Package]] = {
     val url = sttp.model.Uri(java.net.URI.create(s"${channelUrl}${JsonRepoUtil.packageSubPath(module, version = "latest")}"))
     for {
-      response <- basicRequest.get(url).response(asJson[Dummy]).send(backend)
+      response <- basicRequest.get(url).response(asJson[JsonData.Package]).send(backend)
     } yield {
       if (!response.is200)
         None
@@ -58,10 +63,10 @@ object Hello {
 
   def setupUI(): Unit = {
 
-    // val response: Future[Response[Either[ResponseException[String, Exception], Dummy]]] =
+    // val response: Future[Response[Either[ResponseException[String, Exception], JsonData.Package]]] =
     //   basicRequest
     //     .get(uri"http://localhost:8090/metadata/memo/demo-package/1.0/demo-package-1.0.json")
-    //     .response(asJson[Dummy])
+    //     .response(asJson[JsonData.Package])
     //     .send(backend)
 
     // response.foreach(resp => {
