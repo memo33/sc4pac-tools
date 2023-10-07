@@ -68,6 +68,14 @@ object Hello {
     }
   }
 
+  def variantFrag(variant: JsonData.Variant, variantDescriptions: Map[String, Map[String, String]]) =
+    variant.toSeq.sorted.map { (k, v) =>
+      variantDescriptions.get(k).flatMap(_.get(v)) match {
+        case None => H.code(s"$k = $v")
+        case Some(tooltipText) => H.code(H.cls := "tooltip")(s"$k = $v", H.span(H.cls := "tooltiptext")(tooltipText))
+      }
+    }.zipWithIndex.flatMap((elem, idx) => if (idx == 0) Seq[H.Frag](elem) else Seq[H.Frag](", ", elem))
+
   // TODO make all selectable
   def pkgNameFrag(module: BareModule, link: Boolean = true) =
     if (link) H.a(H.href := s"?pkg=${module.orgName}")(H.code(module.orgName))
@@ -107,7 +115,7 @@ object Hello {
       else
         H.ul(
           pkg.variants.map { vd =>
-            H.li(H.code(JsonData.VariantData.variantString(vd.variant)))
+            H.li(variantFrag(vd.variant, pkg.variantDescriptions))
           }
         )
     )
