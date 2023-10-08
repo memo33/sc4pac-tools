@@ -134,6 +134,8 @@ object ChannelPage {
       case Left(err) =>
         document.body.appendChild(H.p(err).render)
       case Right(module) =>
+        val metaDescription = H.meta(H.name := "description", H.content := s"Package ${module.orgName}").render
+        document.head.appendChild(metaDescription)
         val output = H.p("Loading package ", pkgNameFrag(module, link = false), "…").render
         document.body.appendChild(output)
         fetchPackage(module) foreach {
