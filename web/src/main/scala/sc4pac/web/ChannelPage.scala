@@ -29,7 +29,7 @@ object JsonData extends SharedData {
   val subPathRw = UP.readwriter[String]
 }
 
-object Hello {
+object ChannelPage {
 
   // val channelUrl = "http://localhost:8090/channel/"
   val channelUrl = ""  // relative to current host
