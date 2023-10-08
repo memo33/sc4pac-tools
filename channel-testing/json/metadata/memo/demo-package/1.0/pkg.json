@@ -1,4 +1,5 @@
 {
+  "$type": "Package",
   "group": "memo",
   "name": "demo-package",
   "version": "1.0",
@@ -19,5 +20,8 @@
         }
       ]
     }
+  ],
+  "metadataSource": [
+    "memo/demo-package.yaml"
   ]
 }

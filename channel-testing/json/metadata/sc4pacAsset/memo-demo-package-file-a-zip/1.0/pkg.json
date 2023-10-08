@@ -1,4 +1,5 @@
 {
+  "$type": "Asset",
   "assetId": "memo-demo-package-file-a-zip",
   "version": "1.0",
   "url": "http://localhost:8090/files/package-aFile3.zip",
