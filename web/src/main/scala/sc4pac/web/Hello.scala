@@ -20,6 +20,7 @@ import scalatags.JsDom.all.stringFrag
 import scalatags.JsDom.all.stringAttr
 import scalatags.JsDom.all.SeqFrag
 import scalatags.JsDom.all.intPixelStyle
+import scalatags.JsDom.all.stringStyle
 
 object JsonData extends SharedData {
   opaque type Instant = String
@@ -33,6 +34,8 @@ object Hello {
   // val channelUrl = "http://localhost:8090/channel/"
   val channelUrl = ""  // relative to current host
   val sc4pacUrl = "https://github.com/memo33/sc4pac-tools#sc4pac"
+  val issueUrl = "https://github.com/memo33/sc4pac-tools/issues"  // TODO
+  val yamlUrl = "https://github.com/memo33/sc4pac-tools/tree/main/channel/yaml/"  // TODO
 
   lazy val backend = sttp.client4.fetch.FetchBackend()
 
@@ -132,7 +135,11 @@ object Hello {
     )
 
     H.div(
-      H.h2(module.orgName),
+      H.div(H.float := "right")(
+        pkg.metadataSource.toSeq.map(yamlSubPath => H.a(H.cls := "btn", H.href := s"$yamlUrl$yamlSubPath")("Edit metadata"))
+        :+ H.a(H.cls := "btn", H.href := issueUrl)("Report a problem")
+      ),
+      H.h2(H.clear := "right")(module.orgName),
       H.table(H.id := "pkginfo")(H.tbody(b.result())),
       H.p("Install this package with ", H.a(H.href := sc4pacUrl)(H.code("sc4pac")), ":"),
       H.pre(H.cls := "codebox")(s"sc4pac add ${module.orgName}\nsc4pac update")
