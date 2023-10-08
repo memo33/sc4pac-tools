@@ -30,7 +30,8 @@ object JsonData extends SharedData {
 
 object Hello {
 
-  val channelUrl = "http://localhost:8090/channel/"
+  // val channelUrl = "http://localhost:8090/channel/"
+  val channelUrl = ""  // relative to current host
   val sc4pacUrl = "https://github.com/memo33/sc4pac-tools#sc4pac"
 
   lazy val backend = sttp.client4.fetch.FetchBackend()
@@ -165,12 +166,16 @@ object Hello {
     } else parseModule(pkgName) match {
       case Left(err) => appendPar(document.body, s"Package: $err")
       case Right(module) =>
-        document.body.appendChild(H.p("Loading package ", pkgNameFrag(module, link = false), "…").render)
+        val output = H.p("Loading package ", pkgNameFrag(module, link = false), "…").render
+        // document.body.appendChild(H.p("Loading package ", pkgNameFrag(module, link = false), "…").render)
+        document.body.appendChild(output)
         fetchPackage(module) foreach {
           case None =>
-            appendPar(document.body, "Package: not found")
+            // appendPar(document.body, "Package: not found")
+            output.replaceWith(H.p("Package not found").render)
           case Some(pkg) =>
-            document.body.appendChild(pkgInfoFrag(pkg).render)
+            // document.body.appendChild(pkgInfoFrag(pkg).render)
+            output.replaceWith(pkgInfoFrag(pkg).render)
         }
     }
   }
