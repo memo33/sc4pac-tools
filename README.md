@@ -19,7 +19,7 @@ A package manager for SimCity 4 plugins.
   - `./sc4pac` on Linux or macOS
 
   If everything works, this displays a help message.
-- Install your first package:
+- Install your first package [memo:essential-fixes](https://memo33.github.io/sc4pac/channel/?pkg=memo:essential-fixes):
   - `sc4pac add memo:essential-fixes`
   - `sc4pac update`
 - Be aware that Simtropolis has a download limit of 20 files per day.
@@ -27,8 +27,14 @@ A package manager for SimCity 4 plugins.
 ![demo-video](https://github.com/memo33/sc4pac-tools/releases/download/0.1.3/demo-video.gif)
 
 - Other available packages:
-  - `memo:industrial-revolution-mod` (base pack including all dependencies [~1.4GB])
-  - BSC Common Dependencies: `sc4pac search bsc` displays all the package names
+  - [memo:industrial-revolution-mod](https://memo33.github.io/sc4pac/channel/?pkg=memo:industrial-revolution-mod)
+    (base pack including all dependencies [~1.4GB])
+  - BSC Common Dependencies: `sc4pac search bsc` displays all the package names.
+    - [bsc:essentials](https://memo33.github.io/sc4pac/channel/?pkg=bsc:essentials)
+    - [bsc:mega-props-sg-vol01](https://memo33.github.io/sc4pac/channel/?pkg=bsc:mega-props-sg-vol01)
+    - [bsc:mega-props-cp-vol01](https://memo33.github.io/sc4pac/channel/?pkg=bsc:mega-props-cp-vol01)
+    - [bsc:textures-vol01](https://memo33.github.io/sc4pac/channel/?pkg=bsc:textures-vol01)
+    - and many more
 
 
 ## Available commands
@@ -78,6 +84,7 @@ Sc4pac obtains its information from metadata stored in a remote channel.
 The metadata is added in terms of .yaml files.
 See the [commented example](channel-testing/yaml/templates/package-template-basic.yaml)
 and the [empty template](channel-testing/template-empty.yaml).
+The metadata of the default channel is stored at https://github.com/memo33/sc4pac.
 
 
 # Uninstalling
@@ -105,7 +112,7 @@ Create a release bundle with `make dist` in a Unix shell.
   - [x] incomplete downloads (SC4E)
   - [ ] non-persistent URLs (Moddb)
   - [ ] handling servers that have gone offline
-- [ ] Collaborative central metadata channel
+- [x] Collaborative central metadata channel: https://github.com/memo33/sc4pac
 - [ ] Website and online documentation
 - [ ] Server API (backend)
 - [ ] Graphical UI (frontend) aka Mod manager
