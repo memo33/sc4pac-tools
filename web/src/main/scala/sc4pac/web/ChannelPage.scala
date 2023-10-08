@@ -28,8 +28,8 @@ object ChannelPage {
   // val channelUrl = "http://localhost:8090/channel/"
   val channelUrl = ""  // relative to current host
   val sc4pacUrl = "https://github.com/memo33/sc4pac-tools#sc4pac"
-  val issueUrl = "https://github.com/memo33/sc4pac-tools/issues"  // TODO
-  val yamlUrl = "https://github.com/memo33/sc4pac-tools/tree/main/channel/yaml/"  // TODO
+  val issueUrl = "https://github.com/memo33/sc4pac/issues"
+  val yamlUrl = "https://github.com/memo33/sc4pac/tree/main/src/yaml/"
 
   lazy val backend = sttp.client4.fetch.FetchBackend()
 
