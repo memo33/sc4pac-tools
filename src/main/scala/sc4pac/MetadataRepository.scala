@@ -129,7 +129,7 @@ object MetadataRepository {
   def create(channelContentsFile: os.Path, baseUri: java.net.URI /*, globalVariant: Variant*/): IO[ErrStr, MetadataRepository] = {
     if (baseUri.getPath.endsWith(".yaml")) {  // yaml repository
       for {
-        contents <- ChannelUtil.readAndParsePkgData(channelContentsFile)
+        contents <- ChannelUtil.readAndParsePkgData(channelContentsFile, root = None)
       } yield {
         val channelData: Map[BareDep, Map[String, JD.PackageAsset]] =
           contents.groupMap(_.toBareDep)(data => data.version -> data).view.mapValues(_.toMap).toMap

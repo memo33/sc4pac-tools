@@ -116,7 +116,8 @@ abstract class SharedData {
     subfolder: SubPath,
     info: Info = Info.empty,
     variants: Seq[VariantData],
-    variantDescriptions: Map[String, Map[String, String]] = Map.empty  // variantKey -> variantValue -> description
+    variantDescriptions: Map[String, Map[String, String]] = Map.empty,  // variantKey -> variantValue -> description
+    metadataSource: Option[SubPath] = None  // path to yaml file
   ) extends PackageAsset {
 
     def toBareDep: BareModule = BareModule(Organization(group), ModuleName(name))
