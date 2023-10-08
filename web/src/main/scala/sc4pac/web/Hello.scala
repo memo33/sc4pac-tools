@@ -93,8 +93,8 @@ object Hello {
 
     def mkPar(text: String) = text.trim.linesIterator.map(H.p(_)).toSeq
 
-    add("Name", pkg.name)
-    add("Group", pkg.group)
+    // add("Name", pkg.name)
+    // add("Group", pkg.group)
     add("Version", pkg.version)
     add("Summary", if (pkg.info.summary.nonEmpty) pkg.info.summary else "-")
     if (pkg.info.description.nonEmpty)
