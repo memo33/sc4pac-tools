@@ -101,8 +101,7 @@ object Hello {
       add("Description", mkPar(pkg.info.description))
     if (pkg.info.warning.nonEmpty)
       add("Warning", mkPar(pkg.info.warning))
-    if (pkg.info.conflicts.nonEmpty)
-      add("Conflicts", mkPar(pkg.info.conflicts))
+    add("Conflicts", if (pkg.info.conflicts.isEmpty) "None" else mkPar(pkg.info.conflicts))
     if (pkg.info.author.nonEmpty)
       add("Author", pkg.info.author)
     if (pkg.info.website.nonEmpty) {
