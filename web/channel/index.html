@@ -28,6 +28,14 @@
       #pkginfo td {
         padding-bottom: 0.25em;
       }
+      @media (max-width: 540px) {
+        #pkginfo th, td {
+          display: block;
+        }
+        #pkginfo th {
+          padding-top: 0.5em;
+        }
+      }
       #pkginfo td p {
         margin: 0;
       }
@@ -43,10 +51,12 @@
         background-color:#eeeeff;
         <!-- width:300px; -->
         overflow:auto;
+        overflow-x:auto;
         padding:10px;
       }
       a {
         text-decoration: none;
+        word-break: break-word;
       }
       a:hover {
         text-decoration: underline;
