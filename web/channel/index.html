@@ -69,7 +69,7 @@
       }
       .tooltip .tooltiptext {
         visibility: hidden;
-        width: 400px;
+        width: calc(min(360px, 100vw - 40px));
         background-color: #555;
         color: #fff;
         text-align: center;
@@ -79,8 +79,10 @@
         position: absolute;
         z-index: 1;
         bottom: 125%;
-        left: 50%;
-        margin-left: -200px;
+        /*left: 50%;*/
+        left: 0%;
+        /*margin-left: -200px;*/
+        margin-left: 0px;
         /* Fade in tooltip */
         opacity: 0;
         transition: opacity 0.3s;
@@ -90,8 +92,8 @@
         content: "";
         position: absolute;
         top: 100%;
-        left: 50%;
-        margin-left: -5px;
+        left: 0%;
+        margin-left: 35px;
         border-width: 5px;
         border-style: solid;
         border-color: #555 transparent transparent transparent;
