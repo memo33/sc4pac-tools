@@ -14,7 +14,7 @@ import sc4pac.error.*
 import sc4pac.Constants.isSc4pacAsset
 import sc4pac.JsonData as JD
 import sc4pac.Sc4pac.{StageResult, UpdatePlan}
-import sc4pac.Resolution.{Dep, DepModule, DepAsset, BareModule, BareAsset, BareDep}
+import sc4pac.Resolution.{Dep, DepModule, DepAsset}
 
 /** A plain Coursier logger, since Coursier's RefreshLogger results in dropped
   * or invisible messages, hiding the downloading activity.

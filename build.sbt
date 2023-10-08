@@ -1,18 +1,18 @@
 name := "sc4pac"
 
-organization := "io.github.memo33"
+ThisBuild / organization := "io.github.memo33"
 
-version := "0.1.6-SNAPSHOT"
+ThisBuild / version := "0.1.6-SNAPSHOT"
 
 // ThisBuild / versionScheme := Some("early-semver")
 
 description := "Package manager for SimCity 4 plugins"
 
-licenses += ("GPL-3.0-only", url("https://spdx.org/licenses/GPL-3.0-only.html"))
+ThisBuild / licenses += ("GPL-3.0-only", url("https://spdx.org/licenses/GPL-3.0-only.html"))
 
-scalaVersion := "3.3.0"
+ThisBuild / scalaVersion := "3.3.0"
 
-scalacOptions ++= Seq(
+ThisBuild / scalacOptions ++= Seq(
   "-unchecked",
   "-deprecation",
   "-feature",
@@ -22,7 +22,7 @@ scalacOptions ++= Seq(
   "-encoding", "UTF-8",
   "-release:8")
 
-javacOptions ++= Seq("--release", "8")
+ThisBuild / javacOptions ++= Seq("--release", "8")
 
 console / initialCommands := """
 import io.github.memo33.sc4pac.*
@@ -31,9 +31,10 @@ import zio.{ZIO, IO, Task}
 """
 
 // make build info available in source files
-lazy val root = (project in file(".")).
-  enablePlugins(BuildInfoPlugin).
-  settings(
+lazy val root = (project in file("."))
+  .dependsOn(shared.jvm)
+  .enablePlugins(BuildInfoPlugin)
+  .settings(
     buildInfoKeys := Seq[BuildInfoKey](name, organization, version, scalaVersion, sbtVersion, licenses),
     buildInfoPackage := "io.github.memo33.sc4pac.cli"
   )
@@ -69,7 +70,8 @@ assembly / assemblyMergeStrategy := {
 }
 
 
-libraryDependencies += "io.get-coursier" %% "coursier" % "2.1.2" cross CrossVersion.for3Use2_13  // resolver, not yet available for scala 3
+val coursierVersion = "2.1.2"
+libraryDependencies += "io.get-coursier" %% "coursier" % coursierVersion cross CrossVersion.for3Use2_13  // resolver, not yet available for scala 3
 
 libraryDependencies += "dev.zio" %% "zio-nio" % "2.0.1" exclude("org.scala-lang.modules", "scala-collection-compat_3")  // solves version conflict with coursier (compat package is empty in both 2.13 and 3 anyway)
 
@@ -96,3 +98,37 @@ libraryDependencies += "me.xdrop" % "fuzzywuzzy" % "1.4.0"  // fuzzy search
 libraryDependencies += "net.sf.sevenzipjbinding" % "sevenzipjbinding" % "16.02-2.01"  // native 7z for NSIS extraction
 
 libraryDependencies += "net.sf.sevenzipjbinding" % "sevenzipjbinding-all-platforms" % "16.02-2.01"  // native 7z for NSIS extraction
+
+
+lazy val shared = (crossProject(JSPlatform, JVMPlatform) in file("shared"))
+  .settings(
+    name := "sc4pac-shared",
+    libraryDependencies ++= Seq(
+      "com.lihaoyi" %%% "upickle" % "3.1.2"  // json serialization
+    )
+  )
+  .jvmSettings(
+    libraryDependencies ++= Seq(
+      "io.get-coursier" %% "coursier" % coursierVersion cross CrossVersion.for3Use2_13  // for definition of Organization and ModuleName
+    )
+  )
+  .jsSettings(
+    scalaJSUseMainModuleInitializer := false
+  )
+
+lazy val web = (project in file("web"))
+  .dependsOn(shared.js)
+  .enablePlugins(ScalaJSPlugin)
+  .settings(
+    name := "sc4pac-web",
+    scalaJSUseMainModuleInitializer := true,
+    libraryDependencies ++= Seq(
+      // "dev.zio" %%% "zio" % "2.0.15",  // IO
+      // "io.github.cquiroz" %%% "scala-java-time" % "2.5.0",  // for zio
+      // "io.github.cquiroz" %%% "scala-java-time-tzdb" % "2.5.0",  // for zio
+      "com.softwaremill.sttp.client4" %%% "core" % "4.0.0-M5",  // http requests
+      "com.softwaremill.sttp.client4" %%% "upickle" % "4.0.0-M5",  // parsing json
+      "com.lihaoyi" %%% "scalatags" % "0.12.0",  // html templating
+      "org.scala-js" %%% "scalajs-dom" % "2.8.0"  // facades for the DOM
+    )
+  )

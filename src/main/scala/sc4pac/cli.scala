@@ -7,7 +7,6 @@ import caseapp.{RemainingArgs, ArgsName, HelpMessage, ExtraName, ValueDescriptio
 import zio.{ZIO, Task}
 
 import sc4pac.error.Sc4pacNotInteractive
-import sc4pac.Resolution.BareModule
 import sc4pac.JsonData as JD
 
 // see https://github.com/coursier/coursier/blob/main/modules/cli/src/main/scala/coursier/cli/Coursier.scala

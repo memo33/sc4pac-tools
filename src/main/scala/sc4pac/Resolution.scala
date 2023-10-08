@@ -9,26 +9,17 @@ import scala.collection.immutable.TreeSeqMap
 import sc4pac.JsonData as JD
 import sc4pac.Constants.isSc4pacAsset
 import sc4pac.error.{Sc4pacIoException, Sc4pacAbort}
-import Resolution.{Dep, BareDep, DepAsset}
+import Resolution.{Dep, DepAsset}
+
+object CoursierUtil {
+  def bareDepFromModule(module: C.Module): BareDep =
+    if (isSc4pacAsset(module)) BareAsset(module.name) else BareModule(module.organization, module.name)
+}
 
 /** Wrapper around Coursier's resolution mechanism with more stringent types for
   * our purposes.
   */
 object Resolution {
-
-  sealed trait BareDep {
-    def orgName: String
-  }
-  object BareDep {
-    def fromModule(module: C.Module): BareDep = if (isSc4pacAsset(module)) BareAsset(module.name) else BareModule(module.organization, module.name)
-  }
-  final case class BareModule(group: C.Organization, name: C.ModuleName) extends BareDep {  // a dependency without version information, variant data or any other attributes
-    def orgName = s"${group.value}:${name.value}"
-    def formattedDisplayString(gray: String => String, bold: String => String): String = gray(s"${group.value}:") + bold(name.value)
-  }
-  final case class BareAsset(assetId: C.ModuleName) extends BareDep {
-    def orgName = s"${Constants.sc4pacAssetOrg.value}:${assetId.value}"
-  }
 
   /** An sc4pac asset or module (metadata package) containing the relevant
     * information for resolving dependencies.
@@ -57,7 +48,7 @@ object Resolution {
           .flatMap(Find.packageData[JD.Asset](mod, _))
           .flatMap {
             case None => ZIO.fail(new Sc4pacIoException(s"could not find attribute for ${mod}"))
-            case Some(data) => ZIO.succeed(data.toDepAsset)
+            case Some(data) => ZIO.succeed(DepAsset.fromAsset(data))
           }
       case bareMod @ BareModule(group, name) =>
         val mod = C.Module(group, name, attributes = Map.empty)
@@ -77,6 +68,10 @@ object Resolution {
   ) extends Dep {
     def isSc4pacAsset: Boolean = true
     def toBareDep: BareAsset = BareAsset(assetId)
+  }
+  object DepAsset {
+    def fromAsset(asset: JD.Asset): DepAsset =
+      DepAsset(assetId = ModuleName(asset.assetId), version = asset.version, url = asset.url, lastModified = Option(asset.lastModified))
   }
 
   /** An sc4pac metadata package dependency. */

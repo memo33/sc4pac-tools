@@ -10,7 +10,6 @@ import zio.{ZIO, IO}
 import sc4pac.error.*
 import sc4pac.Constants.isSc4pacAsset
 import sc4pac.JsonData as JD
-import sc4pac.Resolution.{BareDep, BareModule, BareAsset}
 
 sealed abstract class MetadataRepository(val baseUri: java.net.URI /*, globalVariant: Variant*/) extends Repository {
 
@@ -22,7 +21,7 @@ sealed abstract class MetadataRepository(val baseUri: java.net.URI /*, globalVar
     */
   override def fetchVersions[F[_] : Monad](module: Module, fetch: Repository.Fetch[F]): EitherT[F, ErrStr, (Versions, String)] = {
     EitherT.fromEither {
-      val rawVersions = getRawVersions(BareDep.fromModule(module))
+      val rawVersions = getRawVersions(CoursierUtil.bareDepFromModule(module))
       if (rawVersions.nonEmpty) {
         val parsedVersions = rawVersions.map(Version(_))
         val latest = parsedVersions.max
@@ -130,7 +129,7 @@ object MetadataRepository {
   def create(channelContentsFile: os.Path, baseUri: java.net.URI /*, globalVariant: Variant*/): IO[ErrStr, MetadataRepository] = {
     if (baseUri.getPath.endsWith(".yaml")) {  // yaml repository
       for {
-        contents <- ChannelUtil.readAndParsePkgData(channelContentsFile)
+        contents <- ChannelUtil.readAndParsePkgData(channelContentsFile, root = None)
       } yield {
         val channelData: Map[BareDep, Map[String, JD.PackageAsset]] =
           contents.groupMap(_.toBareDep)(data => data.version -> data).view.mapValues(_.toMap).toMap
@@ -146,11 +145,12 @@ object MetadataRepository {
   }
 
   def jsonSubPath(dep: BareDep, version: String): os.SubPath = {
-    val (group, name) = dep match {
-      case m: BareModule => (m.group.value, m.name.value)
-      case a: BareAsset => (Constants.sc4pacAssetOrg.value, a.assetId.value)
-    }
-    os.SubPath(s"metadata/${group}/${name}/${version}/${name}-${version}.json")
+    os.SubPath(JsonRepoUtil.packageSubPath(dep, version))
+  }
+
+  // use jsonSubPath(group, name, "latest") for the json file
+  def latestSubPath(group: String, name: String): os.SubPath = {
+    os.SubPath(s"metadata/$group/$name/latest")
   }
 
   def createArtifact(url: String, lastModifiedOpt: Option[java.time.Instant]): Artifact = {
@@ -190,7 +190,7 @@ private class JsonRepository(
     * corresponding `JD.Package` contained in its json file.
     */
   def fetchModuleJson[F[_] : Monad, A <: JD.PackageAsset : Reader](module: Module, version: String, fetch: Repository.Fetch[F]): EitherT[F, ErrStr, A] = {
-    val dep = BareDep.fromModule(module)
+    val dep = CoursierUtil.bareDepFromModule(module)
     if (!containsVersion(dep, version)) {
       EitherT.fromEither(Left(s"no versions of $module found in repository $baseUri"))
     } else {
@@ -222,7 +222,7 @@ private class YamlRepository(
   }
 
   def fetchModuleJson[F[_] : Monad, A <: JD.PackageAsset : Reader](module: Module, version: String, fetch: Repository.Fetch[F]): EitherT[F, ErrStr, A] = {
-    val dep = BareDep.fromModule(module)
+    val dep = CoursierUtil.bareDepFromModule(module)
     channelData.get(dep).flatMap(_.get(version)) match {
       case None => EitherT.fromEither(Left(s"no versions of $module found in repository $baseUri"))
       case Some(pkgData: JD.PackageAsset) =>

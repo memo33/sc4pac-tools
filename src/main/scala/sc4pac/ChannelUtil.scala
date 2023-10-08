@@ -7,8 +7,7 @@ import zio.{ZIO, IO}
 import coursier.core as C
 
 import sc4pac.JsonData as JD
-import sc4pac.JsonData.{osSubPathRw, instantRw}
-import sc4pac.Resolution.{BareDep, BareModule, BareAsset}
+import sc4pac.JsonData.{subPathRw, instantRw}
 
 object ChannelUtil {
 
@@ -35,9 +34,10 @@ object ChannelUtil {
     variants: Seq[YamlVariantData],
     variantDescriptions: Map[String, Map[String, String]] = Map.empty  // variantKey -> variantValue -> description
   ) derives ReadWriter {
-    def toPackageData = JD.Package(
+    def toPackageData(metadataSource: Option[os.SubPath]) = JD.Package(
       group = group, name = name, version = version, subfolder = subfolder,
-      info = info, variants = variants.map(_.toVariantData), variantDescriptions = variantDescriptions)
+      info = info, variants = variants.map(_.toVariantData), variantDescriptions = variantDescriptions,
+      metadataSource = metadataSource)
   }
 
   case class YamlPackageDataBasic(
@@ -67,20 +67,21 @@ object ChannelUtil {
     ZIO.attempt(ujson.circe.CirceJson.transform(j, upickle.default.reader[A])).refineToOrDie
   }
 
-  private def parsePkgData(j: Json): IO[ErrStr, JD.PackageAsset] = {
+  private def parsePkgData(j: Json, metadataSource: Option[os.SubPath]): IO[ErrStr, JD.PackageAsset] = {
     ZIO.validateFirst(Seq(  // we use ZIO validate for error accumulation
-      parseCirceJson[YamlPackageDataVariants](_: Json).map(_.toPackageData),
-      parseCirceJson[YamlPackageDataBasic](_: Json).map(_.toVariants.toPackageData),  // if `variants` is absent, try YamlPackageDataBasic
+      parseCirceJson[YamlPackageDataVariants](_: Json).map(_.toPackageData(metadataSource)),
+      parseCirceJson[YamlPackageDataBasic](_: Json).map(_.toVariants.toPackageData(metadataSource)),  // if `variants` is absent, try YamlPackageDataBasic
       parseCirceJson[YamlAsset](_: Json).map(_.toAsset)
     ))(parse => parse(j))
       .mapError(errs => errs.mkString("(", " | ", ")"))
   }
 
-  def readAndParsePkgData(path: os.Path): IO[ErrStr, IndexedSeq[JD.PackageAsset]] = {
+  def readAndParsePkgData(path: os.Path, root: Option[os.Path]): IO[ErrStr, IndexedSeq[JD.PackageAsset]] = {
+    val metadataSource = root.map(path.subRelativeTo)
     val docs: IndexedSeq[Either[ParsingFailure, Json]] =
       scala.util.Using.resource(new java.io.FileReader(path.toIO))(io.circe.yaml.parser.parseDocuments(_).toIndexedSeq)
     ZIO.validatePar(docs) { doc =>
-      ZIO.fromEither(doc).flatMap(parsePkgData)
+      ZIO.fromEither(doc).flatMap(parsePkgData(_, metadataSource))
     }.mapError(errs => s"format error in $path: ${errs.mkString(", ")}")
   }
 
@@ -100,7 +101,7 @@ object ChannelUtil {
       val packages: Map[BareDep, Seq[(String, JD.PackageAsset)]] = inputDirs.flatMap { inputDir =>
         os.walk.stream(inputDir)
           .filter(_.last.endsWith(".yaml"))
-          .flatMap(path => unsafeRun(readAndParsePkgData(path)): IndexedSeq[JD.PackageAsset])  // TODO unsafe
+          .flatMap(path => unsafeRun(readAndParsePkgData(path, root = Some(inputDir))): IndexedSeq[JD.PackageAsset])  // TODO unsafe
           .map { pkgData =>
             val dep = pkgData.toBareDep
             val target = tempJsonDir / MetadataRepository.jsonSubPath(dep, pkgData.version)
@@ -122,6 +123,12 @@ object ChannelUtil {
 
       scala.util.Using.resource(java.nio.file.Files.newBufferedWriter((tempJsonDir / MetadataRepository.channelContentsFilename).toNIO)) { out =>
         writeTo(channel, out, indent=2)  // writes channel contents json file
+      }
+
+      // create symlinks for latest versions
+      channel.contents.foreach { item =>
+        val latest = item.versions.map(coursier.core.Version(_)).max
+        os.symlink(tempJsonDir / MetadataRepository.latestSubPath(item.group, item.name), os.rel / latest.repr)
       }
 
       // Finally, we are sure that everything was formatted correctly, so we can

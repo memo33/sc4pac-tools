@@ -7,3 +7,5 @@ sc4pac-plugins-lock.json
 sc4pac-credentials.properties
 *.cast
 *.gif
+/web/channel/metadata/
+/web/channel/sc4pac-channel-contents.json

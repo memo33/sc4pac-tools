@@ -8,17 +8,20 @@ import java.nio.file.{Path as NioPath}
 import zio.{ZIO, IO, Task}
 import java.util.regex.Pattern
 
-import sc4pac.Resolution.{Dep, DepModule, DepAsset, BareModule, BareDep, BareAsset}
+import sc4pac.Resolution.{Dep, DepModule, DepAsset}
 
 /** Contains data types for JSON serialization. */
-object JsonData {
+object JsonData extends SharedData {
+
+  override type Instant = java.time.Instant
+  override type SubPath = os.SubPath
 
   implicit val instantRw: ReadWriter[java.time.Instant] =
     readwriter[String].bimap[java.time.Instant](_.toString(), Option(_).map(java.time.Instant.parse).orNull)
 
   implicit val pathRw: ReadWriter[NioPath] = readwriter[String].bimap[NioPath](_.toString(), java.nio.file.Paths.get(_))
 
-  implicit val osSubPathRw: ReadWriter[os.SubPath] = readwriter[String].bimap[os.SubPath](_.toString(), os.SubPath(_))
+  implicit val subPathRw: ReadWriter[os.SubPath] = readwriter[String].bimap[os.SubPath](_.toString(), os.SubPath(_))
 
   implicit val uriRw: ReadWriter[java.net.URI] = readwriter[String].bimap[java.net.URI](_.toString(),
     MetadataRepository.parseChannelUrl(_).left.map(new IllegalArgumentException(_)).toTry.get)
@@ -34,162 +37,6 @@ object JsonData {
     val prefix = Constants.sc4pacAssetOrg.value + ":"
     if (s.startsWith(prefix)) BareAsset(assetId = C.ModuleName(s.substring(prefix.length))) else bareModuleRead(s)
   })
-
-  case class Dependency(group: String, name: String, version: String) derives ReadWriter {
-    private[JsonData] def toDependency = C.Dependency(Module(Organization(group), ModuleName(name), attributes = Map.empty), version = version)
-  }
-
-  case class AssetReference(
-    assetId: String,
-    include: Seq[String] = Seq.empty,
-    exclude: Seq[String] = Seq.empty
-  ) derives ReadWriter {
-    private[JsonData] def toDependency = C.Dependency(Module(Constants.sc4pacAssetOrg, ModuleName(assetId), attributes = Map.empty), version = Constants.versionLatestRelease)
-  }
-
-  /** Package or Asset */
-  sealed trait PackageAsset derives ReadWriter {
-    def toBareDep: BareDep
-    def version: String
-  }
-
-  @upickle.implicits.key("Asset")
-  case class Asset(
-    assetId: String,
-    version: String,
-    url: String,
-    lastModified: java.time.Instant = null
-  ) extends PackageAsset derives ReadWriter {
-    def attributes: Map[String, String] = {
-      val m = Map(Constants.urlKey -> url)
-      if (lastModified != null) {
-        m + (Constants.lastModifiedKey -> lastModified.toString)
-      } else {
-        m
-      }
-    }
-
-    def toBareDep: BareAsset = BareAsset(assetId = ModuleName(assetId))
-
-    // private[JsonData] def toDependency = C.Dependency(Module(Constants.sc4pacAssetOrg, ModuleName(assetId), attributes = attributes), version = version)
-    def toDepAsset = DepAsset(assetId = ModuleName(assetId), version = version, url = url, lastModified = Option(lastModified))
-
-    /** Create a `C.Project` (contains metadata) for this asset from scratch on the fly. */
-    def toProject: C.Project = {
-      C.Project(
-        module = Module(
-          Constants.sc4pacAssetOrg,
-          ModuleName(assetId),
-          attributes = attributes),  // includes url and lastModified
-        version = version,
-        dependencies = Seq.empty,
-        configurations = Map.empty,  // TODO
-          // Map(
-          //   C.Configuration.compile -> Seq.empty,
-          //   Constants.link -> Seq(C.Configuration.compile)),
-        parent = None,
-        dependencyManagement = Seq.empty,  // ? TODO
-        properties = Seq.empty,  // TODO
-        profiles = Seq.empty,
-        versions = None,  // TODO
-        snapshotVersioning = None,  // TODO
-        packagingOpt = None,  // Option[C.Type],
-        relocated = false,
-        actualVersionOpt = None,
-        publications = Seq.empty,  // Seq[(C.Configuration, C.Publication)],
-        info = C.Info.empty)
-    }
-  }
-  object Asset {
-    def parseLastModified(lastModified: String): Option[java.time.Instant] = {
-      Option(lastModified).map(java.time.Instant.parse)  // throws java.time.format.DateTimeParseException
-    }
-  }
-
-  case class VariantData(
-    variant: Variant,
-    dependencies: Seq[Dependency] = Seq.empty,
-    assets: Seq[AssetReference] = Seq.empty
-  ) derives ReadWriter {
-    def bareDependencies: Seq[Resolution.BareDep] =
-      dependencies.map(d => Resolution.BareModule(Organization(d.group), ModuleName(d.name)))
-        ++ assets.map(a => Resolution.BareAsset(ModuleName(a.assetId)))
-  }
-  object VariantData {
-    def variantToAttributes(variant: Variant): Map[String, String] = {
-      require(variant.keysIterator.forall(k => !k.startsWith(Constants.variantPrefix)))
-      variant.map((k, v) => (s"${Constants.variantPrefix}$k", v))
-    }
-
-    def variantFromAttributes(attributes: Map[String, String]): Variant = attributes.collect {
-      case (k, v) if k.startsWith(Constants.variantPrefix) => (k.substring(Constants.variantPrefix.length), v)
-    }
-
-    def variantString(variant: Variant): String = variant.toSeq.sorted.map((k, v) => s"$k=$v").mkString(", ")
-  }
-
-  @upickle.implicits.key("Package")
-  case class Package(
-    group: String,
-    name: String,
-    version: String,
-    subfolder: os.SubPath,
-    info: Info = Info.empty,
-    variants: Seq[VariantData],
-    variantDescriptions: Map[String, Map[String, String]] = Map.empty  // variantKey -> variantValue -> description
-  ) extends PackageAsset derives ReadWriter {
-
-    def toBareDep: BareModule = BareModule(Organization(group), ModuleName(name))
-
-    /** Create a `C.Project` from the package metadata, usually read from json file. */
-    def toProject(globalVariant: Variant): Either[ErrStr, C.Project] = {
-      variants.find(data => isSubMap(data.variant, globalVariant)) match {
-        case None =>
-          Left(s"no variant found for $group:$name matching [${VariantData.variantString(globalVariant)}]")
-        case Some(matchingVariant) =>
-          Right(C.Project(
-            module = Module(
-              Organization(group),
-              ModuleName(name),
-              attributes = VariantData.variantToAttributes(matchingVariant.variant)),  // TODO add variants to attributes or properties?
-            version = version,
-            dependencies = matchingVariant.dependencies.map(dep => (C.Configuration.compile, dep.toDependency))
-              ++ matchingVariant.assets.map(a => (Constants.link, a.toDependency /*.withConfiguration(Constants.link)*/)),
-            configurations = Map(
-              C.Configuration.compile -> Seq.empty,
-              Constants.link -> Seq(C.Configuration.compile)),
-            parent = None,
-            dependencyManagement = Seq.empty,  // ? TODO
-            properties = Seq.empty,  // TODO
-            profiles = Seq.empty,
-            versions = None,  // TODO
-            snapshotVersioning = None,  // TODO
-            packagingOpt = None,  // Option[C.Type],
-            relocated = false,
-            actualVersionOpt = None,
-            publications = Seq.empty,  // Seq[(C.Configuration, C.Publication)],
-            info = C.Info.empty))
-      }
-    }
-
-    def unknownVariants(globalVariant: Variant): Map[String, Seq[String]] = {
-      val unknownKeys: Set[String] = Set.concat(variants.map(_.variant.keySet) *) &~ globalVariant.keySet
-      unknownKeys.iterator.map(k => (k, variants.flatMap(vd => vd.variant.get(k)).distinct)).toMap
-    }
-  }
-
-  case class Info(
-    summary: String = "",
-    warning: String = "",
-    conflicts: String = "",
-    description: String = "",
-    author: String = "",
-    images: Seq[String] = Seq.empty,
-    website: String = ""
-  ) derives ReadWriter
-  object Info {
-    val empty = Info()
-  }
 
   case class ChannelItem(group: String, name: String, versions: Seq[String], summary: String = "") derives ReadWriter {
     def isSc4pacAsset: Boolean = group == Constants.sc4pacAssetOrg.value
@@ -286,7 +133,7 @@ object JsonData {
 
   case class PluginsLock(installed: Seq[InstalledData], assets: Seq[Asset]) derives ReadWriter {
     def dependenciesWithAssets: Set[Resolution.Dep] =
-      (installed.map(_.toDepModule) ++ assets.map(_.toDepAsset)).toSet
+      (installed.map(_.toDepModule) ++ assets.map(DepAsset.fromAsset(_))).toSet
 
     def updateTo(plan: Sc4pac.UpdatePlan, filesStaged: Map[DepModule, Seq[os.SubPath]]): PluginsLock = {
       val orig = dependenciesWithAssets
