@@ -73,7 +73,7 @@ object Hello {
     variant.toSeq.sorted.map { (k, v) =>
       variantDescriptions.get(k).flatMap(_.get(v)) match {
         case None => H.code(s"$k = $v")
-        case Some(tooltipText) => H.code(H.cls := "tooltip")(s"$k = $v", H.span(H.cls := "tooltiptext")(tooltipText))
+        case Some(tooltipText) => H.code(H.div(H.cls := "tooltip")(s"$k = $v", H.span(H.cls := "tooltiptext")(tooltipText)))
       }
     }.zipWithIndex.flatMap((elem, idx) => if (idx == 0) Seq[H.Frag](elem) else Seq[H.Frag](", ", elem))
 

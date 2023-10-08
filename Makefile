@@ -11,7 +11,7 @@ channel-testing-web:
 host:
 	# jwebserver comes with java 18
 	cd channel-testing/json/ && jwebserver -p 8090 -o info
-host-web: channel-testing-web
+host-web: # channel-testing-web
 	# python has some support for symlinks
 	cd web/ && python -m http.server 8090
 
