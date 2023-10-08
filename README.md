@@ -52,6 +52,7 @@ A package manager for SimCity 4 plugins.
 
     100-props-textures
     150-mods
+    170-terrain
     200-residential
     300-commercial
     400-industrial
