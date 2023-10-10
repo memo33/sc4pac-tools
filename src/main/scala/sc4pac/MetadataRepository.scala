@@ -137,10 +137,21 @@ object MetadataRepository {
       }
     } else {  // json repository
       val contentsUrl = channelContentsUrl(baseUri).toString
-      ZIO.attemptBlockingIO(JsonIo.readBlocking[JD.Channel](channelContentsFile.toNIO, errMsg = contentsUrl))
-        .mapError(e => s"Failed to read channel contents: $e")
-        .absolve
-        .map(new JsonRepository(baseUri, _/*, globalVariant*/))
+      for {
+        jsonVal <- ZIO.attemptBlockingIO(ujson.read(channelContentsFile.toNIO))
+                     .mapError(e => s"Failed to read channel contents: $e")
+        scheme  =  jsonVal.objOpt.flatMap(_.get("scheme")).map(_.num.toInt).getOrElse(0)
+        _       <- ZIO.when(scheme <= 0)(ZIO.fail(
+                     s"The channel $contentsUrl uses an old scheme ($scheme) that is not supported anymore."
+                   ))
+        _       <- ZIO.when(scheme > Constants.currentChannelScheme)(ZIO.fail(
+                     s"The channel $contentsUrl has a newer scheme ($scheme) than supported " +
+                     s"by your installation (${Constants.currentChannelScheme}). Please update to the latest version of sc4pac."
+                   ))
+        channel <- ZIO.attemptBlockingIO(JsonIo.readBlocking[JD.Channel](jsonVal, errMsg = contentsUrl))
+                     .mapError(e => s"Failed to read channel contents: $e")
+                     .absolve
+      } yield new JsonRepository(baseUri, channel)
     }
   }
 
@@ -230,7 +241,9 @@ private class YamlRepository(
     }
   }
 
-  lazy private val channel = JD.Channel.create(channelData)
+  // We pick the latest scheme version as we do not have any other input to work with.
+  // If the scheme has been updated, then the yaml files have probably already failed to parse.
+  lazy private val channel = JD.Channel.create(scheme = Constants.currentChannelScheme, channelData)
 
   def iterateChannelContents: Iterator[JD.ChannelItem] = channel.contents.iterator
 }

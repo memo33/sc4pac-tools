@@ -117,7 +117,7 @@ object ChannelUtil {
       }.groupMap(_._1)(_._2)
 
       val channel = {
-        val c = JD.Channel.create(packages)
+        val c = JD.Channel.create(scheme = Constants.currentChannelScheme, packages)
         c.copy(contents = c.contents.sortBy(item => (item.group, item.name)))
       }
 

@@ -44,13 +44,13 @@ object JsonData extends SharedData {
     private[sc4pac] def toSearchString: String = s"$group:$name $summary"
   }
 
-  case class Channel(contents: Seq[ChannelItem]) derives ReadWriter {
+  case class Channel(scheme: Int, contents: Seq[ChannelItem]) derives ReadWriter {
     lazy val versions: Map[BareDep, Seq[String]] =
       contents.map(item => item.toBareDep -> item.versions).toMap
   }
   object Channel {
-    def create(channelData: Iterable[(BareDep, Iterable[(String, PackageAsset)])]): Channel = {  // name -> version -> json
-      Channel(channelData.iterator.collect {
+    def create(scheme: Int, channelData: Iterable[(BareDep, Iterable[(String, PackageAsset)])]): Channel = {  // name -> version -> json
+      Channel(scheme, channelData.iterator.collect {
         case (dep, versions) if versions.nonEmpty =>
           val (g, n) = dep match {
             case m: BareModule => (m.group.value, m.name.value)
