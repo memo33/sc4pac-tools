@@ -7,22 +7,22 @@ import zio.{ZIO, IO}
 import coursier.core as C
 
 import sc4pac.JsonData as JD
-import sc4pac.JsonData.{subPathRw, instantRw}
+import sc4pac.JsonData.{subPathRw, instantRw, bareModuleRw}
 
 object ChannelUtil {
 
   case class YamlVariantData(
     variant: Variant,
-    dependencies: Seq[String] = Seq.empty,
+    dependencies: Seq[BareModule] = Seq.empty,
     assets: Seq[JD.AssetReference] = Seq.empty
   ) derives ReadWriter {
-    def toVariantData(sharedDependencies: Seq[String], sharedAssets: Seq[JD.AssetReference]) = JD.VariantData(
+    def toVariantData(sharedDependencies: Seq[BareModule], sharedAssets: Seq[JD.AssetReference]) = JD.VariantData(
       variant = variant,
-      dependencies = coursier.parse.ModuleParser.modules(sharedDependencies ++ dependencies, defaultScalaVersion = "").either match {
-        case Left(errs) => throw new IllegalArgumentException(s"format error in dependencies: ${errs.mkString(", ")}")  // TODO error reporting
-        case Right(modules) => modules.map(mod => JD.Dependency(group = mod.organization.value, name = mod.name.value, version = "latest.release"))
+      dependencies = (sharedDependencies ++ dependencies).map { mod =>
+        JD.Dependency(group = mod.group.value, name = mod.name.value, version = Constants.versionLatestRelease)
       },
-      assets = sharedAssets ++ assets)
+      assets = sharedAssets ++ assets
+    )
   }
 
   case class YamlPackageData(
@@ -31,7 +31,7 @@ object ChannelUtil {
     version: String,
     subfolder: os.SubPath,
     info: JD.Info = JD.Info.empty,
-    dependencies: Seq[String] = Seq.empty,  // shared between variants
+    dependencies: Seq[BareModule] = Seq.empty,  // shared between variants
     assets: Seq[JD.AssetReference] = Seq.empty,  // shared between variants
     variants: Seq[YamlVariantData] = Seq.empty,
     variantDescriptions: Map[String, Map[String, String]] = Map.empty  // variantKey -> variantValue -> description
