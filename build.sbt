@@ -99,6 +99,8 @@ libraryDependencies += "net.sf.sevenzipjbinding" % "sevenzipjbinding" % "16.02-2
 
 libraryDependencies += "net.sf.sevenzipjbinding" % "sevenzipjbinding-all-platforms" % "16.02-2.01"  // native 7z for NSIS extraction
 
+libraryDependencies += "org.scalatest" %% "scalatest" % "3.2.17" % Test exclude("org.scala-lang.modules", "scala-xml_3")
+
 
 lazy val shared = (crossProject(JSPlatform, JVMPlatform) in file("shared"))
   .settings(

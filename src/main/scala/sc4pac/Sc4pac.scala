@@ -438,30 +438,53 @@ trait UpdateService { this: Sc4pac =>
         }
     }
 
+    /** Prompts for missing variant keys, so that the result allows to pick a unique variant of the package. */
+    def refineGlobalVariant(globalVariant: Variant, pkgData: JD.Package): Task[Variant] = {
+      val mod = BareModule(Organization(pkgData.group), ModuleName(pkgData.name))
+      import Sc4pac.{DecisionTree, Node, Empty}
+      DecisionTree.fromVariants(pkgData.variants.map(_.variant)) match {
+        case Left(err) => ZIO.fail(new error.UnsatisfiableVariantConstraints(
+          s"Unable to choose variants as the metadata of ${mod.orgName} seems incomplete: $err"))
+        case Right(decisionTree) =>
+          type Key = String; type Value = String
+          def choose[T](key: Key, choices: Seq[(Value, T)]): Task[(Value, T)] = {
+            globalVariant.get(key) match
+              case Some(value) => choices.find(_._1 == value) match
+                case Some(choice) => ZIO.succeed(choice)
+                case None => ZIO.fail(new error.UnsatisfiableVariantConstraints(
+                  s"""None of the variants ${choices.map(_._1).mkString(", ")} of ${mod.orgName} match the configured variant $key=$value. """ +
+                  s"""The package metadata seems incorrect, but resetting the variant may resolve the problem (command: `sc4pac variant reset "$key"`)."""))
+              case None =>  // global variant for key is not set, so choose it interactively
+                val prefix = s"$key = "
+                val columnWidth = choices.map(_._1.length).max + 8  // including some whitespace for separation, excluding prefix
+                def renderDesc(value: (Value, T)): String = pkgData.variantDescriptions.get(key).flatMap(_.get(value._1)) match {
+                  case None => prefix + value._1
+                  case Some(desc) => prefix + value._1 + (" " * ((columnWidth - value._1.length) max 0)) + desc
+                }
+                Prompt.ifInteractive(
+                  onTrue = Prompt.numbered(s"""Choose a variant for ${mod.orgName}:""", choices, render = renderDesc),
+                  onFalse = ZIO.fail(new Sc4pacNotInteractive(s"""Configure a "$key" variant for ${mod.orgName} in ${JD.Plugins.path.last}: ${choices.map(_._1).mkString(", ")}""")))
+          }
+
+          ZIO.iterate(decisionTree, Seq.newBuilder[(Key, Value)])(_._1 != Empty) {
+            case (Node(key, choices), builder) => choose(key, choices).map { case (value, subtree) => (subtree, builder += key -> value) }
+            case (Empty, builder) => throw new AssertionError
+          }.map(_._2.result())
+            .map(additionalChoices => globalVariant ++ additionalChoices)
+      }
+    }
+
     def doPromptingForVariant[A](globalVariant: Variant)(task: Variant => Task[A]): Task[(A, Variant)] = {
       ZIO.iterate(Left(globalVariant): Either[Variant, (A, Variant)])(_.isLeft) {
         case Right(_) => throw new AssertionError
         case Left(globalVariant) =>
-          def handler(pkgData: JD.Package) = {
-            val unknownVariants = pkgData.unknownVariants(globalVariant)
-            val mod = BareModule(Organization(pkgData.group), ModuleName(pkgData.name))
-            val choose: Task[Seq[(String, String)]] = ZIO.foreach(unknownVariants.toSeq) { (key, values) =>
-              val prefix = s"$key = "
-              val columnWidth = values.map(_.length).max + 8  // including some whitespace for separation, excluding prefix
-              def renderDesc(value: String): String = pkgData.variantDescriptions.get(key).flatMap(_.get(value)) match {
-                case None => prefix + value
-                case Some(desc) => prefix + value + (" " * ((columnWidth - value.length) max 0)) + desc
-              }
-              Prompt.ifInteractive(
-                onTrue = Prompt.numbered(s"""Choose a variant for ${mod.orgName}:""", values, render = renderDesc).map(v => (key, v)),
-                onFalse = ZIO.fail(new Sc4pacNotInteractive(s"""Configure a "$key" variant for ${mod.orgName} in ${JD.Plugins.path.last}: ${values.mkString(", ")}""")))
-            }
-            choose.map(additionalChoices => Left(globalVariant ++ additionalChoices))
+          val handler: PartialFunction[Throwable, Task[Either[Variant, (A, Variant)]]] = {
+            case e: Sc4pacMissingVariant => refineGlobalVariant(globalVariant, e.packageData).map(Left(_))
           }
           task(globalVariant)
             .map(x => Right((x, globalVariant)))
-            .catchSome { case e: Sc4pacMissingVariant => handler(e.packageData) }
-            .catchSomeDefect { case e: Sc4pacMissingVariant => handler(e.packageData) }  // Since Repository works with EitherT[Task, ErrStr, _], Sc4pacMissingVariant is a `defect` rather than a regular `error`
+            .catchSome(handler)
+            .catchSomeDefect(handler)  // Since Repository works with EitherT[Task, ErrStr, _], Sc4pacMissingVariant is a `defect` rather than a regular `error`
       }.map(_.toOption.get)
     }
 
@@ -581,6 +604,36 @@ object Sc4pac {
       .left.map { (errs: List[ErrStr]) =>
         errs.mkString(", ")  // malformed module: a, malformed module: b
       }
+  }
+
+
+  sealed trait DecisionTree[+A, +B]
+  case class Node[+A, +B](key: A, choices: Seq[(B, DecisionTree[A, B])]) extends DecisionTree[A, B] {
+    require(choices.nonEmpty, "decision tree must not have empty choices")
+  }
+  case object Empty extends DecisionTree[Nothing, Nothing]
+
+  object DecisionTree {
+    private class NoCommonKeys(val msg: String) extends scala.util.control.ControlThrowable
+
+    def fromVariants[A, B](variants: Seq[Map[A, B]]): Either[ErrStr, DecisionTree[A, B]] = {
+
+      def helper(variants: Seq[Map[A, B]], remainingKeys: Set[A]): DecisionTree[A, B] = {
+        remainingKeys.find(key => variants.forall(_.contains(key))) match
+          case None => variants match
+            case Seq(singleVariant) => Empty  // if there is just a single variant left, all its keys have already been chosen validly
+            case _ => throw new NoCommonKeys(s"Variants do not have a key in common: $variants")  // our choices of keys left an ambiguity
+          case Some(key) =>  // this key allows partitioning
+            val remainingKeys2 = remainingKeys - key  // strictly smaller, so recursion is well-founded
+            val parts: Map[B, Seq[Map[A, B]]] = variants.groupBy(_(key))
+            val values: Seq[B] = variants.map(_(key)).distinct  // note that this preserves order
+            val choices = values.map { value => value -> helper(parts(value), remainingKeys2) }
+            Node(key, choices)
+      }
+
+      val allKeys = variants.flatMap(_.keysIterator).toSet
+      try Right(helper(variants, allKeys)) catch { case e: NoCommonKeys => Left(e.msg) }
+    }
   }
 
 }

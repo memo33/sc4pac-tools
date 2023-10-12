@@ -122,10 +122,10 @@ abstract class SharedData {
 
     def toBareDep: BareModule = BareModule(Organization(group), ModuleName(name))
 
-    def unknownVariants(globalVariant: Variant): Map[String, Seq[String]] = {
-      val unknownKeys: Set[String] = Set.concat(variants.map(_.variant.keySet) *) &~ globalVariant.keySet
-      unknownKeys.iterator.map(k => (k, variants.flatMap(vd => vd.variant.get(k)).distinct)).toMap
-    }
+    // def unknownVariants(globalVariant: Variant): Map[String, Seq[String]] = {
+    //   val unknownKeys: Set[String] = Set.concat(variants.map(_.variant.keySet) *) &~ globalVariant.keySet
+    //   unknownKeys.iterator.map(k => (k, variants.flatMap(vd => vd.variant.get(k)).distinct)).toMap
+    // }
   }
   object Package {
     implicit val packageRw: ReadWriter[Package] = macroRW
