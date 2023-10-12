@@ -1,6 +1,7 @@
 html {
   margin: 0 auto;
   max-width: 800px;
+  font-family: ui-sans-serif;
 }
 h2 {
   font-size: 1.25em;
@@ -9,6 +10,7 @@ h2 {
 }
 a.btn {
   margin-left: 0.5em;
+  margin-bottom: 0.5em;
   background-color: #555;
   color: white;
   border: none;
