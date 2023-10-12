@@ -27,10 +27,12 @@ test:
 	./sc4pac channel add "http://localhost:8090"
 	./sc4pac add memo:demo-package
 	./sc4pac update
+test-sbt:
+	sbt test
 
 # conversion from asciinema asciicast to gif using https://github.com/asciinema/agg
 demo-video.gif: demo-video.cast
 	agg --speed 2 --cols 80 --last-frame-duration 8 --theme asciinema demo-video.cast demo-video.gif
 
 
-.PHONY: dist channel channel-testing channel-testing-web host host-web clean clean-cache test
+.PHONY: dist channel channel-testing channel-testing-web host host-web clean clean-cache test test-sbt

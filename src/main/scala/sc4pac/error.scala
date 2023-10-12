@@ -18,4 +18,6 @@ final class Sc4pacVersionNotFound(msg: String) extends java.io.IOException(msg) 
 
 final class Sc4pacMissingVariant(val packageData: JsonData.Package, msg: String) extends scala.util.control.ControlThrowable(msg)
 
+final class UnsatisfiableVariantConstraints(msg: String) extends java.io.IOException(msg) with Sc4pacErr
+
 final class ExtractionFailed(msg: String) extends java.io.IOException(msg) with Sc4pacErr
