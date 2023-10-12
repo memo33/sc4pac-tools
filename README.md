@@ -3,17 +3,18 @@ sc4pac
 
 A package manager for SimCity 4 plugins.
 
-(unstable, work-in-progress, subject to change)
+This program only comes with a command-line interface (CLI) for now.
 
 
-# Usage
+## Usage
 
 - Prerequisites:
   - Java 8+
   - enough disk space
 - Download the [latest release](https://github.com/memo33/sc4pac-tools/releases/latest)
   and extract the contents to any location in your user directory (for example, your Desktop).
-- Open a shell in the new directory and run the command-line tool `sc4pac` by calling:
+- Open a shell in the new directory (e.g. on Windows, open the folder and type `cmd` in the address bar of the explorer window)
+  and run the command-line tool `sc4pac` by calling:
   - `sc4pac` in Windows cmd.exe
   - `.\sc4pac` in Windows PowerShell
   - `./sc4pac` on Linux or macOS
@@ -35,6 +36,8 @@ A package manager for SimCity 4 plugins.
     - [bsc:mega-props-cp-vol01](https://memo33.github.io/sc4pac/channel/?pkg=bsc:mega-props-cp-vol01)
     - [bsc:textures-vol01](https://memo33.github.io/sc4pac/channel/?pkg=bsc:textures-vol01)
     - and many more
+  - [cycledogg:missouri-breaks-terrain](https://memo33.github.io/sc4pac/channel/?pkg=cycledogg:missouri-breaks-terrain)
+    (an SD terrain mod)
 
 
 ## Available commands
@@ -52,7 +55,7 @@ A package manager for SimCity 4 plugins.
     channel build   Build a channel locally by converting YAML files to JSON.
 
 
-# Plugins folder structure
+## Plugins folder structure
 
 (preliminary)
 
@@ -72,7 +75,7 @@ Packages are installed into even-numbered subfolders, as the order in which file
 Files you install manually should be put into odd-numbered subfolders.
 
 
-# Details
+## Details
 
 The file `sc4pac-plugins.json` stores the identifiers of packages you explicitly requested to install (without dependencies).
 This information is used by sc4pac to compute all the necessary dependencies and download and extract them into your plugins folder.
@@ -87,7 +90,7 @@ and the [empty template](channel-testing/template-empty.yaml).
 The metadata of the default channel is stored at https://github.com/memo33/sc4pac.
 
 
-# Uninstalling
+## Uninstalling
 
 - Remove all installed packages from your plugins folder. Either:
   * run `sc4pac remove --interactive` and select everything, or
@@ -98,16 +101,20 @@ The metadata of the default channel is stored at https://github.com/memo33/sc4pa
 - Finally, delete the folder containing the sc4pac program files.
 
 
-# Build instructions
+## Build instructions
 
-Compile with `sbt assembly`.
+Compile the CLI with `sbt assembly`.
 Create a release bundle with `make dist` in a Unix shell.
 
-# Roadmap
+For editing the website locally, run `sbt ~web/fastLinkJS` as well as `make channel-testing-web host-web`
+and open `http://localhost:8090/channel/index-dev.html`.
+For publishing the website, refer to the Makefile at https://github.com/memo33/sc4pac.
+
+## Roadmap
 
 - [x] Basic functionality
-- [x] Command-line interface with all important commands
-- [ ] Improve robustness of downloads
+- [x] Command-line interface (CLI) with all important commands
+- [ ] Improve resilience of downloads
   - [x] missing content-length (ST)
   - [x] incomplete downloads (SC4E)
   - [ ] non-persistent URLs (Moddb)
