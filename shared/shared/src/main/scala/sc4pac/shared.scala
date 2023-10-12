@@ -115,7 +115,7 @@ abstract class SharedData {
     version: String,
     subfolder: SubPath,
     info: Info = Info.empty,
-    variants: Seq[VariantData],
+    variants: Seq[VariantData],  // should be non-empty, but can consist of a single empty variant
     variantDescriptions: Map[String, Map[String, String]] = Map.empty,  // variantKey -> variantValue -> description
     metadataSource: Option[SubPath] = None  // path to yaml file
   ) extends PackageAsset {

@@ -21,6 +21,9 @@ variants:
   assets:
   - assetId: "memo-testing-first"
 
+dependencies: []  # additional dependencies shared between all variants (optional)
+assets: []  # additional assets shared between all variants (optional)
+
 variantDescriptions:
   driveside:
     "right": "if cars in your game drive on the right"

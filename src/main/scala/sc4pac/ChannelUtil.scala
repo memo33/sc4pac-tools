@@ -16,42 +16,30 @@ object ChannelUtil {
     dependencies: Seq[String] = Seq.empty,
     assets: Seq[JD.AssetReference] = Seq.empty
   ) derives ReadWriter {
-    def toVariantData = JD.VariantData(
+    def toVariantData(sharedDependencies: Seq[String], sharedAssets: Seq[JD.AssetReference]) = JD.VariantData(
       variant = variant,
-      dependencies = coursier.parse.ModuleParser.modules(dependencies, defaultScalaVersion = "").either match {
+      dependencies = coursier.parse.ModuleParser.modules(sharedDependencies ++ dependencies, defaultScalaVersion = "").either match {
         case Left(errs) => throw new IllegalArgumentException(s"format error in dependencies: ${errs.mkString(", ")}")  // TODO error reporting
         case Right(modules) => modules.map(mod => JD.Dependency(group = mod.organization.value, name = mod.name.value, version = "latest.release"))
       },
-      assets = assets)
+      assets = sharedAssets ++ assets)
   }
 
-  case class YamlPackageDataVariants(
+  case class YamlPackageData(
     group: String,
     name: String,
     version: String,
     subfolder: os.SubPath,
     info: JD.Info = JD.Info.empty,
-    variants: Seq[YamlVariantData],
+    dependencies: Seq[String] = Seq.empty,  // shared between variants
+    assets: Seq[JD.AssetReference] = Seq.empty,  // shared between variants
+    variants: Seq[YamlVariantData] = Seq.empty,
     variantDescriptions: Map[String, Map[String, String]] = Map.empty  // variantKey -> variantValue -> description
   ) derives ReadWriter {
     def toPackageData(metadataSource: Option[os.SubPath]) = JD.Package(
-      group = group, name = name, version = version, subfolder = subfolder,
-      info = info, variants = variants.map(_.toVariantData), variantDescriptions = variantDescriptions,
-      metadataSource = metadataSource)
-  }
-
-  case class YamlPackageDataBasic(
-    group: String,
-    name: String,
-    version: String,
-    subfolder: os.SubPath,
-    info: JD.Info = JD.Info.empty,
-    dependencies: Seq[String] = Seq.empty,
-    assets: Seq[JD.AssetReference] = Seq.empty
-  ) derives ReadWriter {
-    def toVariants = YamlPackageDataVariants(
       group = group, name = name, version = version, subfolder = subfolder, info = info,
-      variants = Seq(YamlVariantData(variant = Map.empty, dependencies = dependencies, assets = assets)))
+      variants = (if (variants.isEmpty) Seq(YamlVariantData(Map.empty)) else variants).map(_.toVariantData(dependencies, assets)),
+      variantDescriptions = variantDescriptions, metadataSource = metadataSource)
   }
 
   case class YamlAsset(
@@ -69,8 +57,7 @@ object ChannelUtil {
 
   private def parsePkgData(j: Json, metadataSource: Option[os.SubPath]): IO[ErrStr, JD.PackageAsset] = {
     ZIO.validateFirst(Seq(  // we use ZIO validate for error accumulation
-      parseCirceJson[YamlPackageDataVariants](_: Json).map(_.toPackageData(metadataSource)),
-      parseCirceJson[YamlPackageDataBasic](_: Json).map(_.toVariants.toPackageData(metadataSource)),  // if `variants` is absent, try YamlPackageDataBasic
+      parseCirceJson[YamlPackageData](_: Json).map(_.toPackageData(metadataSource)),
       parseCirceJson[YamlAsset](_: Json).map(_.toAsset)
     ))(parse => parse(j))
       .mapError(errs => errs.mkString("(", " | ", ")"))
