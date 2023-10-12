@@ -7,6 +7,17 @@ assets:
 - assetId: "<unique-id>"
   include: []
   exclude: []
+
+variants:
+- variant: {}
+  dependencies: []
+  assets:
+  - assetId: "<unique-id>"
+    include: []
+    exclude: []
+
+variantDescriptions: {}  # key -> value -> description
+
 info:
   summary: "<one-line summary>"
   warning: ""
