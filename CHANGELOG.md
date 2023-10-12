@@ -1,6 +1,8 @@
 # Changelog
 
 ## [Unreleased]
+
+## [0.2.0] - 2023-10-12
 ### Added
 - support for extracting 7z archives and NSIS installers
 - support for extracting nested zip files
@@ -25,5 +27,6 @@
 ## [0.1.5] - 2023-09-26
 …
 
-[Unreleased]: https://github.com/memo33/sc4pac-tools/compare/0.1.5...HEAD
+[Unreleased]: https://github.com/memo33/sc4pac-tools/compare/0.2.0...HEAD
+[0.2.0]: https://github.com/memo33/sc4pac-tools/compare/0.1.5...0.2.0
 [0.1.5]: https://github.com/memo33/sc4pac-tools/compare/0.1.4...0.1.5
