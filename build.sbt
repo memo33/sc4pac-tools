@@ -2,7 +2,7 @@ name := "sc4pac"
 
 ThisBuild / organization := "io.github.memo33"
 
-ThisBuild / version := "0.2.0"
+ThisBuild / version := "0.2.1-SNAPSHOT"
 
 // ThisBuild / versionScheme := Some("early-semver")
 
