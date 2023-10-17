@@ -1,8 +1,6 @@
 dist:
 	sh ./src/scripts/dist.sh
 
-channel:
-	./sc4pac channel build --output ./channel/json ./channel/yaml
 channel-testing:
 	./sc4pac channel build --output ./channel-testing/json ./channel-testing/yaml
 channel-testing-web:
@@ -35,4 +33,4 @@ demo-video.gif: demo-video.cast
 	agg --speed 2 --cols 80 --last-frame-duration 8 --theme asciinema demo-video.cast demo-video.gif
 
 
-.PHONY: dist channel channel-testing channel-testing-web host host-web clean clean-cache test test-sbt
+.PHONY: dist channel-testing channel-testing-web host host-web clean clean-cache test test-sbt
