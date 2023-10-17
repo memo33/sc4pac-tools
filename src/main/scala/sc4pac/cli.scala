@@ -296,7 +296,7 @@ object Commands {
     |
     |Examples:
     |  sc4pac channel add "${Constants.defaultChannelUrls.head}"
-    |  sc4pac channel add "file://absolute/local/path/to/channel/json/"
+    |  sc4pac channel add "file:///c:/absolute/path/to/local/channel/"
     """.stripMargin.trim)
   final case class ChannelAddOptions() extends Sc4pacCommandOptions
 
