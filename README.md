@@ -26,20 +26,9 @@ This program only comes with a command-line interface (CLI) for now.
 - Be aware that Simtropolis has a download limit of 20 files per day.
   Intermediate downloads are cached, so if you reach the limit,
   simply continue the installation process the next day.
+- Install other [available packages](https://github.com/memo33/sc4pac#available-packages).
 
 ![demo-video](https://github.com/memo33/sc4pac-tools/releases/download/0.1.3/demo-video.gif)
-
-- Other available packages:
-  - [memo:industrial-revolution-mod](https://memo33.github.io/sc4pac/channel/?pkg=memo:industrial-revolution-mod)
-    (base pack including all dependencies [~1.4GB])
-  - BSC Common Dependencies: `sc4pac search bsc` displays all the package names.
-    - [bsc:essentials](https://memo33.github.io/sc4pac/channel/?pkg=bsc:essentials)
-    - [bsc:mega-props-sg-vol01](https://memo33.github.io/sc4pac/channel/?pkg=bsc:mega-props-sg-vol01)
-    - [bsc:mega-props-cp-vol01](https://memo33.github.io/sc4pac/channel/?pkg=bsc:mega-props-cp-vol01)
-    - [bsc:textures-vol01](https://memo33.github.io/sc4pac/channel/?pkg=bsc:textures-vol01)
-    - and many more
-  - [cycledogg:missouri-breaks-terrain](https://memo33.github.io/sc4pac/channel/?pkg=cycledogg:missouri-breaks-terrain)
-    (an SD terrain mod)
 
 
 ## Available commands
