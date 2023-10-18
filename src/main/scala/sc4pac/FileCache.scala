@@ -38,30 +38,39 @@ class FileCache private (
   def localFile(url: String): java.io.File =
     csCache.localFile(url, user = None)
 
+  private def isManagedByCache(url: String, file: java.io.File): Boolean = {
+    if (url.startsWith("file:/")) false
+    else true  // TODO as a safeguard, verify that local file is inside cache folder
+  }
+
   /** Remove a file from the cache if it is too old, so that the next cache
     * access retrieves a new copy of it.
     */
   def purgeFileIfOlderThan(url: String, timestamp: java.time.Instant): IO[CC.ArtifactError | java.io.IOException, Unit] = {
     val file = localFile(url)
-    ZIO.attemptBlockingIO(CC.CacheLocks.withLockFor(location, file) {
-      if (!file.exists()) {
-        Right(())  // nothing to delete
-      } else {
-        lastCheck(file) match {
-          case Some(downloadedAt) =>
-            if (downloadedAt.isBefore(timestamp)) {
+    if (!isManagedByCache(url, file)) {
+      ZIO.succeed(())  // we must not delete local files outside of cache
+    } else {
+      ZIO.attemptBlockingIO(CC.CacheLocks.withLockFor(location, file) {
+        if (!file.exists()) {
+          Right(())  // nothing to delete
+        } else {
+          lastCheck(file) match {
+            case Some(downloadedAt) =>
+              if (downloadedAt.isBefore(timestamp)) {
+                val success = file.delete()  // we ignore if deletion fails
+              }
+              Right(())
+            case None =>
+              // Since the .checked file may be missing from cache for various issues
+              // outside our conrol, we always delete the file in this case.
+              System.err.println(s"The cache ttl-file for $file did not exist.")  // TODO logger.warn
               val success = file.delete()  // we ignore if deletion fails
-            }
-            Right(())
-          case None =>
-            // Since the .checked file may be missing from cache for various issues
-            // outside our conrol, we always delete the file in this case.
-            System.err.println(s"The cache ttl-file for $file did not exist.")  // TODO logger.warn
-            val success = file.delete()  // we ignore if deletion fails
-            Right(())
+              Right(())
+          }
         }
-      }
-    }).absolve
+      }).absolve
+    }
   }
 
   // blocking
@@ -146,7 +155,11 @@ class FileCache private (
 
 object FileCache {
   def apply(location: java.io.File, logger: Logger, pool: java.util.concurrent.ExecutorService): FileCache = {
-    val csCache = CC.FileCache[Task]().withLocation(location).withLogger(logger).withPool(pool)
+    val csCache = CC.FileCache[Task]()
+      .withLocation(location)
+      .withLogger(logger)
+      .withPool(pool)
+      .withLocalArtifactsShouldBeCached(false)  // not caching local files allows live-editing
     new FileCache(csCache, logger, runningTasks = new ConcurrentHashMap())
   }
 
