@@ -74,7 +74,10 @@ object ChannelPage {
 
   // TODO make all selectable
   def pkgNameFrag(module: BareModule, link: Boolean = true) =
-    if (link) H.a(H.href := s"?pkg=${module.orgName}")(H.code(module.orgName))
+    if (link) H.frag(
+      H.code(H.cls := "code-left")(s"${module.group.value}:"),
+      H.a(H.href := s"?pkg=${module.orgName}")(H.code(H.cls := "code-right")(module.name.value))
+    )
     else H.code(module.orgName)
 
   def pkgInfoFrag(pkg: JsonData.Package) = {

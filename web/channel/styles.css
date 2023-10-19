@@ -70,6 +70,16 @@ table#channelcontents tr {
   overflow-x:auto;
   padding:10px;
 }
+code.code-left {
+  padding-right: 0;
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+code.code-right {
+  padding-left: 0;
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+}
 code {
   background-color: #eef;
   padding: 0 3px;
