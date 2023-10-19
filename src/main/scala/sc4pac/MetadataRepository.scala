@@ -106,9 +106,8 @@ sealed abstract class MetadataRepository(val baseUri: java.net.URI /*, globalVar
 }
 
 object MetadataRepository {
-  val channelContentsFilename = "sc4pac-channel-contents.json"  // only for JSON repositories
   def channelContentsUrl(baseUri: java.net.URI): java.net.URI =
-    if (baseUri.getPath.endsWith(".yaml")) baseUri else baseUri.resolve(channelContentsFilename)
+    if (baseUri.getPath.endsWith(".yaml")) baseUri else baseUri.resolve(JsonRepoUtil.channelContentsFilename)
 
   /** Sanitize URL.
     */

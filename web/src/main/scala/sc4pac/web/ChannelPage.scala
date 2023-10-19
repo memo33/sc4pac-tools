@@ -54,6 +54,16 @@ object ChannelPage {
     }
   }
 
+  def fetchChannel(): Future[Option[JsonData.Channel]] = {
+    val url = sttp.model.Uri(java.net.URI.create(s"${channelUrl}${JsonRepoUtil.channelContentsFilename}"))
+    for {
+      response <- basicRequest.get(url).response(asJson[JsonData.Channel]).send(backend)
+    } yield {
+      if (!response.is200) None
+      else response.body.toOption
+    }
+  }
+
   def variantFrag(variant: JsonData.Variant, variantDescriptions: Map[String, Map[String, String]]) =
     variant.toSeq.sorted.map { (k, v) =>
       variantDescriptions.get(k).flatMap(_.get(v)) match {
@@ -125,11 +135,26 @@ object ChannelPage {
     )
   }
 
+  def channelContentsFrag(items: Seq[JsonData.ChannelItem]) = {
+    H.table(H.id := "channelcontents")(H.tbody(items.flatMap { item =>
+      item.toBareDep match
+        case mod: BareModule => Some(H.tr(H.td(pkgNameFrag(mod, link = true)), H.td(item.summary)))
+        case _: BareAsset => None
+    }))
+  }
+
   def setupUI(): Unit = {
     val urlParams = new dom.URLSearchParams(dom.window.location.search)
     val pkgName = urlParams.get("pkg")
     if (pkgName == null) {
-      document.body.appendChild(H.p(s"Pass query ", H.code("?pkg=<group>:<name>")).render)
+      val output = H.p("Loading channel packages…").render
+      document.body.appendChild(output)
+      fetchChannel() foreach {
+        case None =>
+          document.body.appendChild(H.p("Failed to load channel contents.").render)
+        case Some(channel) =>
+          output.replaceWith(channelContentsFrag(channel.contents).render)
+      }
     } else parseModule(pkgName) match {
       case Left(err) =>
         document.body.appendChild(H.p(err).render)
@@ -140,7 +165,7 @@ object ChannelPage {
         document.body.appendChild(output)
         fetchPackage(module) foreach {
           case None =>
-            document.body.appendChild(H.p("Package not found").render)
+            document.body.appendChild(H.p("Package not found.").render)
           case Some(pkg) =>
             output.replaceWith(pkgInfoFrag(pkg).render)
         }
