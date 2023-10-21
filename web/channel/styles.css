@@ -28,31 +28,38 @@ a.btn:hover {
   margin: 0;
   padding: 0;
 }
-#pkginfo th {
+th {
   padding-bottom: 0.25em;
   padding-right: 0.8em;
 }
-#pkginfo td {
+td {
   padding-bottom: 0.25em;
 }
 @media (max-width: 540px) {
-  #pkginfo th, td {
+  th, td {
     display: block;
   }
-  #pkginfo th {
+  th {
     padding-top: 0.5em;
   }
 }
-#pkginfo td p {
+td p {
   margin: 0;
 }
-#pkginfo td p:not(:last-child) {
+td p:not(:last-child) {
   margin-bottom: 0.5em;
 }
-#pkginfo th {
+th {
   vertical-align: text-top;
   text-align: left;
 }
+table#channelcontents {
+  border-collapse: collapse;
+}
+table#channelcontents tr {
+  border-bottom: 1px solid #ddd;
+}
+
 .codebox {
   /* border:1px solid #888; */
   border-radius: 5px;
@@ -62,6 +69,16 @@ a.btn:hover {
   overflow:auto;
   overflow-x:auto;
   padding:10px;
+}
+code.code-left {
+  padding-right: 0;
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+code.code-right {
+  padding-left: 0;
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
 }
 code {
   background-color: #eef;
@@ -117,4 +134,49 @@ a:hover {
 .tooltip:hover .tooltiptext {
   visibility: visible;
   opacity: 1;
+}
+
+/* navbar from vue.css */
+.app-nav {
+  /* margin: 25px 60px 0 0; */
+  margin: 25px 0 15px 0;
+  /* position: absolute; */
+  right: 0;
+  text-align: right;
+  z-index: 10;
+}
+@media screen and (max-width: 768px)
+.app-nav {
+  margin-top: 16px;
+}
+@media screen and (max-width: 768px)
+.app-nav, .github-corner {
+  transition: transform 250ms ease-out;
+}
+nav {
+  display: block;
+}
+.app-nav ul, .app-nav li {
+  display: inline-block;
+  list-style: none;
+  margin: 0;
+}
+.app-nav li {
+  display: inline-block;
+  margin: 0 1rem;
+  padding: 5px 0;
+  position: relative;
+  cursor: pointer;
+}
+.app-nav a {
+  color: inherit;
+  font-size: 16px;
+  text-decoration: none;
+  transition: color 0.3s;
+}
+.app-nav a.active {
+  border-bottom: 2px solid #42b983;
+  border-bottom: 2px solid var(--theme-color, #42b983);
+  color: #42b983;
+  color: var(--theme-color, #42b983);
 }

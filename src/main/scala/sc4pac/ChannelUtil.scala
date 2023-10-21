@@ -108,7 +108,7 @@ object ChannelUtil {
         c.copy(contents = c.contents.sortBy(item => (item.group, item.name)))
       }
 
-      scala.util.Using.resource(java.nio.file.Files.newBufferedWriter((tempJsonDir / MetadataRepository.channelContentsFilename).toNIO)) { out =>
+      scala.util.Using.resource(java.nio.file.Files.newBufferedWriter((tempJsonDir / JsonRepoUtil.channelContentsFilename).toNIO)) { out =>
         writeTo(channel, out, indent=2)  // writes channel contents json file
       }
 
@@ -121,7 +121,7 @@ object ChannelUtil {
       // Finally, we are sure that everything was formatted correctly, so we can
       // move the temp folder to its final destination.
       os.move.over(tempJsonDir / "metadata", outputDir / "metadata", createFolders = true)
-      os.move.over(tempJsonDir / MetadataRepository.channelContentsFilename, outputDir / MetadataRepository.channelContentsFilename, createFolders = true)
+      os.move.over(tempJsonDir / JsonRepoUtil.channelContentsFilename, outputDir / JsonRepoUtil.channelContentsFilename, createFolders = true)
       println(s"Successfully wrote channel contents of ${packages.size} packages.")
     } finally {
       os.remove.all(tempJsonDir)  // deleteOnExit does not seem to work reliably, so explicitly delete temp folder

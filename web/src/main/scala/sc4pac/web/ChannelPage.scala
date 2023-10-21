@@ -27,7 +27,8 @@ object ChannelPage {
 
   // val channelUrl = "http://localhost:8090/channel/"
   val channelUrl = ""  // relative to current host
-  val sc4pacUrl = "https://github.com/memo33/sc4pac-tools#sc4pac"
+  // val sc4pacUrl = "https://github.com/memo33/sc4pac-tools#sc4pac"
+  val sc4pacUrl = "https://memo33.github.io/sc4pac/#/"
   val issueUrl = "https://github.com/memo33/sc4pac/issues"
   val yamlUrl = "https://github.com/memo33/sc4pac/tree/main/src/yaml/"
 
@@ -54,6 +55,16 @@ object ChannelPage {
     }
   }
 
+  def fetchChannel(): Future[Option[JsonData.Channel]] = {
+    val url = sttp.model.Uri(java.net.URI.create(s"${channelUrl}${JsonRepoUtil.channelContentsFilename}"))
+    for {
+      response <- basicRequest.get(url).response(asJson[JsonData.Channel]).send(backend)
+    } yield {
+      if (!response.is200) None
+      else response.body.toOption
+    }
+  }
+
   def variantFrag(variant: JsonData.Variant, variantDescriptions: Map[String, Map[String, String]]) =
     variant.toSeq.sorted.map { (k, v) =>
       variantDescriptions.get(k).flatMap(_.get(v)) match {
@@ -64,7 +75,10 @@ object ChannelPage {
 
   // TODO make all selectable
   def pkgNameFrag(module: BareModule, link: Boolean = true) =
-    if (link) H.a(H.href := s"?pkg=${module.orgName}")(H.code(module.orgName))
+    if (link) H.frag(
+      H.code(H.cls := "code-left")(s"${module.group.value}:"),
+      H.a(H.href := s"?pkg=${module.orgName}")(H.code(H.cls := "code-right")(module.name.value))
+    )
     else H.code(module.orgName)
 
   def pkgInfoFrag(pkg: JsonData.Package) = {
@@ -125,11 +139,33 @@ object ChannelPage {
     )
   }
 
+  def channelContentsFrag(items: Seq[JsonData.ChannelItem]) = {
+    H.frag(
+      H.h2("sc4pac Channel"),
+      H.p("This is the default channel of ",
+        H.a(H.href := sc4pacUrl)(H.code("sc4pac")),
+        ". This page lists all the packages you can currently install."
+      ),
+      H.table(H.id := "channelcontents")(H.tbody(items.flatMap { item =>
+        item.toBareDep match
+          case mod: BareModule => Some(H.tr(H.td(pkgNameFrag(mod, link = true)), H.td(item.summary)))
+          case _: BareAsset => None
+      }))
+    )
+  }
+
   def setupUI(): Unit = {
     val urlParams = new dom.URLSearchParams(dom.window.location.search)
     val pkgName = urlParams.get("pkg")
     if (pkgName == null) {
-      document.body.appendChild(H.p(s"Pass query ", H.code("?pkg=<group>:<name>")).render)
+      val output = H.p("Loading channel packages…").render
+      document.body.appendChild(output)
+      fetchChannel() foreach {
+        case None =>
+          document.body.appendChild(H.p("Failed to load channel contents.").render)
+        case Some(channel) =>
+          output.replaceWith(channelContentsFrag(channel.contents).render)
+      }
     } else parseModule(pkgName) match {
       case Left(err) =>
         document.body.appendChild(H.p(err).render)
@@ -140,7 +176,7 @@ object ChannelPage {
         document.body.appendChild(output)
         fetchPackage(module) foreach {
           case None =>
-            document.body.appendChild(H.p("Package not found").render)
+            document.body.appendChild(H.p("Package not found.").render)
           case Some(pkg) =>
             output.replaceWith(pkgInfoFrag(pkg).render)
         }
