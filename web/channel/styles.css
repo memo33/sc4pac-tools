@@ -135,3 +135,48 @@ a:hover {
   visibility: visible;
   opacity: 1;
 }
+
+/* navbar from vue.css */
+.app-nav {
+  /* margin: 25px 60px 0 0; */
+  margin: 25px 0 15px 0;
+  /* position: absolute; */
+  right: 0;
+  text-align: right;
+  z-index: 10;
+}
+@media screen and (max-width: 768px)
+.app-nav {
+  margin-top: 16px;
+}
+@media screen and (max-width: 768px)
+.app-nav, .github-corner {
+  transition: transform 250ms ease-out;
+}
+nav {
+  display: block;
+}
+.app-nav ul, .app-nav li {
+  display: inline-block;
+  list-style: none;
+  margin: 0;
+}
+.app-nav li {
+  display: inline-block;
+  margin: 0 1rem;
+  padding: 5px 0;
+  position: relative;
+  cursor: pointer;
+}
+.app-nav a {
+  color: inherit;
+  font-size: 16px;
+  text-decoration: none;
+  transition: color 0.3s;
+}
+.app-nav a.active {
+  border-bottom: 2px solid #42b983;
+  border-bottom: 2px solid var(--theme-color, #42b983);
+  color: #42b983;
+  color: var(--theme-color, #42b983);
+}

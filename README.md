@@ -1,17 +1,25 @@
 sc4pac
 ======
 
-A package manager for SimCity 4 plugins.
+*A package manager for SimCity 4 plugins.*
 
-This program only comes with a command-line interface (CLI) for now.
+This program handles the process of downloading and installing
+SimCity 4 plugins, including all their dependencies.
+
+Currently, this program only comes with a command-line interface (CLI).
+
+
+<div style='display: none'>
+<b>Main website:</b> <a href="https://memo33.github.io/sc4pac/#/">https://memo33.github.io/sc4pac/</a>
+</div>
 
 
 ## Usage
 
 - Prerequisites:
-  - Java 8+
+  - Java 8+ (https://adoptium.net/installation/)
   - enough disk space
-- Download the [latest release](https://github.com/memo33/sc4pac-tools/releases/latest)
+- [Download the latest release](https://github.com/memo33/sc4pac-tools/releases/latest)
   and extract the contents to any location in your user directory (for example, your Desktop).
 - Open a shell in the new directory (e.g. on Windows, open the folder and type `cmd` in the address bar of the explorer window)
   and run the command-line tool `sc4pac` by calling:
@@ -26,58 +34,67 @@ This program only comes with a command-line interface (CLI) for now.
 - Be aware that Simtropolis has a download limit of 20 files per day.
   Intermediate downloads are cached, so if you reach the limit,
   simply continue the installation process the next day.
-- Install other [available packages](https://github.com/memo33/sc4pac#available-packages).
+- Install other [available packages](https://memo33.github.io/sc4pac/#/packages).
 
 ![demo-video](https://github.com/memo33/sc4pac-tools/releases/download/0.1.3/demo-video.gif)
 
 
 ## Available commands
 
-    add             Add new packages to install explicitly.
-    update          Update all installed packages to their latest version and install any missing packages.
-    remove          Remove packages that have been installed explicitly.
-    search          Search for the name of a package.
-    info            Display more information about a package.
-    list            List all installed packages.
-    variant reset   Select variants to reset in order to choose a different package variant.
-    channel add     Add a channel to fetch package metadata from.
-    channel remove  Select channels to remove.
-    channel list    List the channel URLs.
-    channel build   Build a channel locally by converting YAML files to JSON.
+```
+add             Add new packages to install explicitly.
+update          Update all installed packages to their latest version and install any missing packages.
+remove          Remove packages that have been installed explicitly.
+search          Search for the name of a package.
+info            Display more information about a package.
+list            List all installed packages.
+variant reset   Select variants to reset in order to choose a different package variant.
+channel add     Add a channel to fetch package metadata from.
+channel remove  Select channels to remove.
+channel list    List the channel URLs.
+channel build   Build a channel locally by converting YAML files to JSON.
+```
+
+See [CLI](https://memo33.github.io/sc4pac/#/cli) for details.
 
 
 ## Plugins folder structure
 
 (preliminary)
 
-    100-props-textures
-    150-mods
-    170-terrain
-    200-residential
-    300-commercial
-    400-industrial
-    500-utilities
-    600-civics
-    700-transit
-    777-network-addon-mod  (installed manually)
-    900-overrides
+```
+100-props-textures
+150-mods
+170-terrain
+200-residential
+300-commercial
+400-industrial
+500-utilities
+600-civics
+700-transit
+777-network-addon-mod  (installed manually)
+900-overrides
+```
 
 Packages are installed into even-numbered subfolders, as the order in which files are loaded by the game is important.
-Files you install manually should be put into odd-numbered subfolders.
+Files you install manually should be put into odd-numbered subfolders
+(ideally before `900-overrides`).
 
 
 ## Details
 
+The *sc4pac* CLI saves its state in two files.
+
 The file `sc4pac-plugins.json` stores the identifiers of packages you explicitly requested to install (without dependencies).
-This information is used by sc4pac to compute all the necessary dependencies and download and extract them into your plugins folder.
+This information is used by *sc4pac* to compute all the necessary dependencies and download and extract them into your plugins folder.
 
 The file `sc4pac-plugins-lock.json` stores information about all the installed packages (including dependencies).
-This tells sc4pac which version of packages are installed, where to find them in your plugins folder and how to upgrade them to newer versions.
+This tells *sc4pac* which version of packages are installed, where to find them in your plugins folder and how to upgrade them to newer versions.
 
-Sc4pac obtains its information from metadata stored in a remote channel.
+*Sc4pac* obtains its information from metadata stored in a remote channel.
 The metadata is added in terms of .yaml files.
-See the [commented example](channel-testing/yaml/templates/package-template-basic.yaml)
-and the [empty template](channel-testing/template-empty.yaml).
+See the [commented example](https://github.com/memo33/sc4pac-tools/blob/main/channel-testing/yaml/templates/package-template-basic.yaml)
+and the [empty template](https://github.com/memo33/sc4pac-tools/blob/main/channel-testing/template-empty.yaml).
 The metadata of the default channel is stored at https://github.com/memo33/sc4pac.
 
 
@@ -89,10 +106,12 @@ The metadata of the default channel is stored at https://github.com/memo33/sc4pa
   * delete the entire plugins folder.
 - Optionally, delete the cache folder.
   (In case you forgot its location, it is saved in the file `sc4pac-plugins.json`, which you can open with a text editor.)
-- Finally, delete the folder containing the sc4pac program files.
+- Finally, delete the folder containing the *sc4pac* program files.
 
 
-## Build instructions
+<div style='display: none'>
+
+## Build instructions <!-- {docsify-ignore} -->
 
 Compile the CLI with `sbt assembly`.
 Create a release bundle with `make dist` in a Unix shell.
@@ -101,7 +120,7 @@ For editing the website locally, run `sbt ~web/fastLinkJS` as well as `make chan
 and open `http://localhost:8090/channel/index-dev.html`.
 For publishing the website, refer to the Makefile at https://github.com/memo33/sc4pac.
 
-## Roadmap
+## Roadmap <!-- {docsify-ignore} -->
 
 - [x] Basic functionality
 - [x] Command-line interface (CLI) with all important commands
@@ -111,6 +130,8 @@ For publishing the website, refer to the Makefile at https://github.com/memo33/s
   - [ ] non-persistent URLs (Moddb)
   - [ ] handling servers that have gone offline
 - [x] Collaborative central metadata channel: https://github.com/memo33/sc4pac
-- [ ] Website and online documentation
+- [x] Website and online documentation: https://memo33.github.io/sc4pac/
 - [ ] Server API (backend)
 - [ ] Graphical UI (frontend) aka Mod manager
+
+</div>

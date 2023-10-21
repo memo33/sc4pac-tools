@@ -27,7 +27,8 @@ object ChannelPage {
 
   // val channelUrl = "http://localhost:8090/channel/"
   val channelUrl = ""  // relative to current host
-  val sc4pacUrl = "https://github.com/memo33/sc4pac-tools#sc4pac"
+  // val sc4pacUrl = "https://github.com/memo33/sc4pac-tools#sc4pac"
+  val sc4pacUrl = "https://memo33.github.io/sc4pac/#/"
   val issueUrl = "https://github.com/memo33/sc4pac/issues"
   val yamlUrl = "https://github.com/memo33/sc4pac/tree/main/src/yaml/"
 
@@ -139,11 +140,18 @@ object ChannelPage {
   }
 
   def channelContentsFrag(items: Seq[JsonData.ChannelItem]) = {
-    H.table(H.id := "channelcontents")(H.tbody(items.flatMap { item =>
-      item.toBareDep match
-        case mod: BareModule => Some(H.tr(H.td(pkgNameFrag(mod, link = true)), H.td(item.summary)))
-        case _: BareAsset => None
-    }))
+    H.frag(
+      H.h2("sc4pac Channel"),
+      H.p("This is the default channel of ",
+        H.a(H.href := sc4pacUrl)(H.code("sc4pac")),
+        ". This page lists all the packages you can currently install."
+      ),
+      H.table(H.id := "channelcontents")(H.tbody(items.flatMap { item =>
+        item.toBareDep match
+          case mod: BareModule => Some(H.tr(H.td(pkgNameFrag(mod, link = true)), H.td(item.summary)))
+          case _: BareAsset => None
+      }))
+    )
   }
 
   def setupUI(): Unit = {
