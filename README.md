@@ -55,7 +55,7 @@ channel list    List the channel URLs.
 channel build   Build a channel locally by converting YAML files to JSON.
 ```
 
-See [CLI](https://memo33.github.io/sc4pac/#/cli) for details.
+See [CLI](https://memo33.github.io/sc4pac/#/cli?id=command-line-interface) for details.
 
 
 ## Plugins folder structure
