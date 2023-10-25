@@ -8,7 +8,7 @@ import scala.collection.immutable.TreeSeqMap
 
 import sc4pac.JsonData as JD
 import sc4pac.Constants.isSc4pacAsset
-import sc4pac.error.{Sc4pacIoException, Sc4pacAbort}
+import sc4pac.error.{Sc4pacAssetNotFound, Sc4pacAbort}
 import Resolution.{Dep, DepAsset}
 
 object CoursierUtil {
@@ -47,7 +47,8 @@ object Resolution {
         Find.concreteVersion(mod, Constants.versionLatestRelease)
           .flatMap(Find.packageData[JD.Asset](mod, _))
           .flatMap {
-            case None => ZIO.fail(new Sc4pacIoException(s"could not find attribute for ${mod}"))
+            case None => ZIO.fail(new Sc4pacAssetNotFound(s"Could not find metadata of asset ${assetId.value}, "
+              + "most likely due to incorrect or incomplete metadata in the corresponding channel."))
             case Some(data) => ZIO.succeed(DepAsset.fromAsset(data))
           }
       case bareMod @ BareModule(group, name) =>

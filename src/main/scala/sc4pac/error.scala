@@ -14,6 +14,8 @@ final class Sc4pacNotInteractive(msg: String) extends java.io.IOException(msg) w
 
 final class Sc4pacPublishWarning(msg: String) extends java.io.IOException(msg) with Sc4pacErr
 
+final class Sc4pacAssetNotFound(msg: String) extends java.io.IOException(msg) with Sc4pacErr
+
 final class Sc4pacVersionNotFound(msg: String) extends java.io.IOException(msg) with Sc4pacErr
 
 final class Sc4pacMissingVariant(val packageData: JsonData.Package, msg: String) extends scala.util.control.ControlThrowable(msg)
