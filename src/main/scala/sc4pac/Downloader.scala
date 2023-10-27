@@ -325,6 +325,14 @@ object Downloader {
             conn0.setRequestProperty("Accept", "*/*")
             conn0.setConnectTimeout(Constants.urlConnectTimeout.toMillis.toInt)  // timeout for establishing a connection
             conn0.setReadTimeout(Constants.urlReadTimeout.toMillis.toInt)  // timeout in case of internet outage while downloading a file
+
+            // Set session cookie for rudimentary authentication to Simtropolis.
+            for (cookie <- Constants.simtropolisCookie) {
+              val host = conn0.getURL().getHost()
+              if (host == "simtropolis.com" || host.endsWith(".simtropolis.com")) {
+                conn0.setRequestProperty("Cookie", cookie)
+              }
+            }
           case _ =>
         }
 

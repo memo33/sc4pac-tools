@@ -126,6 +126,7 @@ For publishing the website, refer to the Makefile at https://github.com/memo33/s
 - [x] Command-line interface (CLI) with all important commands
 - [ ] Improve resilience of downloads
   - [x] missing content-length (ST)
+  - [ ] authentication (ST), partially implemented
   - [x] incomplete downloads (SC4E)
   - [ ] non-persistent URLs (Moddb)
   - [ ] handling servers that have gone offline

@@ -1,6 +1,11 @@
 # Changelog
 
 ## [Unreleased]
+### Added
+- experimental basic authentication to Simtropolis using `SC4PAC_SIMTROPOLIS_COOKIE` environment variable
+
+### Fixed
+- an issue involving local `file:/` URIs
 
 ## [0.2.0] - 2023-10-12
 ### Added
