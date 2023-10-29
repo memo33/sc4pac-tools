@@ -6,8 +6,10 @@ assetId: "memo-testing-file-d-zip"  # A unique identifier (lowercase, hyphenated
 # The version string and lastModified timestamp are used to determine when an
 # asset has changed, so that all packages depending on it can be reinstalled.
 version: "1.0-1"  # increment the -1 patch version if the remote file is updated without incrementing the version
+# On Simtropolis, get the timestamp from the `updated_time` property from the HTML code of the download page.
+# With SC4E, inspect the `last-modified` HTTP header of the actual download in your browser or using `curl -I -L '<url>'`.
 lastModified: "2023-07-29T21:33:57Z"
-# The direct download link to the artifact (supports zip files, jar files, and jar or zip files contained in zip files)
+# The direct download link to the artifact (supports zip files, jar files, and jar, zip, 7z or NSIS exe files contained in zip files)
 url: "http://localhost:8090/files/package-d.zip"
 
 ---

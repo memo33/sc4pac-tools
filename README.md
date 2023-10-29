@@ -63,9 +63,11 @@ See [CLI](https://memo33.github.io/sc4pac/#/cli?id=command-line-interface) for d
 (preliminary)
 
 ```
+050-early-mods
 100-props-textures
 150-mods
 170-terrain
+180-flora
 200-residential
 300-commercial
 400-industrial
