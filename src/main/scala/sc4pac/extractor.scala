@@ -144,10 +144,10 @@ object Extractor {
     */
   case class JarExtraction(jarsDir: os.Path)
   object JarExtraction {
-    def fromUrl[F[_]](archiveUrl: String, cache: FileCache, jarsRoot: os.Path): JarExtraction = {
+    def fromUrl[F[_]](archiveUrl: String, cache: FileCache, jarsRoot: os.Path, scopeRoot: os.Path): JarExtraction = {
       // we use cache to find a consistent archiveSubPath based on the url
-      val archivePath = os.Path(cache.localFile(archiveUrl), os.pwd)
-      val cachePath = os.Path(cache.location, os.pwd)
+      val archivePath = os.Path(cache.localFile(archiveUrl), scopeRoot)
+      val cachePath = os.Path(cache.location, scopeRoot)
       val archiveSubPath = archivePath.subRelativeTo(cachePath)
       JarExtraction(jarsRoot / archiveSubPath)
     }
