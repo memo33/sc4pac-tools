@@ -450,10 +450,9 @@ object Commands {
         os.makeDir.all(scopeRoot)
       }
       val task: Task[Unit] = {
-        ???
-        // val app = sc4pac.api.Api.routes(ScopeRoot(scopeRoot), options).toHttpApp
-        // println(s"Starting sc4pac server on port ${options.port}...")
-        // zio.http.Server.serve(app).provide(zio.http.Server.defaultWithPort(options.port))
+        val app = sc4pac.api.Api(ScopeRoot(scopeRoot), options).routes.toHttpApp
+        println(s"Starting sc4pac server on port ${options.port}...")
+        zio.http.Server.serve(app).provide(zio.http.Server.defaultWithPort(options.port))
       }
       runMainExit(task, exit)
     }

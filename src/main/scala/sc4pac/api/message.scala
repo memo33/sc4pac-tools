@@ -2,6 +2,8 @@ package io.github.memo33
 package sc4pac
 package api
 
+import upickle.default as UP
+
 sealed trait Message
 
 trait PromptMessage extends Message {
@@ -27,3 +29,12 @@ case class ResponseMessage(token: String, body: String) extends Message
 object ResponseMessage {
   // given responseMessageRw: UP.ReadWriter[ResponseMessage] = ???  // UP.macroRW
 }
+
+trait ErrorMessage extends Message {
+  def message: String
+  def detail: String
+}
+
+case class ErrorGeneric(message: String, detail: String) extends ErrorMessage derives UP.ReadWriter
+
+case class ScopeNotInitialized(message: String, detail: String) extends ErrorMessage derives UP.ReadWriter

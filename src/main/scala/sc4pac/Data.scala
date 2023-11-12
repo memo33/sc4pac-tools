@@ -104,13 +104,14 @@ object JsonData extends SharedData {
       } yield data
     }
 
-    // // TODO check existence?
-    // val read: RIO[ScopeRoot, Plugins] = Plugins.pathURIO.flatMap { pluginsPath =>
-    //   JsonIo.read[Plugins](pluginsPath)
-    //   // ZIO.ifZIO(ZIO.attemptBlocking(os.exists(pluginsPath)))(
-    //   //   onTrue = JsonIo.read[Plugins](pluginsPath),
-    //   //   onFalse = ZIO.fail("Scope not initialized.")
-    // }
+    val read: ZIO[ScopeRoot, ErrStr, Plugins] = Plugins.pathURIO.flatMap { pluginsPath =>
+      val task: IO[ErrStr | java.io.IOException, Plugins] =
+        ZIO.ifZIO(ZIO.attemptBlockingIO(os.exists(pluginsPath)))(
+          onFalse = ZIO.fail(s"Configuration file does not exist: $pluginsPath"),
+          onTrue = ZIO.attemptBlockingIO(JsonIo.readBlocking[Plugins](pluginsPath)).absolve
+        )
+      task.mapError(_.toString)
+    }
 
     /** Read Plugins from file if it exists, else create it and write it to file. */
     val readOrInit: RIO[ScopeRoot & CliPrompter, Plugins] = Plugins.pathURIO.flatMap { pluginsPath =>

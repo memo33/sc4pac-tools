@@ -466,13 +466,13 @@ object Sc4pac {
     wrapService(cache.logger.using(_), task)  // properly initializes logger (avoids Uninitialized TermDisplay)
   }
 
-  def init(config: JD.Config): RIO[ScopeRoot & CliLogger & Prompter, Sc4pac] = {
+  def init(config: JD.Config): RIO[ScopeRoot & Logger & Prompter, Sc4pac] = {
     import CoursierZio.*  // implicit coursier-zio interop
     // val refreshLogger = coursier.cache.loggers.RefreshLogger.create(System.err)  // TODO System.err seems to cause less collisions between refreshing progress and ordinary log messages
     val coursierPool = coursier.cache.internal.ThreadUtil.fixedThreadPool(size = 2)  // limit parallel downloads to 2 (ST rejects too many connections)
     for {
       cacheRoot <- config.cacheRootAbs
-      logger <- ZIO.service[CliLogger]
+      logger <- ZIO.service[Logger]
       prompter <- ZIO.service[Prompter]
       cache = FileCache(location = (cacheRoot / "coursier").toIO, logger = logger, pool = coursierPool)
         // .withCachePolicies(Seq(coursier.cache.CachePolicy.ForceDownload))  // TODO cache policy
