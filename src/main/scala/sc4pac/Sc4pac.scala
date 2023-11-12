@@ -334,10 +334,12 @@ trait UpdateService { this: Sc4pac =>
                   s"""None of the variants ${choices.map(_._1).mkString(", ")} of ${mod.orgName} match the configured variant $key=$value. """ +
                   s"""The package metadata seems incorrect, but resetting the variant may resolve the problem (command: `sc4pac variant reset "$key"`)."""))
               case None =>  // global variant for key is not set, so choose it interactively
-                val msg = api.PromptMessage.ChooseVariant(
-                  mod, label = key, choices = choices.map(_._1),
-                  descriptions = pkgData.variantDescriptions.get(key).getOrElse(Map.empty))
-                prompter.promptForVariant(msg).map(value => choices.find(_._1 == value).get)  // prompter is guaranteed to return a matching value
+                prompter.promptForVariant(
+                  module = mod,
+                  label = key,
+                  values = choices.map(_._1),
+                  descriptions = pkgData.variantDescriptions.get(key).getOrElse(Map.empty)
+                ).map(value => choices.find(_._1 == value).get)  // prompter is guaranteed to return a matching value
           }
 
           ZIO.iterate(decisionTree, Seq.newBuilder[(Key, Value)])(_._1 != Empty) {

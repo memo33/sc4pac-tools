@@ -7,7 +7,7 @@ import sc4pac.Resolution.DepModule
 trait Prompter {
 
   /** Returns the selected variant value. */
-  def promptForVariant(msg: api.PromptMessage.ChooseVariant): Task[String]
+  def promptForVariant(module: BareModule, label: String, values: Seq[String], descriptions: Map[String, String]): Task[String]
 
   def confirmUpdatePlan(plan: Sc4pac.UpdatePlan): Task[Boolean]
 
@@ -16,17 +16,16 @@ trait Prompter {
 
 class CliPrompter(logger: CliLogger) extends Prompter {
 
-  def promptForVariant(msg: api.PromptMessage.ChooseVariant): Task[String] = {
-    val mod = msg.`package`
-    val prefix = s"${msg.label} = "
-    val columnWidth = msg.choices.map(_.length).max + 8  // including some whitespace for separation, excluding prefix
-    def renderDesc(value: String): String = msg.descriptions.get(value) match {
+  def promptForVariant(module: BareModule, label: String, values: Seq[String], descriptions: Map[String, String]): Task[String] = {
+    val prefix = s"${label} = "
+    val columnWidth = values.map(_.length).max + 8  // including some whitespace for separation, excluding prefix
+    def renderDesc(value: String): String = descriptions.get(value) match {
       case None => prefix + value
       case Some(desc) => prefix + value + (" " * ((columnWidth - value.length) max 0)) + desc
     }
     Prompt.ifInteractive(
-      onTrue = Prompt.numbered(s"""Choose a variant for ${mod.orgName}:""", msg.choices, render = renderDesc),
-      onFalse = ZIO.fail(new error.Sc4pacNotInteractive(s"""Configure a "${msg.label}" variant for ${mod.orgName}: ${msg.choices.mkString(", ")}""")))
+      onTrue = Prompt.numbered(s"""Choose a variant for ${module.orgName}:""", values, render = renderDesc),
+      onFalse = ZIO.fail(new error.Sc4pacNotInteractive(s"""Configure a "${label}" variant for ${module.orgName}: ${values.mkString(", ")}""")))
   }
 
   private def logPackages(msg: String, dependencies: Iterable[DepModule]): Unit = {
