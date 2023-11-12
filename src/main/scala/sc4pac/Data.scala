@@ -197,7 +197,7 @@ object JsonData extends SharedData {
         Some(mkPattern(s))
       } catch {
         case e: java.util.regex.PatternSyntaxException =>
-          println(s"include/exclude pattern contains invalid regex: $e")  // TODO logger
+          System.err.println(s"include/exclude pattern contains invalid regex: $e")  // TODO logger
           None
       }
       val include = data.include.flatMap(toRegex)
