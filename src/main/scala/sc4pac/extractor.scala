@@ -162,7 +162,7 @@ object Extractor {
   }
 }
 
-class Extractor(logger: Logger) {
+class Extractor(logger: CliLogger) {
 
   /** Extract the zip archive: filter the entries by a predicate, strip the
     * common prefix from all paths for a more flattened folder structure, and

@@ -14,7 +14,7 @@ trait Prompter {
   def confirmInstallationWarnings(warnings: Seq[(BareModule, Seq[String])]): Task[Boolean]
 }
 
-class CliPrompter(logger: Logger) extends Prompter {
+class CliPrompter(logger: CliLogger) extends Prompter {
 
   def promptForVariant(msg: api.PromptMessage.ChooseVariant): Task[String] = {
     val mod = msg.`package`

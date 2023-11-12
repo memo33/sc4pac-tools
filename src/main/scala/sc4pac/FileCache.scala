@@ -12,7 +12,7 @@ import sc4pac.CoursierZio.*  // implicit coursier-zio interop
   */
 class FileCache private (
   csCache: CC.FileCache[Task],
-  val logger: Logger,
+  val logger: CliLogger,
   runningTasks: ConcurrentHashMap[String, Promise[CC.ArtifactError, java.io.File]]
 ) extends CC.Cache[Task] {
 
@@ -154,7 +154,7 @@ class FileCache private (
 }
 
 object FileCache {
-  def apply(location: java.io.File, logger: Logger, pool: java.util.concurrent.ExecutorService): FileCache = {
+  def apply(location: java.io.File, logger: CliLogger, pool: java.util.concurrent.ExecutorService): FileCache = {
     val csCache = CC.FileCache[Task]()
       .withLocation(location)
       .withLogger(logger)

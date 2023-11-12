@@ -1,0 +1,114 @@
+package io.github.memo33
+package sc4pac
+
+import zio.{ZIO, Task}
+import sc4pac.Resolution.DepModule
+import org.fusesource.jansi.Ansi
+
+
+trait Logger extends coursier.cache.CacheLogger
+
+/** A plain Coursier logger, since Coursier's RefreshLogger results in dropped
+  * or invisible messages, hiding the downloading activity.
+  */
+class CliLogger private (out: java.io.PrintStream, useColor: Boolean, isInteractive: Boolean) extends Logger {
+
+  private def cyan(msg: String): String = if (useColor) Console.CYAN + msg + Console.RESET else msg
+  private def cyanBold(msg: String): String = if (useColor) Console.CYAN + Console.BOLD + msg + Console.RESET else msg
+  private def yellowBold(msg: String): String = if (useColor) Console.YELLOW + Console.BOLD + msg + Console.RESET else msg
+  private def bold(msg: String): String = if (useColor) Console.BOLD + msg + Console.RESET else msg
+  def gray(msg: String): String = if (useColor) grayEscape + msg + Console.RESET else msg  // aka bright black
+  private val grayEscape = s"${27.toChar}[90m"
+
+  override def downloadingArtifact(url: String, artifact: coursier.util.Artifact) =
+    out.println("  " + cyan(s"> Downloading $url"))
+  override def downloadedArtifact(url: String, success: Boolean) =
+    if (!success)
+      out.println("  " + cyan(s"  Download of $url unsuccessful"))
+    else if (Constants.debugMode)
+      out.println("  " + gray(s"  Downloaded $url"))
+  override def downloadLength(url: String, len: Long, currentLen: Long, watching: Boolean): Unit =
+    debug(s"downloadLength=$currentLen/$len: $url")
+  override def gettingLength(url: String): Unit =
+    debug(s"gettingLength $url")
+  override def gettingLengthResult(url: String, length: Option[Long]): Unit =
+    debug(s"gettingLengthResult=$length: $url")
+  def concurrentCacheAccess(url: String): Unit =
+    debug(s"concurrentCacheAccess $url")
+  def extractArchiveEntry(entry: os.SubPath, include: Boolean): Unit =
+    debug(s"[${if (include) Console.GREEN + "include" + grayEscape else "exclude"}] $entry")
+
+  def log(msg: String): Unit = out.println(msg)
+  def warn(msg: String): Unit = out.println(yellowBold("Warning:") + " " + msg)
+  def debug(msg: String): Unit = if (Constants.debugMode) out.println(gray(s"--> $msg"))
+
+  def logSearchResult(idx: Int, module: BareModule, description: Option[String], installed: Boolean): Unit = {
+    val mod = module.formattedDisplayString(gray, bold) + (if (installed) " " + cyanBold("[installed]") else "")
+    log((Array(s"(${idx+1}) $mod") ++ description).mkString(f"%n" + " "*8))
+  }
+
+  def logInfoResult(infoResult: Seq[(String, String)]): Unit = {
+    val columnWidth = infoResult.map(_._1.length).maxOption.getOrElse(0)
+    for ((label, description) <- infoResult) {
+      log(bold(label + " " * (columnWidth - label.length) + " :") + s" $description")
+    }
+  }
+
+  def logInstalled(module: DepModule, explicit: Boolean): Unit = {
+    log(module.formattedDisplayString(gray) + (if (explicit) " " + cyanBold("[explicit]") else ""))
+  }
+
+  // private val spinnerSymbols = collection.immutable.ArraySeq("⡿", "⣟", "⣯", "⣷", "⣾", "⣽", "⣻", "⢿").reverse
+  private val spinnerSymbols = {
+    val n = 6
+    val xs = collection.immutable.ArraySeq.tabulate(n+1)(i => "▪"*i + "▫"*(n-i))  // supported by Windows default font Consolas
+    xs.dropRight(1) ++ xs.drop(1).map(_.reverse).reverse
+  }
+
+  /** Print a message, followed by a spinning animation, while running a task.
+    * The task should not print anything, unless sameLine is true.
+    */
+  def withSpinner[A](msg: Option[String], sameLine: Boolean, cyan: Boolean = false, duration: java.time.Duration = java.time.Duration.ofMillis(100))(task: Task[A]): Task[A] = {
+    if (msg.nonEmpty) {
+      out.println(msg.get)
+    }
+    if (!useColor || !isInteractive) {
+      task
+    } else {
+      val coloredSymbols = if (!cyan) spinnerSymbols else spinnerSymbols.map(this.cyan)
+      val spin: String => Unit = if (!sameLine) {
+        val col = msg.map(_.length + 2).getOrElse(1)
+        (symbol) => out.print(Ansi.ansi().saveCursorPosition().cursorUpLine().cursorToColumn(col).a(symbol).restoreCursorPosition())
+      } else {
+        (symbol) => out.print(Ansi.ansi().saveCursorPosition().cursorRight(2).a(symbol).restoreCursorPosition())
+      }
+      val spinner = ZIO.iterate(0)(_ => true) { i =>
+        for (_ <- ZIO.sleep(duration)) yield {  // TODO use zio.Schedule instead?
+          spin(coloredSymbols(i))
+          (i+1) % coloredSymbols.length
+        }
+      }
+      // run task and spinner in parallel and interrupt spinner once task completes or fails
+      for (result <- task.map(Right(_)).raceFirst(spinner.map(Left(_)))) yield {
+        spin(" " * spinnerSymbols.head.length)  // clear animation
+        result.toOption.get  // spinner/Left will never complete, so we get A from Right
+      }
+    }
+  }
+}
+
+object CliLogger {
+  def apply(): CliLogger = {
+    val isInteractive = Constants.isInteractive
+    try {
+      val useColor = org.fusesource.jansi.AnsiConsole.out().getMode() != org.fusesource.jansi.AnsiMode.Strip
+      // the streams have been installed in `main` (installation is required since jansi 2.1.0)
+      new CliLogger(org.fusesource.jansi.AnsiConsole.out(), useColor, isInteractive)  // this PrintStream uses color only if it is supported (so not on uncolored terminals and not when outputting to a file)
+    } catch {
+      case e: java.lang.UnsatisfiedLinkError =>  // in case something goes really wrong and no suitable jansi native library is included
+        System.err.println(s"Using colorless output as fallback due to $e")
+      new CliLogger(System.out, useColor = false, isInteractive)
+    }
+  }
+}
+
