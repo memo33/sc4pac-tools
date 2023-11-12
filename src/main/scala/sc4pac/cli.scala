@@ -23,7 +23,10 @@ object Commands {
 
   sealed abstract class Sc4pacCommandOptions extends Product with Serializable
 
-  private val scopeRootCli = zio.ZLayer.succeed(ScopeRoot(os.pwd))
+  private val cliEnvironment = {
+    val logger = Logger()
+    zio.ZEnvironment(ScopeRoot(os.pwd), logger, CliPrompter(logger))
+  }
 
   // TODO strip escape sequences if jansi failed with a link error
   private[sc4pac] def gray(msg: String): String = s"${27.toChar}[90m" + msg + Console.RESET  // aka bright black
@@ -80,7 +83,7 @@ object Commands {
         pac    <- Sc4pac.init(config)
         _      <- pac.add(mods)
       } yield ()
-      runMainExit(task.provideLayer(scopeRootCli), exit)
+      runMainExit(task.provideEnvironment(cliEnvironment), exit)
     }
   }
 
@@ -99,7 +102,7 @@ object Commands {
         pluginsRoot  <- pluginsData.config.pluginsRootAbs
         flag         <- pac.update(pluginsData.explicit, globalVariant0 = pluginsData.config.variant, pluginsRoot = pluginsRoot)
       } yield ()
-      runMainExit(task.provideLayer(scopeRootCli), exit)
+      runMainExit(task.provideEnvironment(cliEnvironment), exit)
     }
   }
 
@@ -137,7 +140,7 @@ object Commands {
                       pac.remove(mods)
                     }
         } yield ()
-        runMainExit(task.provideLayer(scopeRootCli), exit)
+        runMainExit(task.provideEnvironment(cliEnvironment), exit)
       }
     }
   }
@@ -183,7 +186,7 @@ object Commands {
             }
           }
         }
-        runMainExit(task.provideLayer(scopeRootCli), exit)
+        runMainExit(task.provideEnvironment(cliEnvironment), exit)
       }
     }
   }
@@ -220,7 +223,7 @@ object Commands {
               }
             }
           }
-          runMainExit(task.provideLayer(scopeRootCli), exit)
+          runMainExit(task.provideEnvironment(cliEnvironment), exit)
       }
     }
   }
@@ -241,7 +244,7 @@ object Commands {
           pac.logger.logInstalled(mod, explicit(mod.toBareDep))
         }
       }
-      runMainExit(task.provideLayer(scopeRootCli), exit)
+      runMainExit(task.provideEnvironment(cliEnvironment), exit)
     }
   }
 
@@ -290,7 +293,7 @@ object Commands {
             } yield ()
           }
         }
-        runMainExit(task.provideLayer(scopeRootCli), exit)
+        runMainExit(task.provideEnvironment(cliEnvironment), exit)
       }
     }
   }
@@ -319,7 +322,7 @@ object Commands {
                 path  <- JD.Plugins.pathURIO
                 _     <- JsonIo.write(path, data2, None)(ZIO.succeed(()))
               } yield ()
-              runMainExit(task.provideLayer(scopeRootCli), exit)
+              runMainExit(task.provideEnvironment(cliEnvironment), exit)
           }
         case Nil => fullHelpAsked(commandName)
         case _ => error(caseapp.core.Error.Other("A single argument is needed: channel-URL"))
@@ -367,7 +370,7 @@ object Commands {
             } yield ()
           }
         }
-        runMainExit(task.provideLayer(scopeRootCli), exit)
+        runMainExit(task.provideEnvironment(cliEnvironment), exit)
       }
     }
   }
@@ -386,7 +389,7 @@ object Commands {
           println(url)
         }
       }
-      runMainExit(task.provideLayer(scopeRootCli), exit)
+      runMainExit(task.provideEnvironment(cliEnvironment), exit)
     }
   }
 

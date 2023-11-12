@@ -159,7 +159,7 @@ class Sc4pac(val repositories: Seq[MetadataRepository], val cache: FileCache, va
 
   /** Select modules to remove from list of explicitly installed modules.
     */
-  def removeSelect(): ZIO[Prompt.Interactive, Throwable, Seq[BareModule]] = {
+  def removeSelect(): ZIO[Prompt.Interactive & CliPrompter, Throwable, Seq[BareModule]] = {
     modifyExplicitModules { modsOrig =>
       if (modsOrig.isEmpty) {
         logger.log("List of explicitly installed packages is already empty.")
@@ -570,14 +570,14 @@ object Sc4pac {
     wrapService(cache.logger.using(_), task)  // properly initializes logger (avoids Uninitialized TermDisplay)
   }
 
-  def init(config: JD.Config): RIO[ScopeRoot, Sc4pac] = {
+  def init(config: JD.Config): RIO[ScopeRoot & Logger & Prompter, Sc4pac] = {
     import CoursierZio.*  // implicit coursier-zio interop
     // val refreshLogger = coursier.cache.loggers.RefreshLogger.create(System.err)  // TODO System.err seems to cause less collisions between refreshing progress and ordinary log messages
-    val logger = Logger()
-    val prompter = CliPrompter(logger)  // TODO
     val coursierPool = coursier.cache.internal.ThreadUtil.fixedThreadPool(size = 2)  // limit parallel downloads to 2 (ST rejects too many connections)
     for {
       cacheRoot <- config.cacheRootAbs
+      logger <- ZIO.service[Logger]
+      prompter <- ZIO.service[Prompter]
       cache = FileCache(location = (cacheRoot / "coursier").toIO, logger = logger, pool = coursierPool)
         // .withCachePolicies(Seq(coursier.cache.CachePolicy.ForceDownload))  // TODO cache policy
         // .withTtl(1.hour)  // TODO time-to-live

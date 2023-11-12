@@ -67,7 +67,8 @@ object JsonData extends SharedData {
 
     def pathURIO: URIO[ScopeRoot, os.Path] = ZIO.service[ScopeRoot].map(scopeRoot => Plugins.path(scopeRoot.path))
 
-    def init(): RIO[ScopeRoot, Plugins] = {
+    /** Prompt for pluginsRoot and cacheRoot. This has a `CliPrompter` constraint as we only want to prompt about this using the CLI. */
+    val promptForPaths: RIO[ScopeRoot & CliPrompter, (os.Path, os.Path)] = {
       val projDirs = dev.dirs.ProjectDirectories.from("", cli.BuildInfo.organization, cli.BuildInfo.name)  // qualifier, organization, application
       val task = for {
         scopeRoot    <- ZIO.service[ScopeRoot]
@@ -79,27 +80,45 @@ object JsonData extends SharedData {
                                      "If you have multiple Plugins folders, use the same cache folder for all of them.)", Seq(
                           os.Path(java.nio.file.Paths.get(projDirs.cacheDir)),
                           scopeRoot.path / "cache"))
-        tempRoot     <- ZIO.succeed(scopeRoot.path / "temp")  // customization not needed
-      } yield Plugins(
-        config = Config(
-          pluginsRoot = Config.subRelativize(pluginsRoot, scopeRoot),
-          cacheRoot = Config.subRelativize(cacheRoot, scopeRoot),
-          tempRoot = Config.subRelativize(tempRoot, scopeRoot),
-          variant = Map.empty,
-          channels = Constants.defaultChannelUrls),
-        explicit = Seq.empty)
+      } yield (pluginsRoot, cacheRoot)
       Prompt.ifInteractive(
         onTrue = task,
         onFalse = ZIO.fail(new error.Sc4pacNotInteractive("Path to plugins folder cannot be configured non-interactively (yet).")))  // TODO fallback
     }
 
+    /** Init and write. */
+    def init(pluginsRoot: os.Path, cacheRoot: os.Path): RIO[ScopeRoot, Plugins] = {
+      for {
+        scopeRoot    <- ZIO.service[ScopeRoot]
+        tempRoot     <- ZIO.succeed(scopeRoot.path / "temp")  // customization not needed
+        data         =  Plugins(
+                          config = Config(
+                            pluginsRoot = Config.subRelativize(pluginsRoot, scopeRoot),
+                            cacheRoot = Config.subRelativize(cacheRoot, scopeRoot),
+                            tempRoot = Config.subRelativize(tempRoot, scopeRoot),
+                            variant = Map.empty,
+                            channels = Constants.defaultChannelUrls),
+                          explicit = Seq.empty)
+        pluginsPath  <- Plugins.pathURIO
+        _            <- JsonIo.write(pluginsPath, data, None)(ZIO.succeed(()))
+      } yield data
+    }
+
+    // // TODO check existence?
+    // val read: RIO[ScopeRoot, Plugins] = Plugins.pathURIO.flatMap { pluginsPath =>
+    //   JsonIo.read[Plugins](pluginsPath)
+    //   // ZIO.ifZIO(ZIO.attemptBlocking(os.exists(pluginsPath)))(
+    //   //   onTrue = JsonIo.read[Plugins](pluginsPath),
+    //   //   onFalse = ZIO.fail("Scope not initialized.")
+    // }
+
     /** Read Plugins from file if it exists, else create it and write it to file. */
-    val readOrInit: RIO[ScopeRoot, Plugins] = Plugins.pathURIO.flatMap { pluginsPath =>
+    val readOrInit: RIO[ScopeRoot & CliPrompter, Plugins] = Plugins.pathURIO.flatMap { pluginsPath =>
       ZIO.ifZIO(ZIO.attemptBlocking(os.exists(pluginsPath)))(
         onTrue = JsonIo.read[Plugins](pluginsPath),
         onFalse = for {
-          data <- Plugins.init()
-          _    <- JsonIo.write(pluginsPath, data, None)(ZIO.succeed(()))
+          (pluginsRoot, cacheRoot) <- promptForPaths
+          data                     <- Plugins.init(pluginsRoot, cacheRoot)
         } yield data
       )
     }
