@@ -164,14 +164,16 @@ trait UpdateService { this: Sc4pac =>
     jarsRoot: os.Path,
     progress: Sc4pac.Progress
   ): Task[(Seq[os.SubPath], Seq[Warning])] = {
-    def extract(assetData: JD.AssetReference, pkgFolder: os.SubPath): Task[Unit] = ZIO.attemptBlocking {
+    def extract(assetData: JD.AssetReference, pkgFolder: os.SubPath): Task[Seq[Warning]] = ZIO.attemptBlocking {
       // Given an AssetReference, we look up the corresponding artifact file
       // by ID. This relies on the 1-to-1-correspondence between sc4pacAssets
       // and artifact files.
       val id = BareAsset(ModuleName(assetData.assetId))
       artifactsById.get(id) match {
         case None =>
-          logger.warn(s"skipping missing artifact, so it must be installed manually: ${id.orgName}")
+          val w = s"An artifact is missing and has been skipped, so it must be installed manually: ${id.orgName}"
+          logger.warn(w)
+          Seq(w)
         case Some(art, archive) =>
           // logger.log(s"  ==> $archive")  // TODO logging debug info
           val recipe = JD.InstallRecipe.fromAssetReference(assetData)
@@ -186,6 +188,7 @@ trait UpdateService { this: Sc4pac =>
             recipe,
             Some(Extractor.JarExtraction.fromUrl(art.url, cache, jarsRoot = jarsRoot, scopeRoot = scopeRoot)))
           // TODO catch IOExceptions
+          Seq.empty
       }
     }
 
@@ -195,15 +198,16 @@ trait UpdateService { this: Sc4pac =>
     for {
       (pkgData, variant) <- Find.matchingVariant(dependency.toBareDep, dependency.version, dependency.variant)
       pkgFolder          =  pkgData.subfolder / packageFolderName(dependency)
-      _                  <- logger.withSpinner(
+      artifactWarnings   <- logger.withSpinner(
                               Some(s"$progress Extracting ${dependency.orgName} ${dependency.version}"),
                               sameLine = Constants.debugMode  // due to debug output
                             )(for {
-                              _ <- ZIO.attemptBlocking(os.makeDir.all(tempPluginsRoot / pkgFolder))  // create folder even if package does not have any assets or files
-                              _ <- ZIO.foreachDiscard(variant.assets)(extract(_, pkgFolder))
-                            } yield ())
-      warnings           <- if (pkgData.info.warning.nonEmpty) ZIO.attempt { val w = pkgData.info.warning; logger.warn(w); Seq(w) } else ZIO.succeed(Seq.empty)
-    } yield (Seq(pkgFolder), warnings)  // for now, everything is installed into this folder only, so we do not need to list individual files
+                              _  <- ZIO.attemptBlocking(os.makeDir.all(tempPluginsRoot / pkgFolder))  // create folder even if package does not have any assets or files
+                              ws <- ZIO.foreach(variant.assets)(extract(_, pkgFolder))
+                            } yield ws.flatten)
+      warnings           <- if (pkgData.info.warning.nonEmpty) ZIO.attempt { val w = pkgData.info.warning; logger.warn(w); Seq(w) }
+                            else ZIO.succeed(Seq.empty)
+    } yield (Seq(pkgFolder), warnings ++ artifactWarnings)  // for now, everything is installed into this folder only, so we do not need to list individual files
   }
 
   private def remove(toRemove: Set[Dep], installed: Seq[JD.InstalledData], pluginsRoot: os.Path): Task[Unit] = {
