@@ -6,7 +6,24 @@ import sc4pac.Resolution.DepModule
 import org.fusesource.jansi.Ansi
 
 
-trait Logger extends coursier.cache.CacheLogger
+trait Logger extends coursier.cache.CacheLogger {
+  /** For generic messages to the console, not user-facing. */
+  def log(msg: String): Unit
+  /** For generic messages to the console, not user-facing. */
+  def warn(msg: String): Unit
+  /** For generic messages to the console, not user-facing. */
+  def debug(msg: String): Unit
+
+  def concurrentCacheAccess(url: String): Unit = debug(s"concurrentCacheAccess $url")
+
+  def extractingArchiveEntry(entry: os.SubPath, include: Boolean): Unit
+
+  def extractingPackage[A](dependency: DepModule, progress: Sc4pac.Progress)(extraction: Task[A]): Task[A]
+
+  def publishing[A](removalOnly: Boolean)(publishing: Task[A]): Task[A]
+
+  def fetchingAssets[A](fetching: Task[A]): Task[A]
+}
 
 /** A plain Coursier logger, since Coursier's RefreshLogger results in dropped
   * or invisible messages, hiding the downloading activity.
@@ -33,9 +50,7 @@ class CliLogger private (out: java.io.PrintStream, useColor: Boolean, isInteract
     debug(s"gettingLength $url")
   override def gettingLengthResult(url: String, length: Option[Long]): Unit =
     debug(s"gettingLengthResult=$length: $url")
-  def concurrentCacheAccess(url: String): Unit =
-    debug(s"concurrentCacheAccess $url")
-  def extractArchiveEntry(entry: os.SubPath, include: Boolean): Unit =
+  def extractingArchiveEntry(entry: os.SubPath, include: Boolean): Unit =
     debug(s"[${if (include) Console.GREEN + "include" + grayEscape else "exclude"}] $entry")
 
   def log(msg: String): Unit = out.println(msg)
@@ -94,6 +109,20 @@ class CliLogger private (out: java.io.PrintStream, useColor: Boolean, isInteract
         result.toOption.get  // spinner/Left will never complete, so we get A from Right
       }
     }
+  }
+
+  def extractingPackage[A](dependency: DepModule, progress: Sc4pac.Progress)(extraction: Task[A]): Task[A] = {
+    val msg = s"$progress Extracting ${dependency.orgName} ${dependency.version}"
+    withSpinner(Some(msg), sameLine = Constants.debugMode)(extraction)  // sameLine due to debug output
+  }
+
+  def publishing[A](removalOnly: Boolean)(publishing: Task[A]): Task[A] = {
+    val msg = if (!removalOnly) "Moving extracted files to plugins folder." else "Removing files from plugins folder."
+    withSpinner(Some(msg), sameLine = false)(publishing)
+  }
+
+  def fetchingAssets[A](fetching: Task[A]): Task[A] = {
+    withSpinner(None, sameLine = true, cyan = true, duration = java.time.Duration.ofMillis(160))(fetching)
   }
 }
 

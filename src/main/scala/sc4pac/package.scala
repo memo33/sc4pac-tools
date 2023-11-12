@@ -1,6 +1,7 @@
 package io.github.memo33
 package object sc4pac {
   type ErrStr = String
+  type Warning = String
   type Variant = Map[String, String]
 
   object CoursierZio {

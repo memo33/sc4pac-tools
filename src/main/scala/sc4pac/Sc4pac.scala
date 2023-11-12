@@ -16,7 +16,7 @@ import sc4pac.Resolution.{Dep, DepModule, DepAsset}
 
 // TODO Use `Runtime#reportFatal` or `Runtime.setReportFatal` to log fatal errors like stack overflow
 
-class Sc4pac(val repositories: Seq[MetadataRepository], val cache: FileCache, val tempRoot: os.Path, val logger: CliLogger, val prompter: Prompter, val scopeRoot: os.Path) extends UpdateService {  // TODO defaults
+class Sc4pac(val repositories: Seq[MetadataRepository], val cache: FileCache, val tempRoot: os.Path, val logger: Logger, val prompter: Prompter, val scopeRoot: os.Path) extends UpdateService {  // TODO defaults
 
   given context: ResolutionContext = new ResolutionContext(repositories, cache, logger, scopeRoot)
 
@@ -53,13 +53,14 @@ class Sc4pac(val repositories: Seq[MetadataRepository], val cache: FileCache, va
 
   /** Select modules to remove from list of explicitly installed modules.
     */
-  def removeSelect(): ZIO[Prompt.Interactive & CliPrompter, Throwable, Seq[BareModule]] = {
+  def removeSelect(): ZIO[Prompt.Interactive & CliPrompter & CliLogger, Throwable, Seq[BareModule]] = {
     modifyExplicitModules { modsOrig =>
       if (modsOrig.isEmpty) {
         logger.log("List of explicitly installed packages is already empty.")
         ZIO.succeed(modsOrig)
       } else {
         for {
+          logger   <- ZIO.service[CliLogger]
           selected <- Prompt.numberedMultiSelect(
                         "Select packages to remove:",
                         modsOrig.sortBy(m => (m.group.value, m.name.value)),
@@ -92,11 +93,12 @@ class Sc4pac(val repositories: Seq[MetadataRepository], val cache: FileCache, va
     results.sortBy((mod, ratio, desc) => (-ratio, mod.group.value, mod.name.value)).distinctBy(_._1)
   }
 
-  def info(module: BareModule): Task[Option[Seq[(String, String)]]] = {
+  def info(module: BareModule): RIO[CliLogger, Option[Seq[(String, String)]]] = {
     val mod = Module(module.group, module.name, attributes = Map.empty)
     for {
       version <- Find.concreteVersion(mod, Constants.versionLatestRelease)
       pkgOpt  <- Find.packageData[JD.Package](mod, version)
+      logger  <- ZIO.service[CliLogger]
     } yield {
       pkgOpt.map { pkg =>
         val b = Seq.newBuilder[(String, String)]
@@ -151,8 +153,6 @@ trait UpdateService { this: Sc4pac =>
     s"${dependency.group.value}.${dependency.name.value}$variantLabel.${dependency.version}.sc4pac"
   }
 
-  type Warning = String
-
   /** Stage a single package into the temp plugins folder and return a list of
     * files or folders containing the files belonging to the package.
     * Moreover, return whether there was a warning.
@@ -198,10 +198,7 @@ trait UpdateService { this: Sc4pac =>
     for {
       (pkgData, variant) <- Find.matchingVariant(dependency.toBareDep, dependency.version, dependency.variant)
       pkgFolder          =  pkgData.subfolder / packageFolderName(dependency)
-      artifactWarnings   <- logger.withSpinner(
-                              Some(s"$progress Extracting ${dependency.orgName} ${dependency.version}"),
-                              sameLine = Constants.debugMode  // due to debug output
-                            )(for {
+      artifactWarnings   <- logger.extractingPackage(dependency, progress)(for {
                               _  <- ZIO.attemptBlocking(os.makeDir.all(tempPluginsRoot / pkgFolder))  // create folder even if package does not have any assets or files
                               ws <- ZIO.foreach(variant.assets)(extract(_, pkgFolder))
                             } yield ws.flatten)
@@ -314,9 +311,8 @@ trait UpdateService { this: Sc4pac =>
           _ <- movePackagesToPlugins(staged)
         } yield true  // TODO return result
       }
-      val msg = if (plan.toInstall.nonEmpty) "Moving extracted files to plugins folder." else "Removing files from plugins folder."
-      logger.withSpinner(Some(msg), sameLine = false)(task)
-        .catchSome {
+      logger.publishing(removalOnly = plan.toInstall.isEmpty)(task)
+        .catchSome {  // TODO expose publish warnings to clients
           case e: Sc4pacPublishWarning => logger.warn(e.getMessage); ZIO.succeed(true)  // TODO return result
         }
     }

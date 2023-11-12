@@ -177,12 +177,13 @@ object Commands {
           query        =  args.all.mkString(" ")
           searchResult <- pac.search(query, options.threshold)
           installed    <- JD.PluginsLock.listInstalled.map(_.map(_.toBareDep).toSet)
+          logger       <- ZIO.service[CliLogger]
         } yield {
           if (searchResult.isEmpty) {
             error(caseapp.core.Error.Other("No packages found. Try to lower the `--threshold` parameter."))
           } else {
             for (((mod, ratio, description), idx) <- searchResult.zipWithIndex.reverse) {
-              pac.logger.logSearchResult(idx, mod, description, installed(mod))
+              logger.logSearchResult(idx, mod, description, installed(mod))
             }
           }
         }
@@ -212,14 +213,15 @@ object Commands {
             pluginsData  <- JD.Plugins.readOrInit
             pac          <- Sc4pac.init(pluginsData.config)
             infoResults  <- ZIO.foreachPar(mods)(pac.info)
+            logger       <- ZIO.service[CliLogger]
           } yield {
             val (found, notFound) = infoResults.zip(mods).partition(_._1.isDefined)
             if (notFound.nonEmpty) {
               error(caseapp.core.Error.Other("Package not found: " + notFound.map(_._2.orgName).mkString(" ")))
             } else {
               for ((infoResultOpt, idx) <- found.zipWithIndex) {
-                if (idx > 0) pac.logger.log("")
-                pac.logger.logInfoResult(infoResultOpt._1.get)
+                if (idx > 0) logger.log("")
+                logger.logInfoResult(infoResultOpt._1.get)
               }
             }
           }
@@ -237,11 +239,12 @@ object Commands {
         pluginsData  <- JD.Plugins.readOrInit
         pac          <- Sc4pac.init(pluginsData.config)  // only used for logging
         installed    <- JD.PluginsLock.listInstalled
+        logger       <- ZIO.service[CliLogger]
       } yield {
         val sorted = installed.sortBy(mod => (mod.group.value, mod.name.value))
         val explicit: Set[BareModule] = pluginsData.explicit.toSet
         for (mod <- sorted) {
-          pac.logger.logInstalled(mod, explicit(mod.toBareDep))
+          logger.logInstalled(mod, explicit(mod.toBareDep))
         }
       }
       runMainExit(task.provideEnvironment(cliEnvironment), exit)

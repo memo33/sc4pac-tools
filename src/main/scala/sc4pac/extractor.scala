@@ -162,7 +162,7 @@ object Extractor {
   }
 }
 
-class Extractor(logger: CliLogger) {
+class Extractor(logger: Logger) {
 
   /** Extract the zip archive: filter the entries by a predicate, strip the
     * common prefix from all paths for a more flattened folder structure, and
@@ -178,7 +178,7 @@ class Extractor(logger: CliLogger) {
             false
           } else {
             val include = predicate(p)
-            logger.extractArchiveEntry(p, include)
+            logger.extractingArchiveEntry(p, include)
             include
           }
         }
