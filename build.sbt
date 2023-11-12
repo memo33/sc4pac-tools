@@ -65,6 +65,7 @@ assembly / assemblyMergeStrategy := {
     (xs.map(_.toLowerCase)) match {
       case p1 if p1.last == "module-info.class" => MergeStrategy.discard
       case p1 if p1.last == "javax.inject.named" => MergeStrategy.filterDistinctLines
+      case p1 if p1.last == "io.netty.versions.properties" => MergeStrategy.filterDistinctLines
       case _ => MergeStrategy.defaultMergeStrategy(p0)
     }
   case p0 => MergeStrategy.defaultMergeStrategy(p0)
@@ -99,6 +100,10 @@ libraryDependencies += "me.xdrop" % "fuzzywuzzy" % "1.4.0"  // fuzzy search
 libraryDependencies += "net.sf.sevenzipjbinding" % "sevenzipjbinding" % "16.02-2.01"  // native 7z for NSIS extraction
 
 libraryDependencies += "net.sf.sevenzipjbinding" % "sevenzipjbinding-all-platforms" % "16.02-2.01"  // native 7z for NSIS extraction
+
+libraryDependencies += "dev.zio" %% "zio-http" % "3.0.0-RC3" exclude("org.scala-lang.modules", "scala-collection-compat_3")  // server
+
+libraryDependencies += "org.slf4j" % "slf4j-nop" % "2.0.7"  // ignore logging in zio-http/netty
 
 libraryDependencies += "org.scalatest" %% "scalatest" % "3.2.17" % Test exclude("org.scala-lang.modules", "scala-xml_3")
 
