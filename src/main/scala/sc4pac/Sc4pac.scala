@@ -406,12 +406,8 @@ trait UpdateService { this: Sc4pac =>
           logger.warn(e.toString)
           s"${dep.orgName}"  // failed to move some staged files of this package to plugins
         }
-      }.fold(
-        failure = { (failedPkgs: ::[ErrStr]) =>
-          new Sc4pacPublishWarning(s"Failed to correctly install the following packages (manual intervention needed): ${failedPkgs.mkString(" ")}")
-          // TODO further handling?
-        },
-        success = identity
+      }.mapError((failedPkgs: ::[ErrStr]) =>
+        new Sc4pacPublishWarning(s"Failed to correctly install the following packages (manual intervention needed): ${failedPkgs.mkString(" ")}")
       )
     }
 

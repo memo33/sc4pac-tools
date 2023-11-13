@@ -28,7 +28,7 @@ object Prompt {
     val readLine =
       ZIO.attemptBlockingIO {  // first clears old input (non-blocking), then blocks for new input
         val count = System.in.available()
-        if (count > 0) System.in.read(new Array[Byte](count))  // discard (up to) `count` bytes
+        if (count > 0) { System.in.read(new Array[Byte](count)); () }  // discard (up to) `count` bytes
       }.zipRight(zio.Console.readLine)
     sleep.raceWith(readLine)(
       leftDone = (result, fiberRight) =>  // The forking (interruptFork) is important in order not to wait indefinitely for the blocking non-interruptible readLine.

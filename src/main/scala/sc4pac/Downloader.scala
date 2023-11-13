@@ -206,6 +206,7 @@ class Downloader(
       scala.util.Using.resource(new java.io.FileOutputStream(f)) { fos => fos.write(Array.empty[Byte]) }
     }
     f.setLastModified(ts)
+    ()
   }
 
 }

@@ -18,6 +18,7 @@ ThisBuild / scalacOptions ++= Seq(
   "-feature",
   // "-opt-warnings:at-inline-failed-summary",
   // "-opt:l:inline", "-opt-inline-from:<sources>",
+  "-Wvalue-discard",
   "-source:future",
   "-encoding", "UTF-8",
   "-release:8")

@@ -169,6 +169,7 @@ object ChannelPage {
     } else parseModule(pkgName) match {
       case Left(err) =>
         document.body.appendChild(H.p(err).render)
+        ()
       case Right(module) =>
         val metaDescription = H.meta(H.name := "description", H.content := s"Package ${module.orgName}").render
         document.head.appendChild(metaDescription)

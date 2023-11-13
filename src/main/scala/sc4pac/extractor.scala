@@ -72,6 +72,7 @@ object Extractor {
     os.makeDir.all(target / os.up)  // prepares extraction (we know that entry refers to a file, not a directory)
     scala.util.Using.resources(entryIn, java.nio.file.Files.newOutputStream(target.toNIO, options(overwrite)*)) { (in, out) =>
       IOUtils.copy(in, out, Constants.bufferSizeExtract)
+      ()
     }
   }
 
