@@ -10,14 +10,13 @@ import upickle.default as UP
 import sc4pac.JsonData as JD
 
 
-class Api(scopeRoot: ScopeRoot, options: sc4pac.cli.Commands.ServerOptions) {
+class Api(options: sc4pac.cli.Commands.ServerOptions) {
 
   private def jsonResponse[A : UP.Writer](obj: A): Response = Response.json(UP.write(obj, indent = options.indent))
 
   /** Sends a 400 ScopeNotInitialized if Plugins cannot be loaded. */
-  private def withPluginsOr400(task: JD.Plugins => zio.UIO[Response]): zio.UIO[Response] = {
+  private def withPluginsOr400[R](task: JD.Plugins => zio.URIO[R, Response]): zio.URIO[R & ScopeRoot, Response] = {
     JD.Plugins.read
-      .provideLayer(zio.ZLayer.succeed(scopeRoot))
       .foldZIO(
         success = task,
         failure = (err: ErrStr) =>
@@ -25,22 +24,23 @@ class Api(scopeRoot: ScopeRoot, options: sc4pac.cli.Commands.ServerOptions) {
       )
   }
 
-  def routes: Routes[Any, Nothing] = Routes(
+  def routes: Routes[ScopeRoot, Nothing] = Routes(
 
     // Test the websocket using Javascript in webbrowser (messages are also logged in network tab):
     //     let ws = new WebSocket('ws://localhost:51515/update/ws'); ws.onmessage = function(e) { console.log(e) };
     //     ws.send('FOO')
     Method.GET / "update" / "ws" -> handler(withPluginsOr400(pluginsData =>
       Handler.webSocket { wsChannel =>
-        for {
-          pac <- Sc4pac.init(pluginsData.config)
-            .provideSomeLayer(zio.ZLayer.succeed(??? : Logger))
-            .provideSomeLayer(zio.ZLayer.succeed(??? : Prompter))
-            .provideSomeLayer(zio.ZLayer.succeed(scopeRoot : ScopeRoot))
+        (for {
+          pac          <- Sc4pac.init(pluginsData.config)
+                            .provideSomeLayer(zio.ZLayer.succeed(??? : Logger))
+                            .provideSomeLayer(zio.ZLayer.succeed(??? : Prompter))
+          pluginsRoot  <- pluginsData.config.pluginsRootAbs
+          flag         <- pac.update(pluginsData.explicit, globalVariant0 = pluginsData.config.variant, pluginsRoot = pluginsRoot)
         } yield {
-          ???  // TODO
-          ()
-        }
+          ???  // TODO send response via websocket
+          // TODO handle common errors, see CLI
+        })
         // ZIO.unit
       }.toResponse
     )),
