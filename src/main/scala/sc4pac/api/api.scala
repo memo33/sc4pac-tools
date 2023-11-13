@@ -34,13 +34,12 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
         (for {
           pac          <- Sc4pac.init(pluginsData.config)
                             .provideSomeLayer(zio.ZLayer.succeed(??? : Logger))
-                            .provideSomeLayer(zio.ZLayer.succeed(??? : Prompter))
           pluginsRoot  <- pluginsData.config.pluginsRootAbs
           flag         <- pac.update(pluginsData.explicit, globalVariant0 = pluginsData.config.variant, pluginsRoot = pluginsRoot)
         } yield {
           ???  // TODO send response via websocket
           // TODO handle common errors, see CLI
-        })
+        }).provideSomeLayer(zio.ZLayer.succeed(??? : Prompter))
         // ZIO.unit
       }.toResponse
     )),
