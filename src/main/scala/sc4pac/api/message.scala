@@ -38,3 +38,5 @@ trait ErrorMessage extends Message {
 case class ErrorGeneric(message: String, detail: String) extends ErrorMessage derives UP.ReadWriter
 
 case class ScopeNotInitialized(message: String, detail: String) extends ErrorMessage derives UP.ReadWriter
+
+case class ResultMessage(result: String) extends Message
