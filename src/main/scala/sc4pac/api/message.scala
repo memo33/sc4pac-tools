@@ -4,39 +4,40 @@ package api
 
 import upickle.default as UP
 
-sealed trait Message
+import sc4pac.JsonData as JD
+import JD.bareModuleRw
 
-trait PromptMessage extends Message {
+sealed trait Message derives UP.ReadWriter
+
+sealed trait PromptMessage extends Message derives UP.ReadWriter {
   def token: String
 }
 object PromptMessage {
+
   case class ChooseVariant(
     `package`: BareModule,
     label: String,
     choices: Seq[String],
     descriptions: Map[String, String],
     token: String = scala.util.Random.nextInt().toHexString,
-  ) extends PromptMessage
+  ) extends PromptMessage derives UP.ReadWriter
 
   case class ConfirmInstallation(
     warnings: Map[BareModule, Seq[String]],
     choices: Seq[String], // = Seq("yes", "no"),
     token: String = scala.util.Random.nextInt().toHexString,
-  ) extends PromptMessage
+  ) extends PromptMessage derives UP.ReadWriter
 }
 
-case class ResponseMessage(token: String, body: String) extends Message
-object ResponseMessage {
-  given responseMessageRw: UP.ReadWriter[ResponseMessage] = ???  // UP.macroRW
-}
+case class ResponseMessage(token: String, body: String) extends Message derives UP.ReadWriter
 
-trait ErrorMessage extends Message {
+sealed trait ErrorMessage extends Message derives UP.ReadWriter {
   def message: String
   def detail: String
 }
-
-case class ErrorGeneric(message: String, detail: String) extends ErrorMessage derives UP.ReadWriter
-
-case class ScopeNotInitialized(message: String, detail: String) extends ErrorMessage derives UP.ReadWriter
+object ErrorMessage {
+  case class Generic(message: String, detail: String) extends ErrorMessage derives UP.ReadWriter
+  case class ScopeNotInitialized(message: String, detail: String) extends ErrorMessage derives UP.ReadWriter
+}
 
 case class ResultMessage(result: String) extends Message

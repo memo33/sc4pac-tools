@@ -13,6 +13,7 @@ import sc4pac.JsonData as JD
 class Api(options: sc4pac.cli.Commands.ServerOptions) {
 
   private def jsonResponse[A : UP.Writer](obj: A): Response = Response.json(UP.write(obj, indent = options.indent))
+  private def jsonFrame[A : UP.Writer](obj: A): WebSocketFrame = WebSocketFrame.Text(UP.write(obj, indent = options.indent))
 
   /** Sends a 400 ScopeNotInitialized if Plugins cannot be loaded. */
   private def withPluginsOr400[R](task: JD.Plugins => zio.URIO[R, Response]): zio.URIO[R & ScopeRoot, Response] = {
@@ -20,7 +21,7 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
       .foldZIO(
         success = task,
         failure = (err: ErrStr) =>
-          ZIO.succeed(jsonResponse(ScopeNotInitialized(message = "Scope not initialized", detail = err)).status(Status.BadRequest))
+          ZIO.succeed(jsonResponse(ErrorMessage.ScopeNotInitialized(message = "Scope not initialized", detail = err)).status(Status.BadRequest))
       )
   }
 
@@ -33,14 +34,14 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
     //     ws.send('FOO')
     Method.GET / "update" / "ws" -> handler(withPluginsOr400(pluginsData =>
       Handler.webSocket { wsChannel =>
-        val send: Message => Task[Unit] = ???
-        WebSocketLogger.run(send) {
+        WebSocketLogger.run(send = msg => wsChannel.send(Read(jsonFrame(msg)))) {
           val updateTask: zio.RIO[ScopeRoot & WebSocketLogger, Message] =
             for {
               pac          <- Sc4pac.init(pluginsData.config)
               pluginsRoot  <- pluginsData.config.pluginsRootAbs
+              logger       <- ZIO.service[WebSocketLogger]
               flag         <- pac.update(pluginsData.explicit, globalVariant0 = pluginsData.config.variant, pluginsRoot = pluginsRoot)
-                                .provideSomeLayer(zio.ZLayer.succeed(??? : Prompter))
+                                .provideSomeLayer(zio.ZLayer.succeed(WebSocketPrompter(wsChannel, logger)))
             } yield ResultMessage("OK")
 
           for {
@@ -57,6 +58,6 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
       Response.text(s"Hello, $name.")
     }
 
-  ).handleError(err => jsonResponse(ErrorGeneric(message = "Unhandled error", detail = err)).status(Status.InternalServerError))
+  ).handleError(err => jsonResponse(ErrorMessage.Generic(message = "Unhandled error", detail = err)).status(Status.InternalServerError))
 
 }
