@@ -34,22 +34,24 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
     //     ws.send('FOO')
     Method.GET / "update" / "ws" -> handler(withPluginsOr400(pluginsData =>
       Handler.webSocket { wsChannel =>
-        WebSocketLogger.run(send = msg => wsChannel.send(Read(jsonFrame(msg)))) {
-          val updateTask: zio.RIO[ScopeRoot & WebSocketLogger, Message] =
-            for {
-              pac          <- Sc4pac.init(pluginsData.config)
-              pluginsRoot  <- pluginsData.config.pluginsRootAbs
-              logger       <- ZIO.service[WebSocketLogger]
-              flag         <- pac.update(pluginsData.explicit, globalVariant0 = pluginsData.config.variant, pluginsRoot = pluginsRoot)
-                                .provideSomeLayer(zio.ZLayer.succeed(WebSocketPrompter(wsChannel, logger)))
-            } yield ResultMessage("OK")
-
+        val updateTask: zio.RIO[ScopeRoot & WebSocketLogger, Message] =
           for {
-            finalMsg <- updateTask.catchSome { case err: cli.Commands.ExpectedFailure => ZIO.succeed(expectedFailureMessage(err)) }
-            unit     <- ZIO.serviceWithZIO[WebSocketLogger](_.sendMessageAwait(finalMsg))
-          } yield unit: Unit
-        } // logger is shut down here (TODO use resource for safer closing)
-        // TODO manually shut down websocket?
+            pac          <- Sc4pac.init(pluginsData.config)
+            pluginsRoot  <- pluginsData.config.pluginsRootAbs
+            logger       <- ZIO.service[WebSocketLogger]
+            flag         <- pac.update(pluginsData.explicit, globalVariant0 = pluginsData.config.variant, pluginsRoot = pluginsRoot)
+                              .provideSomeLayer(zio.ZLayer.succeed(WebSocketPrompter(wsChannel, logger)))
+          } yield ResultMessage("OK")
+
+        val wsTask: zio.RIO[ScopeRoot, Unit] =
+          WebSocketLogger.run(send = msg => wsChannel.send(Read(jsonFrame(msg)))) {
+            for {
+              finalMsg <- updateTask.catchSome { case err: cli.Commands.ExpectedFailure => ZIO.succeed(expectedFailureMessage(err)) }
+              unit     <- ZIO.serviceWithZIO[WebSocketLogger](_.sendMessageAwait(finalMsg))
+            } yield unit
+          } // logger is shut down here (TODO use resource for safer closing)
+
+        wsTask.zipRight(wsChannel.shutdown).map(_ => System.err.println("Shutting down websocket."))
       }.toResponse
     )),
 
