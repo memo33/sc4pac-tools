@@ -19,13 +19,23 @@ object PromptMessage {
     label: String,
     choices: Seq[String],
     descriptions: Map[String, String],
-    token: String = scala.util.Random.nextInt().toHexString,
+    token: String = scala.util.Random.nextInt().toHexString
   ) extends PromptMessage derives UP.ReadWriter
+
+  case class ConfirmUpdatePlan(
+    toRemove: Seq[ConfirmUpdatePlan.Pkg],
+    toInstall: Seq[ConfirmUpdatePlan.Pkg],
+    choices: Seq[String], // = Seq("yes", "no"),
+    token: String = scala.util.Random.nextInt().toHexString
+  ) extends PromptMessage derives UP.ReadWriter
+  object ConfirmUpdatePlan {
+    case class Pkg(`package`: BareModule, version: String, variant: Variant) derives UP.ReadWriter
+  }
 
   case class ConfirmInstallation(
     warnings: Map[BareModule, Seq[String]],
     choices: Seq[String], // = Seq("yes", "no"),
-    token: String = scala.util.Random.nextInt().toHexString,
+    token: String = scala.util.Random.nextInt().toHexString
   ) extends PromptMessage derives UP.ReadWriter
 }
 
