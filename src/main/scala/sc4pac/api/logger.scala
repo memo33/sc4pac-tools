@@ -43,7 +43,7 @@ object WebSocketLogger {
   //     u <- logger.sendMessageAwait(api.ResultMessage("OK"))
   //     _ <- ZIO.succeed(println("awaited"))
   //   } yield true
-  //   run(send, task)
+  //   run(send)(task)
   // }
 
   private sealed trait Event
@@ -57,7 +57,7 @@ object WebSocketLogger {
     * The messages are buffered in a queue and are sent asynchronously from
     * another thread.
     */
-  def run[R : zio.Tag, A](send: Message => Task[Unit], task: zio.URIO[R & WebSocketLogger, A]): ZIO[R, Throwable, A] = {
+  def run[R : zio.Tag, A](send: Message => Task[Unit])(task: zio.RIO[R & WebSocketLogger, A]): ZIO[R, Throwable, A] = {
     val queue = new java.util.concurrent.LinkedBlockingQueue[Event]
     val consume: Task[Boolean] =
       ZIO.iterate(true)(identity) { _ =>
@@ -76,12 +76,12 @@ object WebSocketLogger {
             } yield true
         })
       }
-    for {
+    (for {
       fiber  <- consume.fork
       logger =  WebSocketLogger(queue)
-      result <- ZIO.provideLayer(zio.ZLayer.succeed(logger))(task)
+      result <- ZIO.provideLayer(zio.ZLayer.succeed(logger))(task).either
       _      <- ZIO.attempt(queue.offer(Event.ShutDown))
       _      <- fiber.join
-    } yield result
+    } yield result).absolve
   }
 }

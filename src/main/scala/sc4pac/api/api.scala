@@ -33,19 +33,21 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
     //     ws.send('FOO')
     Method.GET / "update" / "ws" -> handler(withPluginsOr400(pluginsData =>
       Handler.webSocket { wsChannel =>
-        val logger = (??? : WebSocketLogger)  // TODO shutdown logger
-        val task: zio.RIO[ScopeRoot, Message] =
-          for {
-            pac          <- Sc4pac.init(pluginsData.config)
-                              .provideSomeLayer(zio.ZLayer.succeed(logger))
-            pluginsRoot  <- pluginsData.config.pluginsRootAbs
-            flag         <- pac.update(pluginsData.explicit, globalVariant0 = pluginsData.config.variant, pluginsRoot = pluginsRoot)
-                              .provideSomeLayer(zio.ZLayer.succeed(??? : Prompter))
-          } yield ResultMessage("OK")
+        val send: Message => Task[Unit] = ???
+        WebSocketLogger.run(send) {
+          val updateTask: zio.RIO[ScopeRoot & WebSocketLogger, Message] =
+            for {
+              pac          <- Sc4pac.init(pluginsData.config)
+              pluginsRoot  <- pluginsData.config.pluginsRootAbs
+              flag         <- pac.update(pluginsData.explicit, globalVariant0 = pluginsData.config.variant, pluginsRoot = pluginsRoot)
+                                .provideSomeLayer(zio.ZLayer.succeed(??? : Prompter))
+            } yield ResultMessage("OK")
 
-        task
-          .catchSome { case err: cli.Commands.ExpectedFailure => ZIO.succeed(expectedFailureMessage(err)) }
-          .flatMap(logger.sendMessageAwait(_)): zio.RIO[ScopeRoot, Unit]
+          for {
+            finalMsg <- updateTask.catchSome { case err: cli.Commands.ExpectedFailure => ZIO.succeed(expectedFailureMessage(err)) }
+            unit     <- ZIO.serviceWithZIO[WebSocketLogger](_.sendMessageAwait(finalMsg))
+          } yield unit: Unit
+        } // logger is shut down here (TODO use resource for safer closing)
         // TODO manually shut down websocket?
       }.toResponse
     )),
