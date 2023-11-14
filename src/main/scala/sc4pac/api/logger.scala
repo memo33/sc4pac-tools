@@ -3,10 +3,12 @@ package sc4pac
 package api
 
 import zio.{ZIO, Task, IO}
+import zio.http.WebSocketFrame
+import zio.http.ChannelEvent.Read
 
 import Resolution.DepModule
 
-class WebSocketLogger private (queue: java.util.concurrent.LinkedBlockingQueue[WebSocketLogger.Event]) extends Logger {
+class WebSocketLogger private (private[api] val queue: java.util.concurrent.LinkedBlockingQueue[WebSocketLogger.Event]) extends Logger {
 
   def log(msg: String): Unit = println(s"[info] $msg")
   def warn(msg: String): Unit = println(s"[warn] $msg")
@@ -31,7 +33,7 @@ class WebSocketLogger private (queue: java.util.concurrent.LinkedBlockingQueue[W
 
   // TODO implement above methods as wells as Coursier Logger methods
 
-  // def discardingUnexpectedMessage(msg: String): Unit = warn(s"Discarding unexpected message: $msg")
+  def discardingUnexpectedMessage(msg: String): Unit = warn(s"Discarding unexpected message: $msg")
 
 }
 object WebSocketLogger {
@@ -46,11 +48,16 @@ object WebSocketLogger {
   //   run(send)(task)
   // }
 
-  private sealed trait Event
-  private object Event {
+  private[api] sealed trait Event
+  private[api] object Event {
     case object ShutDown extends Event
     case class Plain(message: Message) extends Event
     case class WithCompletion(message: Message, promise: zio.Promise[Nothing, Unit]) extends Event
+    case class WithResponse(
+      message: PromptMessage,
+      promise: zio.Promise[Throwable, ResponseMessage],
+      receiveMatchingResponse: Task[ResponseMessage]
+    ) extends Event
   }
 
   /** Run a task with a logger which allows non-blocking writes of messages.
@@ -59,11 +66,12 @@ object WebSocketLogger {
     */
   def run[R : zio.Tag, A](send: Message => Task[Unit])(task: zio.RIO[R & WebSocketLogger, A]): ZIO[R, Throwable, A] = {
     val queue = new java.util.concurrent.LinkedBlockingQueue[Event]
+    val logger = WebSocketLogger(queue)
     val consume: Task[Boolean] =
       ZIO.iterate(true)(identity) { _ =>
         ZIO.attemptBlocking(queue.take()).flatMap(_ match {
           case Event.ShutDown =>
-            System.err.println("Shutting down message queue.")
+            logger.log("Shutting down message queue.")
             ZIO.succeed(false)
           case Event.Plain(msg) =>
             for {
@@ -74,14 +82,66 @@ object WebSocketLogger {
               _ <- send(msg)
               _ <- promise.completeWith(ZIO.succeed(()))
             } yield true
+          case Event.WithResponse(msg, promise, receiveMatchingResponse) =>
+            for {
+              _ <- send(msg)
+              _ <- promise.complete(receiveMatchingResponse)
+            } yield true
         })
       }
     (for {
       fiber  <- consume.fork
-      logger =  WebSocketLogger(queue)
       result <- ZIO.provideLayer(zio.ZLayer.succeed(logger))(task).either
       _      <- ZIO.attempt(queue.offer(Event.ShutDown))
       _      <- fiber.join
     } yield result).absolve
   }
+}
+
+
+class WebSocketPrompter(wsChannel: zio.http.WebSocketChannel, logger: WebSocketLogger) extends Prompter {
+
+  /** Send a prompt to the client and wait for a matching response, discarding all other responses. */
+  private def sendPrompt(message: PromptMessage): Task[ResponseMessage] = {
+
+    val receiveMatchingResponse: Task[ResponseMessage] =
+      ZIO.iterate(Option.empty[ResponseMessage])(_.isEmpty) { _ =>
+        wsChannel.receive.flatMap {
+          case Read(WebSocketFrame.Text(raw)) =>
+            JsonIo.read[ResponseMessage](raw).option
+              .map(_.filter(_.token == message.token))  // accept only responses with matching token
+              .map { opt =>
+                if (opt.isEmpty) logger.discardingUnexpectedMessage(raw)
+                opt
+              }
+          case event =>
+            logger.discardingUnexpectedMessage(event.toString)
+            ZIO.succeed(None)  // discard all unexpected messages (and events) and continue receiving
+        }
+      }.map(_.get)
+
+    for {
+      promise  <- zio.Promise.make[Throwable, ResponseMessage]
+      _        <- ZIO.succeed(logger.queue.offer(WebSocketLogger.Event.WithResponse(message, promise, receiveMatchingResponse)))
+      response <- promise.await
+    } yield response
+  }
+
+  private def promptUntil(message: PromptMessage, acceptResponse: String => Boolean): Task[String] = {
+    ZIO.iterate(Option.empty[String])(_.isEmpty) { _ =>
+      for (response <- sendPrompt(message)) yield {
+        if (acceptResponse(response.body)) Some(response.body)
+        else None
+      }
+    }.map(_.get)
+  }
+
+  def promptForVariant(module: BareModule, label: String, values: Seq[String], descriptions: Map[String, String]): Task[String] = {
+    promptUntil(PromptMessage.ChooseVariant(module, label, values, descriptions), values.contains(_))
+  }
+
+  def confirmUpdatePlan(plan: Sc4pac.UpdatePlan): zio.Task[Boolean] = ZIO.succeed(true)  // ??? TODO implement
+
+  def confirmInstallationWarnings(warnings: Seq[(BareModule, Seq[String])]): zio.Task[Boolean] = ZIO.succeed(true)  // ??? TODO implement
+
 }

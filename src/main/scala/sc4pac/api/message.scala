@@ -27,7 +27,7 @@ object PromptMessage {
 
 case class ResponseMessage(token: String, body: String) extends Message
 object ResponseMessage {
-  // given responseMessageRw: UP.ReadWriter[ResponseMessage] = ???  // UP.macroRW
+  given responseMessageRw: UP.ReadWriter[ResponseMessage] = ???  // UP.macroRW
 }
 
 trait ErrorMessage extends Message {
