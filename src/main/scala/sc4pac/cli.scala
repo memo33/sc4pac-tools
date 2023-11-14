@@ -23,7 +23,7 @@ object Commands {
 
   sealed abstract class Sc4pacCommandOptions extends Product with Serializable
 
-  private val cliEnvironment = {
+  val cliEnvironment = {
     val logger = CliLogger()
     zio.ZEnvironment(ScopeRoot(os.pwd), logger, CliPrompter(logger))
   }
