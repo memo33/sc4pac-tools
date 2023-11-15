@@ -23,11 +23,14 @@ object PromptMessage {
     token: String = scala.util.Random.nextInt().toHexString
   ) extends PromptMessage derives UP.ReadWriter
 
+  val yesNo = Seq("Yes", "No")
+  val yes = yesNo.head
+
   @upickle.implicits.key("/prompt/confirmation/update/plan")
   case class ConfirmUpdatePlan(
     toRemove: Seq[ConfirmUpdatePlan.Pkg],
     toInstall: Seq[ConfirmUpdatePlan.Pkg],
-    choices: Seq[String], // = Seq("yes", "no"),
+    choices: Seq[String], // = yesNo,
     token: String = scala.util.Random.nextInt().toHexString
   ) extends PromptMessage derives UP.ReadWriter
   object ConfirmUpdatePlan {
@@ -38,7 +41,7 @@ object PromptMessage {
   @upickle.implicits.key("/prompt/confirmation/update/warnings")
   case class ConfirmInstallation(
     warnings: Map[BareModule, Seq[String]],
-    choices: Seq[String], // = Seq("yes", "no"),
+    choices: Seq[String], // = yesNo,
     token: String = scala.util.Random.nextInt().toHexString
   ) extends PromptMessage derives UP.ReadWriter
 }

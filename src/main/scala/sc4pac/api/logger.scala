@@ -7,6 +7,7 @@ import zio.http.WebSocketFrame
 import zio.http.ChannelEvent.Read
 
 import Resolution.DepModule
+import PromptMessage.{yesNo, yes}
 
 class WebSocketLogger private (private[api] val queue: java.util.concurrent.LinkedBlockingQueue[WebSocketLogger.Event]) extends Logger {
 
@@ -141,15 +142,13 @@ class WebSocketPrompter(wsChannel: zio.http.WebSocketChannel, logger: WebSocketL
   }
 
   def confirmUpdatePlan(plan: Sc4pac.UpdatePlan): zio.Task[Boolean] = {
-    val choices = Seq("yes", "no")
     val toRemove = plan.toRemove.toSeq.collect { case dep: DepModule => PromptMessage.ConfirmUpdatePlan.Pkg(dep.toBareDep, dep.version, dep.variant) }
     val toInstall = plan.toInstall.toSeq.collect { case dep: DepModule => PromptMessage.ConfirmUpdatePlan.Pkg(dep.toBareDep, dep.version, dep.variant) }
-    promptUntil(PromptMessage.ConfirmUpdatePlan(toRemove = toRemove, toInstall = toInstall, choices = choices), choices.contains(_)).map(_ == "yes")
+    promptUntil(PromptMessage.ConfirmUpdatePlan(toRemove = toRemove, toInstall = toInstall, choices = yesNo), yesNo.contains(_)).map(_ == yes)
   }
 
   def confirmInstallationWarnings(warnings: Seq[(BareModule, Seq[String])]): zio.Task[Boolean] = {
-    val choices = Seq("yes", "no")
-    promptUntil(PromptMessage.ConfirmInstallation(warnings.toMap, choices), choices.contains(_)).map(_ == "yes")
+    promptUntil(PromptMessage.ConfirmInstallation(warnings.toMap, yesNo), yesNo.contains(_)).map(_ == yes)
   }
 
 }
