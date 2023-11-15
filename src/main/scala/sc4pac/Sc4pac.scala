@@ -271,6 +271,7 @@ trait UpdateService { this: Sc4pac =>
                                    }.map(_.unzip)
         pkgWarnings             =  deps.zip(warnings).collect { case (dep, ws) if ws.nonEmpty => (dep.toBareDep, ws) }
         _                       <- ZIO.serviceWithZIO[Prompter](_.confirmInstallationWarnings(pkgWarnings))
+                                     .filterOrFail(_ == true)(error.Sc4pacAbort())
       } yield StageResult(tempPluginsRoot, deps.zip(stagedFiles), stagingRoot)
     }
 

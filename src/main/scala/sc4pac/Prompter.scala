@@ -43,7 +43,7 @@ class CliPrompter(logger: CliLogger) extends Prompter {
     logPlan(plan).zipRight {
       if (plan.isUpToDate) ZIO.succeed(true)
       else Prompt.ifInteractive(
-        onTrue = Prompt.yesNo("Continue?").filterOrFail(_ == true)(error.Sc4pacAbort()),
+        onTrue = Prompt.yesNo("Continue?"),
         onFalse = ZIO.succeed(true))  // in non-interactive mode, always continue
     }
   }
@@ -51,7 +51,7 @@ class CliPrompter(logger: CliLogger) extends Prompter {
   def confirmInstallationWarnings(warnings: Seq[(BareModule, Seq[String])]): Task[Boolean] = {
     if (warnings.isEmpty) ZIO.succeed(true)
     else Prompt.ifInteractive(
-      onTrue = Prompt.yesNo("Continue despite warnings?").filterOrFail(_ == true)(error.Sc4pacAbort()),
+      onTrue = Prompt.yesNo("Continue despite warnings?"),
       onFalse = ZIO.succeed(true))  // in non-interactive mode, we continue despite warnings
   }
 }
