@@ -121,7 +121,7 @@ class WebSocketPrompter(wsChannel: zio.http.WebSocketChannel, logger: WebSocketL
         wsChannel.receive.flatMap {
           case Read(WebSocketFrame.Text(raw)) =>
             JsonIo.read[ResponseMessage](raw).option
-              .map(_.filter(_.token == message.token))  // accept only responses with matching token
+              .map(_.filter(message.accept(_)))  // accept only responses with matching token and valid body
               .map { opt =>
                 if (opt.isEmpty) logger.discardingUnexpectedMessage(raw)
                 opt
@@ -149,17 +149,17 @@ class WebSocketPrompter(wsChannel: zio.http.WebSocketChannel, logger: WebSocketL
   }
 
   def promptForVariant(module: BareModule, label: String, values: Seq[String], descriptions: Map[String, String]): Task[String] = {
-    promptUntil(PromptMessage.ChooseVariant(module, label, values, descriptions), values.contains(_))
+    sendPrompt(PromptMessage.ChooseVariant(module, label, values, descriptions)).map(_.body)
   }
 
   def confirmUpdatePlan(plan: Sc4pac.UpdatePlan): zio.Task[Boolean] = {
     val toRemove = plan.toRemove.toSeq.collect { case dep: DepModule => PromptMessage.ConfirmUpdatePlan.Pkg(dep.toBareDep, dep.version, dep.variant) }
     val toInstall = plan.toInstall.toSeq.collect { case dep: DepModule => PromptMessage.ConfirmUpdatePlan.Pkg(dep.toBareDep, dep.version, dep.variant) }
-    promptUntil(PromptMessage.ConfirmUpdatePlan(toRemove = toRemove, toInstall = toInstall, choices = yesNo), yesNo.contains(_)).map(_ == yes)
+    sendPrompt(PromptMessage.ConfirmUpdatePlan(toRemove = toRemove, toInstall = toInstall)).map(_.body == yes)
   }
 
   def confirmInstallationWarnings(warnings: Seq[(BareModule, Seq[String])]): zio.Task[Boolean] = {
-    promptUntil(PromptMessage.ConfirmInstallation(warnings.toMap, yesNo), yesNo.contains(_)).map(_ == yes)
+    sendPrompt(PromptMessage.ConfirmInstallation(warnings.toMap)).map(_.body == yes)
   }
 
 }

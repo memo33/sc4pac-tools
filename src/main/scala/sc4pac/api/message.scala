@@ -11,8 +11,14 @@ sealed trait Message derives UP.ReadWriter
 
 sealed trait PromptMessage extends Message derives UP.ReadWriter {
   def token: String
+  def choices: Seq[String]
+  def accept(response: ResponseMessage): Boolean = response.token == token && choices.contains(response.body)
 }
 object PromptMessage {
+
+  private def responsesFromChoices(choices: Seq[String], token: String): Map[String, ResponseMessage] = {
+    choices.map(s => s -> ResponseMessage(token, s)).toMap
+  }
 
   @upickle.implicits.key("/prompt/choice/update/variant")
   case class ChooseVariant(
@@ -20,8 +26,16 @@ object PromptMessage {
     label: String,
     choices: Seq[String],
     descriptions: Map[String, String],
-    token: String = scala.util.Random.nextInt().toHexString
-  ) extends PromptMessage derives UP.ReadWriter
+    token: String,
+    responses: Map[String, ResponseMessage]
+  ) extends PromptMessage
+  object ChooseVariant {
+    def apply(`package`: BareModule, label: String, choices: Seq[String], descriptions: Map[String, String]): ChooseVariant = {
+      val token = scala.util.Random.nextInt().toHexString
+      ChooseVariant(`package`, label, choices, descriptions, token, responsesFromChoices(choices, token))
+    }
+    given chooseVariantRw: UP.ReadWriter[ChooseVariant] = UP.stringKeyRW(UP.macroRW)
+  }
 
   val yesNo = Seq("Yes", "No")
   val yes = yesNo.head
@@ -31,19 +45,33 @@ object PromptMessage {
     toRemove: Seq[ConfirmUpdatePlan.Pkg],
     toInstall: Seq[ConfirmUpdatePlan.Pkg],
     choices: Seq[String], // = yesNo,
-    token: String = scala.util.Random.nextInt().toHexString
-  ) extends PromptMessage derives UP.ReadWriter
+    token: String,
+    responses: Map[String, ResponseMessage]
+  ) extends PromptMessage
   object ConfirmUpdatePlan {
+    def apply(toRemove: Seq[Pkg], toInstall: Seq[Pkg]): ConfirmUpdatePlan = {
+      val token = scala.util.Random.nextInt().toHexString
+      ConfirmUpdatePlan(toRemove = toRemove, toInstall = toInstall, choices = yesNo, token = token, responsesFromChoices(yesNo, token))
+    }
+    given confirmUpdatePlanRw: UP.ReadWriter[ConfirmUpdatePlan] = UP.stringKeyRW(UP.macroRW)
     case class Pkg(`package`: BareModule, version: String, variant: Variant)
     given pkgRw: UP.ReadWriter[Pkg] = UP.stringKeyRW(UP.macroRW)  // serializes Variant as dictionary instead of array
   }
 
   @upickle.implicits.key("/prompt/confirmation/update/warnings")
   case class ConfirmInstallation(
-    warnings: Map[BareModule, Seq[String]],
+    warnings: Map[String, Seq[String]],  // String instead of BareModule as keys to facilitate serialization to dictionary instead of array
     choices: Seq[String], // = yesNo,
-    token: String = scala.util.Random.nextInt().toHexString
-  ) extends PromptMessage derives UP.ReadWriter
+    token: String,
+    responses: Map[String, ResponseMessage]
+  ) extends PromptMessage
+  object ConfirmInstallation {
+    def apply(warnings: Map[BareModule, Seq[String]]): ConfirmInstallation = {
+      val token = scala.util.Random.nextInt().toHexString
+      ConfirmInstallation(warnings.map((k, v) => (k.orgName, v)), choices = yesNo, token, responses = responsesFromChoices(yesNo, token))
+    }
+    given confirmInstallation: UP.ReadWriter[ConfirmInstallation] = UP.stringKeyRW(UP.macroRW)
+  }
 }
 
 @upickle.implicits.key("/prompt/response")
