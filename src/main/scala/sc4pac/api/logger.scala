@@ -26,16 +26,27 @@ class WebSocketLogger private (private[api] val queue: java.util.concurrent.Link
 
   def extractingArchiveEntry(entry: os.SubPath, include: Boolean): Unit = ()
 
-  def extractingPackage[A](dependency: DepModule, progress: Sc4pac.Progress)(extraction: Task[A]): Task[A] = extraction
+  def extractingPackage[A](dependency: DepModule, progress: Sc4pac.Progress)(extraction: Task[A]): Task[A] = {
+    ZIO.succeed(sendMessageAsync(ProgressMessage.Extraction(dependency.toBareDep, progress))).zipRight(extraction)
+  }
 
-  def fetchingAssets[A](fetching: Task[A]): Task[A] = fetching
+  def fetchingAssets[A](fetching: Task[A]): Task[A] = fetching  // no message needed
 
-  def publishing[A](removalOnly: Boolean)(publishing: Task[A]): Task[A] = publishing
-
-  // TODO implement above methods as wells as Coursier Logger methods
+  def publishing[A](removalOnly: Boolean)(publishing: Task[A]): Task[A] = publishing  // no message needed
 
   def discardingUnexpectedMessage(msg: String): Unit = warn(s"Discarding unexpected message: $msg")
 
+  override def downloadingArtifact(url: String, artifact: coursier.util.Artifact): Unit =
+    sendMessageAsync(ProgressMessage.DownloadStarted(url))
+
+  override def downloadLength(url: String, len: Long, currentLen: Long, watching: Boolean): Unit =
+    sendMessageAsync(ProgressMessage.DownloadLength(url, length = len))
+
+  override def downloadProgress(url: String, downloaded: Long): Unit =
+    sendMessageAsync(ProgressMessage.DownloadDownloaded(url, downloaded = downloaded))
+
+  override def downloadedArtifact(url: String, success: Boolean): Unit =
+    sendMessageAsync(ProgressMessage.DownloadFinished(url, success))
 }
 object WebSocketLogger {
 

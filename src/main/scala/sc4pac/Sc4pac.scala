@@ -7,6 +7,7 @@ import coursier.core.{Module, Organization, ModuleName, Dependency, Publication,
 import coursier.util.{Artifact, EitherT, Gather}
 import java.nio.file.Path
 import zio.{IO, ZIO, UIO, Task, Scope, RIO}
+import upickle.default as UP
 
 import sc4pac.error.*
 import sc4pac.Constants.isSc4pacAsset
@@ -425,7 +426,7 @@ object Sc4pac {
     }
   }
 
-  class Progress(numerator: Int, denominator: Int) {
+  case class Progress(numerator: Int, denominator: Int) derives UP.ReadWriter {
     override def toString = s"($numerator/$denominator)"
   }
 

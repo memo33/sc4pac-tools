@@ -62,3 +62,20 @@ object ErrorMessage {
 
 @upickle.implicits.key("/result")
 case class ResultMessage(result: String) extends Message
+
+object ProgressMessage {
+  @upickle.implicits.key("/progress/update/extraction")
+  case class Extraction(`package`: BareModule, progress: Sc4pac.Progress) extends Message derives UP.ReadWriter
+
+  @upickle.implicits.key("/progress/download/started")
+  case class DownloadStarted(url: String) extends Message derives UP.ReadWriter
+
+  @upickle.implicits.key("/progress/download/length")
+  case class DownloadLength(url: String, length: Long) extends Message derives UP.ReadWriter
+
+  @upickle.implicits.key("/progress/download/downloaded")
+  case class DownloadDownloaded(url: String, downloaded: Long) extends Message derives UP.ReadWriter
+
+  @upickle.implicits.key("/progress/download/finished")
+  case class DownloadFinished(url: String, success: Boolean) extends Message derives UP.ReadWriter
+}
