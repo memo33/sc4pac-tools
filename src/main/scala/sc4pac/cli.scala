@@ -35,24 +35,21 @@ object Commands {
   private[sc4pac] val sortHelpLast: Option[Seq[String] => Seq[String]] =
     Some(groups => groups.partition(_ == "Help") match { case (help, nonHelp) => nonHelp ++ help })
 
-  type ExpectedFailure = sc4pac.error.Sc4pacAbort | sc4pac.error.Sc4pacTimeout | sc4pac.error.Sc4pacNotInteractive
-    | sc4pac.error.Sc4pacVersionNotFound | sc4pac.error.Sc4pacAssetNotFound | sc4pac.error.ExtractionFailed
-    | sc4pac.error.UnsatisfiableVariantConstraints
+  type ExpectedFailure = error.Sc4pacAbort | error.DownloadFailed | error.NoChannelsAvailable
+    | error.Sc4pacVersionNotFound | error.Sc4pacAssetNotFound | error.ExtractionFailed
+    | error.UnsatisfiableVariantConstraints
 
   private def handleExpectedFailures(abort: ExpectedFailure, exit: Int => Nothing): Nothing = abort match {
-    case abort: sc4pac.error.Sc4pacAbort => { System.err.println(Array("Operation aborted.", abort.msg).mkString(" ")); exit(1) }
-    case abort: sc4pac.error.Sc4pacTimeout => { System.err.println(Array("Operation aborted.", abort.getMessage).mkString(" ")); exit(1) }
-    case abort: sc4pac.error.Sc4pacNotInteractive => { System.err.println(s"Operation aborted as terminal is non-interactive: ${abort.getMessage}"); exit(1) }
-    case abort: (sc4pac.error.Sc4pacVersionNotFound | sc4pac.error.Sc4pacAssetNotFound) =>
-      { System.err.println(s"Operation aborted. ${abort.getMessage}"); exit(1) }
-    case abort: sc4pac.error.ExtractionFailed => { System.err.println(s"Operation aborted. ${abort.getMessage}"); exit(1) }
-    case abort: sc4pac.error.UnsatisfiableVariantConstraints => { System.err.println(s"Operation aborted. ${abort.getMessage}"); exit(1) }
+    case abort: error.Sc4pacAbort => { System.err.println("Operation aborted."); exit(1) }
+    case abort => { System.err.println(s"Operation aborted. ${abort.getMessage}"); exit(1) }
   }
 
   private def runMainExit(task: Task[Unit], exit: Int => Nothing): Nothing = {
     unsafeRun(task.fold(
       failure = {
         case abort: ExpectedFailure => handleExpectedFailures(abort, exit)  // we do not need the trace for expected failures
+        case abort: error.Sc4pacTimeout => { System.err.println(Array("Operation aborted.", abort.getMessage).mkString(" ")); exit(1) }
+        case abort: error.Sc4pacNotInteractive => { System.err.println(s"Operation aborted as terminal is non-interactive: ${abort.getMessage}"); exit(1) }
         case e => { e.printStackTrace(); exit(2) }
       },
       success = _ => exit(0)

@@ -78,14 +78,28 @@ object PromptMessage {
 case class ResponseMessage(token: String, body: String) extends Message derives UP.ReadWriter
 
 sealed trait ErrorMessage extends Message derives UP.ReadWriter {
-  def message: String
+  def title: String
   def detail: String
 }
 object ErrorMessage {
-  @upickle.implicits.key("/error/generic")
-  case class Generic(message: String, detail: String) extends ErrorMessage derives UP.ReadWriter
+  @upickle.implicits.key("/error/server-error")
+  case class ServerError(title: String, detail: String) extends ErrorMessage derives UP.ReadWriter
   @upickle.implicits.key("/error/scope-not-initialized")
-  case class ScopeNotInitialized(message: String, detail: String) extends ErrorMessage derives UP.ReadWriter
+  case class ScopeNotInitialized(title: String, detail: String) extends ErrorMessage derives UP.ReadWriter
+  @upickle.implicits.key("/error/version-not-found")
+  case class VersionNotFound(title: String, detail: String) extends ErrorMessage derives UP.ReadWriter
+  @upickle.implicits.key("/error/asset-not-found")
+  case class AssetNotFound(title: String, detail: String) extends ErrorMessage derives UP.ReadWriter
+  @upickle.implicits.key("/error/extraction-failed")
+  case class ExtractionFailed(title: String, detail: String) extends ErrorMessage derives UP.ReadWriter
+  @upickle.implicits.key("/error/variant-constraints-not-satisfiable")
+  case class UnsatisfiableVariantConstraints(title: String, detail: String) extends ErrorMessage derives UP.ReadWriter
+  @upickle.implicits.key("/error/download-failed")
+  case class DownloadFailed(title: String, detail: String) extends ErrorMessage derives UP.ReadWriter
+  @upickle.implicits.key("/error/channels-not-available")
+  case class NoChannelsAvailable(title: String, detail: String) extends ErrorMessage derives UP.ReadWriter
+  @upickle.implicits.key("/error/aborted")
+  case class Aborted(title: String, detail: String) extends ErrorMessage derives UP.ReadWriter
 }
 
 @upickle.implicits.key("/result")

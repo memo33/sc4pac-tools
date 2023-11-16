@@ -21,11 +21,19 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
       .foldZIO(
         success = task,
         failure = (err: ErrStr) =>
-          ZIO.succeed(jsonResponse(ErrorMessage.ScopeNotInitialized(message = "Scope not initialized", detail = err)).status(Status.BadRequest))
+          ZIO.succeed(jsonResponse(ErrorMessage.ScopeNotInitialized("Scope not initialized", err)).status(Status.BadRequest))
       )
   }
 
-  def expectedFailureMessage(err: cli.Commands.ExpectedFailure): Message = ???
+  def expectedFailureMessage(err: cli.Commands.ExpectedFailure): Message = err match {
+    case abort: error.Sc4pacVersionNotFound => ErrorMessage.VersionNotFound(abort.title, abort.detail)
+    case abort: error.Sc4pacAssetNotFound => ErrorMessage.AssetNotFound(abort.title, abort.detail)
+    case abort: error.ExtractionFailed => ErrorMessage.ExtractionFailed(abort.title, abort.detail)
+    case abort: error.UnsatisfiableVariantConstraints => ErrorMessage.UnsatisfiableVariantConstraints(abort.title, abort.detail)
+    case abort: error.DownloadFailed => ErrorMessage.DownloadFailed(abort.title, abort.detail)
+    case abort: error.NoChannelsAvailable => ErrorMessage.NoChannelsAvailable(abort.title, abort.detail)
+    case abort: error.Sc4pacAbort => ErrorMessage.Aborted("Operation aborted.", "")
+  }
 
   def routes: Routes[ScopeRoot, Nothing] = Routes(
 
@@ -60,6 +68,6 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
       Response.text(s"Hello, $name.")
     }
 
-  ).handleError(err => jsonResponse(ErrorMessage.Generic(message = "Unhandled error", detail = err)).status(Status.InternalServerError))
+  ).handleError(err => jsonResponse(ErrorMessage.ServerError("Unhandled error", err)).status(Status.InternalServerError))
 
 }

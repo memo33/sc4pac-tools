@@ -325,7 +325,7 @@ trait UpdateService { this: Sc4pac =>
       import Sc4pac.{DecisionTree, Node, Empty}
       DecisionTree.fromVariants(pkgData.variants.map(_.variant)) match {
         case Left(err) => ZIO.fail(new error.UnsatisfiableVariantConstraints(
-          s"Unable to choose variants as the metadata of ${mod.orgName} seems incomplete: $err"))
+          s"Unable to choose variants as the metadata of ${mod.orgName} seems incomplete", err.toString))
         case Right(decisionTree) =>
           type Key = String; type Value = String
           def choose[T](key: Key, choices: Seq[(Value, T)]): RIO[Prompter, (Value, T)] = {
@@ -333,7 +333,7 @@ trait UpdateService { this: Sc4pac =>
               case Some(value) => choices.find(_._1 == value) match
                 case Some(choice) => ZIO.succeed(choice)
                 case None => ZIO.fail(new error.UnsatisfiableVariantConstraints(
-                  s"""None of the variants ${choices.map(_._1).mkString(", ")} of ${mod.orgName} match the configured variant $key=$value. """ +
+                  s"""None of the variants ${choices.map(_._1).mkString(", ")} of ${mod.orgName} match the configured variant $key=$value.""",
                   s"""The package metadata seems incorrect, but resetting the variant may resolve the problem (command: `sc4pac variant reset "$key"`)."""))
               case None =>  // global variant for key is not set, so choose it interactively
                 ZIO.serviceWithZIO[Prompter](_.promptForVariant(
@@ -377,6 +377,7 @@ trait UpdateService { this: Sc4pac =>
       (resolution, globalVariant) <- doPromptingForVariant(globalVariant0)(Resolution.resolve(modules, _))
       plan            =  UpdatePlan.fromResolution(resolution, installed = pluginsLockData.dependenciesWithAssets)
       continue        <- ZIO.serviceWithZIO[Prompter](_.confirmUpdatePlan(plan))
+                           .filterOrFail(_ == true)(error.Sc4pacAbort())
       flagOpt         <- ZIO.unless(plan.isUpToDate || !continue)(for {
         _               <- ZIO.unless(globalVariant == globalVariant0)(storeGlobalVariant(globalVariant))  // only store something after confirmation
         assetsToInstall <- resolution.fetchArtifactsOf(resolution.transitiveDependencies.filter(plan.toInstall).reverse)  // we start by fetching artifacts in reverse as those have fewest dependencies of their own
@@ -461,7 +462,7 @@ object Sc4pac {
     val task: RIO[ScopeRoot, Seq[MetadataRepository]] = ZIO.collectPar(repoUris) { url =>
       fetchChannelData(url, cache, channelContentsTtl)
         .mapError((err: ErrStr) => { System.err.println(s"Failed to read channel data: $err"); None })
-    }.filterOrFail(_.nonEmpty)(Sc4pacAbort(s"No channels available: $repoUris"))
+    }.filterOrFail(_.nonEmpty)(error.NoChannelsAvailable("No channels available", repoUris.toString))
     // TODO for long running processes, we might need a way to refresh the channel
     // data occasionally (but for now this is good enough)
     import CoursierZio.*  // implicit coursier-zio interop
