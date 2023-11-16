@@ -4,7 +4,7 @@ package api
 
 import zio.{ZIO, Task, IO}
 import zio.http.WebSocketFrame
-import zio.http.ChannelEvent.Read
+import zio.http.ChannelEvent.{Read, UserEvent, UserEventTriggered}
 
 import Resolution.DepModule
 import PromptMessage.{yesNo, yes}
@@ -119,6 +119,7 @@ class WebSocketPrompter(wsChannel: zio.http.WebSocketChannel, logger: WebSocketL
     val receiveMatchingResponse: Task[ResponseMessage] =
       ZIO.iterate(Option.empty[ResponseMessage])(_.isEmpty) { _ =>
         wsChannel.receive.flatMap {
+          case UserEventTriggered(UserEvent.HandshakeComplete) => ZIO.succeed(None)  // ignore expected event
           case Read(WebSocketFrame.Text(raw)) =>
             JsonIo.read[ResponseMessage](raw).option
               .map(_.filter(message.accept(_)))  // accept only responses with matching token and valid body
