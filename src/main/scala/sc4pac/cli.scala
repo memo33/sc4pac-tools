@@ -23,6 +23,11 @@ object Commands {
 
   sealed abstract class Sc4pacCommandOptions extends Product with Serializable
 
+  private val cliEnvironment = {
+    val logger = CliLogger()
+    zio.ZEnvironment(ScopeRoot(os.pwd), logger, CliPrompter(logger))
+  }
+
   // TODO strip escape sequences if jansi failed with a link error
   private[sc4pac] def gray(msg: String): String = s"${27.toChar}[90m" + msg + Console.RESET  // aka bright black
   private[sc4pac] def emph(msg: String): String = Console.BOLD + msg + Console.RESET
@@ -70,7 +75,7 @@ object Commands {
       if (args.all.isEmpty) {
         fullHelpAsked(commandName)
       }
-      val task: Task[Unit] = for {
+      val task = for {
         mods   <- ZIO.fromEither(Sc4pac.parseModules(args.all)).catchAll { (err: ErrStr) =>
                     error(caseapp.core.Error.Other(s"Package format is <group>:<package-name> ($err)"))
                   }
@@ -78,7 +83,7 @@ object Commands {
         pac    <- Sc4pac.init(config)
         _      <- pac.add(mods)
       } yield ()
-      runMainExit(task, exit)
+      runMainExit(task.provideEnvironment(cliEnvironment), exit)
     }
   }
 
@@ -94,9 +99,10 @@ object Commands {
       val task = for {
         pluginsData  <- JD.Plugins.readOrInit
         pac          <- Sc4pac.init(pluginsData.config)
-        flag         <- pac.update(pluginsData.explicit, globalVariant0 = pluginsData.config.variant, pluginsRoot = pluginsData.pluginsRootAbs)
+        pluginsRoot  <- pluginsData.config.pluginsRootAbs
+        flag         <- pac.update(pluginsData.explicit, globalVariant0 = pluginsData.config.variant, pluginsRoot = pluginsRoot)
       } yield ()
-      runMainExit(task, exit)
+      runMainExit(task.provideEnvironment(cliEnvironment), exit)
     }
   }
 
@@ -120,7 +126,7 @@ object Commands {
       if (!options.interactive && args.all.isEmpty) {
         fullHelpAsked(commandName)
       } else {
-        val task: Task[Unit] = for {
+        val task = for {
           mods   <- ZIO.fromEither(Sc4pac.parseModules(args.all)).catchAll { (err: ErrStr) =>
                       error(caseapp.core.Error.Other(s"Package format is <group>:<package-name> ($err)"))
                     }
@@ -134,7 +140,7 @@ object Commands {
                       pac.remove(mods)
                     }
         } yield ()
-        runMainExit(task, exit)
+        runMainExit(task.provideEnvironment(cliEnvironment), exit)
       }
     }
   }
@@ -165,22 +171,23 @@ object Commands {
       if (args.all.isEmpty) {
         fullHelpAsked(commandName)
       } else {
-        val task: Task[Unit] = for {
+        val task = for {
           pluginsData  <- JD.Plugins.readOrInit
           pac          <- Sc4pac.init(pluginsData.config)
           query        =  args.all.mkString(" ")
           searchResult <- pac.search(query, options.threshold)
           installed    <- JD.PluginsLock.listInstalled.map(_.map(_.toBareDep).toSet)
+          logger       <- ZIO.service[CliLogger]
         } yield {
           if (searchResult.isEmpty) {
             error(caseapp.core.Error.Other("No packages found. Try to lower the `--threshold` parameter."))
           } else {
             for (((mod, ratio, description), idx) <- searchResult.zipWithIndex.reverse) {
-              pac.logger.logSearchResult(idx, mod, description, installed(mod))
+              logger.logSearchResult(idx, mod, description, installed(mod))
             }
           }
         }
-        runMainExit(task, exit)
+        runMainExit(task.provideEnvironment(cliEnvironment), exit)
       }
     }
   }
@@ -199,25 +206,26 @@ object Commands {
       args.all match {
         case Nil => fullHelpAsked(commandName)
         case pkgNames =>
-          val task: Task[Unit] = for {
+          val task = for {
             mods         <- ZIO.fromEither(Sc4pac.parseModules(pkgNames)).catchAll { (err: ErrStr) =>
                               error(caseapp.core.Error.Other(s"Package format is <group>:<package-name> ($err)"))
                             }
             pluginsData  <- JD.Plugins.readOrInit
             pac          <- Sc4pac.init(pluginsData.config)
             infoResults  <- ZIO.foreachPar(mods)(pac.info)
+            logger       <- ZIO.service[CliLogger]
           } yield {
             val (found, notFound) = infoResults.zip(mods).partition(_._1.isDefined)
             if (notFound.nonEmpty) {
               error(caseapp.core.Error.Other("Package not found: " + notFound.map(_._2.orgName).mkString(" ")))
             } else {
               for ((infoResultOpt, idx) <- found.zipWithIndex) {
-                if (idx > 0) pac.logger.log("")
-                pac.logger.logInfoResult(infoResultOpt._1.get)
+                if (idx > 0) logger.log("")
+                logger.logInfoResult(infoResultOpt._1.get)
               }
             }
           }
-          runMainExit(task, exit)
+          runMainExit(task.provideEnvironment(cliEnvironment), exit)
       }
     }
   }
@@ -227,18 +235,19 @@ object Commands {
 
   case object List extends Command[ListOptions] {
     def run(options: ListOptions, args: RemainingArgs): Unit = {
-      val task: Task[Unit] = for {
+      val task = for {
         pluginsData  <- JD.Plugins.readOrInit
         pac          <- Sc4pac.init(pluginsData.config)  // only used for logging
         installed    <- JD.PluginsLock.listInstalled
+        logger       <- ZIO.service[CliLogger]
       } yield {
         val sorted = installed.sortBy(mod => (mod.group.value, mod.name.value))
         val explicit: Set[BareModule] = pluginsData.explicit.toSet
         for (mod <- sorted) {
-          pac.logger.logInstalled(mod, explicit(mod.toBareDep))
+          logger.logInstalled(mod, explicit(mod.toBareDep))
         }
       }
-      runMainExit(task, exit)
+      runMainExit(task.provideEnvironment(cliEnvironment), exit)
     }
   }
 
@@ -282,11 +291,12 @@ object Commands {
             for {
               selected <- select
               data2    =  data.copy(config = data.config.copy(variant = data.config.variant -- selected))
-              _        <- JsonIo.write(JD.Plugins.path, data2, None)(ZIO.succeed(()))
+              path     <- JD.Plugins.pathURIO
+              _        <- JsonIo.write(path, data2, None)(ZIO.succeed(()))
             } yield ()
           }
         }
-        runMainExit(task, exit)
+        runMainExit(task.provideEnvironment(cliEnvironment), exit)
       }
     }
   }
@@ -309,12 +319,13 @@ object Commands {
           MetadataRepository.parseChannelUrl(text) match {
             case Left(err) => error(caseapp.core.Error.Other(s"Malformed URL: $err"))
             case Right(uri) =>
-              val task: Task[Unit] = for {
+              val task = for {
                 data  <- JD.Plugins.readOrInit
                 data2 =  data.copy(config = data.config.copy(channels = (data.config.channels :+ uri).distinct))
-                _     <- JsonIo.write(JD.Plugins.path, data2, None)(ZIO.succeed(()))
+                path  <- JD.Plugins.pathURIO
+                _     <- JsonIo.write(path, data2, None)(ZIO.succeed(()))
               } yield ()
-              runMainExit(task, exit)
+              runMainExit(task.provideEnvironment(cliEnvironment), exit)
           }
         case Nil => fullHelpAsked(commandName)
         case _ => error(caseapp.core.Error.Other("A single argument is needed: channel-URL"))
@@ -357,11 +368,12 @@ object Commands {
               (drop, keep) =  data.config.channels.partition(isSelected)
               _            <- ZIO.succeed { if (drop.nonEmpty) println(("The following channels have been removed:" +: drop).mkString(f"%n")) }
               data2        =  data.copy(config = data.config.copy(channels = keep))
-              _            <- JsonIo.write(JD.Plugins.path, data2, None)(ZIO.succeed(()))
+              path         <- JD.Plugins.pathURIO
+              _            <- JsonIo.write(path, data2, None)(ZIO.succeed(()))
             } yield ()
           }
         }
-        runMainExit(task, exit)
+        runMainExit(task.provideEnvironment(cliEnvironment), exit)
       }
     }
   }
@@ -380,7 +392,7 @@ object Commands {
           println(url)
         }
       }
-      runMainExit(task, exit)
+      runMainExit(task.provideEnvironment(cliEnvironment), exit)
     }
   }
 

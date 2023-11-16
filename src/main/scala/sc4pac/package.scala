@@ -1,6 +1,7 @@
 package io.github.memo33
 package object sc4pac {
   type ErrStr = String
+  type Warning = String
   type Variant = Map[String, String]
 
   object CoursierZio {
@@ -63,4 +64,13 @@ package object sc4pac {
   def unsafeRun[E, A](effect: zio.IO[E, A]): A = zio.Unsafe.unsafe { implicit unsafe =>
     zio.Runtime.default.unsafe.run(effect).getOrThrowFiberFailure()
   }
+
+  // opaque type ScopeRoot = os.Path
+  // object ScopeRoot {
+  //   def apply(path: os.Path): ScopeRoot = path
+  // }
+  // extension (scopeRoot: ScopeRoot) {
+  //   def path: os.Path = scopeRoot
+  // }
+  class ScopeRoot(val path: os.Path)
 }

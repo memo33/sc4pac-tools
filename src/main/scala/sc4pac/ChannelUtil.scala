@@ -122,7 +122,7 @@ object ChannelUtil {
       // move the temp folder to its final destination.
       os.move.over(tempJsonDir / "metadata", outputDir / "metadata", createFolders = true)
       os.move.over(tempJsonDir / JsonRepoUtil.channelContentsFilename, outputDir / JsonRepoUtil.channelContentsFilename, createFolders = true)
-      println(s"Successfully wrote channel contents of ${packages.size} packages.")
+      System.err.println(s"Successfully wrote channel contents of ${packages.size} packages.")
     } finally {
       os.remove.all(tempJsonDir)  // deleteOnExit does not seem to work reliably, so explicitly delete temp folder
     }

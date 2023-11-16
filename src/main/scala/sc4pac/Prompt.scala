@@ -10,9 +10,9 @@ object Prompt {
   sealed trait Interactive
   private object InteractiveLive extends Interactive
 
-  def ifInteractive[E, A](onTrue: ZIO[Interactive, E, A], onFalse: IO[E, A]): IO[E, A] = {
+  def ifInteractive[R, E, A](onTrue: ZIO[Interactive & R, E, A], onFalse: ZIO[R, E, A]): ZIO[R, E, A] = {
     if (Constants.isInteractive) {
-      onTrue.provideLayer(zio.ZLayer.succeed(InteractiveLive))
+      onTrue.provideSomeLayer(zio.ZLayer.succeed(InteractiveLive))
     } else {
       onFalse
     }
