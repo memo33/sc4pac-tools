@@ -45,7 +45,42 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
     case abort: error.Sc4pacAbort => Status.BadRequest
   }
 
+  val httpLogger = {
+    val cliLogger: Logger = CliLogger()
+    zio.ZLayer.succeed(cliLogger)
+  }
+
   def routes: Routes[ScopeRoot, Nothing] = Routes(
+
+    Method.GET / "add" / string("pkg") -> handler { (pkg: String, req: Request) =>
+      // TODO unquote pkg?
+      Sc4pac.parseModule(pkg) match {
+        case Left(err) => ZIO.succeed(jsonResponse(ErrorMessage.BadRequest(s"Malformed package name: $pkg", err)).status(Status.BadRequest))
+        case Right(mod) => withPluginsOr400(pluginsData =>
+          for {
+            pac <- Sc4pac.init(pluginsData.config).provideSomeLayer(httpLogger)
+            _   <- pac.add(Seq(mod))
+          } yield jsonResponse(ResultMessage("OK"))
+        ).catchSome { case err: cli.Commands.ExpectedFailure =>
+          ZIO.succeed(jsonResponse(expectedFailureMessage(err)).status(expectedFailureStatus(err)))
+        }
+      }
+    },
+
+    Method.GET / "remove" / string("pkg") -> handler { (pkg: String, req: Request) =>
+      // TODO unquote pkg?
+      Sc4pac.parseModule(pkg) match {
+        case Left(err) => ZIO.succeed(jsonResponse(ErrorMessage.BadRequest(s"Malformed package name: $pkg", err)).status(Status.BadRequest))
+        case Right(mod) => withPluginsOr400(pluginsData =>
+          for {
+            pac <- Sc4pac.init(pluginsData.config).provideSomeLayer(httpLogger)
+            _   <- pac.remove(Seq(mod))
+          } yield jsonResponse(ResultMessage("OK"))
+        ).catchSome { case err: cli.Commands.ExpectedFailure =>
+          ZIO.succeed(jsonResponse(expectedFailureMessage(err)).status(expectedFailureStatus(err)))
+        }
+      }
+    },
 
     // Test the websocket using Javascript in webbrowser (messages are also logged in network tab):
     //     let ws = new WebSocket('ws://localhost:51515/update/ws'); ws.onmessage = function(e) { console.log(e) };
@@ -56,9 +91,9 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
           for {
             pac          <- Sc4pac.init(pluginsData.config)
             pluginsRoot  <- pluginsData.config.pluginsRootAbs
-            logger       <- ZIO.service[WebSocketLogger]
+            wsLogger     <- ZIO.service[WebSocketLogger]
             flag         <- pac.update(pluginsData.explicit, globalVariant0 = pluginsData.config.variant, pluginsRoot = pluginsRoot)
-                              .provideSomeLayer(zio.ZLayer.succeed(WebSocketPrompter(wsChannel, logger)))
+                              .provideSomeLayer(zio.ZLayer.succeed(WebSocketPrompter(wsChannel, wsLogger)))
           } yield ResultMessage("OK")
 
         val wsTask: zio.RIO[ScopeRoot, Unit] =
@@ -67,7 +102,7 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
               finalMsg <- updateTask.catchSome { case err: cli.Commands.ExpectedFailure => ZIO.succeed(expectedFailureMessage(err)) }
               unit     <- ZIO.serviceWithZIO[WebSocketLogger](_.sendMessageAwait(finalMsg))
             } yield unit
-          } // logger is shut down here (TODO use resource for safer closing)
+          } // wsLogger is shut down here (TODO use resource for safer closing)
 
         wsTask.zipRight(wsChannel.shutdown).map(_ => System.err.println("Shutting down websocket."))
       }.toResponse
@@ -79,8 +114,7 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
         case Left(err) => ZIO.succeed(jsonResponse(ErrorMessage.BadRequest(s"Malformed package name: $pkg", err)).status(Status.BadRequest))
         case Right(mod) => withPluginsOr400(pluginsData =>
           for {
-            pac           <- Sc4pac.init(pluginsData.config)
-                               .provideSomeLayer(zio.ZLayer.succeed(CliLogger()))
+            pac           <- Sc4pac.init(pluginsData.config).provideSomeLayer(httpLogger)
             infoResultOpt <- pac.infoJson(mod)  // TODO avoid decoding/encoding json
           } yield {
             infoResultOpt match {
