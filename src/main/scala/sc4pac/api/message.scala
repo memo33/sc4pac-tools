@@ -126,3 +126,8 @@ object ProgressMessage {
   @upickle.implicits.key("/progress/download/finished")
   case class DownloadFinished(url: String, success: Boolean) extends ProgressMessage derives UP.ReadWriter
 }
+
+case class InstalledPkg(`package`: BareModule, version: String, variant: Variant, explicit: Boolean)  // for endpoint `list`
+object InstalledPkg {
+  given installedPkgRw: UP.ReadWriter[InstalledPkg] = UP.stringKeyRW(UP.macroRW)
+}

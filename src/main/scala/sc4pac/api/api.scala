@@ -128,6 +128,21 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
       }
     },
 
+    Method.GET / "list" -> handler {
+      withPluginsOr400(pluginsData =>
+        for {
+          installedIter <- cli.Commands.List.iterateInstalled(pluginsData)
+        } yield {
+          val installed = installedIter.map { case (mod, explicit) =>
+            InstalledPkg(mod.toBareDep, variant = mod.variant, version = mod.version, explicit = explicit)
+          }.toSeq
+          jsonResponse(installed)
+        }
+      ).catchSome { case err: cli.Commands.ExpectedFailure =>
+        ZIO.succeed(jsonResponse(expectedFailureMessage(err)).status(expectedFailureStatus(err)))
+      }
+    }
+
   ).handleError(err => jsonResponse(ErrorMessage.ServerError("Unhandled error.", err.getMessage)).status(Status.InternalServerError))
 
 }

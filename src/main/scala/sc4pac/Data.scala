@@ -3,7 +3,7 @@ package sc4pac
 
 import coursier.core.{Repository, Module, ModuleName, Organization}
 import coursier.core as C
-import upickle.default.{ReadWriter, readwriter}
+import upickle.default.{ReadWriter, readwriter, stringKeyRW, macroRW}
 import java.nio.file.{Path as NioPath}
 import zio.{ZIO, IO, Task, RIO, URIO}
 import java.util.regex.Pattern
