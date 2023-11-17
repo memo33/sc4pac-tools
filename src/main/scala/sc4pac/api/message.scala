@@ -105,19 +105,20 @@ object ErrorMessage {
 @upickle.implicits.key("/result")
 case class ResultMessage(result: String) extends Message
 
+sealed trait ProgressMessage extends Message derives UP.ReadWriter
 object ProgressMessage {
   @upickle.implicits.key("/progress/update/extraction")
-  case class Extraction(`package`: BareModule, progress: Sc4pac.Progress) extends Message derives UP.ReadWriter
+  case class Extraction(`package`: BareModule, progress: Sc4pac.Progress) extends ProgressMessage derives UP.ReadWriter
 
   @upickle.implicits.key("/progress/download/started")
-  case class DownloadStarted(url: String) extends Message derives UP.ReadWriter
+  case class DownloadStarted(url: String) extends ProgressMessage derives UP.ReadWriter
 
   @upickle.implicits.key("/progress/download/length")
-  case class DownloadLength(url: String, length: Long) extends Message derives UP.ReadWriter
+  case class DownloadLength(url: String, length: Long) extends ProgressMessage derives UP.ReadWriter
 
   @upickle.implicits.key("/progress/download/downloaded")
-  case class DownloadDownloaded(url: String, downloaded: Long) extends Message derives UP.ReadWriter
+  case class DownloadDownloaded(url: String, downloaded: Long) extends ProgressMessage derives UP.ReadWriter
 
   @upickle.implicits.key("/progress/download/finished")
-  case class DownloadFinished(url: String, success: Boolean) extends Message derives UP.ReadWriter
+  case class DownloadFinished(url: String, success: Boolean) extends ProgressMessage derives UP.ReadWriter
 }
