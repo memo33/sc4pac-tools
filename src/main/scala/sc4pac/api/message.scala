@@ -104,6 +104,11 @@ object ErrorMessage {
   case class BadRequest(title: String, detail: String) extends ErrorMessage derives UP.ReadWriter
   @upickle.implicits.key("/error/package-not-found")
   case class PackageNotFound(title: String, detail: String) extends ErrorMessage derives UP.ReadWriter
+  @upickle.implicits.key("/error/init/bad-request")
+  case class BadInit(title: String, detail: String, platformDefaults: Map[String, Seq[String]]) extends ErrorMessage
+  given badInitRw: UP.ReadWriter[BadInit] = UP.stringKeyRW(UP.macroRW)
+  @upickle.implicits.key("/error/init/not-allowed")
+  case class InitNotAllowed(title: String, detail: String) extends ErrorMessage derives UP.ReadWriter
 }
 
 @upickle.implicits.key("/result")

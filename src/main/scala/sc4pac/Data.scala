@@ -66,19 +66,27 @@ object JsonData extends SharedData {
 
     def pathURIO: URIO[ScopeRoot, os.Path] = ZIO.service[ScopeRoot].map(scopeRoot => Plugins.path(scopeRoot.path))
 
+    private val projDirs = dev.dirs.ProjectDirectories.from("", cli.BuildInfo.organization, cli.BuildInfo.name)  // qualifier, organization, application
+
+    val defaultPluginsRoot: URIO[ScopeRoot, Seq[os.Path]] = ZIO.serviceWith[ScopeRoot](scopeRoot => Seq(
+      os.home / "Documents" / "SimCity 4" / "Plugins",
+      scopeRoot.path / "plugins"
+    ))
+
+    val defaultCacheRoot: URIO[ScopeRoot, Seq[os.Path]] = ZIO.serviceWith[ScopeRoot](scopeRoot => Seq(
+      os.Path(java.nio.file.Paths.get(projDirs.cacheDir)),
+      scopeRoot.path / "cache"
+    ))
+
     /** Prompt for pluginsRoot and cacheRoot. This has a `CliPrompter` constraint as we only want to prompt about this using the CLI. */
     val promptForPaths: RIO[ScopeRoot & CliPrompter, (os.Path, os.Path)] = {
-      val projDirs = dev.dirs.ProjectDirectories.from("", cli.BuildInfo.organization, cli.BuildInfo.name)  // qualifier, organization, application
       val task = for {
-        scopeRoot    <- ZIO.service[ScopeRoot]
-        pluginsRoot  <- Prompt.paths("Choose the location of your Plugins folder. (It is recommended to start with an empty folder.)", Seq(
-                          os.home / "Documents" / "SimCity 4" / "Plugins",
-                          scopeRoot.path / "plugins"))
-        cacheRoot    <- Prompt.paths("Choose a location for the cache folder. (It stores all the downloaded files. " +
-                                     "Make sure there is enough disk space available on the corresponding partition. " +
-                                     "If you have multiple Plugins folders, use the same cache folder for all of them.)", Seq(
-                          os.Path(java.nio.file.Paths.get(projDirs.cacheDir)),
-                          scopeRoot.path / "cache"))
+        defaultPlugins <- defaultPluginsRoot
+        pluginsRoot    <- Prompt.paths("Choose the location of your Plugins folder. (It is recommended to start with an empty folder.)", defaultPlugins)
+        defaultCache   <- defaultCacheRoot
+        cacheRoot      <- Prompt.paths("Choose a location for the cache folder. (It stores all the downloaded files. " +
+                                       "Make sure there is enough disk space available on the corresponding partition. " +
+                                       "If you have multiple Plugins folders, use the same cache folder for all of them.)", defaultCache)
       } yield (pluginsRoot, cacheRoot)
       Prompt.ifInteractive(
         onTrue = task,

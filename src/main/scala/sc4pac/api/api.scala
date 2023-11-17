@@ -34,8 +34,8 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
     case abort: error.Sc4pacAssetNotFound => Status.NotFound
     case abort: error.ExtractionFailed => Status.InternalServerError
     case abort: error.UnsatisfiableVariantConstraints => Status.BadRequest
-    case abort: error.DownloadFailed => Status.InternalServerError
-    case abort: error.NoChannelsAvailable => Status.BadRequest
+    case abort: error.DownloadFailed => Status.BadGateway
+    case abort: error.NoChannelsAvailable => Status.BadGateway
     case abort: error.Sc4pacAbort => Status.BadRequest
   }
 
@@ -63,6 +63,39 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
 
   def routes: Routes[ScopeRoot, Nothing] = Routes(
 
+    // 200, 400, 405
+    Method.GET / "init" -> handler { (req: Request) =>
+      wrapHttpEndpoint {
+        def errResp: zio.URIO[ScopeRoot, Response] =
+          for {
+            defaultPlugins <- JD.Plugins.defaultPluginsRoot
+            defaultCache <- JD.Plugins.defaultCacheRoot
+          } yield jsonResponse(
+            ErrorMessage.BadInit("""Query parameters "plugins" and "cache" are required.""",
+              detail = "Pass the locations of the folders as URL-encoded query parameters.",
+              platformDefaults = Map("plugins" -> defaultPlugins.map(_.toString), "cache" -> defaultCache.map(_.toString))
+            )
+          ).status(Status.BadRequest)
+
+        for {
+          scopeRoot   <- ZIO.serviceWith[ScopeRoot](_.path)
+          _           <- ZIO.attemptBlockingIO(os.exists(JD.Plugins.path(scopeRoot)) || os.exists(JD.PluginsLock.path(scopeRoot)))
+                           .filterOrFail(_ == false)(jsonResponse(
+                             ErrorMessage.InitNotAllowed("Scope already initialized.",
+                               "Manually delete the corresponding .json files if you are sure you want to initialize a new scope.")
+                           ).status(Status.MethodNotAllowed))
+          pluginsRoot <- ZIO.fromOption(req.url.queryParams.get("plugins").map(p => os.Path(p, scopeRoot))).orElse(errResp.flip)
+          cacheRoot   <- ZIO.fromOption(req.url.queryParams.get("cache").map(p => os.Path(p, scopeRoot))).orElse(errResp.flip)
+          _           <- ZIO.attemptBlockingIO {
+                           os.makeDir.all(pluginsRoot)  // TODO ask for confirmation?
+                           os.makeDir.all(cacheRoot)
+                         }
+          pluginsData <- JD.Plugins.init(pluginsRoot = pluginsRoot, cacheRoot = cacheRoot)
+        } yield jsonOk
+      }
+    },
+
+    // 200, 400
     Method.GET / "add" / string("pkg") -> handler { (pkg: String, req: Request) =>
       wrapHttpEndpoint {
         for {
@@ -74,6 +107,7 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
       }
     },
 
+    // 200, 400
     Method.GET / "remove" / string("pkg") -> handler { (pkg: String, req: Request) =>
       wrapHttpEndpoint {
         for {
@@ -115,6 +149,7 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
       )
     },
 
+    // 200, 400, 404
     Method.GET / "info" / string("pkg") -> handler { (pkg: String, req: Request) =>
       wrapHttpEndpoint {
         for {
@@ -129,6 +164,7 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
       }
     },
 
+    // 200, 400
     Method.GET / "list" -> handler {
       wrapHttpEndpoint {
         for {
