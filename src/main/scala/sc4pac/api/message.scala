@@ -100,6 +100,10 @@ object ErrorMessage {
   case class NoChannelsAvailable(title: String, detail: String) extends ErrorMessage derives UP.ReadWriter
   @upickle.implicits.key("/error/aborted")
   case class Aborted(title: String, detail: String) extends ErrorMessage derives UP.ReadWriter
+  @upickle.implicits.key("/error/bad-request")
+  case class BadRequest(title: String, detail: String) extends ErrorMessage derives UP.ReadWriter
+  @upickle.implicits.key("/error/package-not-found")
+  case class PackageNotFound(title: String, detail: String) extends ErrorMessage derives UP.ReadWriter
 }
 
 @upickle.implicits.key("/result")

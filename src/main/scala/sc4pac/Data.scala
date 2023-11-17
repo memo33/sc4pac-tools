@@ -27,10 +27,9 @@ object JsonData extends SharedData {
     MetadataRepository.parseChannelUrl(_).left.map(new IllegalArgumentException(_)).toTry.get)
 
   private def bareModuleRead(s: String) =
-    Sc4pac.parseModules(Seq(s)) match {
-      case Right(Seq(mod)) => mod
+    Sc4pac.parseModule(s) match {
+      case Right(mod) => mod
       case Left(err) => throw new IllegalArgumentException(err)
-      case _ => throw new AssertionError
     }
   implicit val bareModuleRw: ReadWriter[BareModule] = readwriter[String].bimap[BareModule](_.orgName, bareModuleRead)
   implicit val bareDepRw: ReadWriter[BareDep] = readwriter[String].bimap[BareDep](_.orgName, { (s: String) =>

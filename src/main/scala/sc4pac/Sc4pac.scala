@@ -94,11 +94,17 @@ class Sc4pac(val repositories: Seq[MetadataRepository], val cache: FileCache, va
     results.sortBy((mod, ratio, desc) => (-ratio, mod.group.value, mod.name.value)).distinctBy(_._1)
   }
 
-  def info(module: BareModule): RIO[CliLogger, Option[Seq[(String, String)]]] = {
+  def infoJson(module: BareModule): Task[Option[JD.Package]] = {
     val mod = Module(module.group, module.name, attributes = Map.empty)
     for {
       version <- Find.concreteVersion(mod, Constants.versionLatestRelease)
       pkgOpt  <- Find.packageData[JD.Package](mod, version)
+    } yield pkgOpt
+  }
+
+  def info(module: BareModule): RIO[CliLogger, Option[Seq[(String, String)]]] = {
+    for {
+      pkgOpt  <- infoJson(module)
       logger  <- ZIO.service[CliLogger]
     } yield {
       pkgOpt.map { pkg =>
@@ -494,6 +500,8 @@ object Sc4pac {
         errs.mkString(", ")  // malformed module: a, malformed module: b
       }
   }
+
+  def parseModule(module: String): Either[ErrStr, BareModule] = parseModules(Seq(module)).map(_.head)
 
 
   sealed trait DecisionTree[+A, +B]

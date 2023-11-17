@@ -16,7 +16,7 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
   private def jsonFrame[A : UP.Writer](obj: A): WebSocketFrame = WebSocketFrame.Text(UP.write(obj, indent = options.indent))
 
   /** Sends a 400 ScopeNotInitialized if Plugins cannot be loaded. */
-  private def withPluginsOr400[R](task: JD.Plugins => zio.URIO[R, Response]): zio.URIO[R & ScopeRoot, Response] = {
+  private def withPluginsOr400[R](task: JD.Plugins => zio.RIO[R, Response]): zio.RIO[R & ScopeRoot, Response] = {
     JD.Plugins.read
       .foldZIO(
         success = task,
@@ -25,7 +25,7 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
       )
   }
 
-  def expectedFailureMessage(err: cli.Commands.ExpectedFailure): Message = err match {
+  def expectedFailureMessage(err: cli.Commands.ExpectedFailure): ErrorMessage = err match {
     case abort: error.Sc4pacVersionNotFound => ErrorMessage.VersionNotFound(abort.title, abort.detail)
     case abort: error.Sc4pacAssetNotFound => ErrorMessage.AssetNotFound(abort.title, abort.detail)
     case abort: error.ExtractionFailed => ErrorMessage.ExtractionFailed(abort.title, abort.detail)
@@ -33,6 +33,16 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
     case abort: error.DownloadFailed => ErrorMessage.DownloadFailed(abort.title, abort.detail)
     case abort: error.NoChannelsAvailable => ErrorMessage.NoChannelsAvailable(abort.title, abort.detail)
     case abort: error.Sc4pacAbort => ErrorMessage.Aborted("Operation aborted.", "")
+  }
+
+  def expectedFailureStatus(err: cli.Commands.ExpectedFailure): Status = err match {
+    case abort: error.Sc4pacVersionNotFound => Status.NotFound
+    case abort: error.Sc4pacAssetNotFound => Status.NotFound
+    case abort: error.ExtractionFailed => Status.InternalServerError
+    case abort: error.UnsatisfiableVariantConstraints => Status.BadRequest
+    case abort: error.DownloadFailed => Status.InternalServerError
+    case abort: error.NoChannelsAvailable => Status.BadRequest
+    case abort: error.Sc4pacAbort => Status.BadRequest
   }
 
   def routes: Routes[ScopeRoot, Nothing] = Routes(
@@ -63,11 +73,27 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
       }.toResponse
     )),
 
-    // TODO for testing
-    Method.GET / "hello" / string("name") -> handler { (name: String, req: Request) =>
-      Response.text(s"Hello, $name.")
-    }
+    Method.GET / "info" / string("pkg") -> handler { (pkg: String, req: Request) =>
+      // TODO unquote pkg?
+      Sc4pac.parseModule(pkg) match {
+        case Left(err) => ZIO.succeed(jsonResponse(ErrorMessage.BadRequest(s"Malformed package name: $pkg", err)).status(Status.BadRequest))
+        case Right(mod) => withPluginsOr400(pluginsData =>
+          for {
+            pac           <- Sc4pac.init(pluginsData.config)
+                               .provideSomeLayer(zio.ZLayer.succeed(CliLogger()))
+            infoResultOpt <- pac.infoJson(mod)  // TODO avoid decoding/encoding json
+          } yield {
+            infoResultOpt match {
+              case None => jsonResponse(ErrorMessage.PackageNotFound("Package not found.", pkg)).status(Status.NotFound)
+              case Some(pkgData) => jsonResponse(pkgData)
+            }
+          }
+        ).catchSome { case err: cli.Commands.ExpectedFailure =>
+          ZIO.succeed(jsonResponse(expectedFailureMessage(err)).status(expectedFailureStatus(err)))
+        }
+      }
+    },
 
-  ).handleError(err => jsonResponse(ErrorMessage.ServerError("Unhandled error", err)).status(Status.InternalServerError))
+  ).handleError(err => jsonResponse(ErrorMessage.ServerError("Unhandled error.", err.getMessage)).status(Status.InternalServerError))
 
 }
