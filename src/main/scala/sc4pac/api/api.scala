@@ -16,16 +16,10 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
   private def jsonFrame[A : UP.Writer](obj: A): WebSocketFrame = WebSocketFrame.Text(UP.write(obj, indent = options.indent))
 
   /** Sends a 400 ScopeNotInitialized if Plugins cannot be loaded. */
-  private def withPluginsOr400[R](task: JD.Plugins => zio.RIO[R, Response]): zio.RIO[R & ScopeRoot, Response] = {
-    JD.Plugins.read
-      .foldZIO(
-        success = task,
-        failure = (err: ErrStr) =>
-          ZIO.succeed(jsonResponse(ErrorMessage.ScopeNotInitialized("Scope not initialized", err)).status(Status.BadRequest))
-      )
-  }
+  private val readPluginsOr400: ZIO[ScopeRoot, Response, JD.Plugins] =
+    JD.Plugins.read.mapError((err: ErrStr) => jsonResponse(ErrorMessage.ScopeNotInitialized("Scope not initialized", err)).status(Status.BadRequest))
 
-  def expectedFailureMessage(err: cli.Commands.ExpectedFailure): ErrorMessage = err match {
+  private def expectedFailureMessage(err: cli.Commands.ExpectedFailure): ErrorMessage = err match {
     case abort: error.Sc4pacVersionNotFound => ErrorMessage.VersionNotFound(abort.title, abort.detail)
     case abort: error.Sc4pacAssetNotFound => ErrorMessage.AssetNotFound(abort.title, abort.detail)
     case abort: error.ExtractionFailed => ErrorMessage.ExtractionFailed(abort.title, abort.detail)
@@ -35,7 +29,7 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
     case abort: error.Sc4pacAbort => ErrorMessage.Aborted("Operation aborted.", "")
   }
 
-  def expectedFailureStatus(err: cli.Commands.ExpectedFailure): Status = err match {
+  private def expectedFailureStatus(err: cli.Commands.ExpectedFailure): Status = err match {
     case abort: error.Sc4pacVersionNotFound => Status.NotFound
     case abort: error.Sc4pacAssetNotFound => Status.NotFound
     case abort: error.ExtractionFailed => Status.InternalServerError
@@ -45,101 +39,106 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
     case abort: error.Sc4pacAbort => Status.BadRequest
   }
 
-  val httpLogger = {
+  val jsonOk = jsonResponse(ResultMessage("OK"))
+
+  private val httpLogger = {
     val cliLogger: Logger = CliLogger()
     zio.ZLayer.succeed(cliLogger)
+  }
+
+  /** Handles some errors and provides http logger (not used for websocket). */
+  private def wrapHttpEndpoint(task: ZIO[ScopeRoot & Logger, Throwable | Response, Response]): ZIO[ScopeRoot, Throwable, Response] = {
+    task.provideSomeLayer(httpLogger)
+      .catchAll {
+        case response: Response => ZIO.succeed(response)
+        case err: cli.Commands.ExpectedFailure => ZIO.succeed(jsonResponse(expectedFailureMessage(err)).status(expectedFailureStatus(err)))
+        case t: Throwable => ZIO.fail(t)
+      }
+  }
+
+  private def parseModuleOr400(module: String): IO[Response, BareModule] = {
+    ZIO.fromEither(Sc4pac.parseModule(module))
+      .mapError(err => jsonResponse(ErrorMessage.BadRequest(s"Malformed package name: $module", err)).status(Status.BadRequest))
   }
 
   def routes: Routes[ScopeRoot, Nothing] = Routes(
 
     Method.GET / "add" / string("pkg") -> handler { (pkg: String, req: Request) =>
-      // TODO unquote pkg?
-      Sc4pac.parseModule(pkg) match {
-        case Left(err) => ZIO.succeed(jsonResponse(ErrorMessage.BadRequest(s"Malformed package name: $pkg", err)).status(Status.BadRequest))
-        case Right(mod) => withPluginsOr400(pluginsData =>
-          for {
-            pac <- Sc4pac.init(pluginsData.config).provideSomeLayer(httpLogger)
-            _   <- pac.add(Seq(mod))
-          } yield jsonResponse(ResultMessage("OK"))
-        ).catchSome { case err: cli.Commands.ExpectedFailure =>
-          ZIO.succeed(jsonResponse(expectedFailureMessage(err)).status(expectedFailureStatus(err)))
-        }
+      wrapHttpEndpoint {
+        for {
+          mod         <- parseModuleOr400(pkg)
+          pluginsData <- readPluginsOr400
+          pac         <- Sc4pac.init(pluginsData.config)
+          _           <- pac.add(Seq(mod))
+        } yield jsonOk
       }
     },
 
     Method.GET / "remove" / string("pkg") -> handler { (pkg: String, req: Request) =>
-      // TODO unquote pkg?
-      Sc4pac.parseModule(pkg) match {
-        case Left(err) => ZIO.succeed(jsonResponse(ErrorMessage.BadRequest(s"Malformed package name: $pkg", err)).status(Status.BadRequest))
-        case Right(mod) => withPluginsOr400(pluginsData =>
-          for {
-            pac <- Sc4pac.init(pluginsData.config).provideSomeLayer(httpLogger)
-            _   <- pac.remove(Seq(mod))
-          } yield jsonResponse(ResultMessage("OK"))
-        ).catchSome { case err: cli.Commands.ExpectedFailure =>
-          ZIO.succeed(jsonResponse(expectedFailureMessage(err)).status(expectedFailureStatus(err)))
-        }
+      wrapHttpEndpoint {
+        for {
+          mod         <- parseModuleOr400(pkg)
+          pluginsData <- readPluginsOr400
+          pac         <- Sc4pac.init(pluginsData.config)
+          _           <- pac.remove(Seq(mod))
+        } yield jsonOk
       }
     },
 
     // Test the websocket using Javascript in webbrowser (messages are also logged in network tab):
     //     let ws = new WebSocket('ws://localhost:51515/update/ws'); ws.onmessage = function(e) { console.log(e) };
     //     ws.send('FOO')
-    Method.GET / "update" / "ws" -> handler(withPluginsOr400(pluginsData =>
-      Handler.webSocket { wsChannel =>
-        val updateTask: zio.RIO[ScopeRoot & WebSocketLogger, Message] =
-          for {
-            pac          <- Sc4pac.init(pluginsData.config)
-            pluginsRoot  <- pluginsData.config.pluginsRootAbs
-            wsLogger     <- ZIO.service[WebSocketLogger]
-            flag         <- pac.update(pluginsData.explicit, globalVariant0 = pluginsData.config.variant, pluginsRoot = pluginsRoot)
-                              .provideSomeLayer(zio.ZLayer.succeed(WebSocketPrompter(wsChannel, wsLogger)))
-          } yield ResultMessage("OK")
+    Method.GET / "update" / "ws" -> handler {
+      readPluginsOr400.foldZIO(
+        failure = ZIO.succeed[Response](_),
+        success = pluginsData =>
+          Handler.webSocket { wsChannel =>
+            val updateTask: zio.RIO[ScopeRoot & WebSocketLogger, Message] =
+              for {
+                pac          <- Sc4pac.init(pluginsData.config)
+                pluginsRoot  <- pluginsData.config.pluginsRootAbs
+                wsLogger     <- ZIO.service[WebSocketLogger]
+                flag         <- pac.update(pluginsData.explicit, globalVariant0 = pluginsData.config.variant, pluginsRoot = pluginsRoot)
+                                  .provideSomeLayer(zio.ZLayer.succeed(WebSocketPrompter(wsChannel, wsLogger)))
+              } yield ResultMessage("OK")
 
-        val wsTask: zio.RIO[ScopeRoot, Unit] =
-          WebSocketLogger.run(send = msg => wsChannel.send(Read(jsonFrame(msg)))) {
-            for {
-              finalMsg <- updateTask.catchSome { case err: cli.Commands.ExpectedFailure => ZIO.succeed(expectedFailureMessage(err)) }
-              unit     <- ZIO.serviceWithZIO[WebSocketLogger](_.sendMessageAwait(finalMsg))
-            } yield unit
-          } // wsLogger is shut down here (TODO use resource for safer closing)
+            val wsTask: zio.RIO[ScopeRoot, Unit] =
+              WebSocketLogger.run(send = msg => wsChannel.send(Read(jsonFrame(msg)))) {
+                for {
+                  finalMsg <- updateTask.catchSome { case err: cli.Commands.ExpectedFailure => ZIO.succeed(expectedFailureMessage(err)) }
+                  unit     <- ZIO.serviceWithZIO[WebSocketLogger](_.sendMessageAwait(finalMsg))
+                } yield unit
+              } // wsLogger is shut down here (TODO use resource for safer closing)
 
-        wsTask.zipRight(wsChannel.shutdown).map(_ => System.err.println("Shutting down websocket."))
-      }.toResponse
-    )),
+            wsTask.zipRight(wsChannel.shutdown).map(_ => System.err.println("Shutting down websocket."))
+          }.toResponse: zio.URIO[ScopeRoot, Response]
+      )
+    },
 
     Method.GET / "info" / string("pkg") -> handler { (pkg: String, req: Request) =>
-      // TODO unquote pkg?
-      Sc4pac.parseModule(pkg) match {
-        case Left(err) => ZIO.succeed(jsonResponse(ErrorMessage.BadRequest(s"Malformed package name: $pkg", err)).status(Status.BadRequest))
-        case Right(mod) => withPluginsOr400(pluginsData =>
-          for {
-            pac           <- Sc4pac.init(pluginsData.config).provideSomeLayer(httpLogger)
-            infoResultOpt <- pac.infoJson(mod)  // TODO avoid decoding/encoding json
-          } yield {
-            infoResultOpt match {
-              case None => jsonResponse(ErrorMessage.PackageNotFound("Package not found.", pkg)).status(Status.NotFound)
-              case Some(pkgData) => jsonResponse(pkgData)
-            }
-          }
-        ).catchSome { case err: cli.Commands.ExpectedFailure =>
-          ZIO.succeed(jsonResponse(expectedFailureMessage(err)).status(expectedFailureStatus(err)))
+      wrapHttpEndpoint {
+        for {
+          mod           <- parseModuleOr400(pkg)
+          pluginsData   <- readPluginsOr400
+          pac           <- Sc4pac.init(pluginsData.config)
+          infoResultOpt <- pac.infoJson(mod)  // TODO avoid decoding/encoding json
+        } yield infoResultOpt match {
+          case None => jsonResponse(ErrorMessage.PackageNotFound("Package not found.", pkg)).status(Status.NotFound)
+          case Some(pkgData) => jsonResponse(pkgData)
         }
       }
     },
 
     Method.GET / "list" -> handler {
-      withPluginsOr400(pluginsData =>
+      wrapHttpEndpoint {
         for {
+          pluginsData   <- readPluginsOr400
           installedIter <- cli.Commands.List.iterateInstalled(pluginsData)
         } yield {
-          val installed = installedIter.map { case (mod, explicit) =>
+          jsonResponse(installedIter.map { case (mod, explicit) =>
             InstalledPkg(mod.toBareDep, variant = mod.variant, version = mod.version, explicit = explicit)
-          }.toSeq
-          jsonResponse(installed)
+          }.toSeq)
         }
-      ).catchSome { case err: cli.Commands.ExpectedFailure =>
-        ZIO.succeed(jsonResponse(expectedFailureMessage(err)).status(expectedFailureStatus(err)))
       }
     }
 
