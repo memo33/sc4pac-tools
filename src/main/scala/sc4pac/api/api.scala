@@ -15,9 +15,9 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
   private def jsonResponse[A : UP.Writer](obj: A): Response = Response.json(UP.write(obj, indent = options.indent))
   private def jsonFrame[A : UP.Writer](obj: A): WebSocketFrame = WebSocketFrame.Text(UP.write(obj, indent = options.indent))
 
-  /** Sends a 400 ScopeNotInitialized if Plugins cannot be loaded. */
-  private val readPluginsOr400: ZIO[ScopeRoot, Response, JD.Plugins] =
-    JD.Plugins.read.mapError((err: ErrStr) => jsonResponse(ErrorMessage.ScopeNotInitialized("Scope not initialized", err)).status(Status.BadRequest))
+  /** Sends a 405 ScopeNotInitialized if Plugins cannot be loaded. */
+  private val readPluginsOr405: ZIO[ScopeRoot, Response, JD.Plugins] =
+    JD.Plugins.read.mapError((err: ErrStr) => jsonResponse(ErrorMessage.ScopeNotInitialized("Scope not initialized", err)).status(Status.MethodNotAllowed))
 
   private def expectedFailureMessage(err: cli.Commands.ExpectedFailure): ErrorMessage = err match {
     case abort: error.Sc4pacVersionNotFound => ErrorMessage.VersionNotFound(abort.title, abort.detail)
@@ -95,24 +95,24 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
       }
     },
 
-    // 200, 400
+    // 200, 400, 405
     Method.GET / "add" / string("pkg") -> handler { (pkg: String, req: Request) =>
       wrapHttpEndpoint {
         for {
           mod         <- parseModuleOr400(pkg)
-          pluginsData <- readPluginsOr400
+          pluginsData <- readPluginsOr405
           pac         <- Sc4pac.init(pluginsData.config)
           _           <- pac.add(Seq(mod))
         } yield jsonOk
       }
     },
 
-    // 200, 400
+    // 200, 400, 405
     Method.GET / "remove" / string("pkg") -> handler { (pkg: String, req: Request) =>
       wrapHttpEndpoint {
         for {
           mod         <- parseModuleOr400(pkg)
-          pluginsData <- readPluginsOr400
+          pluginsData <- readPluginsOr405
           pac         <- Sc4pac.init(pluginsData.config)
           _           <- pac.remove(Seq(mod))
         } yield jsonOk
@@ -123,7 +123,7 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
     //     let ws = new WebSocket('ws://localhost:51515/update/ws'); ws.onmessage = function(e) { console.log(e) };
     //     ws.send('FOO')
     Method.GET / "update" / "ws" -> handler {
-      readPluginsOr400.foldZIO(
+      readPluginsOr405.foldZIO(
         failure = ZIO.succeed[Response](_),
         success = pluginsData =>
           Handler.webSocket { wsChannel =>
@@ -149,7 +149,7 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
       )
     },
 
-    // 200, 400
+    // 200, 400, 405
     Method.GET / "search" -> handler { (req: Request) =>
       wrapHttpEndpoint {
         for {
@@ -163,7 +163,7 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
                                 "Invalid threshold", "Threshold must be a number between 0 and 100."
                               )).status(Status.BadRequest))
                           }
-          pluginsData  <- readPluginsOr400
+          pluginsData  <- readPluginsOr405
           pac          <- Sc4pac.init(pluginsData.config)
           searchResult <- pac.search(searchText, threshold)
         } yield jsonResponse(searchResult.map { case (pkg, ratio, descOpt) =>
@@ -172,12 +172,12 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
       }
     },
 
-    // 200, 400, 404
+    // 200, 400, 404, 405
     Method.GET / "info" / string("pkg") -> handler { (pkg: String, req: Request) =>
       wrapHttpEndpoint {
         for {
           mod           <- parseModuleOr400(pkg)
-          pluginsData   <- readPluginsOr400
+          pluginsData   <- readPluginsOr405
           pac           <- Sc4pac.init(pluginsData.config)
           infoResultOpt <- pac.infoJson(mod)  // TODO avoid decoding/encoding json
         } yield infoResultOpt match {
@@ -187,11 +187,11 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
       }
     },
 
-    // 200, 400
+    // 200, 405
     Method.GET / "list" -> handler {
       wrapHttpEndpoint {
         for {
-          pluginsData   <- readPluginsOr400
+          pluginsData   <- readPluginsOr405
           installedIter <- cli.Commands.List.iterateInstalled(pluginsData)
         } yield {
           jsonResponse(installedIter.map { case (mod, explicit) =>
