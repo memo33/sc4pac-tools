@@ -8,6 +8,7 @@ import zio.{ZIO, Task, IO}
 import upickle.default as UP
 
 import sc4pac.JsonData as JD
+import JD.bareModuleRw
 
 
 class Api(options: sc4pac.cli.Commands.ServerOptions) {
@@ -188,7 +189,16 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
     },
 
     // 200, 405
-    Method.GET / "list" -> handler {
+    Method.GET / "list" / "added" -> handler {
+      wrapHttpEndpoint {
+        for {
+          pluginsData <- readPluginsOr405
+        } yield jsonResponse(pluginsData.explicit)
+      }
+    },
+
+    // 200, 405
+    Method.GET / "list" / "installed" -> handler {
       wrapHttpEndpoint {
         for {
           pluginsData   <- readPluginsOr405
