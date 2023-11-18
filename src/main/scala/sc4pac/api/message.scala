@@ -137,4 +137,6 @@ object InstalledPkg {
   given installedPkgRw: UP.ReadWriter[InstalledPkg] = UP.stringKeyRW(UP.macroRW)
 }
 
-case class SearchResultItem(`package`: BareModule, relevance: Int, description: String) derives UP.ReadWriter
+case class SearchResultItem(`package`: BareModule, relevance: Int, summary: String) derives UP.ReadWriter
+
+case class ChannelContentsItem(`package`: BareModule, version: String, summary: String) derives UP.ReadWriter

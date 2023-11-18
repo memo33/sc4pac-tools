@@ -167,8 +167,8 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
           pluginsData  <- readPluginsOr405
           pac          <- Sc4pac.init(pluginsData.config)
           searchResult <- pac.search(searchText, threshold)
-        } yield jsonResponse(searchResult.map { case (pkg, ratio, descOpt) =>
-          SearchResultItem(pkg, relevance = ratio, description = descOpt.getOrElse(""))
+        } yield jsonResponse(searchResult.map { case (pkg, ratio, summaryOpt) =>
+          SearchResultItem(pkg, relevance = ratio, summary = summaryOpt.getOrElse(""))
         })
       }
     },
@@ -208,6 +208,20 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
             InstalledPkg(mod.toBareDep, variant = mod.variant, version = mod.version, explicit = explicit)
           }.toSeq)
         }
+      }
+    },
+
+    // 200, 405
+    Method.GET / "list" / "channel-packages" -> handler {
+      wrapHttpEndpoint {
+        for {
+          pluginsData <- readPluginsOr405
+          pac         <- Sc4pac.init(pluginsData.config)
+          itemsIter   <- pac.iterateAllChannelContents
+        } yield jsonResponse(itemsIter.flatMap(item => item.toBareDep match {
+          case mod: BareModule => item.versions.map { version => ChannelContentsItem(mod, version = version, summary = item.summary) }
+          case _: BareAsset => Nil
+        }).toSeq)
       }
     },
 
