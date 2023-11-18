@@ -62,22 +62,27 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
       .mapError(err => jsonResponse(ErrorMessage.BadRequest(s"Malformed package name: $module", err)).status(Status.BadRequest))
   }
 
+  private def parseModulesOr400(body: Body): IO[Response, Seq[BareModule]] =
+    parseOr400[Seq[BareModule]](body, ErrorMessage.BadRequest(
+      "Malformed package names", """Pass an array of strings of the form '<group>:<name>'."""
+    ))
+
+  private def parseOr400[A : UP.Reader](body: Body, errMsg: => ErrorMessage): IO[Response, A] = {
+    body.asArray
+      .flatMap(bytes => ZIO.attempt { UP.read[A](bytes) })
+      .mapError(err => jsonResponse(errMsg).status(Status.BadRequest))
+  }
+
+  private def validateOr400[A](labels: Seq[A])(p: A => Boolean)(errMsg: Seq[A] => ErrorMessage): IO[Response, Unit] = {
+    ZIO.validateParDiscard(labels)(label => if (p(label)) ZIO.unit else ZIO.fail(label))
+      .mapError(failedLabels => jsonResponse(errMsg(failedLabels)).status(Status.BadRequest))
+  }
+
   def routes: Routes[ScopeRoot, Nothing] = Routes(
 
     // 200, 400, 405
-    Method.GET / "init" -> handler { (req: Request) =>
+    Method.POST / "init" -> handler { (req: Request) =>
       wrapHttpEndpoint {
-        def errResp: zio.URIO[ScopeRoot, Response] =
-          for {
-            defaultPlugins <- JD.Plugins.defaultPluginsRoot
-            defaultCache <- JD.Plugins.defaultCacheRoot
-          } yield jsonResponse(
-            ErrorMessage.BadInit("""Query parameters "plugins" and "cache" are required.""",
-              detail = "Pass the locations of the folders as URL-encoded query parameters.",
-              platformDefaults = Map("plugins" -> defaultPlugins.map(_.toString), "cache" -> defaultCache.map(_.toString))
-            )
-          ).status(Status.BadRequest)
-
         for {
           scopeRoot   <- ZIO.serviceWith[ScopeRoot](_.path)
           _           <- ZIO.attemptBlockingIO(os.exists(JD.Plugins.path(scopeRoot)) || os.exists(JD.PluginsLock.path(scopeRoot)))
@@ -85,8 +90,15 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
                              ErrorMessage.InitNotAllowed("Scope already initialized.",
                                "Manually delete the corresponding .json files if you are sure you want to initialize a new scope.")
                            ).status(Status.MethodNotAllowed))
-          pluginsRoot <- ZIO.fromOption(req.url.queryParams.get("plugins").map(p => os.Path(p, scopeRoot))).orElse(errResp.flip)
-          cacheRoot   <- ZIO.fromOption(req.url.queryParams.get("cache").map(p => os.Path(p, scopeRoot))).orElse(errResp.flip)
+          defPlugins  <- JD.Plugins.defaultPluginsRoot
+          defCache    <- JD.Plugins.defaultCacheRoot
+          initArgs    <- parseOr400[InitArgs](req.body, ErrorMessage.BadInit(
+                           """Parameters "plugins" and "cache" are required.""",
+                           "Pass the locations of the folders as JSON dictionary: {plugins: <path>, cache: <path>}.",
+                           platformDefaults = Map("plugins" -> defPlugins.map(_.toString), "cache" -> defCache.map(_.toString))
+                         ))
+          pluginsRoot =  os.Path(initArgs.plugins, scopeRoot)
+          cacheRoot   =  os.Path(initArgs.cache, scopeRoot)
           _           <- ZIO.attemptBlockingIO {
                            os.makeDir.all(pluginsRoot)  // TODO ask for confirmation?
                            os.makeDir.all(cacheRoot)
@@ -97,33 +109,38 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
     },
 
     // 200, 400, 405
-    Method.GET / "add" / string("pkg") -> handler { (pkg: String, req: Request) =>
+    Method.POST / "plugins.add" -> handler { (req: Request) =>
       wrapHttpEndpoint {
         for {
-          mod         <- parseModuleOr400(pkg)
+          mods        <- parseModulesOr400(req.body)
           pluginsData <- readPluginsOr405
           pac         <- Sc4pac.init(pluginsData.config)
-          _           <- pac.add(Seq(mod))
+          _           <- pac.add(mods)
         } yield jsonOk
       }
     },
 
     // 200, 400, 405
-    Method.GET / "remove" / string("pkg") -> handler { (pkg: String, req: Request) =>
+    Method.POST / "plugins.remove" -> handler { (req: Request) =>
       wrapHttpEndpoint {
         for {
-          mod         <- parseModuleOr400(pkg)
+          mods        <- parseModulesOr400(req.body)
           pluginsData <- readPluginsOr405
+          added       =  pluginsData.explicit.toSet
+          _           <- validateOr400(mods)(added.contains(_))(failedMods => ErrorMessage.BadRequest(
+                           s"Package is not among explicitly added plugins: ${failedMods.map(_.orgName).mkString(", ")}",
+                           "Get /plugins.added.list for the removable packages."
+                         ))
           pac         <- Sc4pac.init(pluginsData.config)
-          _           <- pac.remove(Seq(mod))
+          _           <- pac.remove(mods)
         } yield jsonOk
       }
     },
 
     // Test the websocket using Javascript in webbrowser (messages are also logged in network tab):
-    //     let ws = new WebSocket('ws://localhost:51515/update/ws'); ws.onmessage = function(e) { console.log(e) };
-    //     ws.send('FOO')
-    Method.GET / "update" / "ws" -> handler {
+    //     let ws = new WebSocket('ws://localhost:51515/update'); ws.onmessage = function(e) { console.log(e) };
+    //     ws.send(JSON.stringify({}))
+    Method.GET / "update" -> handler {
       readPluginsOr405.foldZIO(
         failure = ZIO.succeed[Response](_),
         success = pluginsData =>
@@ -151,7 +168,7 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
     },
 
     // 200, 400, 405
-    Method.GET / "search" -> handler { (req: Request) =>
+    Method.GET / "packages.search" -> handler { (req: Request) =>
       wrapHttpEndpoint {
         for {
           searchText   <- ZIO.fromOption(req.url.queryParams.get("q")).orElseFail(jsonResponse(ErrorMessage.BadRequest(
@@ -174,9 +191,12 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
     },
 
     // 200, 400, 404, 405
-    Method.GET / "info" / string("pkg") -> handler { (pkg: String, req: Request) =>
+    Method.GET / "packages.info" -> handler { (req: Request) =>
       wrapHttpEndpoint {
         for {
+          pkg          <- ZIO.fromOption(req.url.queryParams.get("pkg")).orElseFail(jsonResponse(ErrorMessage.BadRequest(
+                            """Query parameter "pkg" is required.""", "Pass the package identifier as query."
+                          )).status(Status.BadRequest))
           mod           <- parseModuleOr400(pkg)
           pluginsData   <- readPluginsOr405
           pac           <- Sc4pac.init(pluginsData.config)
@@ -189,7 +209,7 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
     },
 
     // 200, 405
-    Method.GET / "list" / "added" -> handler {
+    Method.GET / "plugins.added.list" -> handler {
       wrapHttpEndpoint {
         for {
           pluginsData <- readPluginsOr405
@@ -198,7 +218,7 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
     },
 
     // 200, 405
-    Method.GET / "list" / "installed" -> handler {
+    Method.GET / "plugins.installed.list" -> handler {
       wrapHttpEndpoint {
         for {
           pluginsData   <- readPluginsOr405
@@ -212,7 +232,7 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
     },
 
     // 200, 405
-    Method.GET / "list" / "channel-packages" -> handler {
+    Method.GET / "packages.list" -> handler {
       wrapHttpEndpoint {
         for {
           pluginsData <- readPluginsOr405
@@ -226,7 +246,7 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
     },
 
     // 200, 405
-    Method.GET / "variant" / "list" -> handler {
+    Method.GET / "variants.list" -> handler {
       wrapHttpEndpoint {
         for {
           pluginsData <- readPluginsOr405
@@ -235,14 +255,15 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
     },
 
     // 200, 400, 405
-    Method.GET / "variant" / "reset" / string("label") -> handler { (label: String, req: Request) =>
+    Method.POST / "variants.reset" -> handler { (req: Request) =>
       wrapHttpEndpoint {
         for {
+          labels      <- parseOr400[Seq[String]](req.body, ErrorMessage.BadRequest("Malformed variant labels.", "Pass variants as an array of strings."))
           pluginsData <- readPluginsOr405
-                           .filterOrFail(_.config.variant.contains(label))(jsonResponse(ErrorMessage.BadRequest(
-                             s"Variant does not exist: $label", "Get /variant/list for the currently configured variants."
-                           )).status(Status.BadRequest))
-          _           <- cli.Commands.VariantReset.removeAndWrite(pluginsData, Seq(label))
+          _           <- validateOr400(labels)(pluginsData.config.variant.contains(_))(failedLabels => ErrorMessage.BadRequest(
+                           s"Variant does not exist: ${failedLabels.mkString(", ")}", "Get /variants.list for the currently configured variants."
+                         ))
+          _           <- cli.Commands.VariantReset.removeAndWrite(pluginsData, labels)
         } yield jsonOk
       }
     },
