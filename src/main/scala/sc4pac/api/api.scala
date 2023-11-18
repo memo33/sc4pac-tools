@@ -33,10 +33,10 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
     case abort: error.Sc4pacVersionNotFound => Status.NotFound
     case abort: error.Sc4pacAssetNotFound => Status.NotFound
     case abort: error.ExtractionFailed => Status.InternalServerError
-    case abort: error.UnsatisfiableVariantConstraints => Status.BadRequest
+    case abort: error.UnsatisfiableVariantConstraints => Status.InternalServerError
     case abort: error.DownloadFailed => Status.BadGateway
     case abort: error.NoChannelsAvailable => Status.BadGateway
-    case abort: error.Sc4pacAbort => Status.BadRequest
+    case abort: error.Sc4pacAbort => Status.Ok  // this is not really an error, but the expected control flow
   }
 
   val jsonOk = jsonResponse(ResultMessage("OK"))
