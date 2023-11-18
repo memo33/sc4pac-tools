@@ -149,6 +149,29 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
       )
     },
 
+    // 200, 400
+    Method.GET / "search" -> handler { (req: Request) =>
+      wrapHttpEndpoint {
+        for {
+          searchText   <- ZIO.fromOption(req.url.queryParams.get("q")).orElseFail(jsonResponse(ErrorMessage.BadRequest(
+                            """Query parameter "q" is required.""", "Pass the search string as query."
+                          )).status(Status.BadRequest))
+          threshold    <- req.url.queryParams.get("threshold") match {
+                            case None => ZIO.succeed(Constants.fuzzySearchThreshold)  // the default
+                            case Some(s) => ZIO.fromOption(implicitly[Numeric[Int]].parseString(s).filter(i => 0 <= i && i <= 100))
+                              .orElseFail(jsonResponse(ErrorMessage.BadRequest(
+                                "Invalid threshold", "Threshold must be a number between 0 and 100."
+                              )).status(Status.BadRequest))
+                          }
+          pluginsData  <- readPluginsOr400
+          pac          <- Sc4pac.init(pluginsData.config)
+          searchResult <- pac.search(searchText, threshold)
+        } yield jsonResponse(searchResult.map { case (pkg, ratio, descOpt) =>
+          SearchResultItem(pkg, relevance = ratio, description = descOpt.getOrElse(""))
+        })
+      }
+    },
+
     // 200, 400, 404
     Method.GET / "info" / string("pkg") -> handler { (pkg: String, req: Request) =>
       wrapHttpEndpoint {
