@@ -112,7 +112,7 @@ object ErrorMessage {
 }
 
 @upickle.implicits.key("/result")
-case class ResultMessage(result: String) extends Message
+case class ResultMessage(body: String) extends Message
 
 sealed trait ProgressMessage extends Message derives UP.ReadWriter
 object ProgressMessage {
