@@ -296,16 +296,19 @@ object Commands {
                   onFalse = ZIO.fail(new Sc4pacNotInteractive(s"Pass variants to remove as arguments, non-interactively."))
                 )
               }
-            for {
-              selected <- select
-              data2    =  data.copy(config = data.config.copy(variant = data.config.variant -- selected))
-              path     <- JD.Plugins.pathURIO
-              _        <- JsonIo.write(path, data2, None)(ZIO.succeed(()))
-            } yield ()
+            select.flatMap(removeAndWrite(data, _))
           }
         }
         runMainExit(task.provideEnvironment(cliEnvironment), exit)
       }
+    }
+
+    def removeAndWrite(data: JD.Plugins, selected: Seq[String]): zio.RIO[ScopeRoot, Unit] = {
+      val data2 = data.copy(config = data.config.copy(variant = data.config.variant -- selected))
+      for {
+        path <- JD.Plugins.pathURIO
+        _    <- JsonIo.write(path, data2, None)(ZIO.succeed(()))
+      } yield ()
     }
   }
 

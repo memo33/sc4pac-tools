@@ -199,7 +199,29 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
           }.toSeq)
         }
       }
-    }
+    },
+
+    // 200, 405
+    Method.GET / "variant" / "list" -> handler {
+      wrapHttpEndpoint {
+        for {
+          pluginsData <- readPluginsOr405
+        } yield jsonResponse(pluginsData.config.variant)(using UP.stringKeyW(implicitly[UP.Writer[Variant]]))
+      }
+    },
+
+    // 200, 400, 405
+    Method.GET / "variant" / "reset" / string("label") -> handler { (label: String, req: Request) =>
+      wrapHttpEndpoint {
+        for {
+          pluginsData <- readPluginsOr405
+                           .filterOrFail(_.config.variant.contains(label))(jsonResponse(ErrorMessage.BadRequest(
+                             s"Variant does not exist: $label", "Get /variant/list for the currently configured variants."
+                           )).status(Status.BadRequest))
+          _           <- cli.Commands.VariantReset.removeAndWrite(pluginsData, Seq(label))
+        } yield jsonOk
+      }
+    },
 
   ).handleError(err => jsonResponse(ErrorMessage.ServerError("Unhandled error.", err.getMessage)).status(Status.InternalServerError))
 
