@@ -40,7 +40,7 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
     case abort: error.Sc4pacAbort => Status.Ok  // this is not really an error, but the expected control flow
   }
 
-  val jsonOk = jsonResponse(ResultMessage("OK"))
+  val jsonOk = jsonResponse(ResultMessage(ok = true))
 
   private val httpLogger = {
     val cliLogger: Logger = CliLogger()
@@ -152,7 +152,7 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
                 wsLogger     <- ZIO.service[WebSocketLogger]
                 flag         <- pac.update(pluginsData.explicit, globalVariant0 = pluginsData.config.variant, pluginsRoot = pluginsRoot)
                                   .provideSomeLayer(zio.ZLayer.succeed(WebSocketPrompter(wsChannel, wsLogger)))
-              } yield ResultMessage("OK")
+              } yield ResultMessage(ok = true)
 
             val wsTask: zio.RIO[ScopeRoot, Unit] =
               WebSocketLogger.run(send = msg => wsChannel.send(Read(jsonFrame(msg)))) {
