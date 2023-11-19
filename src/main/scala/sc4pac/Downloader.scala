@@ -224,16 +224,22 @@ object Downloader {
     val b = new Array[Byte](Constants.bufferSizeDownload)
 
     @tailrec
-    def helper(count: Long): Unit = {
+    def helper(count: Long, logged: Boolean): Unit = {
       val read = in.read(b)
       if (read >= 0) {
         out.write(b, 0, read)
         out.flush()
-        logger.downloadProgress(url, count + read)
-        helper(count + read)
+        if (count / Constants.downloadProgressQuantization < (count + read) / Constants.downloadProgressQuantization) {
+          logger.downloadProgress(url, count + read)  // log only if crossing the quantization marks
+          helper(count + read, logged = true)
+        } else {
+          helper(count + read, logged = false)
+        }
+      } else {
+        if (!logged) logger.downloadProgress(url, count)  // log final size
       }
     }
-    helper(alreadyDownloaded)
+    helper(alreadyDownloaded, logged = false)
   }
 
   /** Consumes the first overlap.length bytes and returns whether input matches. */

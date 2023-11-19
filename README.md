@@ -53,6 +53,7 @@ channel add     Add a channel to fetch package metadata from.
 channel remove  Select channels to remove.
 channel list    List the channel URLs.
 channel build   Build a channel locally by converting YAML files to JSON.
+server          Start a local server to use the HTTP API.
 ```
 
 See [CLI](https://memo33.github.io/sc4pac/#/cli?id=command-line-interface) for details.
@@ -134,7 +135,7 @@ For publishing the website, refer to the Makefile at https://github.com/memo33/s
   - [ ] handling servers that have gone offline
 - [x] Collaborative central metadata channel: https://github.com/memo33/sc4pac
 - [x] Website and online documentation: https://memo33.github.io/sc4pac/
-- [ ] Server API (backend)
+- [x] Server API (backend): https://memo33.github.io/sc4pac/#/api or [api.md](api.md)
 - [ ] Graphical UI (frontend) aka Mod manager
 
 </div>

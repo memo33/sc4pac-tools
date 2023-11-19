@@ -6,7 +6,8 @@ import sc4pac.CoursierZio.*  // implicit coursier-zio interop
 class ResolutionContext(
   val repositories: Seq[MetadataRepository],
   val cache: FileCache,
-  val logger: Logger
+  val logger: Logger,
+  val scopeRoot: os.Path
 ) {
 
   object coursierApi {

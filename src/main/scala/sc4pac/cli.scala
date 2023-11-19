@@ -8,6 +8,7 @@ import zio.{ZIO, Task}
 
 import sc4pac.error.Sc4pacNotInteractive
 import sc4pac.JsonData as JD
+import sc4pac.Resolution.DepModule
 
 // see https://github.com/coursier/coursier/blob/main/modules/cli/src/main/scala/coursier/cli/Coursier.scala
 // and related files
@@ -23,6 +24,11 @@ object Commands {
 
   sealed abstract class Sc4pacCommandOptions extends Product with Serializable
 
+  val cliEnvironment = {
+    val logger = CliLogger()
+    zio.ZEnvironment(ScopeRoot(os.pwd), logger, CliPrompter(logger))
+  }
+
   // TODO strip escape sequences if jansi failed with a link error
   private[sc4pac] def gray(msg: String): String = s"${27.toChar}[90m" + msg + Console.RESET  // aka bright black
   private[sc4pac] def emph(msg: String): String = Console.BOLD + msg + Console.RESET
@@ -30,18 +36,22 @@ object Commands {
   private[sc4pac] val sortHelpLast: Option[Seq[String] => Seq[String]] =
     Some(groups => groups.partition(_ == "Help") match { case (help, nonHelp) => nonHelp ++ help })
 
+  type ExpectedFailure = error.Sc4pacAbort | error.DownloadFailed | error.NoChannelsAvailable
+    | error.Sc4pacVersionNotFound | error.Sc4pacAssetNotFound | error.ExtractionFailed
+    | error.UnsatisfiableVariantConstraints
+
+  private def handleExpectedFailures(abort: ExpectedFailure, exit: Int => Nothing): Nothing = abort match {
+    case abort: error.Sc4pacAbort => { System.err.println("Operation aborted."); exit(1) }
+    case abort => { System.err.println(s"Operation aborted. ${abort.getMessage}"); exit(1) }
+  }
+
   private def runMainExit(task: Task[Unit], exit: Int => Nothing): Nothing = {
     unsafeRun(task.fold(
       failure = {
-        // the following are expected failures, so we do not need the trace
-        case abort: sc4pac.error.Sc4pacAbort => { System.err.println(Array("Operation aborted.", abort.msg).mkString(" ")); exit(1) }
-        case abort: sc4pac.error.Sc4pacTimeout => { System.err.println(Array("Operation aborted.", abort.getMessage).mkString(" ")); exit(1) }
-        case abort: sc4pac.error.Sc4pacNotInteractive => { System.err.println(s"Operation aborted as terminal is non-interactive: ${abort.getMessage}"); exit(1) }
-        case abort: (sc4pac.error.Sc4pacVersionNotFound | sc4pac.error.Sc4pacAssetNotFound) =>
-          { System.err.println(s"Operation aborted. ${abort.getMessage}"); exit(1) }
-        case abort: sc4pac.error.ExtractionFailed => { System.err.println(s"Operation aborted. ${abort.getMessage}"); exit(1) }
-        case abort: sc4pac.error.UnsatisfiableVariantConstraints => { System.err.println(s"Operation aborted. ${abort.getMessage}"); exit(1) }
-        case e => { e.printStackTrace(); exit(1) }
+        case abort: ExpectedFailure => handleExpectedFailures(abort, exit)  // we do not need the trace for expected failures
+        case abort: error.Sc4pacTimeout => { System.err.println(Array("Operation aborted.", abort.getMessage).mkString(" ")); exit(1) }
+        case abort: error.Sc4pacNotInteractive => { System.err.println(s"Operation aborted as terminal is non-interactive: ${abort.getMessage}"); exit(1) }
+        case e => { e.printStackTrace(); exit(2) }
       },
       success = _ => exit(0)
     ))
@@ -70,7 +80,7 @@ object Commands {
       if (args.all.isEmpty) {
         fullHelpAsked(commandName)
       }
-      val task: Task[Unit] = for {
+      val task = for {
         mods   <- ZIO.fromEither(Sc4pac.parseModules(args.all)).catchAll { (err: ErrStr) =>
                     error(caseapp.core.Error.Other(s"Package format is <group>:<package-name> ($err)"))
                   }
@@ -78,7 +88,7 @@ object Commands {
         pac    <- Sc4pac.init(config)
         _      <- pac.add(mods)
       } yield ()
-      runMainExit(task, exit)
+      runMainExit(task.provideEnvironment(cliEnvironment), exit)
     }
   }
 
@@ -94,9 +104,10 @@ object Commands {
       val task = for {
         pluginsData  <- JD.Plugins.readOrInit
         pac          <- Sc4pac.init(pluginsData.config)
-        flag         <- pac.update(pluginsData.explicit, globalVariant0 = pluginsData.config.variant, pluginsRoot = pluginsData.pluginsRootAbs)
+        pluginsRoot  <- pluginsData.config.pluginsRootAbs
+        flag         <- pac.update(pluginsData.explicit, globalVariant0 = pluginsData.config.variant, pluginsRoot = pluginsRoot)
       } yield ()
-      runMainExit(task, exit)
+      runMainExit(task.provideEnvironment(cliEnvironment), exit)
     }
   }
 
@@ -120,7 +131,7 @@ object Commands {
       if (!options.interactive && args.all.isEmpty) {
         fullHelpAsked(commandName)
       } else {
-        val task: Task[Unit] = for {
+        val task = for {
           mods   <- ZIO.fromEither(Sc4pac.parseModules(args.all)).catchAll { (err: ErrStr) =>
                       error(caseapp.core.Error.Other(s"Package format is <group>:<package-name> ($err)"))
                     }
@@ -134,7 +145,7 @@ object Commands {
                       pac.remove(mods)
                     }
         } yield ()
-        runMainExit(task, exit)
+        runMainExit(task.provideEnvironment(cliEnvironment), exit)
       }
     }
   }
@@ -165,22 +176,23 @@ object Commands {
       if (args.all.isEmpty) {
         fullHelpAsked(commandName)
       } else {
-        val task: Task[Unit] = for {
+        val task = for {
           pluginsData  <- JD.Plugins.readOrInit
           pac          <- Sc4pac.init(pluginsData.config)
           query        =  args.all.mkString(" ")
           searchResult <- pac.search(query, options.threshold)
           installed    <- JD.PluginsLock.listInstalled.map(_.map(_.toBareDep).toSet)
+          logger       <- ZIO.service[CliLogger]
         } yield {
           if (searchResult.isEmpty) {
             error(caseapp.core.Error.Other("No packages found. Try to lower the `--threshold` parameter."))
           } else {
             for (((mod, ratio, description), idx) <- searchResult.zipWithIndex.reverse) {
-              pac.logger.logSearchResult(idx, mod, description, installed(mod))
+              logger.logSearchResult(idx, mod, description, installed(mod))
             }
           }
         }
-        runMainExit(task, exit)
+        runMainExit(task.provideEnvironment(cliEnvironment), exit)
       }
     }
   }
@@ -199,25 +211,26 @@ object Commands {
       args.all match {
         case Nil => fullHelpAsked(commandName)
         case pkgNames =>
-          val task: Task[Unit] = for {
+          val task = for {
             mods         <- ZIO.fromEither(Sc4pac.parseModules(pkgNames)).catchAll { (err: ErrStr) =>
                               error(caseapp.core.Error.Other(s"Package format is <group>:<package-name> ($err)"))
                             }
             pluginsData  <- JD.Plugins.readOrInit
             pac          <- Sc4pac.init(pluginsData.config)
             infoResults  <- ZIO.foreachPar(mods)(pac.info)
+            logger       <- ZIO.service[CliLogger]
           } yield {
             val (found, notFound) = infoResults.zip(mods).partition(_._1.isDefined)
             if (notFound.nonEmpty) {
               error(caseapp.core.Error.Other("Package not found: " + notFound.map(_._2.orgName).mkString(" ")))
             } else {
               for ((infoResultOpt, idx) <- found.zipWithIndex) {
-                if (idx > 0) pac.logger.log("")
-                pac.logger.logInfoResult(infoResultOpt._1.get)
+                if (idx > 0) logger.log("")
+                logger.logInfoResult(infoResultOpt._1.get)
               }
             }
           }
-          runMainExit(task, exit)
+          runMainExit(task.provideEnvironment(cliEnvironment), exit)
       }
     }
   }
@@ -227,18 +240,22 @@ object Commands {
 
   case object List extends Command[ListOptions] {
     def run(options: ListOptions, args: RemainingArgs): Unit = {
-      val task: Task[Unit] = for {
+      val task = for {
         pluginsData  <- JD.Plugins.readOrInit
-        pac          <- Sc4pac.init(pluginsData.config)  // only used for logging
-        installed    <- JD.PluginsLock.listInstalled
+        iter         <- iterateInstalled(pluginsData)
+        logger       <- ZIO.service[CliLogger]
       } yield {
+        for ((mod, explicit) <- iter) logger.logInstalled(mod, explicit)
+      }
+      runMainExit(task.provideEnvironment(cliEnvironment), exit)
+    }
+
+    def iterateInstalled(pluginsData: JD.Plugins): zio.RIO[ScopeRoot, Iterator[(DepModule, Boolean)]] = {
+      for (installed <- JD.PluginsLock.listInstalled) yield {
         val sorted = installed.sortBy(mod => (mod.group.value, mod.name.value))
         val explicit: Set[BareModule] = pluginsData.explicit.toSet
-        for (mod <- sorted) {
-          pac.logger.logInstalled(mod, explicit(mod.toBareDep))
-        }
+        sorted.iterator.map(mod => (mod, explicit(mod.toBareDep)))
       }
-      runMainExit(task, exit)
     }
   }
 
@@ -279,15 +296,19 @@ object Commands {
                   onFalse = ZIO.fail(new Sc4pacNotInteractive(s"Pass variants to remove as arguments, non-interactively."))
                 )
               }
-            for {
-              selected <- select
-              data2    =  data.copy(config = data.config.copy(variant = data.config.variant -- selected))
-              _        <- JsonIo.write(JD.Plugins.path, data2, None)(ZIO.succeed(()))
-            } yield ()
+            select.flatMap(removeAndWrite(data, _))
           }
         }
-        runMainExit(task, exit)
+        runMainExit(task.provideEnvironment(cliEnvironment), exit)
       }
+    }
+
+    def removeAndWrite(data: JD.Plugins, selected: Seq[String]): zio.RIO[ScopeRoot, Unit] = {
+      val data2 = data.copy(config = data.config.copy(variant = data.config.variant -- selected))
+      for {
+        path <- JD.Plugins.pathURIO
+        _    <- JsonIo.write(path, data2, None)(ZIO.succeed(()))
+      } yield ()
     }
   }
 
@@ -309,12 +330,13 @@ object Commands {
           MetadataRepository.parseChannelUrl(text) match {
             case Left(err) => error(caseapp.core.Error.Other(s"Malformed URL: $err"))
             case Right(uri) =>
-              val task: Task[Unit] = for {
+              val task = for {
                 data  <- JD.Plugins.readOrInit
                 data2 =  data.copy(config = data.config.copy(channels = (data.config.channels :+ uri).distinct))
-                _     <- JsonIo.write(JD.Plugins.path, data2, None)(ZIO.succeed(()))
+                path  <- JD.Plugins.pathURIO
+                _     <- JsonIo.write(path, data2, None)(ZIO.succeed(()))
               } yield ()
-              runMainExit(task, exit)
+              runMainExit(task.provideEnvironment(cliEnvironment), exit)
           }
         case Nil => fullHelpAsked(commandName)
         case _ => error(caseapp.core.Error.Other("A single argument is needed: channel-URL"))
@@ -357,11 +379,12 @@ object Commands {
               (drop, keep) =  data.config.channels.partition(isSelected)
               _            <- ZIO.succeed { if (drop.nonEmpty) println(("The following channels have been removed:" +: drop).mkString(f"%n")) }
               data2        =  data.copy(config = data.config.copy(channels = keep))
-              _            <- JsonIo.write(JD.Plugins.path, data2, None)(ZIO.succeed(()))
+              path         <- JD.Plugins.pathURIO
+              _            <- JsonIo.write(path, data2, None)(ZIO.succeed(()))
             } yield ()
           }
         }
-        runMainExit(task, exit)
+        runMainExit(task.provideEnvironment(cliEnvironment), exit)
       }
     }
   }
@@ -380,7 +403,7 @@ object Commands {
           println(url)
         }
       }
-      runMainExit(task, exit)
+      runMainExit(task.provideEnvironment(cliEnvironment), exit)
     }
   }
 
@@ -409,6 +432,43 @@ object Commands {
     }
   }
 
+  @HelpMessage(s"""
+    |Start a local server to use the HTTP API.
+    |
+    |Example:
+    |  sc4pac server --indent 2 --scope-root scopes/scope-1/
+    """.stripMargin.trim)
+  final case class ServerOptions(
+    @ValueDescription("number") @Group("Server") @Tag("Server")
+    @HelpMessage(s"(default: ${Constants.defaultPort})")
+    port: Int = Constants.defaultPort,
+    @ValueDescription("number") @Group("Server") @Tag("Server")
+    @HelpMessage(s"indentation of JSON responses (default: -1, no indentation)")
+    indent: Int = -1,
+    @ValueDescription("path") @Group("Server") @Tag("Server")
+    @HelpMessage(s"root directory containing sc4pac-plugins.json (default: current working directory), newly created if necessary; "
+      + "can be used for managing multiple different plugins folders")
+    scopeRoot: String = "",
+  ) extends Sc4pacCommandOptions
+
+  case object Server extends Command[ServerOptions] {
+    def run(options: ServerOptions, args: RemainingArgs): Unit = {
+      if (options.indent < -1)
+        error(caseapp.core.Error.Other(s"Indentation must be -1 or larger."))
+      val scopeRoot: os.Path = if (options.scopeRoot.isEmpty) os.pwd else os.Path(java.nio.file.Paths.get(options.scopeRoot), os.pwd)
+      if (!os.exists(scopeRoot)) {
+        println(s"Creating sc4pac scope directory: $scopeRoot")
+        os.makeDir.all(scopeRoot)
+      }
+      val task: Task[Unit] = {
+        val app = sc4pac.api.Api(options).routes.toHttpApp
+        println(s"Starting sc4pac server on port ${options.port}...")
+        zio.http.Server.serve(app).provide(zio.http.Server.defaultWithPort(options.port), zio.ZLayer.succeed(ScopeRoot(scopeRoot)))
+      }
+      runMainExit(task, exit)
+    }
+  }
+
 }
 
 object CliMain extends caseapp.core.app.CommandsEntryPoint {
@@ -425,7 +485,8 @@ object CliMain extends caseapp.core.app.CommandsEntryPoint {
     Commands.ChannelAdd,
     Commands.ChannelRemove,
     Commands.ChannelList,
-    Commands.ChannelBuild)
+    Commands.ChannelBuild,
+    Commands.Server)
 
   val progName = BuildInfo.name
 

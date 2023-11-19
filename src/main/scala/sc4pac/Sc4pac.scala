@@ -5,10 +5,9 @@ import scala.collection.immutable.{Set, Seq}
 import coursier.{Type, Resolve, Fetch}
 import coursier.core.{Module, Organization, ModuleName, Dependency, Publication, Configuration}
 import coursier.util.{Artifact, EitherT, Gather}
-import upickle.default.{ReadWriter, readwriter, macroRW, read}
 import java.nio.file.Path
-import zio.{IO, ZIO, UIO, Task, Scope}
-import org.fusesource.jansi.Ansi
+import zio.{IO, ZIO, UIO, Task, Scope, RIO}
+import upickle.default as UP
 
 import sc4pac.error.*
 import sc4pac.Constants.isSc4pacAsset
@@ -16,115 +15,11 @@ import sc4pac.JsonData as JD
 import sc4pac.Sc4pac.{StageResult, UpdatePlan}
 import sc4pac.Resolution.{Dep, DepModule, DepAsset}
 
-/** A plain Coursier logger, since Coursier's RefreshLogger results in dropped
-  * or invisible messages, hiding the downloading activity.
-  */
-class Logger private (out: java.io.PrintStream, useColor: Boolean, isInteractive: Boolean) extends coursier.cache.CacheLogger {
-
-  private def cyan(msg: String): String = if (useColor) Console.CYAN + msg + Console.RESET else msg
-  private def cyanBold(msg: String): String = if (useColor) Console.CYAN + Console.BOLD + msg + Console.RESET else msg
-  private def yellowBold(msg: String): String = if (useColor) Console.YELLOW + Console.BOLD + msg + Console.RESET else msg
-  private def bold(msg: String): String = if (useColor) Console.BOLD + msg + Console.RESET else msg
-  def gray(msg: String): String = if (useColor) grayEscape + msg + Console.RESET else msg  // aka bright black
-  private val grayEscape = s"${27.toChar}[90m"
-
-  override def downloadingArtifact(url: String, artifact: coursier.util.Artifact) =
-    out.println("  " + cyan(s"> Downloading $url"))
-  override def downloadedArtifact(url: String, success: Boolean) =
-    if (!success)
-      out.println("  " + cyan(s"  Download of $url unsuccessful"))
-    else if (Constants.debugMode)
-      out.println("  " + gray(s"  Downloaded $url"))
-  override def downloadLength(url: String, len: Long, currentLen: Long, watching: Boolean): Unit =
-    debug(s"downloadLength=$currentLen/$len: $url")
-  override def gettingLength(url: String): Unit =
-    debug(s"gettingLength $url")
-  override def gettingLengthResult(url: String, length: Option[Long]): Unit =
-    debug(s"gettingLengthResult=$length: $url")
-  def concurrentCacheAccess(url: String): Unit =
-    debug(s"concurrentCacheAccess $url")
-  def extractArchiveEntry(entry: os.SubPath, include: Boolean): Unit =
-    debug(s"[${if (include) Console.GREEN + "include" + grayEscape else "exclude"}] $entry")
-
-  def log(msg: String): Unit = out.println(msg)
-  def warn(msg: String): Unit = out.println(yellowBold("Warning:") + " " + msg)
-  def debug(msg: String): Unit = if (Constants.debugMode) out.println(gray(s"--> $msg"))
-
-  def logSearchResult(idx: Int, module: BareModule, description: Option[String], installed: Boolean): Unit = {
-    val mod = module.formattedDisplayString(gray, bold) + (if (installed) " " + cyanBold("[installed]") else "")
-    log((Array(s"(${idx+1}) $mod") ++ description).mkString(f"%n" + " "*8))
-  }
-
-  def logInfoResult(infoResult: Seq[(String, String)]): Unit = {
-    val columnWidth = infoResult.map(_._1.length).maxOption.getOrElse(0)
-    for ((label, description) <- infoResult) {
-      log(bold(label + " " * (columnWidth - label.length) + " :") + s" $description")
-    }
-  }
-
-  def logInstalled(module: DepModule, explicit: Boolean): Unit = {
-    log(module.formattedDisplayString(gray) + (if (explicit) " " + cyanBold("[explicit]") else ""))
-  }
-
-  // private val spinnerSymbols = collection.immutable.ArraySeq("⡿", "⣟", "⣯", "⣷", "⣾", "⣽", "⣻", "⢿").reverse
-  private val spinnerSymbols = {
-    val n = 6
-    val xs = collection.immutable.ArraySeq.tabulate(n+1)(i => "▪"*i + "▫"*(n-i))  // supported by Windows default font Consolas
-    xs.dropRight(1) ++ xs.drop(1).map(_.reverse).reverse
-  }
-
-  /** Print a message, followed by a spinning animation, while running a task.
-    * The task should not print anything, unless sameLine is true.
-    */
-  def withSpinner[A](msg: Option[String], sameLine: Boolean, cyan: Boolean = false, duration: java.time.Duration = java.time.Duration.ofMillis(100))(task: Task[A]): Task[A] = {
-    if (msg.nonEmpty) {
-      out.println(msg.get)
-    }
-    if (!useColor || !isInteractive) {
-      task
-    } else {
-      val coloredSymbols = if (!cyan) spinnerSymbols else spinnerSymbols.map(this.cyan)
-      val spin: String => Unit = if (!sameLine) {
-        val col = msg.map(_.length + 2).getOrElse(1)
-        (symbol) => out.print(Ansi.ansi().saveCursorPosition().cursorUpLine().cursorToColumn(col).a(symbol).restoreCursorPosition())
-      } else {
-        (symbol) => out.print(Ansi.ansi().saveCursorPosition().cursorRight(2).a(symbol).restoreCursorPosition())
-      }
-      val spinner = ZIO.iterate(0)(_ => true) { i =>
-        for (_ <- ZIO.sleep(duration)) yield {  // TODO use zio.Schedule instead?
-          spin(coloredSymbols(i))
-          (i+1) % coloredSymbols.length
-        }
-      }
-      // run task and spinner in parallel and interrupt spinner once task completes or fails
-      for (result <- task.map(Right(_)).raceFirst(spinner.map(Left(_)))) yield {
-        spin(" " * spinnerSymbols.head.length)  // clear animation
-        result.toOption.get  // spinner/Left will never complete, so we get A from Right
-      }
-    }
-  }
-}
-
-object Logger {
-  def apply(): Logger = {
-    val isInteractive = Constants.isInteractive
-    try {
-      val useColor = org.fusesource.jansi.AnsiConsole.out().getMode() != org.fusesource.jansi.AnsiMode.Strip
-      // the streams have been installed in `main` (installation is required since jansi 2.1.0)
-      new Logger(org.fusesource.jansi.AnsiConsole.out(), useColor, isInteractive)  // this PrintStream uses color only if it is supported (so not on uncolored terminals and not when outputting to a file)
-    } catch {
-      case e: java.lang.UnsatisfiedLinkError =>  // in case something goes really wrong and no suitable jansi native library is included
-        System.err.println(s"Using colorless output as fallback due to $e")
-      new Logger(System.out, useColor = false, isInteractive)
-    }
-  }
-}
-
 // TODO Use `Runtime#reportFatal` or `Runtime.setReportFatal` to log fatal errors like stack overflow
 
-class Sc4pac(val repositories: Seq[MetadataRepository], val cache: FileCache, val tempRoot: os.Path, val logger: Logger) extends UpdateService {  // TODO defaults
+class Sc4pac(val repositories: Seq[MetadataRepository], val cache: FileCache, val tempRoot: os.Path, val logger: Logger, val scopeRoot: os.Path) extends UpdateService {  // TODO defaults
 
-  given context: ResolutionContext = new ResolutionContext(repositories, cache, logger)
+  given context: ResolutionContext = new ResolutionContext(repositories, cache, logger, scopeRoot)
 
   import CoursierZio.*  // implicit coursier-zio interop
 
@@ -132,13 +27,13 @@ class Sc4pac(val repositories: Seq[MetadataRepository], val cache: FileCache, va
 
   private def modifyExplicitModules[R](modify: Seq[BareModule] => ZIO[R, Throwable, Seq[BareModule]]): ZIO[R, Throwable, Seq[BareModule]] = {
     for {
-      pluginsData  <- JsonIo.read[JD.Plugins](JD.Plugins.path)  // at this point, file should already exist
+      pluginsData  <- JsonIo.read[JD.Plugins](JD.Plugins.path(scopeRoot))  // at this point, file should already exist
       modsOrig     =  pluginsData.explicit
       modsNext     <- modify(modsOrig)
       _            <- ZIO.unless(modsNext == modsOrig) {
                         val pluginsDataNext = pluginsData.copy(explicit = modsNext)
                         // we do not check whether file was modified as this entire operation is synchronous and fast, in most cases
-                        JsonIo.write(JD.Plugins.path, pluginsDataNext, None)(ZIO.succeed(()))
+                        JsonIo.write(JD.Plugins.path(scopeRoot), pluginsDataNext, None)(ZIO.succeed(()))
                       }
     } yield modsNext
   }
@@ -159,13 +54,14 @@ class Sc4pac(val repositories: Seq[MetadataRepository], val cache: FileCache, va
 
   /** Select modules to remove from list of explicitly installed modules.
     */
-  def removeSelect(): ZIO[Prompt.Interactive, Throwable, Seq[BareModule]] = {
+  def removeSelect(): ZIO[Prompt.Interactive & CliPrompter & CliLogger, Throwable, Seq[BareModule]] = {
     modifyExplicitModules { modsOrig =>
       if (modsOrig.isEmpty) {
         logger.log("List of explicitly installed packages is already empty.")
         ZIO.succeed(modsOrig)
       } else {
         for {
+          logger   <- ZIO.service[CliLogger]
           selected <- Prompt.numberedMultiSelect(
                         "Select packages to remove:",
                         modsOrig.sortBy(m => (m.group.value, m.name.value)),
@@ -176,33 +72,40 @@ class Sc4pac(val repositories: Seq[MetadataRepository], val cache: FileCache, va
     }
   }
 
+  val iterateAllChannelContents: Task[Iterator[JD.ChannelItem]] = ZIO.attempt { repositories.iterator.flatMap(_.iterateChannelContents) }
+
   /** Fuzzy-search across all repositories.
     * The selection of results is ordered in descending order and includes the
     * module, the relevance ratio and the description.
     */
-  def search(query: String, threshold: Int): Task[Seq[(BareModule, Int, Option[String])]] = ZIO.attempt {
+  def search(query: String, threshold: Int): Task[Seq[(BareModule, Int, Option[String])]] = iterateAllChannelContents.map { itemsIter =>
     val results: Seq[(BareModule, Int, Option[String])] =
-      repositories.flatMap { repo =>
-        repo.iterateChannelContents.flatMap { item =>
-          if (item.isSc4pacAsset) {
-            None
-          } else {
-            // TODO reconsider choice of search algorithm
-            val ratio = me.xdrop.fuzzywuzzy.FuzzySearch.tokenSetRatio(query, item.toSearchString)
-            if (ratio >= threshold) {
-              Some(BareModule(Organization(item.group), ModuleName(item.name)), ratio, Option(item.summary).filter(_.nonEmpty))
-            } else None
-          }
+      itemsIter.flatMap { item =>
+        if (item.isSc4pacAsset) {
+          None
+        } else {
+          // TODO reconsider choice of search algorithm
+          val ratio = me.xdrop.fuzzywuzzy.FuzzySearch.tokenSetRatio(query, item.toSearchString)
+          if (ratio >= threshold) {
+            Some(BareModule(Organization(item.group), ModuleName(item.name)), ratio, Option(item.summary).filter(_.nonEmpty))
+          } else None
         }
-      }
+      }.toSeq
     results.sortBy((mod, ratio, desc) => (-ratio, mod.group.value, mod.name.value)).distinctBy(_._1)
   }
 
-  def info(module: BareModule): Task[Option[Seq[(String, String)]]] = {
+  def infoJson(module: BareModule): Task[Option[JD.Package]] = {
     val mod = Module(module.group, module.name, attributes = Map.empty)
     for {
       version <- Find.concreteVersion(mod, Constants.versionLatestRelease)
       pkgOpt  <- Find.packageData[JD.Package](mod, version)
+    } yield pkgOpt
+  }
+
+  def info(module: BareModule): RIO[CliLogger, Option[Seq[(String, String)]]] = {
+    for {
+      pkgOpt  <- infoJson(module)
+      logger  <- ZIO.service[CliLogger]
     } yield {
       pkgOpt.map { pkg =>
         val b = Seq.newBuilder[(String, String)]
@@ -267,15 +170,17 @@ trait UpdateService { this: Sc4pac =>
     artifactsById: Map[BareAsset, (Artifact, java.io.File)],
     jarsRoot: os.Path,
     progress: Sc4pac.Progress
-  ): Task[(Seq[os.SubPath], Boolean)] = {
-    def extract(assetData: JD.AssetReference, pkgFolder: os.SubPath): Task[Unit] = ZIO.attemptBlocking {
+  ): Task[(Seq[os.SubPath], Seq[Warning])] = {
+    def extract(assetData: JD.AssetReference, pkgFolder: os.SubPath): Task[Seq[Warning]] = ZIO.attemptBlocking {
       // Given an AssetReference, we look up the corresponding artifact file
       // by ID. This relies on the 1-to-1-correspondence between sc4pacAssets
       // and artifact files.
       val id = BareAsset(ModuleName(assetData.assetId))
       artifactsById.get(id) match {
         case None =>
-          logger.warn(s"skipping missing artifact, so it must be installed manually: ${id.orgName}")
+          val w = s"An artifact is missing and has been skipped, so it must be installed manually: ${id.orgName}"
+          logger.warn(w)
+          Seq(w)
         case Some(art, archive) =>
           // logger.log(s"  ==> $archive")  // TODO logging debug info
           val recipe = JD.InstallRecipe.fromAssetReference(assetData)
@@ -288,8 +193,9 @@ trait UpdateService { this: Sc4pac =>
             archive,
             tempPluginsRoot / pkgFolder,
             recipe,
-            Some(Extractor.JarExtraction.fromUrl(art.url, cache, jarsRoot)))
+            Some(Extractor.JarExtraction.fromUrl(art.url, cache, jarsRoot = jarsRoot, scopeRoot = scopeRoot)))
           // TODO catch IOExceptions
+          Seq.empty
       }
     }
 
@@ -299,15 +205,13 @@ trait UpdateService { this: Sc4pac =>
     for {
       (pkgData, variant) <- Find.matchingVariant(dependency.toBareDep, dependency.version, dependency.variant)
       pkgFolder          =  pkgData.subfolder / packageFolderName(dependency)
-      _                  <- logger.withSpinner(
-                              Some(s"$progress Extracting ${dependency.orgName} ${dependency.version}"),
-                              sameLine = Constants.debugMode  // due to debug output
-                            )(for {
-                              _ <- ZIO.attemptBlocking(os.makeDir.all(tempPluginsRoot / pkgFolder))  // create folder even if package does not have any assets or files
-                              _ <- ZIO.foreachDiscard(variant.assets)(extract(_, pkgFolder))
-                            } yield ())
-      warnings           <- if (pkgData.info.warning.nonEmpty) ZIO.attempt { logger.warn(pkgData.info.warning); true } else ZIO.succeed(false)
-    } yield (Seq(pkgFolder), warnings)  // for now, everything is installed into this folder only, so we do not need to list individual files
+      artifactWarnings   <- logger.extractingPackage(dependency, progress)(for {
+                              _  <- ZIO.attemptBlocking(os.makeDir.all(tempPluginsRoot / pkgFolder))  // create folder even if package does not have any assets or files
+                              ws <- ZIO.foreach(variant.assets)(extract(_, pkgFolder))
+                            } yield ws.flatten)
+      warnings           <- if (pkgData.info.warning.nonEmpty) ZIO.attempt { val w = pkgData.info.warning; logger.warn(w); Seq(w) }
+                            else ZIO.succeed(Seq.empty)
+    } yield (Seq(pkgFolder), warnings ++ artifactWarnings)  // for now, everything is installed into this folder only, so we do not need to list individual files
   }
 
   private def remove(toRemove: Set[Dep], installed: Seq[JD.InstalledData], pluginsRoot: os.Path): Task[Unit] = {
@@ -327,19 +231,8 @@ trait UpdateService { this: Sc4pac =>
     }
   }
 
-  private def logPackages(msg: String, dependencies: Iterable[DepModule]): Unit = {
-    logger.log(msg + dependencies.iterator.map(_.formattedDisplayString(logger.gray)).toSeq.sorted.mkString(f"%n"+" "*4, f"%n"+" "*4, f"%n"))
-  }
-
   /** Update all installed packages from modules (the list of explicitly added packages). */
-  def update(modules: Seq[BareModule], globalVariant0: Variant, pluginsRoot: os.Path): Task[Boolean] = {
-
-    def logPlan(plan: Sc4pac.UpdatePlan): UIO[Unit] = ZIO.succeed {
-      if (plan.toRemove.nonEmpty) logPackages(f"The following packages will be removed:%n", plan.toRemove.collect{ case d: DepModule => d })
-      // if (plan.toReinstall.nonEmpty) logPackages(f"The following packages will be reinstalled:%n", plan.toReinstall.collect{ case d: DepModule => d })
-      if (plan.toInstall.nonEmpty) logPackages(f"The following packages will be installed:%n", plan.toInstall.collect{ case d: DepModule => d })
-      if (plan.isUpToDate) logger.log("Everything is up-to-date.")
-    }
+  def update(modules: Seq[BareModule], globalVariant0: Variant, pluginsRoot: os.Path): RIO[ScopeRoot & Prompter, Boolean] = {
 
     // - before starting to remove anything, we download and extract everything
     //   to install into temp folders (staging)
@@ -354,7 +247,7 @@ trait UpdateService { this: Sc4pac =>
       * If everything is properly extracted, the files are later moved to the
       * actual plugins folder in the publication step.
       */
-    def stageAll(deps: Seq[DepModule], artifactsById: Map[BareAsset, (Artifact, java.io.File)]): ZIO[Scope, Throwable, StageResult] = {
+    def stageAll(deps: Seq[DepModule], artifactsById: Map[BareAsset, (Artifact, java.io.File)]): ZIO[Scope & Prompter, Throwable, StageResult] = {
 
       val makeTempStagingDir: ZIO[Scope, java.io.IOException, os.Path] =
         ZIO.acquireRelease(
@@ -382,10 +275,9 @@ trait UpdateService { this: Sc4pac =>
         (stagedFiles, warnings) <- ZIO.foreach(deps.zipWithIndex) { case (dep, idx) =>   // sequentially stages each package
                                      stage(tempPluginsRoot, dep, artifactsById, jarsRoot, Sc4pac.Progress(idx+1, numDeps))
                                    }.map(_.unzip)
-        _                       <- if (warnings.forall(_ == false)) ZIO.succeed(true)
-                                   else Prompt.ifInteractive(
-                                     onTrue = Prompt.yesNo("Continue despite warnings?").filterOrFail(_ == true)(Sc4pacAbort()),
-                                     onFalse = ZIO.succeed(true))  // in non-interactive mode, we continue despite warnings
+        pkgWarnings             =  deps.zip(warnings).collect { case (dep, ws) if ws.nonEmpty => (dep.toBareDep, ws) }
+        _                       <- ZIO.serviceWithZIO[Prompter](_.confirmInstallationWarnings(pkgWarnings))
+                                     .filterOrFail(_ == true)(error.Sc4pacAbort())
       } yield StageResult(tempPluginsRoot, deps.zip(stagedFiles), stagingRoot)
     }
 
@@ -420,46 +312,42 @@ trait UpdateService { this: Sc4pac =>
       // - remove old packages
       // - move new packages into plugins folder
       // - write json database and release lock
-      val task = JsonIo.write(JD.PluginsLock.path, pluginsLockData.updateTo(plan, staged.files.toMap), Some(pluginsLockData)) {
+      val task = JsonIo.write(JD.PluginsLock.path(scopeRoot), pluginsLockData.updateTo(plan, staged.files.toMap), Some(pluginsLockData)) {
         for {
           _ <- remove(plan.toRemove, pluginsLockData.installed, pluginsRoot)
                  // .catchAll(???)  // TODO catch exceptions
           _ <- movePackagesToPlugins(staged)
         } yield true  // TODO return result
       }
-      val msg = if (plan.toInstall.nonEmpty) "Moving extracted files to plugins folder." else "Removing files from plugins folder."
-      logger.withSpinner(Some(msg), sameLine = false)(task)
-        .catchSome {
+      logger.publishing(removalOnly = plan.toInstall.isEmpty)(task)
+        .catchSome {  // TODO expose publish warnings to clients
           case e: Sc4pacPublishWarning => logger.warn(e.getMessage); ZIO.succeed(true)  // TODO return result
         }
     }
 
     /** Prompts for missing variant keys, so that the result allows to pick a unique variant of the package. */
-    def refineGlobalVariant(globalVariant: Variant, pkgData: JD.Package): Task[Variant] = {
+    def refineGlobalVariant(globalVariant: Variant, pkgData: JD.Package): RIO[Prompter, Variant] = {
       val mod = BareModule(Organization(pkgData.group), ModuleName(pkgData.name))
       import Sc4pac.{DecisionTree, Node, Empty}
       DecisionTree.fromVariants(pkgData.variants.map(_.variant)) match {
         case Left(err) => ZIO.fail(new error.UnsatisfiableVariantConstraints(
-          s"Unable to choose variants as the metadata of ${mod.orgName} seems incomplete: $err"))
+          s"Unable to choose variants as the metadata of ${mod.orgName} seems incomplete", err.toString))
         case Right(decisionTree) =>
           type Key = String; type Value = String
-          def choose[T](key: Key, choices: Seq[(Value, T)]): Task[(Value, T)] = {
+          def choose[T](key: Key, choices: Seq[(Value, T)]): RIO[Prompter, (Value, T)] = {
             globalVariant.get(key) match
               case Some(value) => choices.find(_._1 == value) match
                 case Some(choice) => ZIO.succeed(choice)
                 case None => ZIO.fail(new error.UnsatisfiableVariantConstraints(
-                  s"""None of the variants ${choices.map(_._1).mkString(", ")} of ${mod.orgName} match the configured variant $key=$value. """ +
+                  s"""None of the variants ${choices.map(_._1).mkString(", ")} of ${mod.orgName} match the configured variant $key=$value.""",
                   s"""The package metadata seems incorrect, but resetting the variant may resolve the problem (command: `sc4pac variant reset "$key"`)."""))
               case None =>  // global variant for key is not set, so choose it interactively
-                val prefix = s"$key = "
-                val columnWidth = choices.map(_._1.length).max + 8  // including some whitespace for separation, excluding prefix
-                def renderDesc(value: (Value, T)): String = pkgData.variantDescriptions.get(key).flatMap(_.get(value._1)) match {
-                  case None => prefix + value._1
-                  case Some(desc) => prefix + value._1 + (" " * ((columnWidth - value._1.length) max 0)) + desc
-                }
-                Prompt.ifInteractive(
-                  onTrue = Prompt.numbered(s"""Choose a variant for ${mod.orgName}:""", choices, render = renderDesc),
-                  onFalse = ZIO.fail(new Sc4pacNotInteractive(s"""Configure a "$key" variant for ${mod.orgName} in ${JD.Plugins.path.last}: ${choices.map(_._1).mkString(", ")}""")))
+                ZIO.serviceWithZIO[Prompter](_.promptForVariant(
+                  module = mod,
+                  label = key,
+                  values = choices.map(_._1),
+                  descriptions = pkgData.variantDescriptions.get(key).getOrElse(Map.empty)
+                ).map(value => choices.find(_._1 == value).get))  // prompter is guaranteed to return a matching value
           }
 
           ZIO.iterate(decisionTree, Seq.newBuilder[(Key, Value)])(_._1 != Empty) {
@@ -470,11 +358,11 @@ trait UpdateService { this: Sc4pac =>
       }
     }
 
-    def doPromptingForVariant[A](globalVariant: Variant)(task: Variant => Task[A]): Task[(A, Variant)] = {
+    def doPromptingForVariant[A](globalVariant: Variant)(task: Variant => Task[A]): RIO[Prompter, (A, Variant)] = {
       ZIO.iterate(Left(globalVariant): Either[Variant, (A, Variant)])(_.isLeft) {
         case Right(_) => throw new AssertionError
         case Left(globalVariant) =>
-          val handler: PartialFunction[Throwable, Task[Either[Variant, (A, Variant)]]] = {
+          val handler: PartialFunction[Throwable, RIO[Prompter, Either[Variant, (A, Variant)]]] = {
             case e: Sc4pacMissingVariant => refineGlobalVariant(globalVariant, e.packageData).map(Left(_))
           }
           task(globalVariant)
@@ -485,8 +373,8 @@ trait UpdateService { this: Sc4pac =>
     }
 
     def storeGlobalVariant(globalVariant: Variant): Task[Unit] = for {
-      pluginsData <- JsonIo.read[JD.Plugins](JD.Plugins.path)  // json file should exist already
-      _           <- JsonIo.write(JD.Plugins.path, pluginsData.copy(config = pluginsData.config.copy(variant = globalVariant)), None)(ZIO.succeed(()))
+      pluginsData <- JsonIo.read[JD.Plugins](JD.Plugins.path(scopeRoot))  // json file should exist already
+      _           <- JsonIo.write(JD.Plugins.path(scopeRoot), pluginsData.copy(config = pluginsData.config.copy(variant = globalVariant)), None)(ZIO.succeed(()))
     } yield ()
 
     // TODO catch coursier.error.ResolutionError$CantDownloadModule (e.g. when json files have syntax issues)
@@ -494,11 +382,9 @@ trait UpdateService { this: Sc4pac =>
       pluginsLockData <- JD.PluginsLock.readOrInit
       (resolution, globalVariant) <- doPromptingForVariant(globalVariant0)(Resolution.resolve(modules, _))
       plan            =  UpdatePlan.fromResolution(resolution, installed = pluginsLockData.dependenciesWithAssets)
-      _               <- logPlan(plan)
-      flagOpt         <- ZIO.unless(plan.isUpToDate)(for {
-        _               <- Prompt.ifInteractive(
-                             onTrue = Prompt.yesNo("Continue?").filterOrFail(_ == true)(Sc4pacAbort()),
-                             onFalse = ZIO.succeed(true))  // in non-interactive mode, always continue
+      continue        <- ZIO.serviceWithZIO[Prompter](_.confirmUpdatePlan(plan))
+                           .filterOrFail(_ == true)(error.Sc4pacAbort())
+      flagOpt         <- ZIO.unless(plan.isUpToDate || !continue)(for {
         _               <- ZIO.unless(globalVariant == globalVariant0)(storeGlobalVariant(globalVariant))  // only store something after confirmation
         assetsToInstall <- resolution.fetchArtifactsOf(resolution.transitiveDependencies.filter(plan.toInstall).reverse)  // we start by fetching artifacts in reverse as those have fewest dependencies of their own
         // TODO if some artifacts fail to be fetched, fall back to installing remaining packages (maybe not(?), as this leads to missing dependencies,
@@ -548,48 +434,61 @@ object Sc4pac {
     }
   }
 
-  class Progress(numerator: Int, denominator: Int) {
+  case class Progress(numerator: Int, denominator: Int) derives UP.ReadWriter {
     override def toString = s"($numerator/$denominator)"
   }
 
   case class StageResult(tempPluginsRoot: os.Path, files: Seq[(DepModule, Seq[os.SubPath])], stagingRoot: os.Path)
 
 
-  private def fetchChannelData(repoUri: java.net.URI, cache: FileCache, channelContentsTtl: Option[scala.concurrent.duration.Duration]): IO[ErrStr, MetadataRepository] = {
+  private def fetchChannelData(repoUri: java.net.URI, cache: FileCache, channelContentsTtl: Option[scala.concurrent.duration.Duration]): ZIO[ScopeRoot, ErrStr, MetadataRepository] = {
     import CoursierZio.*  // implicit coursier-zio interop
     val contentsUrl = MetadataRepository.channelContentsUrl(repoUri).toString
     val artifact = Artifact(contentsUrl).withChanging(true)  // changing as the remote file is updated whenever any remote package is added or updated
-    cache
-      .withTtl(channelContentsTtl.orElse(cache.ttl))
-      .file(artifact)  // requires initialized logger
-      .run.absolve
-      .mapError { case e @ (_: coursier.cache.ArtifactError | scala.util.control.NonFatal(_)) => e.getMessage }
-      .flatMap { (channelContentsFile: java.io.File) =>
-        MetadataRepository.create(os.Path(channelContentsFile, os.pwd), repoUri/*, globalVariant = Map.empty*/)
-      }
+    for {
+      channelContentsFile <- cache
+                              .withTtl(channelContentsTtl.orElse(cache.ttl))
+                              .file(artifact)  // requires initialized logger
+                              .run.absolve
+                              .mapError { case e @ (_: coursier.cache.ArtifactError | scala.util.control.NonFatal(_)) => e.getMessage }
+      scopeRoot           <- ZIO.service[ScopeRoot]
+      repo                <- MetadataRepository.create(os.Path(channelContentsFile: java.io.File, scopeRoot.path), repoUri)
+    } yield repo
   }
 
-  private[sc4pac] def initializeRepositories(repoUris: Seq[java.net.URI], cache: FileCache, channelContentsTtl: Option[scala.concurrent.duration.Duration]): Task[Seq[MetadataRepository]] = {
-    val task: Task[Seq[MetadataRepository]] = ZIO.collectPar(repoUris) { url =>
+  private def wrapService[R : zio.Tag, E, A](use: ZIO[Any, E, A] => ZIO[Any, E, A], task: ZIO[R, E, A]): ZIO[R, E, A] = {
+    for {
+      service <- ZIO.service[R]
+      task2   =  task.provideLayer(zio.ZLayer.succeed(service))
+      result  <- use(task2)
+    } yield result
+  }
+
+  private[sc4pac] def initializeRepositories(repoUris: Seq[java.net.URI], cache: FileCache, channelContentsTtl: Option[scala.concurrent.duration.Duration]): RIO[ScopeRoot, Seq[MetadataRepository]] = {
+    val task: RIO[ScopeRoot, Seq[MetadataRepository]] = ZIO.collectPar(repoUris) { url =>
       fetchChannelData(url, cache, channelContentsTtl)
         .mapError((err: ErrStr) => { System.err.println(s"Failed to read channel data: $err"); None })
-    }.filterOrFail(_.nonEmpty)(Sc4pacAbort(s"No channels available: $repoUris"))
+    }.filterOrFail(_.nonEmpty)(error.NoChannelsAvailable("No channels available", repoUris.toString))
     // TODO for long running processes, we might need a way to refresh the channel
     // data occasionally (but for now this is good enough)
     import CoursierZio.*  // implicit coursier-zio interop
-    cache.logger.using(task)  // properly initializes logger (avoids Uninitialized TermDisplay)
+    wrapService(cache.logger.using(_), task)  // properly initializes logger (avoids Uninitialized TermDisplay)
   }
 
-  def init(config: JD.Config): Task[Sc4pac] = {
+  def init(config: JD.Config): RIO[ScopeRoot & Logger, Sc4pac] = {
     import CoursierZio.*  // implicit coursier-zio interop
     // val refreshLogger = coursier.cache.loggers.RefreshLogger.create(System.err)  // TODO System.err seems to cause less collisions between refreshing progress and ordinary log messages
-    val logger = Logger()
     val coursierPool = coursier.cache.internal.ThreadUtil.fixedThreadPool(size = 2)  // limit parallel downloads to 2 (ST rejects too many connections)
-    val cache = FileCache(location = config.cacheRoot.resolve("coursier").toFile(), logger = logger, pool = coursierPool)
-      // .withCachePolicies(Seq(coursier.cache.CachePolicy.ForceDownload))  // TODO cache policy
-      // .withTtl(1.hour)  // TODO time-to-live
-    val tempRoot = os.Path(config.tempRoot, os.pwd)
-    for (repos <- initializeRepositories(config.channels, cache, channelContentsTtl = None)) yield Sc4pac(repos, cache, tempRoot, logger)
+    for {
+      cacheRoot <- config.cacheRootAbs
+      logger <- ZIO.service[Logger]
+      cache = FileCache(location = (cacheRoot / "coursier").toIO, logger = logger, pool = coursierPool)
+        // .withCachePolicies(Seq(coursier.cache.CachePolicy.ForceDownload))  // TODO cache policy
+        // .withTtl(1.hour)  // TODO time-to-live
+      repos     <- initializeRepositories(config.channels, cache, channelContentsTtl = None)
+      tempRoot <- config.tempRootAbs
+      scopeRoot <- ZIO.service[ScopeRoot]
+    } yield Sc4pac(repos, cache, tempRoot, logger, scopeRoot.path)
   }
 
   def parseModules(modules: Seq[String]): Either[ErrStr, Seq[BareModule]] = {
@@ -601,6 +500,8 @@ object Sc4pac {
         errs.mkString(", ")  // malformed module: a, malformed module: b
       }
   }
+
+  def parseModule(module: String): Either[ErrStr, BareModule] = parseModules(Seq(module)).map(_.head)
 
 
   sealed trait DecisionTree[+A, +B]

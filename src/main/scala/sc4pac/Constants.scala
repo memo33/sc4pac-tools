@@ -16,6 +16,7 @@ object Constants {
   val bufferSizeExtract = 64 * 1024  // 64 kiB, bounded by disk speed
   val bufferSizeDownload = 1024 * 1024  // 1 MiB, bounded by download speed
   val bufferSizeDownloadOverlap = 4 * 1024  // for file validity check when resuming partial download
+  val downloadProgressQuantization = 512 * 1024 // 0.5 MiB, controls average frequency of progress messages in API
   val maxRedirectionsOpt = Some(20)
   val sslRetryCount = 3  // Coursier legacy
   val resumeIncompleteDownloadAttemps = 4
@@ -23,6 +24,7 @@ object Constants {
   val interactivePromptTimeout = java.time.Duration.ofSeconds(240)
   val urlConnectTimeout = java.time.Duration.ofSeconds(60)
   val urlReadTimeout = java.time.Duration.ofSeconds(60)  // timeout in case of internet outage while downloading a file
+  val defaultPort = 51515
 
   lazy val userAgent = {
     val majMinVersion = cli.BuildInfo.version.split("\\.", 3).take(2).mkString(".")
