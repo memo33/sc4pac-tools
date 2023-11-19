@@ -1,4 +1,4 @@
-# API - version 1
+# API - version 1.1
 
 The API allows other programs to control *sc4pac* in a client-server fashion.
 
@@ -29,7 +29,7 @@ GET  /update              (websocket)
 - All endpoints may return some generic errors:
   - 400 (incorrect input)
   - 404 (non-existing packages, assets, etc.)
-  - 405 `/error/scope-not-initialized` (when not initialized)
+  - 409 `/error/scope-not-initialized` (when not initialized)
   - 500 (unexpected unresolvable situations)
   - 502 (download failures)
 - Errors are of the form
@@ -49,7 +49,7 @@ Scopes are used to manage multiple plugins folders.
 Synopsis: `POST /init {plugins: "<path>", cache: "<path>"}`
 
 Returns:
-- 405 `/error/init/not-allowed` if already initialized.
+- 409 `/error/init/not-allowed` if already initialized.
 - 400 `/error/init/bad-request` if parameters are missing.
   The response contains
   `platformDefaults: {plugins: ["<path>", …], cache: ["<path>", …]}`

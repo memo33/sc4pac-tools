@@ -1,6 +1,8 @@
 # Changelog
 
 ## [Unreleased]
+### Changed
+- The API now sends `/error/scope-not-initialized` & `/error/init/not-allowed` with HTTP status code 409 instead of 405.
 
 ## [0.3.0] - 2023-11-19
 ### Added
