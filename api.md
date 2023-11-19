@@ -265,7 +265,7 @@ The `responses` field contains the valid response message objects to send back t
   ],
   choices: ["Yes", "No"],
   token: string,
-  "responses": {"Yes": object, "No": object, …}
+  "responses": {"Yes": object, "No": object}
 }
 ```
 
@@ -276,7 +276,7 @@ The `responses` field contains the valid response message objects to send back t
   "warnings": {"<pkg>": ["warnings-1", "warning-2", …], …},
   choices: ["Yes", "No"],
   token: string,
-  "responses": {"Yes": object, "No": object, …}
+  "responses": {"Yes": object, "No": object}
 }
 ```
 

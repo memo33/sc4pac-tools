@@ -1,10 +1,13 @@
 # Changelog
 
 ## [Unreleased]
+
+## [0.3.0] - 2023-11-19
 ### Added
-- experimental basic authentication to Simtropolis using `SC4PAC_SIMTROPOLIS_COOKIE` environment variable
-- an [API](api.md) for programs
+- an [API](api.md) for external programs
 - new command `sc4pac server` for use with the API
+- experimental basic authentication to Simtropolis using `SC4PAC_SIMTROPOLIS_COOKIE` environment variable
+  [(usage)](https://github.com/memo33/sc4pac-tools/blob/e5e422252457ababdce450cdadda499a6bfa7dde/src/main/scala/sc4pac/Constants.scala#L39-L57)
 
 ### Fixed
 - an issue involving local `file:/` URIs
@@ -34,6 +37,7 @@
 ## [0.1.5] - 2023-09-26
 …
 
-[Unreleased]: https://github.com/memo33/sc4pac-tools/compare/0.2.0...HEAD
+[Unreleased]: https://github.com/memo33/sc4pac-tools/compare/0.3.0...HEAD
+[0.3.0]: https://github.com/memo33/sc4pac-tools/compare/0.2.0...0.3.0
 [0.2.0]: https://github.com/memo33/sc4pac-tools/compare/0.1.5...0.2.0
 [0.1.5]: https://github.com/memo33/sc4pac-tools/compare/0.1.4...0.1.5
