@@ -436,19 +436,19 @@ object Commands {
     |Start a local server to use the HTTP API.
     |
     |Example:
-    |  sc4pac server --scope-root scopes/default
+    |  sc4pac server --indent 2 --scope-root scopes/scope-1/
     """.stripMargin.trim)
   final case class ServerOptions(
     @ValueDescription("number") @Group("Server") @Tag("Server")
     @HelpMessage(s"(default: ${Constants.defaultPort})")
     port: Int = Constants.defaultPort,
+    @ValueDescription("number") @Group("Server") @Tag("Server")
+    @HelpMessage(s"indentation of JSON responses (default: -1, no indentation)")
+    indent: Int = -1,
     @ValueDescription("path") @Group("Server") @Tag("Server")
     @HelpMessage(s"root directory containing sc4pac-plugins.json (default: current working directory), newly created if necessary; "
       + "can be used for managing multiple different plugins folders")
     scopeRoot: String = "",
-    @ValueDescription("number") @Group("Server") @Tag("Server")
-    @HelpMessage(s"indentation of JSON responses (default: -1, no indentation)")
-    indent: Int = -1,
   ) extends Sc4pacCommandOptions
 
   case object Server extends Command[ServerOptions] {

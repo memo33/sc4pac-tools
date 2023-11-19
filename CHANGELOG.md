@@ -3,6 +3,8 @@
 ## [Unreleased]
 ### Added
 - experimental basic authentication to Simtropolis using `SC4PAC_SIMTROPOLIS_COOKIE` environment variable
+- an [API](api.md) for programs
+- new command `sc4pac server` for use with the API
 
 ### Fixed
 - an issue involving local `file:/` URIs
