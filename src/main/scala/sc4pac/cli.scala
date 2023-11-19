@@ -8,6 +8,7 @@ import zio.{ZIO, Task}
 
 import sc4pac.error.Sc4pacNotInteractive
 import sc4pac.JsonData as JD
+import sc4pac.Resolution.DepModule
 
 // see https://github.com/coursier/coursier/blob/main/modules/cli/src/main/scala/coursier/cli/Coursier.scala
 // and related files
@@ -241,17 +242,20 @@ object Commands {
     def run(options: ListOptions, args: RemainingArgs): Unit = {
       val task = for {
         pluginsData  <- JD.Plugins.readOrInit
-        pac          <- Sc4pac.init(pluginsData.config)  // only used for logging
-        installed    <- JD.PluginsLock.listInstalled
+        iter         <- iterateInstalled(pluginsData)
         logger       <- ZIO.service[CliLogger]
       } yield {
-        val sorted = installed.sortBy(mod => (mod.group.value, mod.name.value))
-        val explicit: Set[BareModule] = pluginsData.explicit.toSet
-        for (mod <- sorted) {
-          logger.logInstalled(mod, explicit(mod.toBareDep))
-        }
+        for ((mod, explicit) <- iter) logger.logInstalled(mod, explicit)
       }
       runMainExit(task.provideEnvironment(cliEnvironment), exit)
+    }
+
+    def iterateInstalled(pluginsData: JD.Plugins): zio.RIO[ScopeRoot, Iterator[(DepModule, Boolean)]] = {
+      for (installed <- JD.PluginsLock.listInstalled) yield {
+        val sorted = installed.sortBy(mod => (mod.group.value, mod.name.value))
+        val explicit: Set[BareModule] = pluginsData.explicit.toSet
+        sorted.iterator.map(mod => (mod, explicit(mod.toBareDep)))
+      }
     }
   }
 
@@ -292,16 +296,19 @@ object Commands {
                   onFalse = ZIO.fail(new Sc4pacNotInteractive(s"Pass variants to remove as arguments, non-interactively."))
                 )
               }
-            for {
-              selected <- select
-              data2    =  data.copy(config = data.config.copy(variant = data.config.variant -- selected))
-              path     <- JD.Plugins.pathURIO
-              _        <- JsonIo.write(path, data2, None)(ZIO.succeed(()))
-            } yield ()
+            select.flatMap(removeAndWrite(data, _))
           }
         }
         runMainExit(task.provideEnvironment(cliEnvironment), exit)
       }
+    }
+
+    def removeAndWrite(data: JD.Plugins, selected: Seq[String]): zio.RIO[ScopeRoot, Unit] = {
+      val data2 = data.copy(config = data.config.copy(variant = data.config.variant -- selected))
+      for {
+        path <- JD.Plugins.pathURIO
+        _    <- JsonIo.write(path, data2, None)(ZIO.succeed(()))
+      } yield ()
     }
   }
 

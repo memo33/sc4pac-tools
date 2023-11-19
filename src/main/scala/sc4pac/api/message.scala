@@ -100,24 +100,45 @@ object ErrorMessage {
   case class NoChannelsAvailable(title: String, detail: String) extends ErrorMessage derives UP.ReadWriter
   @upickle.implicits.key("/error/aborted")
   case class Aborted(title: String, detail: String) extends ErrorMessage derives UP.ReadWriter
+  @upickle.implicits.key("/error/bad-request")
+  case class BadRequest(title: String, detail: String) extends ErrorMessage derives UP.ReadWriter
+  @upickle.implicits.key("/error/package-not-found")
+  case class PackageNotFound(title: String, detail: String) extends ErrorMessage derives UP.ReadWriter
+  @upickle.implicits.key("/error/init/bad-request")
+  case class BadInit(title: String, detail: String, platformDefaults: Map[String, Seq[String]]) extends ErrorMessage
+  given badInitRw: UP.ReadWriter[BadInit] = UP.stringKeyRW(UP.macroRW)
+  @upickle.implicits.key("/error/init/not-allowed")
+  case class InitNotAllowed(title: String, detail: String) extends ErrorMessage derives UP.ReadWriter
 }
 
 @upickle.implicits.key("/result")
-case class ResultMessage(result: String) extends Message
+case class ResultMessage(ok: Boolean) extends Message
 
+sealed trait ProgressMessage extends Message derives UP.ReadWriter
 object ProgressMessage {
   @upickle.implicits.key("/progress/update/extraction")
-  case class Extraction(`package`: BareModule, progress: Sc4pac.Progress) extends Message derives UP.ReadWriter
+  case class Extraction(`package`: BareModule, progress: Sc4pac.Progress) extends ProgressMessage derives UP.ReadWriter
 
   @upickle.implicits.key("/progress/download/started")
-  case class DownloadStarted(url: String) extends Message derives UP.ReadWriter
+  case class DownloadStarted(url: String) extends ProgressMessage derives UP.ReadWriter
 
   @upickle.implicits.key("/progress/download/length")
-  case class DownloadLength(url: String, length: Long) extends Message derives UP.ReadWriter
+  case class DownloadLength(url: String, length: Long) extends ProgressMessage derives UP.ReadWriter
 
   @upickle.implicits.key("/progress/download/downloaded")
-  case class DownloadDownloaded(url: String, downloaded: Long) extends Message derives UP.ReadWriter
+  case class DownloadDownloaded(url: String, downloaded: Long) extends ProgressMessage derives UP.ReadWriter
 
   @upickle.implicits.key("/progress/download/finished")
-  case class DownloadFinished(url: String, success: Boolean) extends Message derives UP.ReadWriter
+  case class DownloadFinished(url: String, success: Boolean) extends ProgressMessage derives UP.ReadWriter
 }
+
+case class InstalledPkg(`package`: BareModule, version: String, variant: Variant, explicit: Boolean)  // for endpoint `list`
+object InstalledPkg {
+  given installedPkgRw: UP.ReadWriter[InstalledPkg] = UP.stringKeyRW(UP.macroRW)
+}
+
+case class SearchResultItem(`package`: BareModule, relevance: Int, summary: String) derives UP.ReadWriter
+
+case class ChannelContentsItem(`package`: BareModule, version: String, summary: String) derives UP.ReadWriter
+
+case class InitArgs(plugins: String, cache: String) derives UP.ReadWriter

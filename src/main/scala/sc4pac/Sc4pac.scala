@@ -72,33 +72,39 @@ class Sc4pac(val repositories: Seq[MetadataRepository], val cache: FileCache, va
     }
   }
 
+  val iterateAllChannelContents: Task[Iterator[JD.ChannelItem]] = ZIO.attempt { repositories.iterator.flatMap(_.iterateChannelContents) }
+
   /** Fuzzy-search across all repositories.
     * The selection of results is ordered in descending order and includes the
     * module, the relevance ratio and the description.
     */
-  def search(query: String, threshold: Int): Task[Seq[(BareModule, Int, Option[String])]] = ZIO.attempt {
+  def search(query: String, threshold: Int): Task[Seq[(BareModule, Int, Option[String])]] = iterateAllChannelContents.map { itemsIter =>
     val results: Seq[(BareModule, Int, Option[String])] =
-      repositories.flatMap { repo =>
-        repo.iterateChannelContents.flatMap { item =>
-          if (item.isSc4pacAsset) {
-            None
-          } else {
-            // TODO reconsider choice of search algorithm
-            val ratio = me.xdrop.fuzzywuzzy.FuzzySearch.tokenSetRatio(query, item.toSearchString)
-            if (ratio >= threshold) {
-              Some(BareModule(Organization(item.group), ModuleName(item.name)), ratio, Option(item.summary).filter(_.nonEmpty))
-            } else None
-          }
+      itemsIter.flatMap { item =>
+        if (item.isSc4pacAsset) {
+          None
+        } else {
+          // TODO reconsider choice of search algorithm
+          val ratio = me.xdrop.fuzzywuzzy.FuzzySearch.tokenSetRatio(query, item.toSearchString)
+          if (ratio >= threshold) {
+            Some(BareModule(Organization(item.group), ModuleName(item.name)), ratio, Option(item.summary).filter(_.nonEmpty))
+          } else None
         }
-      }
+      }.toSeq
     results.sortBy((mod, ratio, desc) => (-ratio, mod.group.value, mod.name.value)).distinctBy(_._1)
   }
 
-  def info(module: BareModule): RIO[CliLogger, Option[Seq[(String, String)]]] = {
+  def infoJson(module: BareModule): Task[Option[JD.Package]] = {
     val mod = Module(module.group, module.name, attributes = Map.empty)
     for {
       version <- Find.concreteVersion(mod, Constants.versionLatestRelease)
       pkgOpt  <- Find.packageData[JD.Package](mod, version)
+    } yield pkgOpt
+  }
+
+  def info(module: BareModule): RIO[CliLogger, Option[Seq[(String, String)]]] = {
+    for {
+      pkgOpt  <- infoJson(module)
       logger  <- ZIO.service[CliLogger]
     } yield {
       pkgOpt.map { pkg =>
@@ -494,6 +500,8 @@ object Sc4pac {
         errs.mkString(", ")  // malformed module: a, malformed module: b
       }
   }
+
+  def parseModule(module: String): Either[ErrStr, BareModule] = parseModules(Seq(module)).map(_.head)
 
 
   sealed trait DecisionTree[+A, +B]
