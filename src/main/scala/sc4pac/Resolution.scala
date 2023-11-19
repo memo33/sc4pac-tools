@@ -47,8 +47,8 @@ object Resolution {
         Find.concreteVersion(mod, Constants.versionLatestRelease)
           .flatMap(Find.packageData[JD.Asset](mod, _))
           .flatMap {
-            case None => ZIO.fail(new Sc4pacAssetNotFound(s"Could not find metadata of asset ${assetId.value}, "
-              + "most likely due to incorrect or incomplete metadata in the corresponding channel."))
+            case None => ZIO.fail(new Sc4pacAssetNotFound(s"Could not find metadata of asset ${assetId.value}.",
+              "Most likely this is due to incorrect or incomplete metadata in the corresponding channel."))
             case Some(data) => ZIO.succeed(DepAsset.fromAsset(data))
           }
       case bareMod @ BareModule(group, name) =>
@@ -184,8 +184,9 @@ class Resolution(reachableDeps: TreeSeqMap[BareDep, Seq[BareDep]], nonbareDeps: 
                           | coursier.cache.ArtifactError.DownloadError
                           | coursier.cache.ArtifactError.WrongLength
                           | coursier.cache.ArtifactError.NotFound) =>
-        ZIO.fail(new Sc4pacAbort("Failed to download some assets. Try again later. " +
-          f"You may have reached your daily download quota (Simtropolis: 20 files per day) or the file exchange server is currently unavailable: ${e.getMessage}"))
+        ZIO.fail(new error.DownloadFailed("Failed to download some assets. Try again later. " +
+          "You may have reached your daily download quota (Simtropolis: 20 files per day) or the file exchange server is currently unavailable.",
+          e.getMessage))
       }
 
     import CoursierZio.*  // implicit coursier-zio interop

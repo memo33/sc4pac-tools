@@ -7,6 +7,7 @@ import coursier.core.{Module, Organization, ModuleName, Dependency, Publication,
 import coursier.util.{Artifact, EitherT, Gather}
 import java.nio.file.Path
 import zio.{IO, ZIO, UIO, Task, Scope, RIO}
+import upickle.default as UP
 
 import sc4pac.error.*
 import sc4pac.Constants.isSc4pacAsset
@@ -16,7 +17,7 @@ import sc4pac.Resolution.{Dep, DepModule, DepAsset}
 
 // TODO Use `Runtime#reportFatal` or `Runtime.setReportFatal` to log fatal errors like stack overflow
 
-class Sc4pac(val repositories: Seq[MetadataRepository], val cache: FileCache, val tempRoot: os.Path, val logger: Logger, val prompter: Prompter, val scopeRoot: os.Path) extends UpdateService {  // TODO defaults
+class Sc4pac(val repositories: Seq[MetadataRepository], val cache: FileCache, val tempRoot: os.Path, val logger: Logger, val scopeRoot: os.Path) extends UpdateService {  // TODO defaults
 
   given context: ResolutionContext = new ResolutionContext(repositories, cache, logger, scopeRoot)
 
@@ -225,7 +226,7 @@ trait UpdateService { this: Sc4pac =>
   }
 
   /** Update all installed packages from modules (the list of explicitly added packages). */
-  def update(modules: Seq[BareModule], globalVariant0: Variant, pluginsRoot: os.Path): RIO[ScopeRoot, Boolean] = {
+  def update(modules: Seq[BareModule], globalVariant0: Variant, pluginsRoot: os.Path): RIO[ScopeRoot & Prompter, Boolean] = {
 
     // - before starting to remove anything, we download and extract everything
     //   to install into temp folders (staging)
@@ -240,7 +241,7 @@ trait UpdateService { this: Sc4pac =>
       * If everything is properly extracted, the files are later moved to the
       * actual plugins folder in the publication step.
       */
-    def stageAll(deps: Seq[DepModule], artifactsById: Map[BareAsset, (Artifact, java.io.File)]): ZIO[Scope, Throwable, StageResult] = {
+    def stageAll(deps: Seq[DepModule], artifactsById: Map[BareAsset, (Artifact, java.io.File)]): ZIO[Scope & Prompter, Throwable, StageResult] = {
 
       val makeTempStagingDir: ZIO[Scope, java.io.IOException, os.Path] =
         ZIO.acquireRelease(
@@ -269,7 +270,8 @@ trait UpdateService { this: Sc4pac =>
                                      stage(tempPluginsRoot, dep, artifactsById, jarsRoot, Sc4pac.Progress(idx+1, numDeps))
                                    }.map(_.unzip)
         pkgWarnings             =  deps.zip(warnings).collect { case (dep, ws) if ws.nonEmpty => (dep.toBareDep, ws) }
-        _                       <- prompter.confirmInstallationWarnings(pkgWarnings)
+        _                       <- ZIO.serviceWithZIO[Prompter](_.confirmInstallationWarnings(pkgWarnings))
+                                     .filterOrFail(_ == true)(error.Sc4pacAbort())
       } yield StageResult(tempPluginsRoot, deps.zip(stagedFiles), stagingRoot)
     }
 
@@ -318,28 +320,28 @@ trait UpdateService { this: Sc4pac =>
     }
 
     /** Prompts for missing variant keys, so that the result allows to pick a unique variant of the package. */
-    def refineGlobalVariant(globalVariant: Variant, pkgData: JD.Package): Task[Variant] = {
+    def refineGlobalVariant(globalVariant: Variant, pkgData: JD.Package): RIO[Prompter, Variant] = {
       val mod = BareModule(Organization(pkgData.group), ModuleName(pkgData.name))
       import Sc4pac.{DecisionTree, Node, Empty}
       DecisionTree.fromVariants(pkgData.variants.map(_.variant)) match {
         case Left(err) => ZIO.fail(new error.UnsatisfiableVariantConstraints(
-          s"Unable to choose variants as the metadata of ${mod.orgName} seems incomplete: $err"))
+          s"Unable to choose variants as the metadata of ${mod.orgName} seems incomplete", err.toString))
         case Right(decisionTree) =>
           type Key = String; type Value = String
-          def choose[T](key: Key, choices: Seq[(Value, T)]): Task[(Value, T)] = {
+          def choose[T](key: Key, choices: Seq[(Value, T)]): RIO[Prompter, (Value, T)] = {
             globalVariant.get(key) match
               case Some(value) => choices.find(_._1 == value) match
                 case Some(choice) => ZIO.succeed(choice)
                 case None => ZIO.fail(new error.UnsatisfiableVariantConstraints(
-                  s"""None of the variants ${choices.map(_._1).mkString(", ")} of ${mod.orgName} match the configured variant $key=$value. """ +
+                  s"""None of the variants ${choices.map(_._1).mkString(", ")} of ${mod.orgName} match the configured variant $key=$value.""",
                   s"""The package metadata seems incorrect, but resetting the variant may resolve the problem (command: `sc4pac variant reset "$key"`)."""))
               case None =>  // global variant for key is not set, so choose it interactively
-                prompter.promptForVariant(
+                ZIO.serviceWithZIO[Prompter](_.promptForVariant(
                   module = mod,
                   label = key,
                   values = choices.map(_._1),
                   descriptions = pkgData.variantDescriptions.get(key).getOrElse(Map.empty)
-                ).map(value => choices.find(_._1 == value).get)  // prompter is guaranteed to return a matching value
+                ).map(value => choices.find(_._1 == value).get))  // prompter is guaranteed to return a matching value
           }
 
           ZIO.iterate(decisionTree, Seq.newBuilder[(Key, Value)])(_._1 != Empty) {
@@ -350,11 +352,11 @@ trait UpdateService { this: Sc4pac =>
       }
     }
 
-    def doPromptingForVariant[A](globalVariant: Variant)(task: Variant => Task[A]): Task[(A, Variant)] = {
+    def doPromptingForVariant[A](globalVariant: Variant)(task: Variant => Task[A]): RIO[Prompter, (A, Variant)] = {
       ZIO.iterate(Left(globalVariant): Either[Variant, (A, Variant)])(_.isLeft) {
         case Right(_) => throw new AssertionError
         case Left(globalVariant) =>
-          val handler: PartialFunction[Throwable, Task[Either[Variant, (A, Variant)]]] = {
+          val handler: PartialFunction[Throwable, RIO[Prompter, Either[Variant, (A, Variant)]]] = {
             case e: Sc4pacMissingVariant => refineGlobalVariant(globalVariant, e.packageData).map(Left(_))
           }
           task(globalVariant)
@@ -374,7 +376,8 @@ trait UpdateService { this: Sc4pac =>
       pluginsLockData <- JD.PluginsLock.readOrInit
       (resolution, globalVariant) <- doPromptingForVariant(globalVariant0)(Resolution.resolve(modules, _))
       plan            =  UpdatePlan.fromResolution(resolution, installed = pluginsLockData.dependenciesWithAssets)
-      continue        <- prompter.confirmUpdatePlan(plan)
+      continue        <- ZIO.serviceWithZIO[Prompter](_.confirmUpdatePlan(plan))
+                           .filterOrFail(_ == true)(error.Sc4pacAbort())
       flagOpt         <- ZIO.unless(plan.isUpToDate || !continue)(for {
         _               <- ZIO.unless(globalVariant == globalVariant0)(storeGlobalVariant(globalVariant))  // only store something after confirmation
         assetsToInstall <- resolution.fetchArtifactsOf(resolution.transitiveDependencies.filter(plan.toInstall).reverse)  // we start by fetching artifacts in reverse as those have fewest dependencies of their own
@@ -425,7 +428,7 @@ object Sc4pac {
     }
   }
 
-  class Progress(numerator: Int, denominator: Int) {
+  case class Progress(numerator: Int, denominator: Int) derives UP.ReadWriter {
     override def toString = s"($numerator/$denominator)"
   }
 
@@ -459,28 +462,27 @@ object Sc4pac {
     val task: RIO[ScopeRoot, Seq[MetadataRepository]] = ZIO.collectPar(repoUris) { url =>
       fetchChannelData(url, cache, channelContentsTtl)
         .mapError((err: ErrStr) => { System.err.println(s"Failed to read channel data: $err"); None })
-    }.filterOrFail(_.nonEmpty)(Sc4pacAbort(s"No channels available: $repoUris"))
+    }.filterOrFail(_.nonEmpty)(error.NoChannelsAvailable("No channels available", repoUris.toString))
     // TODO for long running processes, we might need a way to refresh the channel
     // data occasionally (but for now this is good enough)
     import CoursierZio.*  // implicit coursier-zio interop
     wrapService(cache.logger.using(_), task)  // properly initializes logger (avoids Uninitialized TermDisplay)
   }
 
-  def init(config: JD.Config): RIO[ScopeRoot & CliLogger & Prompter, Sc4pac] = {
+  def init(config: JD.Config): RIO[ScopeRoot & Logger, Sc4pac] = {
     import CoursierZio.*  // implicit coursier-zio interop
     // val refreshLogger = coursier.cache.loggers.RefreshLogger.create(System.err)  // TODO System.err seems to cause less collisions between refreshing progress and ordinary log messages
     val coursierPool = coursier.cache.internal.ThreadUtil.fixedThreadPool(size = 2)  // limit parallel downloads to 2 (ST rejects too many connections)
     for {
       cacheRoot <- config.cacheRootAbs
-      logger <- ZIO.service[CliLogger]
-      prompter <- ZIO.service[Prompter]
+      logger <- ZIO.service[Logger]
       cache = FileCache(location = (cacheRoot / "coursier").toIO, logger = logger, pool = coursierPool)
         // .withCachePolicies(Seq(coursier.cache.CachePolicy.ForceDownload))  // TODO cache policy
         // .withTtl(1.hour)  // TODO time-to-live
       repos     <- initializeRepositories(config.channels, cache, channelContentsTtl = None)
       tempRoot <- config.tempRootAbs
       scopeRoot <- ZIO.service[ScopeRoot]
-    } yield Sc4pac(repos, cache, tempRoot, logger, prompter, scopeRoot.path)
+    } yield Sc4pac(repos, cache, tempRoot, logger, scopeRoot.path)
   }
 
   def parseModules(modules: Seq[String]): Either[ErrStr, Seq[BareModule]] = {

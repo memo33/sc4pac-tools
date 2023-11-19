@@ -23,7 +23,7 @@ object Commands {
 
   sealed abstract class Sc4pacCommandOptions extends Product with Serializable
 
-  private val cliEnvironment = {
+  val cliEnvironment = {
     val logger = CliLogger()
     zio.ZEnvironment(ScopeRoot(os.pwd), logger, CliPrompter(logger))
   }
@@ -35,18 +35,22 @@ object Commands {
   private[sc4pac] val sortHelpLast: Option[Seq[String] => Seq[String]] =
     Some(groups => groups.partition(_ == "Help") match { case (help, nonHelp) => nonHelp ++ help })
 
+  type ExpectedFailure = error.Sc4pacAbort | error.DownloadFailed | error.NoChannelsAvailable
+    | error.Sc4pacVersionNotFound | error.Sc4pacAssetNotFound | error.ExtractionFailed
+    | error.UnsatisfiableVariantConstraints
+
+  private def handleExpectedFailures(abort: ExpectedFailure, exit: Int => Nothing): Nothing = abort match {
+    case abort: error.Sc4pacAbort => { System.err.println("Operation aborted."); exit(1) }
+    case abort => { System.err.println(s"Operation aborted. ${abort.getMessage}"); exit(1) }
+  }
+
   private def runMainExit(task: Task[Unit], exit: Int => Nothing): Nothing = {
     unsafeRun(task.fold(
       failure = {
-        // the following are expected failures, so we do not need the trace
-        case abort: sc4pac.error.Sc4pacAbort => { System.err.println(Array("Operation aborted.", abort.msg).mkString(" ")); exit(1) }
-        case abort: sc4pac.error.Sc4pacTimeout => { System.err.println(Array("Operation aborted.", abort.getMessage).mkString(" ")); exit(1) }
-        case abort: sc4pac.error.Sc4pacNotInteractive => { System.err.println(s"Operation aborted as terminal is non-interactive: ${abort.getMessage}"); exit(1) }
-        case abort: (sc4pac.error.Sc4pacVersionNotFound | sc4pac.error.Sc4pacAssetNotFound) =>
-          { System.err.println(s"Operation aborted. ${abort.getMessage}"); exit(1) }
-        case abort: sc4pac.error.ExtractionFailed => { System.err.println(s"Operation aborted. ${abort.getMessage}"); exit(1) }
-        case abort: sc4pac.error.UnsatisfiableVariantConstraints => { System.err.println(s"Operation aborted. ${abort.getMessage}"); exit(1) }
-        case e => { e.printStackTrace(); exit(1) }
+        case abort: ExpectedFailure => handleExpectedFailures(abort, exit)  // we do not need the trace for expected failures
+        case abort: error.Sc4pacTimeout => { System.err.println(Array("Operation aborted.", abort.getMessage).mkString(" ")); exit(1) }
+        case abort: error.Sc4pacNotInteractive => { System.err.println(s"Operation aborted as terminal is non-interactive: ${abort.getMessage}"); exit(1) }
+        case e => { e.printStackTrace(); exit(2) }
       },
       success = _ => exit(0)
     ))
@@ -421,6 +425,43 @@ object Commands {
     }
   }
 
+  @HelpMessage(s"""
+    |Start a local server to use the HTTP API.
+    |
+    |Example:
+    |  sc4pac server --scope-root scopes/default
+    """.stripMargin.trim)
+  final case class ServerOptions(
+    @ValueDescription("number") @Group("Server") @Tag("Server")
+    @HelpMessage(s"(default: ${Constants.defaultPort})")
+    port: Int = Constants.defaultPort,
+    @ValueDescription("path") @Group("Server") @Tag("Server")
+    @HelpMessage(s"root directory containing sc4pac-plugins.json (default: current working directory), newly created if necessary; "
+      + "can be used for managing multiple different plugins folders")
+    scopeRoot: String = "",
+    @ValueDescription("number") @Group("Server") @Tag("Server")
+    @HelpMessage(s"indentation of JSON responses (default: -1, no indentation)")
+    indent: Int = -1,
+  ) extends Sc4pacCommandOptions
+
+  case object Server extends Command[ServerOptions] {
+    def run(options: ServerOptions, args: RemainingArgs): Unit = {
+      if (options.indent < -1)
+        error(caseapp.core.Error.Other(s"Indentation must be -1 or larger."))
+      val scopeRoot: os.Path = if (options.scopeRoot.isEmpty) os.pwd else os.Path(java.nio.file.Paths.get(options.scopeRoot), os.pwd)
+      if (!os.exists(scopeRoot)) {
+        println(s"Creating sc4pac scope directory: $scopeRoot")
+        os.makeDir.all(scopeRoot)
+      }
+      val task: Task[Unit] = {
+        val app = sc4pac.api.Api(options).routes.toHttpApp
+        println(s"Starting sc4pac server on port ${options.port}...")
+        zio.http.Server.serve(app).provide(zio.http.Server.defaultWithPort(options.port), zio.ZLayer.succeed(ScopeRoot(scopeRoot)))
+      }
+      runMainExit(task, exit)
+    }
+  }
+
 }
 
 object CliMain extends caseapp.core.app.CommandsEntryPoint {
@@ -437,7 +478,8 @@ object CliMain extends caseapp.core.app.CommandsEntryPoint {
     Commands.ChannelAdd,
     Commands.ChannelRemove,
     Commands.ChannelList,
-    Commands.ChannelBuild)
+    Commands.ChannelBuild,
+    Commands.Server)
 
   val progName = BuildInfo.name
 

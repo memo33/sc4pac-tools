@@ -25,7 +25,7 @@ object Extractor {
           new native.Wrapped7zNative(raf, inArchive)
         } catch {
           case e: java.lang.UnsatisfiedLinkError =>  // some platforms may be unsupported, e.g. Apple arm
-            throw new ExtractionFailed(s"Failed to load native 7z library: $e")
+            throw new ExtractionFailed(s"Failed to load native 7z library.", e.toString)
         }
       else if (file.getName.endsWith(".7z"))
         new Wrapped7z(new SevenZFile(file))
@@ -134,7 +134,7 @@ object Extractor {
 
         })
       } catch {
-        case e: SZ.SevenZipException => throw new ExtractionFailed(s"Extraction failed: ${e.getMessage}")
+        case e: SZ.SevenZipException => throw new ExtractionFailed("7z-extraction failed.", e.getMessage)
       }
     }
   }
@@ -226,6 +226,6 @@ class Extractor(logger: Logger) {
     }
   } catch {
     case e: ExtractionFailed => throw e
-    case e: java.io.IOException => throw new ExtractionFailed(s"Failed to extract $archive: ${e.getMessage}")
+    case e: java.io.IOException => throw new ExtractionFailed(s"Failed to extract $archive.", e.getMessage)
   }
 }
