@@ -144,7 +144,7 @@ object ChannelPage {
       H.h2("sc4pac Channel"),
       H.p("This is the default channel of ",
         H.a(H.href := sc4pacUrl)(H.code("sc4pac")),
-        ". This page lists all the packages you can currently install."
+        s". This page lists all ${items.count(!_.isSc4pacAsset)} packages you can currently install."
       ),
       H.table(H.id := "channelcontents")(H.tbody(items.flatMap { item =>
         item.toBareDep match
