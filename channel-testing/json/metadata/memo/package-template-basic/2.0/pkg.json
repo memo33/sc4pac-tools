@@ -38,6 +38,9 @@
       ]
     }
   ],
+  "knownDependents": [
+    "memo:demo-package"
+  ],
   "metadataSource": [
     "templates/package-template-basic.yaml"
   ]
