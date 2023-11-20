@@ -48,7 +48,7 @@ object ChannelUtil {
     url: String,
     lastModified: java.time.Instant = null
   ) derives ReadWriter {  // the difference to JD.Asset is that JD.Asset is part of a sealed trait requiring a `$type` field
-    def toAsset = JD.Asset(assetId = assetId, version = version, url = url, lastModified = lastModified)
+    def toAsset = JD.Asset(assetId = assetId, version = version, url = url, lastModified = lastModified, requiredBy = Nil)
   }
 
   private def parseCirceJson[A : Reader](j: Json): IO[upickle.core.Abort | IllegalArgumentException, A] = {
@@ -72,6 +72,18 @@ object ChannelUtil {
     }.mapError(errs => s"format error in $path: ${errs.mkString(", ")}")
   }
 
+  private def writePackageJsonBlocking(pkgData: JD.PackageAsset, tempJsonDir: os.Path): Unit = {
+    val dep = pkgData.toBareDep
+    val target = tempJsonDir / MetadataRepository.jsonSubPath(dep, pkgData.version)
+    os.makeDir.all(target / os.up)
+    scala.util.Using.resource(java.nio.file.Files.newBufferedWriter(target.toNIO)) { out =>
+      pkgData match {
+        case data: JD.Package => writeTo(data, out, indent=2)  // writes package json file
+        case data: JD.Asset => writeTo(data, out, indent=2)  // writes asset json file
+      }
+    }
+  }
+
   /** This function reads the yaml package metadata and writes
     * it as json files in the format that is used by MetadataRepository.
     *
@@ -85,29 +97,50 @@ object ChannelUtil {
     os.makeDir.all(outputDir)
     val tempJsonDir = os.temp.dir(outputDir, prefix = "json", deleteOnExit = true)
     try {
-      val packages: Map[BareDep, Seq[(String, JD.PackageAsset)]] = inputDirs.flatMap { inputDir =>
+      // packages without requiredBy (unless explicitly added in yaml)
+      val packages: Seq[JD.PackageAsset] = inputDirs.flatMap { inputDir =>
         os.walk.stream(inputDir)
           .filter(_.last.endsWith(".yaml"))
           .flatMap(path => unsafeRun(readAndParsePkgData(path, root = Some(inputDir))): IndexedSeq[JD.PackageAsset])  // TODO unsafe
-          .map { pkgData =>
-            val dep = pkgData.toBareDep
-            val target = tempJsonDir / MetadataRepository.jsonSubPath(dep, pkgData.version)
-            os.makeDir.all(target / os.up)
-            scala.util.Using.resource(java.nio.file.Files.newBufferedWriter(target.toNIO)) { out =>
-              pkgData match {
-                case data: JD.Package => writeTo(data, out, indent=2)  // writes package json file
-                case data: JD.Asset => writeTo(data, out, indent=2)  // writes asset json file
-              }
-            }
-            (dep, (pkgData.version, pkgData))
-          }.toSeq
-      }.groupMap(_._1)(_._2)
-
-      val channel = {
-        val c = JD.Channel.create(scheme = Constants.currentChannelScheme, packages)
-        c.copy(contents = c.contents.sortBy(item => (item.group, item.name)))
+          .toSeq
       }
 
+      // compute dependents (reverse dependencies)
+      val dependents: collection.Map[BareDep, Set[BareModule]] = {
+        val m = collection.mutable.Map.empty[BareDep, Set[BareModule]]
+        packages.foreach {
+          case _: JD.Asset => // assets do not depend on anything
+          case pkgData: JD.Package =>
+            val mod = pkgData.toBareDep
+            pkgData.variants.foreach(_.bareDependencies.foreach { dep =>
+              m(dep) = m.getOrElse(dep, Set.empty) + mod  // mod depends on dep
+            })
+        }
+        m
+      }
+
+      // add dependents (requiredBy) and write package json files
+      val packagesMap: Map[BareDep, Seq[(String, JD.PackageAsset)]] =
+        packages.map { pkgData =>
+          val computed = dependents.getOrElse(pkgData.toBareDep, Set.empty)
+          // this joins the computed dependents and the dependents explicitly specified in yaml
+          val pkgData2 = pkgData match {
+            case data: JD.Asset =>
+              data.copy(requiredBy =
+                (computed ++ data.requiredBy).toSeq.sortBy(i => (i.group, i.name)))
+            case data: JD.Package =>
+              data.copy(info = data.info.copy(requiredBy =
+                (computed ++ data.info.requiredBy).toSeq.sortBy(i => (i.group, i.name))))
+          }
+          writePackageJsonBlocking(pkgData2, tempJsonDir)    // writing json as side effect
+          (pkgData2.toBareDep, (pkgData2.version, pkgData2))
+        }.groupMap(_._1)(_._2)
+
+      // write channel contents
+      val channel = {
+        val c = JD.Channel.create(scheme = Constants.currentChannelScheme, packagesMap)
+        c.copy(contents = c.contents.sortBy(item => (item.group, item.name)))
+      }
       scala.util.Using.resource(java.nio.file.Files.newBufferedWriter((tempJsonDir / JsonRepoUtil.channelContentsFilename).toNIO)) { out =>
         writeTo(channel, out, indent=2)  // writes channel contents json file
       }
@@ -122,7 +155,7 @@ object ChannelUtil {
       // move the temp folder to its final destination.
       os.move.over(tempJsonDir / "metadata", outputDir / "metadata", createFolders = true)
       os.move.over(tempJsonDir / JsonRepoUtil.channelContentsFilename, outputDir / JsonRepoUtil.channelContentsFilename, createFolders = true)
-      System.err.println(s"Successfully wrote channel contents of ${packages.size} packages.")
+      System.err.println(s"Successfully wrote channel contents of ${packagesMap.size} packages and assets.")
     } finally {
       os.remove.all(tempJsonDir)  // deleteOnExit does not seem to work reliably, so explicitly delete temp folder
     }
