@@ -74,10 +74,17 @@ See [CLI](https://memo33.github.io/sc4pac/#/cli?id=command-line-interface) for d
 400-industrial
 500-utilities
 600-civics
+610-safety
+620-education
+630-health
+640-government
+650-religion
+660-parks
 700-transit
 777-network-addon-mod  (installed manually)
 900-overrides
 ```
+[(source)](https://github.com/memo33/sc4pac/blob/main/.github/sc4pac-yaml-schema.py#L9-L30)
 
 Packages are installed into even-numbered subfolders, as the order in which files are loaded by the game is important.
 Files you install manually should be put into odd-numbered subfolders
