@@ -39,6 +39,8 @@ abstract class SharedData {
   type SubPath
   implicit val subPathRw: ReadWriter[SubPath]
 
+  implicit val bareModuleRw: ReadWriter[BareModule]
+
   case class Dependency(group: String, name: String, version: String) derives ReadWriter
 
   case class AssetReference(
@@ -85,7 +87,9 @@ abstract class SharedData {
     assetId: String,
     version: String,
     url: String,
-    lastModified: Instant = null.asInstanceOf[Instant]
+    lastModified: Instant = null.asInstanceOf[Instant],
+    requiredBy: Seq[BareModule] = Seq.empty  // optional and only informative (mangles all variants and versions, is limited to one channel,
+                                             // can easily become outdated since json files are cached indefinitely)
   ) extends PackageAsset /*derives ReadWriter*/ {
     def attributes: Map[String, String] = {
       val m = Map(Asset.urlKey -> url)
@@ -140,7 +144,9 @@ abstract class SharedData {
     description: String = "",
     author: String = "",
     images: Seq[String] = Seq.empty,
-    website: String = ""
+    website: String = "",
+    requiredBy: Seq[BareModule] = Seq.empty,  // optional and only informative (mangles all variants and versions, is limited to one channel,
+                                              // can easily become outdated since json files are cached indefinitely)
   ) derives ReadWriter
   object Info {
     val empty = Info()

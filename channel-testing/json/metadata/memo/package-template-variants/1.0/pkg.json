@@ -38,6 +38,9 @@
       "left": "if cars in your game drive on the left"
     }
   },
+  "knownDependents": [
+    "memo:package-template-basic"
+  ],
   "metadataSource": [
     "templates/package-template-variants.yaml"
   ]

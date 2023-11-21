@@ -21,6 +21,16 @@ object JsonData extends SharedData {
   val instantRw = UP.readwriter[String]
   opaque type SubPath = String
   val subPathRw = UP.readwriter[String]
+
+  private val regexModule = """([^:\s]+):([^:\s]+)""".r
+  def parseModule(pkgName: String): Either[String, BareModule] =
+    pkgName match {
+      case regexModule(group, name) => Right(BareModule(group = Organization(group), name = ModuleName(name)))
+      case _ => Left("Malformed package name: <group>:<name>")
+    }
+
+  val bareModuleRw: UP.ReadWriter[BareModule] = UP.readwriter[String].bimap[BareModule](_.orgName,
+    parseModule(_).left.map(e => throw new IllegalArgumentException(e)).merge)
 }
 
 object ChannelPage {
@@ -37,13 +47,6 @@ object ChannelPage {
   def main(args: Array[String]): Unit = {
     document.addEventListener("DOMContentLoaded", (e: dom.Event) => setupUI())
   }
-
-  val regexModule = """([^:\s]+):([^:\s]+)""".r
-  def parseModule(pkgName: String): Either[String, BareModule] =
-    pkgName match {
-      case regexModule(group, name) => Right(BareModule(group = Organization(group), name = ModuleName(name)))
-      case _ => Left("Malformed package name: <group>:<name>")
-    }
 
   def fetchPackage(module: BareModule): Future[Option[JsonData.Package]] = {
     val url = sttp.model.Uri(java.net.URI.create(s"${channelUrl}${JsonRepoUtil.packageSubPath(module, version = "latest")}"))
@@ -127,6 +130,11 @@ object ChannelPage {
       else H.ul(deps.map(dep => H.li(pkgNameFrag(dep))))
     )
 
+    add("Required By",
+      if (pkg.info.requiredBy.isEmpty) "None"
+      else H.ul(pkg.info.requiredBy.map(dep => H.li(pkgNameFrag(dep))))
+    )
+
     H.div(
       H.div(H.float := "right")(
         pkg.metadataSource.toSeq.map(yamlSubPath => H.a(H.cls := "btn", H.href := s"$yamlUrl$yamlSubPath")("Edit metadata"))
@@ -166,7 +174,7 @@ object ChannelPage {
         case Some(channel) =>
           output.replaceWith(channelContentsFrag(channel.contents).render)
       }
-    } else parseModule(pkgName) match {
+    } else JsonData.parseModule(pkgName) match {
       case Left(err) =>
         document.body.appendChild(H.p(err).render)
         ()
