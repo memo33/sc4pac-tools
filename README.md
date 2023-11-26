@@ -84,7 +84,7 @@ See [CLI](https://memo33.github.io/sc4pac/#/cli?id=command-line-interface) for d
 777-network-addon-mod  (installed manually)
 900-overrides
 ```
-[(source)](https://github.com/memo33/sc4pac/blob/main/.github/sc4pac-yaml-schema.py#L9-L30)
+[(source)](https://github.com/memo33/sc4pac/blob/main/.github/sc4pac-yaml-schema.py#L10-L33)
 
 Packages are installed into even-numbered subfolders, as the order in which files are loaded by the game is important.
 Files you install manually should be put into odd-numbered subfolders
@@ -102,9 +102,7 @@ The file `sc4pac-plugins-lock.json` stores information about all the installed p
 This tells *sc4pac* which version of packages are installed, where to find them in your plugins folder and how to upgrade them to newer versions.
 
 *Sc4pac* obtains its information from metadata stored in a remote channel.
-The metadata is added in terms of .yaml files.
-See the [commented example](https://github.com/memo33/sc4pac-tools/blob/main/channel-testing/yaml/templates/package-template-basic.yaml)
-and the [empty template](https://github.com/memo33/sc4pac-tools/blob/main/channel-testing/template-empty.yaml).
+The metadata is added in terms of .yaml files (see [Adding metadata](https://memo33.github.io/sc4pac/#/metadata)).
 The metadata of the default channel is stored at https://github.com/memo33/sc4pac.
 
 
