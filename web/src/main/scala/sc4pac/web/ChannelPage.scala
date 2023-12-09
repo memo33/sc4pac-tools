@@ -147,17 +147,37 @@ object ChannelPage {
     )
   }
 
-  def channelContentsFrag(items: Seq[JsonData.ChannelItem]) = {
+  def channelContentsFrag(items: Seq[JsonData.ChannelItem], displayCategory: Option[String]) = {
+    val categories: Seq[String] = items.flatMap(item => item.category).distinct.sorted
+    val displayCategory2 = displayCategory.filter(c => categories.contains(c))
+
+    def mkOption(cat: String, text: String, selected: Boolean) =
+      if (selected) H.option(H.value := cat, H.selected)(text) else H.option(H.value := cat)(text)
+
     H.frag(
       H.h2("sc4pac Channel"),
       H.p("This is the default channel of ",
         H.a(H.href := sc4pacUrl)(H.code("sc4pac")),
-        s". This page lists all ${items.count(!_.isSc4pacAsset)} packages you can currently install."
+        s". Currently, there are ${items.count(!_.isSc4pacAsset)} packages you can install."
+      ),
+      H.form(
+        H.label(H.`for` := "category")("Category:"),
+        H.select(
+          H.name := "category",
+          H.id := "category",
+        )(
+          (mkOption("", "All", displayCategory2.isEmpty) +: categories.map(c => mkOption(c, c, displayCategory2.contains(c))))*
+        ),
+        H.input(H.`type` := "submit", H.value := "Submit")
       ),
       H.table(H.id := "channelcontents")(H.tbody(items.flatMap { item =>
-        item.toBareDep match
-          case mod: BareModule => Some(H.tr(H.td(pkgNameFrag(mod, link = true)), H.td(item.summary)))
-          case _: BareAsset => None
+        if (displayCategory2.isEmpty || item.category == displayCategory2) {  // either show all or filter by category
+          item.toBareDep match
+            case mod: BareModule => Some(H.tr(H.td(pkgNameFrag(mod, link = true)), H.td(item.summary)))
+            case _: BareAsset => None
+        } else {
+          None
+        }
       }))
     )
   }
@@ -172,7 +192,8 @@ object ChannelPage {
         case None =>
           document.body.appendChild(H.p("Failed to load channel contents.").render)
         case Some(channel) =>
-          output.replaceWith(channelContentsFrag(channel.contents).render)
+          val displayCategory = Option(urlParams.get("category"))
+          output.replaceWith(channelContentsFrag(channel.contents, displayCategory).render)
       }
     } else JsonData.parseModule(pkgName) match {
       case Left(err) =>

@@ -152,7 +152,7 @@ abstract class SharedData {
     val empty = Info()
   }
 
-  case class ChannelItem(group: String, name: String, versions: Seq[String], summary: String = "") derives ReadWriter {
+  case class ChannelItem(group: String, name: String, versions: Seq[String], summary: String = "", category: Option[String] = None) derives ReadWriter {
     def isSc4pacAsset: Boolean = group == JsonRepoUtil.sc4pacAssetOrg.value
     def toBareDep: BareDep = if (isSc4pacAsset) BareAsset(ModuleName(name)) else BareModule(Organization(group), ModuleName(name))
     private[sc4pac] def toSearchString: String = s"$group:$name $summary"
@@ -172,7 +172,8 @@ abstract class SharedData {
           }
           // we arbitrarily pick the summary of the first item (usually there is just one version anyway)
           val summaryOpt = versions.iterator.collectFirst { case (_, pkg: Package) if pkg.info.summary.nonEmpty => pkg.info.summary }
-          ChannelItem(group = g, name = n, versions = versions.iterator.map(_._1).toSeq, summary = summaryOpt.getOrElse(""))
+          val catOpt = versions.iterator.collectFirst { case (_, pkg: Package) => pkg.subfolder.toString }
+          ChannelItem(group = g, name = n, versions = versions.iterator.map(_._1).toSeq, summary = summaryOpt.getOrElse(""), category = catOpt)
       }.toSeq)
     }
   }

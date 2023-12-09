@@ -180,3 +180,10 @@ nav {
   color: #42b983;
   color: var(--theme-color, #42b983);
 }
+
+select {
+  margin: 0.5em 1em;
+}
+form {
+  margin-bottom: 0.5em;
+}
