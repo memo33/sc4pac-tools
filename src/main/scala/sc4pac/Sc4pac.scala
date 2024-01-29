@@ -10,7 +10,7 @@ import zio.{IO, ZIO, UIO, Task, Scope, RIO}
 import upickle.default as UP
 
 import sc4pac.error.*
-import sc4pac.Constants.isSc4pacAsset
+import sc4pac.Constants.{isSc4pacAsset, isDll}
 import sc4pac.JsonData as JD
 import sc4pac.Sc4pac.{StageResult, UpdatePlan}
 import sc4pac.Resolution.{Dep, DepModule, DepAsset}
@@ -182,11 +182,7 @@ trait UpdateService { this: Sc4pac =>
           logger.warn(w)
           Seq(w)
         case Some(art, archive) =>
-          // logger.log(s"  ==> $archive")  // TODO logging debug info
           val recipe = JD.InstallRecipe.fromAssetReference(assetData)
-          // ??? TODO extraction not implemented
-          // TODO skip symlinks as a precaution
-
           // TODO check if archive type is zip
           val extractor = new Extractor(logger)
           extractor.extract(
@@ -199,6 +195,24 @@ trait UpdateService { this: Sc4pac =>
       }
     }
 
+    /** Creates links for dll files from plugins root folder to package subfolder. */
+    def linkDlls(pkgFolder: os.SubPath): Task[Seq[os.SubPath]] = ZIO.attemptBlockingIO {
+      os.walk.stream(tempPluginsRoot / pkgFolder)
+        .filter(isDll)
+        .map { dll =>
+          val dllLink = tempPluginsRoot / dll.last
+          if (os.isLink(dllLink)) {
+            // This should not usually happen as it means two packages contain
+            // the same DLL and are installed during the same `update` process.
+            // If the DLL already exists in the actual plugins, we don't even catch that.
+            val _ = os.remove(dllLink, checkExists = false)  // ignoring result for now
+          }
+          os.symlink(dllLink, dll.subRelativeTo(tempPluginsRoot))
+          dllLink.subRelativeTo(tempPluginsRoot)
+        }
+        .toSeq
+    }
+
     // Since dependency is of type DepModule, we have already looked up the
     // variant successfully, but have lost the JsonData.Package, so we reconstruct it
     // here a second time.
@@ -209,9 +223,10 @@ trait UpdateService { this: Sc4pac =>
                               _  <- ZIO.attemptBlocking(os.makeDir.all(tempPluginsRoot / pkgFolder))  // create folder even if package does not have any assets or files
                               ws <- ZIO.foreach(variant.assets)(extract(_, pkgFolder))
                             } yield ws.flatten)
+      dlls               <- linkDlls(pkgFolder)
       warnings           <- if (pkgData.info.warning.nonEmpty) ZIO.attempt { val w = pkgData.info.warning; logger.warn(w); Seq(w) }
                             else ZIO.succeed(Seq.empty)
-    } yield (Seq(pkgFolder), warnings ++ artifactWarnings)  // for now, everything is installed into this folder only, so we do not need to list individual files
+    } yield (Seq(pkgFolder) ++ dlls, warnings ++ artifactWarnings)
   }
 
   private def remove(toRemove: Set[Dep], installed: Seq[JD.InstalledData], pluginsRoot: os.Path): Task[Unit] = {
@@ -222,7 +237,9 @@ trait UpdateService { this: Sc4pac =>
     ZIO.foreachDiscard(files) { (sub: os.SubPath) =>  // this runs sequentially
       val path = pluginsRoot / sub
       ZIO.attemptBlocking {
-        if (os.exists(path)) {
+        if (isDll(path) && os.isLink(path)) {
+          os.remove(path, checkExists = false)
+        } else if (os.exists(path)) {
           os.remove.all(path)
         } else {
           logger.warn(s"removal failed as file did not exist: $path")

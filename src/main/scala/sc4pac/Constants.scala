@@ -9,7 +9,7 @@ object Constants {
   export JsonRepoUtil.sc4pacAssetOrg  // val sc4pacAssetOrg = Organization("sc4pacAsset")
   val sc4pacAssetType = Type("sc4pac-resource")  // TODO
   val defaultInclude = """."""  // includes everything
-  val defaultExclude = """(?<!\.dat|\.sc4model|\.sc4lot|\.sc4desc|\.sc4)$"""  // excludes files with other file types
+  val defaultExclude = """(?<!\.dat|\.sc4model|\.sc4lot|\.sc4desc|\.sc4|\.dll)$"""  // excludes files with other file types
   val versionLatestRelease = "latest.release"
   val defaultChannelUrls = Seq(MetadataRepository.parseChannelUrl("https://memo33.github.io/sc4pac/channel/").toOption.get)
   val currentChannelScheme = 1
@@ -67,4 +67,6 @@ object Constants {
     System.err.println("Falling back to interactive mode.")  // TODO use --no-prompt to force non-interactive mode (once implemented)
     true
   }
+
+  def isDll(path: os.Path): Boolean = path.last.toLowerCase.endsWith(".dll")
 }
