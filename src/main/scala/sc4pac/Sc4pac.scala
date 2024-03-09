@@ -195,19 +195,29 @@ trait UpdateService { this: Sc4pac =>
       }
     }
 
-    /** Creates links for dll files from plugins root folder to package subfolder. */
+    /** Creates links for dll files from plugins root folder to package subfolder.
+      * If link creation fails, this moves the DLL files from package subfolder to plugins root. */
     def linkDlls(pkgFolder: os.SubPath): Task[Seq[os.SubPath]] = ZIO.attemptBlockingIO {
       os.walk.stream(tempPluginsRoot / pkgFolder)
         .filter(isDll)
         .map { dll =>
           val dllLink = tempPluginsRoot / dll.last
-          if (os.isLink(dllLink)) {
+          if (os.isLink(dllLink) || os.exists(dllLink)) {  // (note that `dllLink` may be an actual file on Windows)
             // This should not usually happen as it means two packages contain
             // the same DLL and are installed during the same `update` process.
             // If the DLL already exists in the actual plugins, we don't even catch that.
             val _ = os.remove(dllLink, checkExists = false)  // ignoring result for now
           }
-          os.symlink(dllLink, dll.subRelativeTo(tempPluginsRoot))
+          val linkTarget = dll.subRelativeTo(tempPluginsRoot)
+          try {
+            os.symlink(dllLink, linkTarget)
+          } catch { case _: java.io.IOException =>
+            // On Windows, symbolic link creation usually fails without elevated privileges
+            // (see documentation of channel-build command), so instead of using a link,
+            // we just move the DLL file to the plugins root as a fallback.
+            logger.debug(s"Failed to create symbolic link $dllLink -> $linkTarget. Moving file to plugins root instead.")
+            os.move(dll, dllLink)
+          }
           dllLink.subRelativeTo(tempPluginsRoot)
         }
         .toSeq
