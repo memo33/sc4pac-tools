@@ -36,6 +36,7 @@ object Commands {
   private[sc4pac] val sortHelpLast: Option[Seq[String] => Seq[String]] =
     Some(groups => groups.partition(_ == "Help") match { case (help, nonHelp) => nonHelp ++ help })
 
+  // failures that are expected with both the CLI and the API
   type ExpectedFailure = error.Sc4pacAbort | error.DownloadFailed | error.NoChannelsAvailable
     | error.Sc4pacVersionNotFound | error.Sc4pacAssetNotFound | error.ExtractionFailed
     | error.UnsatisfiableVariantConstraints
@@ -51,6 +52,7 @@ object Commands {
         case abort: ExpectedFailure => handleExpectedFailures(abort, exit)  // we do not need the trace for expected failures
         case abort: error.Sc4pacTimeout => { System.err.println(Array("Operation aborted.", abort.getMessage).mkString(" ")); exit(1) }
         case abort: error.Sc4pacNotInteractive => { System.err.println(s"Operation aborted as terminal is non-interactive: ${abort.getMessage}"); exit(1) }
+        case abort: error.SymlinkCreationFailed => { System.err.println(s"Operation aborted. ${abort.getMessage}"); exit(1) }  // channel-build command
         case e => { e.printStackTrace(); exit(2) }
       },
       success = _ => exit(0)
@@ -411,6 +413,9 @@ object Commands {
   @HelpMessage("""
     |Build a channel locally by converting YAML files to JSON.
     |
+    |On Windows, this command may require special privileges to run.
+    |To resolve this, either run the command in a shell with administrator privileges, or use Java 13+ and enable Windows Developer Mode on your device.
+    |
     |Examples:
     |  sc4pac channel build --output "channel/json/" "channel/yaml/"
     """.stripMargin.trim)
@@ -427,7 +432,9 @@ object Commands {
     def run(options: ChannelBuildOptions, args: RemainingArgs): Unit = {
       args.all match {
         case Nil => error(caseapp.core.Error.Other("An argument is needed: YAML input directory"))
-        case inputs => ChannelUtil.convertYamlToJson(inputs.map(os.Path(_, os.pwd)), os.Path(options.output, os.pwd))
+        case inputs =>
+          val task = ChannelUtil.convertYamlToJson(inputs.map(os.Path(_, os.pwd)), os.Path(options.output, os.pwd))
+          runMainExit(task, exit)
       }
     }
   }

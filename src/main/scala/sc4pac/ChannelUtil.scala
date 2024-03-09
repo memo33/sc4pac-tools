@@ -3,7 +3,7 @@ package sc4pac
 
 import io.circe.{ParsingFailure, Json}
 import upickle.default.{Reader, ReadWriter, writeTo}
-import zio.{ZIO, IO}
+import zio.{ZIO, IO, Task}
 import coursier.core as C
 
 import sc4pac.JsonData as JD
@@ -93,7 +93,7 @@ object ChannelUtil {
     * - files do not include the version number which avoids the need for renaming
     * - files can include multiple package definitions
     */
-  def convertYamlToJson(inputDirs: Seq[os.Path], outputDir: os.Path): Unit = {
+  def convertYamlToJson(inputDirs: Seq[os.Path], outputDir: os.Path): Task[Unit] = ZIO.attemptBlockingIO {
     os.makeDir.all(outputDir)
     val tempJsonDir = os.temp.dir(outputDir, prefix = "json", deleteOnExit = true)
     try {
@@ -148,7 +148,26 @@ object ChannelUtil {
       // create symlinks for latest versions
       channel.contents.foreach { item =>
         val latest = item.versions.map(coursier.core.Version(_)).max
-        os.symlink(tempJsonDir / MetadataRepository.latestSubPath(item.group, item.name), os.rel / latest.repr)
+        val link = tempJsonDir / MetadataRepository.latestSubPath(item.group, item.name)
+        val linkTarget = os.rel / latest.repr
+        try {
+          os.symlink(link, linkTarget)
+        } catch {
+          case e: java.io.IOException =>
+            if (Constants.debugMode) {
+              e.printStackTrace()
+            }
+            // support for (b) was added in Java 13 by https://bugs.openjdk.org/browse/JDK-8218418
+            throw new error.SymlinkCreationFailed(s"""Failed to create symbolic link $link -> $linkTarget.
+              |On Windows, use one of these workarounds:
+              |
+              |  (a) Rerun the command in a shell with administrator privileges.
+              |  (b) Use Java 13+ and enable Windows Developer Mode on your device. See:
+              |      https://learn.microsoft.com/en-us/windows/apps/get-started/enable-your-device-for-development
+              |  (c) Enable the privilege "SeCreateSymbolicLinkPrivilege" for your user account. See:
+              |      https://learn.microsoft.com/en-us/previous-versions/windows/it-pro/windows-10/security/threat-protection/security-policy-settings/create-symbolic-links
+              |""".stripMargin)
+        }
       }
 
       // Finally, we are sure that everything was formatted correctly, so we can
