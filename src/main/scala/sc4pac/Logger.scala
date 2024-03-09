@@ -12,7 +12,7 @@ trait Logger extends coursier.cache.CacheLogger {
   /** For generic messages to the console, not user-facing. */
   def warn(msg: String): Unit
   /** For generic messages to the console, not user-facing. */
-  def debug(msg: String): Unit
+  def debug(msg: => String): Unit
 
   def concurrentCacheAccess(url: String): Unit = debug(s"concurrentCacheAccess $url")
 
@@ -55,7 +55,7 @@ class CliLogger private (out: java.io.PrintStream, useColor: Boolean, isInteract
 
   def log(msg: String): Unit = out.println(msg)
   def warn(msg: String): Unit = out.println(yellowBold("Warning:") + " " + msg)
-  def debug(msg: String): Unit = if (Constants.debugMode) out.println(gray(s"--> $msg"))
+  def debug(msg: => String): Unit = if (Constants.debugMode) out.println(gray(s"--> $msg"))
 
   def logSearchResult(idx: Int, module: BareModule, description: Option[String], installed: Boolean): Unit = {
     val mod = module.formattedDisplayString(gray, bold) + (if (installed) " " + cyanBold("[installed]") else "")
