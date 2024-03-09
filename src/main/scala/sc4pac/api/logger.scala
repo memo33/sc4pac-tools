@@ -13,7 +13,7 @@ class WebSocketLogger private (private[api] val queue: java.util.concurrent.Link
 
   def log(msg: String): Unit = println(s"[info] $msg")
   def warn(msg: String): Unit = println(s"[warn] $msg")
-  def debug(msg: String): Unit = if (Constants.debugMode) println(s"[debug] $msg")
+  def debug(msg: => String): Unit = if (Constants.debugMode) println(s"[debug] $msg")
 
   def sendMessageAsync(message: Message): Unit = { queue.offer(WebSocketLogger.Event.Plain(message)); () }
 
