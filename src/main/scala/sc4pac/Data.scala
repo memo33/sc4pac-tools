@@ -16,8 +16,9 @@ object JsonData extends SharedData {
   override type Instant = java.time.Instant
   override type SubPath = os.SubPath
 
+  // We use OffsetDateTime.parse instead of Instant.parse for compatibility with Java 8 to 11
   implicit val instantRw: ReadWriter[java.time.Instant] =
-    readwriter[String].bimap[java.time.Instant](_.toString(), Option(_).map(java.time.Instant.parse).orNull)
+    readwriter[String].bimap[java.time.Instant](_.toString(), Option(_).map(java.time.OffsetDateTime.parse(_).toInstant()).orNull)
 
   implicit val pathRw: ReadWriter[NioPath] = readwriter[String].bimap[NioPath](_.toString(), java.nio.file.Paths.get(_))
 
