@@ -14,7 +14,9 @@ trait Prompter {
   def confirmInstallationWarnings(warnings: Seq[(BareModule, Seq[String])]): Task[Boolean]
 }
 
-class CliPrompter(logger: CliLogger) extends Prompter {
+class CliPrompter(logger: CliLogger, autoYes: Boolean) extends Prompter {
+
+  def withAutoYes(yes: Boolean): CliPrompter = CliPrompter(logger, yes)
 
   def promptForVariant(module: BareModule, label: String, values: Seq[String], descriptions: Map[String, String]): Task[String] = {
     val prefix = s"${label} = "
@@ -41,7 +43,7 @@ class CliPrompter(logger: CliLogger) extends Prompter {
 
   def confirmUpdatePlan(plan: Sc4pac.UpdatePlan): Task[Boolean] = {
     logPlan(plan).zipRight {
-      if (plan.isUpToDate) ZIO.succeed(true)
+      if (plan.isUpToDate || autoYes) ZIO.succeed(true)  // if --yes flag is present, always continue
       else Prompt.ifInteractive(
         onTrue = Prompt.yesNo("Continue?"),
         onFalse = ZIO.succeed(true))  // in non-interactive mode, always continue
@@ -49,7 +51,7 @@ class CliPrompter(logger: CliLogger) extends Prompter {
   }
 
   def confirmInstallationWarnings(warnings: Seq[(BareModule, Seq[String])]): Task[Boolean] = {
-    if (warnings.isEmpty) ZIO.succeed(true)
+    if (warnings.isEmpty || autoYes) ZIO.succeed(true)  // if --yes flag is present, always continue
     else Prompt.ifInteractive(
       onTrue = Prompt.yesNo("Continue despite warnings?"),
       onFalse = ZIO.succeed(true))  // in non-interactive mode, we continue despite warnings

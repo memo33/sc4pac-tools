@@ -26,7 +26,7 @@ object Commands {
 
   val cliEnvironment = {
     val logger = CliLogger()
-    zio.ZEnvironment(ScopeRoot(os.pwd), logger, CliPrompter(logger))
+    zio.ZEnvironment(ScopeRoot(os.pwd), logger, CliPrompter(logger, autoYes = false))
   }
 
   // TODO strip escape sequences if jansi failed with a link error
@@ -98,8 +98,14 @@ object Commands {
     |Update all installed packages to their latest version and install any missing packages.
     |
     |In particular, this installs the explicitly added packages and, implicitly, all their dependencies.
+    |
+    |Example:
+    |  sc4pac update
     """.stripMargin.trim)
-  final case class UpdateOptions() extends Sc4pacCommandOptions
+  final case class UpdateOptions(
+    @ExtraName("y") @HelpMessage("""Accept some default answers without asking, usually "yes"""") @Group("Main") @Tag("Main")
+    yes: Boolean = false
+  ) extends Sc4pacCommandOptions
 
   case object Update extends Command[UpdateOptions] {
     def run(options: UpdateOptions, args: RemainingArgs): Unit = {
@@ -109,7 +115,7 @@ object Commands {
         pluginsRoot  <- pluginsData.config.pluginsRootAbs
         flag         <- pac.update(pluginsData.explicit, globalVariant0 = pluginsData.config.variant, pluginsRoot = pluginsRoot)
       } yield ()
-      runMainExit(task.provideEnvironment(cliEnvironment), exit)
+      runMainExit(task.provideEnvironment(cliEnvironment.update((_: CliPrompter).withAutoYes(options.yes))), exit)
     }
   }
 
