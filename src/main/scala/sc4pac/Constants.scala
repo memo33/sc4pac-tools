@@ -2,6 +2,7 @@ package io.github.memo33
 package sc4pac
 
 import coursier.core.{Configuration, Organization, Type, Module}
+import java.util.regex.Pattern
 
 object Constants {
   val compile = Configuration.compile  // includes only metadata as dependencies
@@ -10,6 +11,7 @@ object Constants {
   val sc4pacAssetType = Type("sc4pac-resource")  // TODO
   val defaultInclude = """."""  // includes everything
   val defaultExclude = """(?<!\.dat|\.sc4model|\.sc4lot|\.sc4desc|\.sc4|\.dll)$"""  // excludes files with other file types
+  val sc4fileTypePattern = Pattern.compile("""\.dat|\.sc4model|\.sc4lot|\.sc4desc|\.sc4|\.dll$""", Pattern.CASE_INSENSITIVE)
   val versionLatestRelease = "latest.release"
   val defaultChannelUrls = Seq(MetadataRepository.parseChannelUrl("https://memo33.github.io/sc4pac/channel/").toOption.get)
   val currentChannelScheme = 1

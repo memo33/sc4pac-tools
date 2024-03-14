@@ -23,6 +23,12 @@ trait Logger extends coursier.cache.CacheLogger {
   def publishing[A](removalOnly: Boolean)(publishing: Task[A]): Task[A]
 
   def fetchingAssets[A](fetching: Task[A]): Task[A]
+
+  def debugPrintStackTrace(exception: Throwable): Unit = debug({
+    val sw = java.io.StringWriter()
+    exception.printStackTrace(new java.io.PrintWriter(sw))
+    sw.toString()
+  })
 }
 
 /** A plain Coursier logger, since Coursier's RefreshLogger results in dropped

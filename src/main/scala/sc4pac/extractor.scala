@@ -12,12 +12,14 @@ import sc4pac.error.ExtractionFailed
 
 object Extractor {
 
-  def acceptNestedArchive(p: os.BasePath) =
-    p.last.endsWith(".jar") || p.last.endsWith(".zip") || p.last.endsWith(".7z") || p.last.endsWith(".exe")
+  def acceptNestedArchive(p: os.BasePath) = {
+    val name = p.last.toLowerCase
+    name.endsWith(".jar") || name.endsWith(".zip") || name.endsWith(".7z") || name.endsWith(".exe")
+  }
 
   private object WrappedArchive {
-    def apply(file: java.io.File): WrappedArchive[?] = {
-      if (file.getName.endsWith(".exe"))  // assume NSIS installer (ClickTeam installer is not supported)
+    def apply(file: java.io.File, fallbackFilename: Option[String]): WrappedArchive[?] = {
+      if (file.getName.toLowerCase.endsWith(".exe") || fallbackFilename.exists(_.toLowerCase.endsWith(".exe")))  // assume NSIS installer (ClickTeam installer is not supported)
         try {
           import net.sf.sevenzipjbinding as SZ
           val raf = new java.io.RandomAccessFile(file, "r")
@@ -27,10 +29,21 @@ object Extractor {
           case e: java.lang.UnsatisfiedLinkError =>  // some platforms may be unsupported, e.g. Apple arm
             throw new ExtractionFailed(s"Failed to load native 7z library.", e.toString)
         }
-      else if (file.getName.endsWith(".7z"))
+      else if (file.getName.toLowerCase.endsWith(".7z") || fallbackFilename.exists(_.toLowerCase.endsWith(".7z")))
         new Wrapped7z(new SevenZFile(file))
-      else  // zip or jar
-        new WrappedZip(new ZipFile(file))
+      else {
+        val remoteOrLocalFallback: Option[String] =
+          if (fallbackFilename.exists(filename => Constants.sc4fileTypePattern.matcher(filename).find()))
+            fallbackFilename  // For remote files, fallbackFilename is extracted from HTTP header.
+          else if (Constants.sc4fileTypePattern.matcher(file.getName).find())
+            Some(file.getName)  // For local `file://` files, we rely on correct file extensions instead.
+          else None
+
+        if (remoteOrLocalFallback.isDefined)
+          new WrappedNonarchive(os.Path(file.getAbsolutePath()), remoteOrLocalFallback.get)  // .dat/.sc4*/.dll
+        else  // zip or jar (default case in case file extension is not known)
+          new WrappedZip(new ZipFile(file))
+      }
     }
   }
 
@@ -51,6 +64,20 @@ object Extractor {
     def isUnixSymlink(entry: ZipArchiveEntry) = entry.isUnixSymlink
     def extractSelected(entries: Seq[(ZipArchiveEntry, os.Path)], overwrite: Boolean): Unit =
       entries.foreach((entry, target) => extractEntryCommons(archive.getInputStream(entry), target, overwrite))
+  }
+
+  // A single .dat/.dll/.sc4* file that can just be copied to the target with a
+  // new name. The name of `file` itself is not meaningful as it comes from the URL in the file cache.
+  private class WrappedNonarchive(file: os.Path, filename: String) extends WrappedArchive[os.Path] {
+    def close(): Unit = {}
+    def getEntries = Iterator(file)
+    def getEntryPath(entry: os.Path) = filename  // entry.last has no meaningful relevance
+    def isDirectory(entry: os.Path) = false
+    def isUnixSymlink(entry: os.Path) = false
+    def extractSelected(entries: Seq[(os.Path, os.Path)], overwrite: Boolean): Unit =
+      for ((src, target) <- entries) {
+        os.copy.over(src, target, replaceExisting = overwrite)
+      }
   }
 
   private class Wrapped7z(archive: SevenZFile) extends WrappedArchive[SevenZArchiveEntry] {
@@ -168,8 +195,15 @@ class Extractor(logger: Logger) {
     * common prefix from all paths for a more flattened folder structure, and
     * optionally overwrite existing files.
     */
-  private def extractByPredicate(archive: java.io.File, destination: os.Path, predicate: os.SubPath => Boolean, overwrite: Boolean, flatten: Boolean): Seq[os.Path] = {
-    scala.util.Using.resource(Extractor.WrappedArchive(archive)) { zip =>
+  private def extractByPredicate(
+    archive: java.io.File,
+    destination: os.Path,
+    predicate: os.SubPath => Boolean,
+    overwrite: Boolean,
+    flatten: Boolean,
+    fallbackFilename: Option[String]
+  ): Seq[os.Path] = {
+    scala.util.Using.resource(Extractor.WrappedArchive(archive, fallbackFilename)) { zip =>
       // first we read the acceptable file names contained in the zip file
       val entries /*: Seq[(zip.A, os.SubPath)]*/ = zip.getEntries
         .flatMap { e =>
@@ -228,20 +262,20 @@ class Extractor(logger: Logger) {
     }
   }
 
-  def extract(archive: java.io.File, destination: os.Path, recipe: InstallRecipe, jarExtractionOpt: Option[Extractor.JarExtraction]): Unit = try {
+  def extract(archive: java.io.File, fallbackFilename: Option[String], destination: os.Path, recipe: InstallRecipe, jarExtractionOpt: Option[Extractor.JarExtraction]): Unit = try {
     // first extract just the main files
-    extractByPredicate(archive, destination, recipe.accepts, overwrite = true, flatten = false)
+    extractByPredicate(archive, destination, recipe.accepts, overwrite = true, flatten = false, fallbackFilename)
     // additionally, extract jar files contained in the zip file to a temporary location
     for (Extractor.JarExtraction(jarsDir) <- jarExtractionOpt) {
-      val jarFiles = extractByPredicate(archive, jarsDir, Extractor.acceptNestedArchive, overwrite = false, flatten = true)  // overwrite=false, as we want to extract any given jar only once per staging process
+      val jarFiles = extractByPredicate(archive, jarsDir, Extractor.acceptNestedArchive, overwrite = false, flatten = true, fallbackFilename)  // overwrite=false, as we want to extract any given jar only once per staging process
       // finally extract the jar files themselves (without recursively extracting jars contained inside)
       for (jarFile <- jarFiles if Extractor.acceptNestedArchive(jarFile)) {
         logger.debug(s"Extracting nested archive ${jarFile.last}")
-        extract(jarFile.toIO, destination, recipe, jarExtractionOpt = None)
+        extract(jarFile.toIO, fallbackFilename = None, destination, recipe, jarExtractionOpt = None)
       }
     }
   } catch {
     case e: ExtractionFailed => throw e
-    case e: java.io.IOException => throw new ExtractionFailed(s"Failed to extract $archive.", e.getMessage)
+    case e: java.io.IOException => logger.debugPrintStackTrace(e); throw new ExtractionFailed(s"Failed to extract $archive.", e.getMessage)
   }
 }
