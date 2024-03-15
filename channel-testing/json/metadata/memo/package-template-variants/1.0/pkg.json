@@ -4,6 +4,11 @@
   "name": "package-template-variants",
   "version": "1.0",
   "subfolder": "150-mods",
+  "info": {
+    "requiredBy": [
+      "memo:package-template-basic"
+    ]
+  },
   "variants": [
     {
       "variant": {
@@ -38,9 +43,6 @@
       "left": "if cars in your game drive on the left"
     }
   },
-  "knownDependents": [
-    "memo:package-template-basic"
-  ],
   "metadataSource": [
     "templates/package-template-variants.yaml"
   ]

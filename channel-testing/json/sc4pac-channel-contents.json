@@ -6,6 +6,9 @@
       "name": "demo-package",
       "versions": [
         "1.0"
+      ],
+      "category": [
+        "100-props-textures"
       ]
     },
     {
@@ -14,13 +17,19 @@
       "versions": [
         "2.0"
       ],
-      "summary": "One-line summary"
+      "summary": "One-line summary",
+      "category": [
+        "100-props-textures"
+      ]
     },
     {
       "group": "memo",
       "name": "package-template-variants",
       "versions": [
         "1.0"
+      ],
+      "category": [
+        "150-mods"
       ]
     },
     {
