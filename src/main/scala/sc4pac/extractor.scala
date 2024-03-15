@@ -172,9 +172,25 @@ class Extractor(logger: Logger) {
     scala.util.Using.resource(Extractor.WrappedArchive(archive)) { zip =>
       // first we read the acceptable file names contained in the zip file
       val entries /*: Seq[(zip.A, os.SubPath)]*/ = zip.getEntries
-        .map(e => e -> os.SubPath(zip.getEntryPath(e)))
+        .flatMap { e =>
+          val relativePathString = zip.getEntryPath(e)
+          val subPathOpt =  // sanitized entry path
+            if (relativePathString.isEmpty || relativePathString.startsWith("/") || relativePathString.startsWith("""\""")) {
+              None
+            } else if (zip.isUnixSymlink(e)) {  // skip symlinks as precaution
+              None
+            } else try {
+              Some(os.SubPath(relativePathString))
+            } catch { case _: IllegalArgumentException =>
+              None
+            }
+          if (!subPathOpt.isDefined) {
+            logger.debug(s"""Ignoring disallowed archive entry path "$relativePathString".""")
+          }
+          subPathOpt.map(e -> _)
+        }
         .filter { (e, p) =>
-          if (zip.isDirectory(e) || zip.isUnixSymlink(e)) {  // skip symlinks as precaution
+          if (zip.isDirectory(e)) {
             false
           } else {
             val include = predicate(p)
