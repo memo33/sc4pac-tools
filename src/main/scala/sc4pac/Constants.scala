@@ -14,7 +14,7 @@ object Constants {
   val sc4fileTypePattern = Pattern.compile("""\.dat|\.sc4model|\.sc4lot|\.sc4desc|\.sc4|\.dll$""", Pattern.CASE_INSENSITIVE)
   val versionLatestRelease = "latest.release"
   val defaultChannelUrls = Seq(MetadataRepository.parseChannelUrl("https://memo33.github.io/sc4pac/channel/").toOption.get)
-  val currentChannelScheme = 1
+  val currentChannelScheme = 2  // version number (incrementing this forces everyone accessing the channel to install a newer sc4pac version)
   val bufferSizeExtract = 64 * 1024  // 64 kiB, bounded by disk speed
   val bufferSizeDownload = 1024 * 1024  // 1 MiB, bounded by download speed
   val bufferSizeDownloadOverlap = 4 * 1024  // for file validity check when resuming partial download
