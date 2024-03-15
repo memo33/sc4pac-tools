@@ -4,7 +4,7 @@
   "version": "1.0",
   "url": "http://localhost:8090/files/package-aFile3.zip",
   "lastModified": "2023-07-29T21:33:56Z",
-  "knownDependents": [
+  "requiredBy": [
     "memo:demo-package"
   ]
 }

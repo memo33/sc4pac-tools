@@ -13,7 +13,10 @@
       "img1.png",
       "img2.png"
     ],
-    "website": "example.org"
+    "website": "example.org",
+    "requiredBy": [
+      "memo:demo-package"
+    ]
   },
   "variants": [
     {
@@ -37,9 +40,6 @@
         }
       ]
     }
-  ],
-  "knownDependents": [
-    "memo:demo-package"
   ],
   "metadataSource": [
     "templates/package-template-basic.yaml"

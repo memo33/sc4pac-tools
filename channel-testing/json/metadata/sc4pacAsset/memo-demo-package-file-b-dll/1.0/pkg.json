@@ -1,0 +1,10 @@
+{
+  "$type": "Asset",
+  "assetId": "memo-demo-package-file-b-dll",
+  "version": "1.0",
+  "url": "http://localhost:8090/files/package-bFile.dll",
+  "lastModified": "2024-03-15T17:43:14Z",
+  "requiredBy": [
+    "memo:demo-package"
+  ]
+}

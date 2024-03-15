@@ -217,4 +217,6 @@ object JsonData extends SharedData {
     }
   }
 
+  case class CheckFile(filename: Option[String]) derives ReadWriter
+
 }

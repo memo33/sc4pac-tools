@@ -6,6 +6,9 @@
       "name": "demo-package",
       "versions": [
         "1.0"
+      ],
+      "category": [
+        "100-props-textures"
       ]
     },
     {
@@ -14,18 +17,38 @@
       "versions": [
         "2.0"
       ],
-      "summary": "One-line summary"
+      "summary": "One-line summary",
+      "category": [
+        "100-props-textures"
+      ]
     },
     {
       "group": "memo",
       "name": "package-template-variants",
       "versions": [
         "1.0"
+      ],
+      "category": [
+        "150-mods"
       ]
     },
     {
       "group": "sc4pacAsset",
       "name": "memo-demo-package-file-a-zip",
+      "versions": [
+        "1.0"
+      ]
+    },
+    {
+      "group": "sc4pacAsset",
+      "name": "memo-demo-package-file-b-dat",
+      "versions": [
+        "1.0"
+      ]
+    },
+    {
+      "group": "sc4pacAsset",
+      "name": "memo-demo-package-file-b-dll",
       "versions": [
         "1.0"
       ]

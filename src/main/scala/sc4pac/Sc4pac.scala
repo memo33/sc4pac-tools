@@ -185,8 +185,10 @@ trait UpdateService { this: Sc4pac =>
           val recipe = JD.InstallRecipe.fromAssetReference(assetData)
           // TODO check if archive type is zip
           val extractor = new Extractor(logger)
+          val fallbackFilename = cache.getFallbackFilename(archive)
           extractor.extract(
             archive,
+            fallbackFilename,
             tempPluginsRoot / pkgFolder,
             recipe,
             Some(Extractor.JarExtraction.fromUrl(art.url, cache, jarsRoot = jarsRoot, scopeRoot = scopeRoot)))

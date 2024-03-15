@@ -151,6 +151,21 @@ class FileCache private (
     }
   }
 
+  def getFallbackFilename(file: java.io.File): Option[String] = {
+    val checkedFile = FileCache.ttlFile(file)
+    if (!checkedFile.exists() || checkedFile.length() == 0)
+      None
+    else {
+      JsonIo.readBlocking[JsonData.CheckFile](os.Path(checkedFile.getAbsolutePath())) match {
+        case Left(err) =>
+          logger.debug(s"Failed to read filename fallback: $err")
+          None
+        case Right(data) =>
+          data.filename
+      }
+    }
+  }
+
 }
 
 object FileCache {

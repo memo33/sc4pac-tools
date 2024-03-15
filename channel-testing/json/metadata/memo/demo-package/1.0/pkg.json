@@ -17,6 +17,12 @@
       "assets": [
         {
           "assetId": "memo-demo-package-file-a-zip"
+        },
+        {
+          "assetId": "memo-demo-package-file-b-dat"
+        },
+        {
+          "assetId": "memo-demo-package-file-b-dll"
         }
       ]
     }

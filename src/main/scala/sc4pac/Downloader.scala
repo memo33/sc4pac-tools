@@ -5,6 +5,7 @@ import scala.annotation.tailrec
 import java.net.URLConnection
 import coursier.cache as CC
 import zio.{ZIO, Task, IO}
+import upickle.default as UP
 
 import Downloader.PartialDownloadSpec
 
@@ -17,7 +18,7 @@ class Downloader(
   artifact: coursier.util.Artifact,  // contains the URL
   cacheLocation: java.io.File,
   localFile: java.io.File,  // the local file after download
-  logger: coursier.cache.CacheLogger,
+  logger: Logger,
   pool: java.util.concurrent.ExecutorService
 ) {
 
@@ -135,6 +136,18 @@ class Downloader(
 
         val lastModifiedOpt = Option(conn.getLastModified).filter(_ > 0L)
 
+        val filename: Option[String] =
+          Option(conn.getHeaderField("content-disposition"))
+            .filter(_.nonEmpty)
+            .flatMap { contentDispositionString =>
+              zio.http.Header.ContentDisposition.parse(contentDispositionString) match {
+                case Left(err) => logger.debug(s"Failed to determine filename for $url: $err"); None
+                case Right(zio.http.Header.ContentDisposition.Attachment(filename)) => filename
+                case Right(zio.http.Header.ContentDisposition.Inline(filename)) => filename
+                case Right(_: zio.http.Header.ContentDisposition.FormField) => None
+              }
+            }
+
         def consumeStream(): Either[CC.ArtifactError, Unit] = {
           scala.util.Using.resource {
             val baseStream =
@@ -188,7 +201,7 @@ class Downloader(
           for (lastModified <- lastModifiedOpt)
             file.setLastModified(lastModified)
 
-          doTouchCheckFile(file, url)
+          doTouchCheckFile(file, url, filename)
         }
       }
 
@@ -199,11 +212,18 @@ class Downloader(
 
   }
 
-  def doTouchCheckFile(file: java.io.File, url: String): Unit = {  // without `updateLinks` as we do not download directories
+  // Here, filename is the name as declared in the HTTP header. We store it in
+  // the ttl file in order to be able to restore it if necessary.
+  // As this filename may not be persistent, it makes sense not to store files
+  // in the cache under this name directly.
+  def doTouchCheckFile(file: java.io.File, url: String, filename: Option[String]): Unit = {  // without `updateLinks` as we do not download directories
     val ts = System.currentTimeMillis()
     val f  = FileCache.ttlFile(file)
-    if (!f.exists()) {
-      scala.util.Using.resource(new java.io.FileOutputStream(f)) { fos => fos.write(Array.empty[Byte]) }
+    val arr: Array[Byte] =
+      if (filename.isDefined) UP.writeToByteArray(JsonData.CheckFile(filename = filename))
+      else Array.empty[Byte]
+    if (!f.exists() || filename.isDefined) {
+      scala.util.Using.resource(new java.io.FileOutputStream(f)) { fos => fos.write(arr) }
     }
     f.setLastModified(ts)
     ()
