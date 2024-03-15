@@ -6,9 +6,23 @@ dependencies:
 - "memo:package-template-basic"
 assets:
 - assetId: "memo-demo-package-file-a-zip"
+- assetId: "memo-demo-package-file-b-dat"
+- assetId: "memo-demo-package-file-b-dll"
 
 ---
 assetId: "memo-demo-package-file-a-zip"
 version: "1.0"
 lastModified: "2023-07-29T21:33:56Z"
 url: "http://localhost:8090/files/package-aFile3.zip"
+
+---
+assetId: "memo-demo-package-file-b-dat"
+version: "1.0"
+lastModified: "2024-03-15T17:43:14Z"
+url: "http://localhost:8090/files/package-bFile.dat"
+
+---
+assetId: "memo-demo-package-file-b-dll"
+version: "1.0"
+lastModified: "2024-03-15T17:43:14Z"
+url: "http://localhost:8090/files/package-bFile.dll"

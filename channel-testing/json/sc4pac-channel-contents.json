@@ -41,6 +41,20 @@
     },
     {
       "group": "sc4pacAsset",
+      "name": "memo-demo-package-file-b-dat",
+      "versions": [
+        "1.0"
+      ]
+    },
+    {
+      "group": "sc4pacAsset",
+      "name": "memo-demo-package-file-b-dll",
+      "versions": [
+        "1.0"
+      ]
+    },
+    {
+      "group": "sc4pacAsset",
       "name": "memo-testing-file-d-zip",
       "versions": [
         "1.0-1"
