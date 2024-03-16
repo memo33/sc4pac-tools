@@ -1,6 +1,9 @@
 # Changelog
 
 ## [Unreleased]
+
+
+## [0.4.0] - 2024-03-16
 ### Added
 - support for installing DLL plugins
 - support for assets consisting of a single file (`.dat`/`.sc4*`/`.dll`) that has not been zipped
@@ -12,7 +15,7 @@
 - The API endpoint `/packages.list` now includes a `category` for each package.
 
 ### Fixed
-- an issue with parsing timestamps affecting Java 8 to 11.
+- an issue with parsing timestamps affecting Java 8 to 11
 - an issue involving symbolic links on Windows
 - an issue with handling some malformed zip files
 - File extensions of assets are now treated case-insensitively.
@@ -54,7 +57,8 @@
 ## [0.1.5] - 2023-09-26
 …
 
-[Unreleased]: https://github.com/memo33/sc4pac-tools/compare/0.3.0...HEAD
+[Unreleased]: https://github.com/memo33/sc4pac-tools/compare/0.4.0...HEAD
+[0.4.0]: https://github.com/memo33/sc4pac-tools/compare/0.3.0...0.4.0
 [0.3.0]: https://github.com/memo33/sc4pac-tools/compare/0.2.0...0.3.0
 [0.2.0]: https://github.com/memo33/sc4pac-tools/compare/0.1.5...0.2.0
 [0.1.5]: https://github.com/memo33/sc4pac-tools/compare/0.1.4...0.1.5
