@@ -97,7 +97,7 @@ Synopsis: `GET /packages.list`
 
 Returns:
 ```
-[{package: "<pkg>", version: string, summary: string}, …]
+[{package: "<pkg>", version: string, summary: string, category: [string]}, …]
 ```
 
 ## packages.info

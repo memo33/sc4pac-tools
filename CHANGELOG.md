@@ -2,7 +2,9 @@
 
 ## [Unreleased]
 ### Changed
+- The API was upgraded to version 1.1.
 - The API now sends `/error/scope-not-initialized` & `/error/init/not-allowed` with HTTP status code 409 instead of 405.
+- The API endpoint `/packages.list` now includes a `category` for each package.
 
 ## [0.3.0] - 2023-11-19
 ### Added
