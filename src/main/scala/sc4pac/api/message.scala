@@ -139,7 +139,6 @@ object InstalledPkg {
 
 case class SearchResultItem(`package`: BareModule, relevance: Int, summary: String) derives UP.ReadWriter
 
-// TODO add category
-case class ChannelContentsItem(`package`: BareModule, version: String, summary: String) derives UP.ReadWriter
+case class ChannelContentsItem(`package`: BareModule, version: String, summary: String, category: Option[String]) derives UP.ReadWriter
 
 case class InitArgs(plugins: String, cache: String) derives UP.ReadWriter

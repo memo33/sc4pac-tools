@@ -16,9 +16,9 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
   private def jsonResponse[A : UP.Writer](obj: A): Response = Response.json(UP.write(obj, indent = options.indent))
   private def jsonFrame[A : UP.Writer](obj: A): WebSocketFrame = WebSocketFrame.Text(UP.write(obj, indent = options.indent))
 
-  /** Sends a 405 ScopeNotInitialized if Plugins cannot be loaded. */
-  private val readPluginsOr405: ZIO[ScopeRoot, Response, JD.Plugins] =
-    JD.Plugins.read.mapError((err: ErrStr) => jsonResponse(ErrorMessage.ScopeNotInitialized("Scope not initialized", err)).status(Status.MethodNotAllowed))
+  /** Sends a 409 ScopeNotInitialized if Plugins cannot be loaded. */
+  private val readPluginsOr409: ZIO[ScopeRoot, Response, JD.Plugins] =
+    JD.Plugins.read.mapError((err: ErrStr) => jsonResponse(ErrorMessage.ScopeNotInitialized("Scope not initialized", err)).status(Status.Conflict))
 
   private def expectedFailureMessage(err: cli.Commands.ExpectedFailure): ErrorMessage = err match {
     case abort: error.Sc4pacVersionNotFound => ErrorMessage.VersionNotFound(abort.title, abort.detail)
@@ -80,7 +80,7 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
 
   def routes: Routes[ScopeRoot, Nothing] = Routes(
 
-    // 200, 400, 405
+    // 200, 400, 409
     Method.POST / "init" -> handler { (req: Request) =>
       wrapHttpEndpoint {
         for {
@@ -89,7 +89,7 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
                            .filterOrFail(_ == false)(jsonResponse(
                              ErrorMessage.InitNotAllowed("Scope already initialized.",
                                "Manually delete the corresponding .json files if you are sure you want to initialize a new scope.")
-                           ).status(Status.MethodNotAllowed))
+                           ).status(Status.Conflict))
           defPlugins  <- JD.Plugins.defaultPluginsRoot
           defCache    <- JD.Plugins.defaultCacheRoot
           initArgs    <- parseOr400[InitArgs](req.body, ErrorMessage.BadInit(
@@ -108,24 +108,24 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
       }
     },
 
-    // 200, 400, 405
+    // 200, 400, 409
     Method.POST / "plugins.add" -> handler { (req: Request) =>
       wrapHttpEndpoint {
         for {
           mods        <- parseModulesOr400(req.body)
-          pluginsData <- readPluginsOr405
+          pluginsData <- readPluginsOr409
           pac         <- Sc4pac.init(pluginsData.config)
           _           <- pac.add(mods)
         } yield jsonOk
       }
     },
 
-    // 200, 400, 405
+    // 200, 400, 409
     Method.POST / "plugins.remove" -> handler { (req: Request) =>
       wrapHttpEndpoint {
         for {
           mods        <- parseModulesOr400(req.body)
-          pluginsData <- readPluginsOr405
+          pluginsData <- readPluginsOr409
           added       =  pluginsData.explicit.toSet
           _           <- validateOr400(mods)(added.contains(_))(failedMods => ErrorMessage.BadRequest(
                            s"Package is not among explicitly added plugins: ${failedMods.map(_.orgName).mkString(", ")}",
@@ -141,7 +141,7 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
     //     let ws = new WebSocket('ws://localhost:51515/update'); ws.onmessage = function(e) { console.log(e) };
     //     ws.send(JSON.stringify({}))
     Method.GET / "update" -> handler {
-      readPluginsOr405.foldZIO(
+      readPluginsOr409.foldZIO(
         failure = ZIO.succeed[Response](_),
         success = pluginsData =>
           Handler.webSocket { wsChannel =>
@@ -167,7 +167,7 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
       )
     },
 
-    // 200, 400, 405
+    // 200, 400, 409
     Method.GET / "packages.search" -> handler { (req: Request) =>
       wrapHttpEndpoint {
         for {
@@ -181,7 +181,7 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
                                 "Invalid threshold", "Threshold must be a number between 0 and 100."
                               )).status(Status.BadRequest))
                           }
-          pluginsData  <- readPluginsOr405
+          pluginsData  <- readPluginsOr409
           pac          <- Sc4pac.init(pluginsData.config)
           searchResult <- pac.search(searchText, threshold)
         } yield jsonResponse(searchResult.map { case (pkg, ratio, summaryOpt) =>
@@ -190,7 +190,7 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
       }
     },
 
-    // 200, 400, 404, 405
+    // 200, 400, 404, 409
     Method.GET / "packages.info" -> handler { (req: Request) =>
       wrapHttpEndpoint {
         for {
@@ -198,7 +198,7 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
                             """Query parameter "pkg" is required.""", "Pass the package identifier as query."
                           )).status(Status.BadRequest))
           mod           <- parseModuleOr400(pkg)
-          pluginsData   <- readPluginsOr405
+          pluginsData   <- readPluginsOr409
           pac           <- Sc4pac.init(pluginsData.config)
           infoResultOpt <- pac.infoJson(mod)  // TODO avoid decoding/encoding json
         } yield infoResultOpt match {
@@ -208,20 +208,20 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
       }
     },
 
-    // 200, 405
+    // 200, 409
     Method.GET / "plugins.added.list" -> handler {
       wrapHttpEndpoint {
         for {
-          pluginsData <- readPluginsOr405
+          pluginsData <- readPluginsOr409
         } yield jsonResponse(pluginsData.explicit)
       }
     },
 
-    // 200, 405
+    // 200, 409
     Method.GET / "plugins.installed.list" -> handler {
       wrapHttpEndpoint {
         for {
-          pluginsData   <- readPluginsOr405
+          pluginsData   <- readPluginsOr409
           installedIter <- cli.Commands.List.iterateInstalled(pluginsData)
         } yield {
           jsonResponse(installedIter.map { case (mod, explicit) =>
@@ -231,35 +231,35 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
       }
     },
 
-    // 200, 405
+    // 200, 409
     Method.GET / "packages.list" -> handler {
       wrapHttpEndpoint {
         for {
-          pluginsData <- readPluginsOr405
+          pluginsData <- readPluginsOr409
           pac         <- Sc4pac.init(pluginsData.config)
           itemsIter   <- pac.iterateAllChannelContents
         } yield jsonResponse(itemsIter.flatMap(item => item.toBareDep match {
-          case mod: BareModule => item.versions.map { version => ChannelContentsItem(mod, version = version, summary = item.summary) }
+          case mod: BareModule => item.versions.map { version => ChannelContentsItem(mod, version = version, summary = item.summary, category = item.category) }
           case _: BareAsset => Nil
         }).toSeq)
       }
     },
 
-    // 200, 405
+    // 200, 409
     Method.GET / "variants.list" -> handler {
       wrapHttpEndpoint {
         for {
-          pluginsData <- readPluginsOr405
+          pluginsData <- readPluginsOr409
         } yield jsonResponse(pluginsData.config.variant)(using UP.stringKeyW(implicitly[UP.Writer[Variant]]))
       }
     },
 
-    // 200, 400, 405
+    // 200, 400, 409
     Method.POST / "variants.reset" -> handler { (req: Request) =>
       wrapHttpEndpoint {
         for {
           labels      <- parseOr400[Seq[String]](req.body, ErrorMessage.BadRequest("Malformed variant labels.", "Pass variants as an array of strings."))
-          pluginsData <- readPluginsOr405
+          pluginsData <- readPluginsOr409
           _           <- validateOr400(labels)(pluginsData.config.variant.contains(_))(failedLabels => ErrorMessage.BadRequest(
                            s"Variant does not exist: ${failedLabels.mkString(", ")}", "Get /variants.list for the currently configured variants."
                          ))
