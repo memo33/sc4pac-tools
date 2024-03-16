@@ -1,10 +1,22 @@
 # Changelog
 
 ## [Unreleased]
+### Added
+- support for installing DLL plugins
+- support for assets consisting of a single file (`.dat`/`.sc4*`/`.dll`) that has not been zipped
+- an option `-y, --yes` for the update command to accept default answers
+
 ### Changed
 - The API was upgraded to version 1.1.
 - The API now sends `/error/scope-not-initialized` & `/error/init/not-allowed` with HTTP status code 409 instead of 405.
 - The API endpoint `/packages.list` now includes a `category` for each package.
+
+### Fixed
+- an issue with parsing timestamps affecting Java 8 to 11.
+- an issue involving symbolic links on Windows
+- an issue with handling some malformed zip files
+- File extensions of assets are now treated case-insensitively.
+
 
 ## [0.3.0] - 2023-11-19
 ### Added
@@ -15,6 +27,7 @@
 
 ### Fixed
 - an issue involving local `file:/` URIs
+
 
 ## [0.2.0] - 2023-10-12
 ### Added
