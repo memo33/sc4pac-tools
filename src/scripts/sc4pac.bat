@@ -10,4 +10,4 @@ REM     .\sc4pac
 
 
 SET SCRIPTDIR=%~dp0.
-java -jar %SCRIPTDIR%\sc4pac-cli.jar %*
+java -jar "%SCRIPTDIR%\sc4pac-cli.jar" %*

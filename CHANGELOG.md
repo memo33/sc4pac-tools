@@ -1,6 +1,8 @@
 # Changelog
 
 ## [Unreleased]
+### Fixed
+- The path to the file `sc4pac.bat` may now contain spaces.
 
 
 ## [0.4.0] - 2024-03-16
