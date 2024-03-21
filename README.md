@@ -34,6 +34,7 @@ Currently, this program only comes with a command-line interface (CLI).
 - Be aware that Simtropolis has a download limit of 20 files per day.
   Intermediate downloads are cached, so if you reach the limit,
   simply continue the installation process the next day.
+  Alternatively, there is a temporary [workaround using cookies](https://github.com/memo33/sc4pac-tools/blob/main/src/main/scala/sc4pac/Constants.scala#L41-L59).
 - Install other [available packages](https://memo33.github.io/sc4pac/#/packages).
 
 ![demo-video](https://github.com/memo33/sc4pac-tools/releases/download/0.1.3/demo-video.gif)
@@ -134,7 +135,7 @@ For publishing the website, refer to the Makefile at https://github.com/memo33/s
 - [x] Command-line interface (CLI) with all important commands
 - [ ] Improve resilience of downloads
   - [x] missing content-length (ST)
-  - [ ] authentication (ST), partially implemented
+  - [ ] authentication (ST), [partially implemented](https://github.com/memo33/sc4pac-tools/blob/main/src/main/scala/sc4pac/Constants.scala#L41-L59)
   - [x] incomplete downloads (SC4E)
   - [ ] non-persistent URLs (Moddb)
   - [ ] handling servers that have gone offline
