@@ -6,6 +6,7 @@ import org.apache.commons.compress.archivers.zip.{ZipFile, ZipArchiveEntry}
 import org.apache.commons.compress.archivers.sevenz.{SevenZFile, SevenZArchiveEntry}
 import org.apache.commons.compress.utils.IOUtils
 import java.nio.file.StandardOpenOption
+import scala.sys.process.*
 
 import JsonData.InstallRecipe
 import sc4pac.error.ExtractionFailed
@@ -19,16 +20,22 @@ object Extractor {
 
   private object WrappedArchive {
     def apply(file: java.io.File, fallbackFilename: Option[String]): WrappedArchive[?] = {
-      if (file.getName.toLowerCase.endsWith(".exe") || fallbackFilename.exists(_.toLowerCase.endsWith(".exe")))  // assume NSIS installer (ClickTeam installer is not supported)
-        try {
-          import net.sf.sevenzipjbinding as SZ
-          val raf = new java.io.RandomAccessFile(file, "r")
-          val inArchive = SZ.SevenZip.openInArchive(null /*autodetect format*/, new SZ.impl.RandomAccessFileInStream(raf))
-          new native.Wrapped7zNative(raf, inArchive)
-        } catch {
-          case e: java.lang.UnsatisfiedLinkError =>  // some platforms may be unsupported, e.g. Apple arm
-            throw new ExtractionFailed(s"Failed to load native 7z library.", e.toString)
+      if (file.getName.toLowerCase.endsWith(".exe") || fallbackFilename.exists(_.toLowerCase.endsWith(".exe"))) // assume NSIS installer (ClickTeam installer is not supported)
+        {
+          val command = "cicdec \"" + file.getPath + "\""
+          println(command.!!)
+          val extracted = file.getAbsolutePath().replace(".exe", "")
+          new WrappedClickteam(os.Path(extracted))
         }
+        // try {
+        //   import net.sf.sevenzipjbinding as SZ
+        //   val raf = new java.io.RandomAccessFile(file, "r")
+        //   val inArchive = SZ.SevenZip.openInArchive(null /*autodetect format*/, new SZ.impl.RandomAccessFileInStream(raf))
+        //   new native.Wrapped7zNative(raf, inArchive)
+        // } catch {
+        //   case e: java.lang.UnsatisfiedLinkError =>  // some platforms may be unsupported, e.g. Apple arm
+        //     throw new ExtractionFailed(s"Failed to load native 7z library.", e.toString)
+        // }
       else if (file.getName.toLowerCase.endsWith(".7z") || fallbackFilename.exists(_.toLowerCase.endsWith(".7z")))
         new Wrapped7z(new SevenZFile(file))
       else {
@@ -53,6 +60,21 @@ object Extractor {
     def isDirectory(entry: A): Boolean
     def isUnixSymlink(entry: A): Boolean
     def extractSelected(entries: Seq[(A, os.Path)], overwrite: Boolean): Unit
+  }
+
+  private class WrappedClickteam(folder: os.Path) extends WrappedArchive[os.Path] {
+    def close(): Unit = {}
+    def getEntries = 
+      Iterator(folder / "NYBT Gracie Manor01.SC4Model")
+    def getEntryPath(entry: os.Path) = 
+      val file = new java.io.File(entry.toString)
+      file.getName
+    def isDirectory(entry: os.Path) = false
+    def isUnixSymlink(entry: os.Path) = false
+    def extractSelected(entries: Seq[(os.Path, os.Path)], overwrite: Boolean): Unit = 
+      for ((src, target) <- entries) {
+        os.copy.over(src, target, replaceExisting = overwrite)
+      }
   }
 
   private class WrappedZip(archive: ZipFile) extends WrappedArchive[ZipArchiveEntry] {
