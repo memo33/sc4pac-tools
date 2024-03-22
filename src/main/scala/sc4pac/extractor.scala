@@ -18,9 +18,20 @@ object Extractor {
     name.endsWith(".jar") || name.endsWith(".zip") || name.endsWith(".7z") || name.endsWith(".exe")
   }
 
+  private def TryClickteam(file: java.io.File) = {
+    val command = "cicdec \"" + file.getPath + "\""
+    val output = command.!!
+    println(output)
+    val extracted = file.getAbsolutePath().replace(".exe", "")
+    new WrappedFolder(os.Path(extracted))
+  }
+
   private object WrappedArchive {
     def apply(file: java.io.File, fallbackFilename: Option[String]): WrappedArchive[?] = {
-      if (file.getName.toLowerCase.endsWith(".exe") || fallbackFilename.exists(_.toLowerCase.endsWith(".exe"))) // assume NSIS installer (ClickTeam installer is not supported)
+
+      // We'll first assume an NSIS installer. If it fails, we try cicdec as it 
+      // might be a Clicteam installer.
+      if (file.getName.toLowerCase.endsWith(".exe") || fallbackFilename.exists(_.toLowerCase.endsWith(".exe")))
         try {
           import net.sf.sevenzipjbinding as SZ
           val raf = new java.io.RandomAccessFile(file, "r")
@@ -31,11 +42,7 @@ object Extractor {
           // If 7zip fails, it's probably a ClickTeam installer, so try again 
           // with cicdec
           case e: Exception => 
-            val command = "cicdec \"" + file.getPath + "\""
-            val output = command.!!
-            println(output)
-            val extracted = file.getAbsolutePath().replace(".exe", "")
-            new WrappedFolder(os.Path(extracted))
+            TryClickteam(file)
 
           case e: java.lang.UnsatisfiedLinkError =>  // some platforms may be unsupported, e.g. Apple arm
             throw new ExtractionFailed(s"Failed to load native 7z library.", e.toString)
