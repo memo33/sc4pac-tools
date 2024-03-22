@@ -23,9 +23,10 @@ object Extractor {
       if (file.getName.toLowerCase.endsWith(".exe") || fallbackFilename.exists(_.toLowerCase.endsWith(".exe"))) // assume NSIS installer (ClickTeam installer is not supported)
         {
           val command = "cicdec \"" + file.getPath + "\""
-          println(command.!!)
+          val output = command.!!
+          println(output)
           val extracted = file.getAbsolutePath().replace(".exe", "")
-          new WrappedClickteam(os.Path(extracted))
+          new WrappedFolder(os.Path(extracted))
         }
         // try {
         //   import net.sf.sevenzipjbinding as SZ
@@ -62,10 +63,12 @@ object Extractor {
     def extractSelected(entries: Seq[(A, os.Path)], overwrite: Boolean): Unit
   }
 
-  private class WrappedClickteam(folder: os.Path) extends WrappedArchive[os.Path] {
+  // Wrapper for reading from normal folders. This could be useful if we're 
+  // reading from the local filesystem, or if we're using third party tools - 
+  // such as cicdec - for unzipping unknown archives.
+  private class WrappedFolder(folder: os.Path) extends WrappedArchive[os.Path] {
     def close(): Unit = {}
-    def getEntries = 
-      Iterator(folder / "NYBT Gracie Manor01.SC4Model")
+    def getEntries = os.list(folder).iterator
     def getEntryPath(entry: os.Path) = 
       val file = new java.io.File(entry.toString)
       file.getName
