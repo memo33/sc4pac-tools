@@ -6,6 +6,7 @@ import org.apache.commons.compress.archivers.zip.{ZipFile, ZipArchiveEntry}
 import org.apache.commons.compress.archivers.sevenz.{SevenZFile, SevenZArchiveEntry}
 import org.apache.commons.compress.utils.IOUtils
 import java.nio.file.StandardOpenOption
+import scala.sys.process.*
 
 import JsonData.InstallRecipe
 import sc4pac.error.ExtractionFailed
@@ -17,15 +18,32 @@ object Extractor {
     name.endsWith(".jar") || name.endsWith(".zip") || name.endsWith(".7z") || name.endsWith(".exe")
   }
 
+  private def TryClickteam(file: java.io.File) = {
+    val command = "cicdec \"" + file.getPath + "\""
+    val output = command.!!
+    println(output)
+    val extracted = file.getAbsolutePath().replace(".exe", "")
+    new WrappedFolder(os.Path(extracted))
+  }
+
   private object WrappedArchive {
     def apply(file: java.io.File, fallbackFilename: Option[String]): WrappedArchive[?] = {
-      if (file.getName.toLowerCase.endsWith(".exe") || fallbackFilename.exists(_.toLowerCase.endsWith(".exe")))  // assume NSIS installer (ClickTeam installer is not supported)
+
+      // We'll first assume an NSIS installer. If it fails, we try cicdec as it
+      // might be a Clicteam installer.
+      if (file.getName.toLowerCase.endsWith(".exe") || fallbackFilename.exists(_.toLowerCase.endsWith(".exe")))
         try {
           import net.sf.sevenzipjbinding as SZ
           val raf = new java.io.RandomAccessFile(file, "r")
           val inArchive = SZ.SevenZip.openInArchive(null /*autodetect format*/, new SZ.impl.RandomAccessFileInStream(raf))
           new native.Wrapped7zNative(raf, inArchive)
         } catch {
+
+          // If 7zip fails, it's probably a ClickTeam installer, so try again
+          // with cicdec
+          case e: Exception =>
+            TryClickteam(file)
+
           case e: java.lang.UnsatisfiedLinkError =>  // some platforms may be unsupported, e.g. Apple arm
             throw new ExtractionFailed(s"Failed to load native 7z library.", e.toString)
         }
@@ -53,6 +71,23 @@ object Extractor {
     def isDirectory(entry: A): Boolean
     def isUnixSymlink(entry: A): Boolean
     def extractSelected(entries: Seq[(A, os.Path)], overwrite: Boolean): Unit
+  }
+
+  // Wrapper for reading from normal folders. This could be useful if we're
+  // reading from the local filesystem, or if we're using third party tools -
+  // such as cicdec - for unzipping unknown archives.
+  private class WrappedFolder(folder: os.Path) extends WrappedArchive[os.Path] {
+    def close(): Unit = {}
+    def getEntries = os.list(folder).iterator
+    def getEntryPath(entry: os.Path) =
+      val file = new java.io.File(entry.toString)
+      file.getName
+    def isDirectory(entry: os.Path) = false
+    def isUnixSymlink(entry: os.Path) = false
+    def extractSelected(entries: Seq[(os.Path, os.Path)], overwrite: Boolean): Unit =
+      for ((src, target) <- entries) {
+        os.copy.over(src, target, replaceExisting = overwrite)
+      }
   }
 
   private class WrappedZip(archive: ZipFile) extends WrappedArchive[ZipArchiveEntry] {
