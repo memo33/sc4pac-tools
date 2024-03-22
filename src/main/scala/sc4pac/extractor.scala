@@ -19,7 +19,9 @@ object Extractor {
 
   private object WrappedArchive {
     def apply(file: java.io.File, fallbackFilename: Option[String]): WrappedArchive[?] = {
-      if (file.getName.toLowerCase.endsWith(".exe") || fallbackFilename.exists(_.toLowerCase.endsWith(".exe")))  // assume NSIS installer (ClickTeam installer is not supported)
+      val lcNames: Seq[String] = Seq(file.getName.toLowerCase) ++ fallbackFilename.map(_.toLowerCase)
+      if (lcNames.exists(_.endsWith(".exe")) ||  // assume NSIS installer (ClickTeam installer is not supported)
+          lcNames.exists(_.endsWith(".rar")))
         try {
           import net.sf.sevenzipjbinding as SZ
           val raf = new java.io.RandomAccessFile(file, "r")
@@ -29,7 +31,7 @@ object Extractor {
           case e: java.lang.UnsatisfiedLinkError =>  // some platforms may be unsupported, e.g. Apple arm
             throw new ExtractionFailed(s"Failed to load native 7z library.", e.toString)
         }
-      else if (file.getName.toLowerCase.endsWith(".7z") || fallbackFilename.exists(_.toLowerCase.endsWith(".7z")))
+      else if (lcNames.exists(_.endsWith(".7z")))
         new Wrapped7z(new SevenZFile(file))
       else {
         val remoteOrLocalFallback: Option[String] =

@@ -1,6 +1,9 @@
 # Changelog
 
 ## [Unreleased]
+### Added
+- support for extracting `.rar` files
+
 ### Fixed
 - The path to the file `sc4pac.bat` may now contain spaces.
 - an issue when extracting 7zip files or exe installers containing multiple folders
