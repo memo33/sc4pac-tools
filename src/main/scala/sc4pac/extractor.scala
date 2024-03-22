@@ -130,6 +130,7 @@ object Extractor {
             if (extractAskMode != SZ.ExtractAskMode.EXTRACT)
               null
             else {
+              os.makeDir.all(getPath(index) / os.up)  // prepares extraction (we know that entry refers to a file, not a directory)
               val out = java.nio.file.Files.newOutputStream(getPath(index).toNIO, options(overwrite)*)
               this.index = index
               this.out = out
@@ -138,9 +139,7 @@ object Extractor {
               }
             }
 
-          def prepareOperation(extractAskMode: SZ.ExtractAskMode): Unit = {
-            os.makeDir.all(getPath(index) / os.up)  // prepares extraction (we know that entry refers to a file, not a directory)
-          }
+          def prepareOperation(extractAskMode: SZ.ExtractAskMode): Unit = {}
 
           def setOperationResult(extractOperationResult: SZ.ExtractOperationResult): Unit = {
             var success = true
@@ -267,6 +266,7 @@ class Extractor(logger: Logger) {
     extractByPredicate(archive, destination, recipe.accepts, overwrite = true, flatten = false, fallbackFilename)
     // additionally, extract jar files contained in the zip file to a temporary location
     for (Extractor.JarExtraction(jarsDir) <- jarExtractionOpt) {
+      logger.debug(s"Searching for nested archives:")
       val jarFiles = extractByPredicate(archive, jarsDir, Extractor.acceptNestedArchive, overwrite = false, flatten = true, fallbackFilename)  // overwrite=false, as we want to extract any given jar only once per staging process
       // finally extract the jar files themselves (without recursively extracting jars contained inside)
       for (jarFile <- jarFiles if Extractor.acceptNestedArchive(jarFile)) {

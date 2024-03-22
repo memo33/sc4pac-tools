@@ -3,6 +3,7 @@
 ## [Unreleased]
 ### Fixed
 - The path to the file `sc4pac.bat` may now contain spaces.
+- an issue when extracting 7zip files or exe installers containing multiple folders
 
 
 ## [0.4.0] - 2024-03-16
