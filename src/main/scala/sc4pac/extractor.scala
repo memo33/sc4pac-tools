@@ -21,22 +21,25 @@ object Extractor {
   private object WrappedArchive {
     def apply(file: java.io.File, fallbackFilename: Option[String]): WrappedArchive[?] = {
       if (file.getName.toLowerCase.endsWith(".exe") || fallbackFilename.exists(_.toLowerCase.endsWith(".exe"))) // assume NSIS installer (ClickTeam installer is not supported)
-        {
-          val command = "cicdec \"" + file.getPath + "\""
-          val output = command.!!
-          println(output)
-          val extracted = file.getAbsolutePath().replace(".exe", "")
-          new WrappedFolder(os.Path(extracted))
+        try {
+          import net.sf.sevenzipjbinding as SZ
+          val raf = new java.io.RandomAccessFile(file, "r")
+          val inArchive = SZ.SevenZip.openInArchive(null /*autodetect format*/, new SZ.impl.RandomAccessFileInStream(raf))
+          new native.Wrapped7zNative(raf, inArchive)
+        } catch {
+
+          // If 7zip fails, it's probably a ClickTeam installer, so try again 
+          // with cicdec
+          case e: Exception => 
+            val command = "cicdec \"" + file.getPath + "\""
+            val output = command.!!
+            println(output)
+            val extracted = file.getAbsolutePath().replace(".exe", "")
+            new WrappedFolder(os.Path(extracted))
+
+          case e: java.lang.UnsatisfiedLinkError =>  // some platforms may be unsupported, e.g. Apple arm
+            throw new ExtractionFailed(s"Failed to load native 7z library.", e.toString)
         }
-        // try {
-        //   import net.sf.sevenzipjbinding as SZ
-        //   val raf = new java.io.RandomAccessFile(file, "r")
-        //   val inArchive = SZ.SevenZip.openInArchive(null /*autodetect format*/, new SZ.impl.RandomAccessFileInStream(raf))
-        //   new native.Wrapped7zNative(raf, inArchive)
-        // } catch {
-        //   case e: java.lang.UnsatisfiedLinkError =>  // some platforms may be unsupported, e.g. Apple arm
-        //     throw new ExtractionFailed(s"Failed to load native 7z library.", e.toString)
-        // }
       else if (file.getName.toLowerCase.endsWith(".7z") || fallbackFilename.exists(_.toLowerCase.endsWith(".7z")))
         new Wrapped7z(new SevenZFile(file))
       else {
