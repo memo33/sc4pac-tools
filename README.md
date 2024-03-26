@@ -34,7 +34,7 @@ Currently, this program only comes with a command-line interface (CLI).
 - Be aware that Simtropolis has a download limit of 20 files per day.
   Intermediate downloads are cached, so if you reach the limit,
   simply continue the installation process the next day.
-  Alternatively, there is a temporary [workaround using cookies](https://github.com/memo33/sc4pac-tools/blob/main/src/main/scala/sc4pac/Constants.scala#L41-L59).
+  Alternatively, there is a temporary [workaround using cookies](https://github.com/memo33/sc4pac-tools/blob/main/src/main/scala/sc4pac/Constants.scala#L45-L63).
 - Install other [available packages](https://memo33.github.io/sc4pac/#/packages).
 
 ![demo-video](https://github.com/memo33/sc4pac-tools/releases/download/0.1.3/demo-video.gif)
@@ -72,6 +72,7 @@ See [CLI](https://memo33.github.io/sc4pac/#/cli?id=command-line-interface) for d
 180-flora
 200-residential
 300-commercial
+360-landmark
 400-industrial
 500-utilities
 600-civics
@@ -104,7 +105,7 @@ This tells *sc4pac* which version of packages are installed, where to find them 
 
 *Sc4pac* obtains its information from metadata stored in a remote channel.
 The metadata is added in terms of .yaml files (see [Adding metadata](https://memo33.github.io/sc4pac/#/metadata)).
-The metadata of the default channel is stored at https://github.com/memo33/sc4pac.
+The metadata of the default channel is stored in the [metadata repository](https://github.com/memo33/sc4pac).
 
 
 ## Uninstalling
@@ -127,7 +128,7 @@ Create a release bundle with `make dist` in a Unix shell.
 
 For editing the website locally, run `sbt ~web/fastLinkJS` as well as `make channel-testing-web host-web`
 and open `http://localhost:8090/channel/index-dev.html`.
-For publishing the website, refer to the Makefile at https://github.com/memo33/sc4pac.
+For publishing the website, refer to the Makefile of the [metadata repository](https://github.com/memo33/sc4pac).
 
 ## Roadmap <!-- {docsify-ignore} -->
 
@@ -135,12 +136,12 @@ For publishing the website, refer to the Makefile at https://github.com/memo33/s
 - [x] Command-line interface (CLI) with all important commands
 - [ ] Improve resilience of downloads
   - [x] missing content-length (ST)
-  - [ ] authentication (ST), [partially implemented](https://github.com/memo33/sc4pac-tools/blob/main/src/main/scala/sc4pac/Constants.scala#L41-L59)
+  - [ ] authentication (ST), [partially implemented](https://github.com/memo33/sc4pac-tools/blob/main/src/main/scala/sc4pac/Constants.scala#L45-L63)
   - [x] incomplete downloads (SC4E)
   - [ ] non-persistent URLs (Moddb)
   - [ ] handling servers that have gone offline
-- [x] Collaborative central metadata channel: https://github.com/memo33/sc4pac
-- [x] Website and online documentation: https://memo33.github.io/sc4pac/
+- [x] Collaborative central [metadata channel](https://github.com/memo33/sc4pac)
+- [x] [Website and online documentation](https://memo33.github.io/sc4pac/)
 - [x] Server API (backend): https://memo33.github.io/sc4pac/#/api or [api.md](api.md)
 - [ ] Graphical UI (frontend) aka Mod manager
 
