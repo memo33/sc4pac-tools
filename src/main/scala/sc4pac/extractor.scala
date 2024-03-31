@@ -17,7 +17,8 @@ object Extractor {
     name.endsWith(".jar") || name.endsWith(".zip") || name.endsWith(".7z") || name.endsWith(".exe")
   }
 
-  private def tryExtractClickteam(file: java.io.File, targetDir: os.Path) = {
+  private def tryExtractClickteam(file: java.io.File, targetDir: os.Path, logger: Logger) = {
+    logger.debug(s"Attempting to extract as Clickteam exe installer.")
     val args = Constants.cicdecCommand ++ Seq(file.getPath, targetDir.toString)
     val result = os.proc(args).call(
       cwd = os.pwd,
@@ -33,7 +34,7 @@ object Extractor {
   }
 
   private object WrappedArchive {
-    def apply(file: java.io.File, fallbackFilename: Option[String], stagingRoot: os.Path): WrappedArchive[?] = {
+    def apply(file: java.io.File, fallbackFilename: Option[String], stagingRoot: os.Path, logger: Logger): WrappedArchive[?] = {
       val lcNames: Seq[String] = Seq(file.getName.toLowerCase) ++ fallbackFilename.map(_.toLowerCase)
       // If .exe, we'll first assume an NSIS installer. If it fails, we try cicdec as it might be a Clickteam installer.
       if (lcNames.exists(_.endsWith(".exe")) || lcNames.exists(_.endsWith(".rar")))
@@ -47,7 +48,7 @@ object Extractor {
             // If 7zip fails, it's probably a Clickteam installer, so try again with cicdec
             case e: SZ.SevenZipException if lcNames.exists(_.endsWith(".exe")) =>
               val tempExtractionDir = os.temp.dir(stagingRoot, prefix = "exe", deleteOnExit = false)  // the parent stagingRoot is already temporary and will be deleted
-              tryExtractClickteam(file, tempExtractionDir)
+              tryExtractClickteam(file, tempExtractionDir, logger)
           }
         } catch {
           case e: java.lang.UnsatisfiedLinkError =>  // some platforms may be unsupported, e.g. Apple arm
@@ -252,7 +253,7 @@ class Extractor(logger: Logger) {
     fallbackFilename: Option[String],
     stagingRoot: os.Path
   ): Seq[os.Path] = {
-    scala.util.Using.resource(Extractor.WrappedArchive(archive, fallbackFilename, stagingRoot)) { zip =>
+    scala.util.Using.resource(Extractor.WrappedArchive(archive, fallbackFilename, stagingRoot, logger)) { zip =>
       // first we read the acceptable file names contained in the zip file
       val entries /*: Seq[(zip.A, os.SubPath)]*/ = zip.getEntries
         .flatMap { e =>
