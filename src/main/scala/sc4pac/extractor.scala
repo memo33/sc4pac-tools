@@ -50,10 +50,20 @@ object Extractor {
   }
 
   private sealed trait WrappedArchive[A] extends AutoCloseable {
+    /** Enumerate all entries contained in the archive. */
     def getEntries: Iterator[A]
+    /** The stringified subpath of the entry within the archive. */
     def getEntryPath(entry: A): String
     def isDirectory(entry: A): Boolean
     def isUnixSymlink(entry: A): Boolean
+    /** Perform the actual extraction of the selected archive entries.
+      *
+      * Here, `entries` consists of a sequence of:
+      *   - an entry selected for extraction,
+      *   - the corresponding full target path for this entry.
+      * The target paths are already mapped to discard redundant top-level
+      * directories, so can differ from the what `getEntryPath` returned.
+      */
     def extractSelected(entries: Seq[(A, os.Path)], overwrite: Boolean): Unit
   }
 
