@@ -1,8 +1,17 @@
 # Changelog
 
 ## [Unreleased]
+### Changed
+- decreased caching period of channel table-of-contents file from 24 hours to 30 minutes to receive package updates sooner
+
+
+## [0.4.1] - 2024-03-25
+### Added
+- support for extracting `.rar` files
+
 ### Fixed
 - The path to the file `sc4pac.bat` may now contain spaces.
+- an issue when extracting 7zip files or exe installers containing multiple folders
 
 
 ## [0.4.0] - 2024-03-16
@@ -59,7 +68,8 @@
 ## [0.1.5] - 2023-09-26
 …
 
-[Unreleased]: https://github.com/memo33/sc4pac-tools/compare/0.4.0...HEAD
+[Unreleased]: https://github.com/memo33/sc4pac-tools/compare/0.4.1...HEAD
+[0.4.1]: https://github.com/memo33/sc4pac-tools/compare/0.4.0...0.4.1
 [0.4.0]: https://github.com/memo33/sc4pac-tools/compare/0.3.0...0.4.0
 [0.3.0]: https://github.com/memo33/sc4pac-tools/compare/0.2.0...0.3.0
 [0.2.0]: https://github.com/memo33/sc4pac-tools/compare/0.1.5...0.2.0

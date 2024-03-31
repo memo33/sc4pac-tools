@@ -28,10 +28,9 @@ object Extractor {
 
   private object WrappedArchive {
     def apply(file: java.io.File, fallbackFilename: Option[String]): WrappedArchive[?] = {
-
-      // We'll first assume an NSIS installer. If it fails, we try cicdec as it
-      // might be a Clicteam installer.
-      if (file.getName.toLowerCase.endsWith(".exe") || fallbackFilename.exists(_.toLowerCase.endsWith(".exe")))
+      val lcNames: Seq[String] = Seq(file.getName.toLowerCase) ++ fallbackFilename.map(_.toLowerCase)
+      // If .exe, we'll first assume an NSIS installer. If it fails, we try cicdec as it might be a Clickteam installer.
+      if (lcNames.exists(_.endsWith(".exe")) || lcNames.exists(_.endsWith(".rar")))
         try {
           import net.sf.sevenzipjbinding as SZ
           val raf = new java.io.RandomAccessFile(file, "r")
@@ -47,7 +46,7 @@ object Extractor {
           case e: java.lang.UnsatisfiedLinkError =>  // some platforms may be unsupported, e.g. Apple arm
             throw new ExtractionFailed(s"Failed to load native 7z library.", e.toString)
         }
-      else if (file.getName.toLowerCase.endsWith(".7z") || fallbackFilename.exists(_.toLowerCase.endsWith(".7z")))
+      else if (lcNames.exists(_.endsWith(".7z")))
         new Wrapped7z(new SevenZFile(file))
       else {
         val remoteOrLocalFallback: Option[String] =
@@ -66,10 +65,20 @@ object Extractor {
   }
 
   private sealed trait WrappedArchive[A] extends AutoCloseable {
+    /** Enumerate all entries contained in the archive. */
     def getEntries: Iterator[A]
+    /** The stringified subpath of the entry within the archive. */
     def getEntryPath(entry: A): String
     def isDirectory(entry: A): Boolean
     def isUnixSymlink(entry: A): Boolean
+    /** Perform the actual extraction of the selected archive entries.
+      *
+      * Here, `entries` consists of a sequence of:
+      *   - an entry selected for extraction,
+      *   - the corresponding full target path for this entry.
+      * The target paths are already mapped to discard redundant top-level
+      * directories, so can differ from the what `getEntryPath` returned.
+      */
     def extractSelected(entries: Seq[(A, os.Path)], overwrite: Boolean): Unit
   }
 
@@ -165,6 +174,7 @@ object Extractor {
             if (extractAskMode != SZ.ExtractAskMode.EXTRACT)
               null
             else {
+              os.makeDir.all(getPath(index) / os.up)  // prepares extraction (we know that entry refers to a file, not a directory)
               val out = java.nio.file.Files.newOutputStream(getPath(index).toNIO, options(overwrite)*)
               this.index = index
               this.out = out
@@ -173,9 +183,7 @@ object Extractor {
               }
             }
 
-          def prepareOperation(extractAskMode: SZ.ExtractAskMode): Unit = {
-            os.makeDir.all(getPath(index) / os.up)  // prepares extraction (we know that entry refers to a file, not a directory)
-          }
+          def prepareOperation(extractAskMode: SZ.ExtractAskMode): Unit = {}
 
           def setOperationResult(extractOperationResult: SZ.ExtractOperationResult): Unit = {
             var success = true
@@ -302,6 +310,7 @@ class Extractor(logger: Logger) {
     extractByPredicate(archive, destination, recipe.accepts, overwrite = true, flatten = false, fallbackFilename)
     // additionally, extract jar files contained in the zip file to a temporary location
     for (Extractor.JarExtraction(jarsDir) <- jarExtractionOpt) {
+      logger.debug(s"Searching for nested archives:")
       val jarFiles = extractByPredicate(archive, jarsDir, Extractor.acceptNestedArchive, overwrite = false, flatten = true, fallbackFilename)  // overwrite=false, as we want to extract any given jar only once per staging process
       // finally extract the jar files themselves (without recursively extracting jars contained inside)
       for (jarFile <- jarFiles if Extractor.acceptNestedArchive(jarFile)) {

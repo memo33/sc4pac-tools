@@ -3,6 +3,7 @@ package sc4pac
 
 import coursier.core.{Configuration, Organization, Type, Module}
 import java.util.regex.Pattern
+import scala.concurrent.duration.DurationInt
 
 object Constants {
   val compile = Configuration.compile  // includes only metadata as dependencies
@@ -14,7 +15,11 @@ object Constants {
   val sc4fileTypePattern = Pattern.compile("""\.dat|\.sc4model|\.sc4lot|\.sc4desc|\.sc4|\.dll$""", Pattern.CASE_INSENSITIVE)
   val versionLatestRelease = "latest.release"
   val defaultChannelUrls = Seq(MetadataRepository.parseChannelUrl("https://memo33.github.io/sc4pac/channel/").toOption.get)
-  val currentChannelScheme = 2  // version number (incrementing this forces everyone accessing the channel to install a newer sc4pac version)
+  // scheme version history:
+  // 1: initial version
+  // 2: DLL support and single-file assets
+  // 3: rar support
+  val currentChannelScheme = 3  // version number (incrementing this forces everyone accessing the channel to install a newer sc4pac version)
   val bufferSizeExtract = 64 * 1024  // 64 kiB, bounded by disk speed
   val bufferSizeDownload = 1024 * 1024  // 1 MiB, bounded by download speed
   val bufferSizeDownloadOverlap = 4 * 1024  // for file validity check when resuming partial download
@@ -23,6 +28,9 @@ object Constants {
   val sslRetryCount = 3  // Coursier legacy
   val resumeIncompleteDownloadAttemps = 4
   val fuzzySearchThreshold = 50  // 0..100
+  val cacheTtl = 12.hours
+  val channelContentsTtl = 30.minutes
+  val channelContentsTtlShort = 60.seconds
   val interactivePromptTimeout = java.time.Duration.ofSeconds(240)
   val urlConnectTimeout = java.time.Duration.ofSeconds(60)
   val urlReadTimeout = java.time.Duration.ofSeconds(60)  // timeout in case of internet outage while downloading a file

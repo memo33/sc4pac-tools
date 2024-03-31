@@ -470,13 +470,13 @@ object Sc4pac {
   case class StageResult(tempPluginsRoot: os.Path, files: Seq[(DepModule, Seq[os.SubPath])], stagingRoot: os.Path)
 
 
-  private def fetchChannelData(repoUri: java.net.URI, cache: FileCache, channelContentsTtl: Option[scala.concurrent.duration.Duration]): ZIO[ScopeRoot, ErrStr, MetadataRepository] = {
+  private def fetchChannelData(repoUri: java.net.URI, cache: FileCache, channelContentsTtl: scala.concurrent.duration.Duration): ZIO[ScopeRoot, ErrStr, MetadataRepository] = {
     import CoursierZio.*  // implicit coursier-zio interop
     val contentsUrl = MetadataRepository.channelContentsUrl(repoUri).toString
     val artifact = Artifact(contentsUrl).withChanging(true)  // changing as the remote file is updated whenever any remote package is added or updated
     for {
       channelContentsFile <- cache
-                              .withTtl(channelContentsTtl.orElse(cache.ttl))
+                              .withTtl(Some(channelContentsTtl))
                               .file(artifact)  // requires initialized logger
                               .run.absolve
                               .mapError { case e @ (_: coursier.cache.ArtifactError | scala.util.control.NonFatal(_)) => e.getMessage }
@@ -493,7 +493,7 @@ object Sc4pac {
     } yield result
   }
 
-  private[sc4pac] def initializeRepositories(repoUris: Seq[java.net.URI], cache: FileCache, channelContentsTtl: Option[scala.concurrent.duration.Duration]): RIO[ScopeRoot, Seq[MetadataRepository]] = {
+  private[sc4pac] def initializeRepositories(repoUris: Seq[java.net.URI], cache: FileCache, channelContentsTtl: scala.concurrent.duration.Duration): RIO[ScopeRoot, Seq[MetadataRepository]] = {
     val task: RIO[ScopeRoot, Seq[MetadataRepository]] = ZIO.collectPar(repoUris) { url =>
       fetchChannelData(url, cache, channelContentsTtl)
         .mapError((err: ErrStr) => { System.err.println(s"Failed to read channel data: $err"); None })
@@ -510,12 +510,12 @@ object Sc4pac {
     val coursierPool = coursier.cache.internal.ThreadUtil.fixedThreadPool(size = 2)  // limit parallel downloads to 2 (ST rejects too many connections)
     for {
       cacheRoot <- config.cacheRootAbs
-      logger <- ZIO.service[Logger]
-      cache = FileCache(location = (cacheRoot / "coursier").toIO, logger = logger, pool = coursierPool)
+      logger    <- ZIO.service[Logger]
+      cache     =  FileCache(location = (cacheRoot / "coursier").toIO, logger = logger, pool = coursierPool)
+        .withTtl(Some(Constants.cacheTtl))  // 12 hours
         // .withCachePolicies(Seq(coursier.cache.CachePolicy.ForceDownload))  // TODO cache policy
-        // .withTtl(1.hour)  // TODO time-to-live
-      repos     <- initializeRepositories(config.channels, cache, channelContentsTtl = None)
-      tempRoot <- config.tempRootAbs
+      repos     <- initializeRepositories(config.channels, cache, Constants.channelContentsTtl)  // 30 minutes
+      tempRoot  <- config.tempRootAbs
       scopeRoot <- ZIO.service[ScopeRoot]
     } yield Sc4pac(repos, cache, tempRoot, logger, scopeRoot.path)
   }
