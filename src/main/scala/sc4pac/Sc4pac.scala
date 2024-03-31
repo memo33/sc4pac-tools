@@ -168,7 +168,7 @@ trait UpdateService { this: Sc4pac =>
     tempPluginsRoot: os.Path,
     dependency: DepModule,
     artifactsById: Map[BareAsset, (Artifact, java.io.File)],
-    jarsRoot: os.Path,
+    stagingRoot: os.Path,
     progress: Sc4pac.Progress
   ): Task[(Seq[os.SubPath], Seq[Warning])] = {
     def extract(assetData: JD.AssetReference, pkgFolder: os.SubPath): Task[Seq[Warning]] = ZIO.attemptBlocking {
@@ -186,12 +186,14 @@ trait UpdateService { this: Sc4pac =>
           // TODO check if archive type is zip
           val extractor = new Extractor(logger)
           val fallbackFilename = cache.getFallbackFilename(archive)
+          val jarsRoot = stagingRoot / "jars"
           extractor.extract(
             archive,
             fallbackFilename,
             tempPluginsRoot / pkgFolder,
             recipe,
-            Some(Extractor.JarExtraction.fromUrl(art.url, cache, jarsRoot = jarsRoot, scopeRoot = scopeRoot)))
+            Some(Extractor.JarExtraction.fromUrl(art.url, cache, jarsRoot = jarsRoot, scopeRoot = scopeRoot)),
+            stagingRoot)
           // TODO catch IOExceptions
           Seq.empty
       }
@@ -299,10 +301,9 @@ trait UpdateService { this: Sc4pac =>
         stagingRoot             <- makeTempStagingDir
         tempPluginsRoot         =  stagingRoot / "plugins"
         _                       <- ZIO.attemptBlocking(os.makeDir(tempPluginsRoot))
-        jarsRoot                =  stagingRoot / "jars"
         numDeps                 =  deps.length
         (stagedFiles, warnings) <- ZIO.foreach(deps.zipWithIndex) { case (dep, idx) =>   // sequentially stages each package
-                                     stage(tempPluginsRoot, dep, artifactsById, jarsRoot, Sc4pac.Progress(idx+1, numDeps))
+                                     stage(tempPluginsRoot, dep, artifactsById, stagingRoot, Sc4pac.Progress(idx+1, numDeps))
                                    }.map(_.unzip)
         pkgWarnings             =  deps.zip(warnings).collect { case (dep, ws) if ws.nonEmpty => (dep.toBareDep, ws) }
         _                       <- ZIO.serviceWithZIO[Prompter](_.confirmInstallationWarnings(pkgWarnings))

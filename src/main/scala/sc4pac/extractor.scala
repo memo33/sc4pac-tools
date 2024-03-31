@@ -6,7 +6,6 @@ import org.apache.commons.compress.archivers.zip.{ZipFile, ZipArchiveEntry}
 import org.apache.commons.compress.archivers.sevenz.{SevenZFile, SevenZArchiveEntry}
 import org.apache.commons.compress.utils.IOUtils
 import java.nio.file.StandardOpenOption
-import scala.sys.process.*
 
 import JsonData.InstallRecipe
 import sc4pac.error.ExtractionFailed
@@ -18,31 +17,39 @@ object Extractor {
     name.endsWith(".jar") || name.endsWith(".zip") || name.endsWith(".7z") || name.endsWith(".exe")
   }
 
-  private def TryClickteam(file: java.io.File) = {
-    val command = "cicdec \"" + file.getPath + "\""
-    val output = command.!!
-    println(output)
-    val extracted = file.getAbsolutePath().replace(".exe", "")
-    new WrappedFolder(os.Path(extracted))
+  private def tryExtractClickteam(file: java.io.File, targetDir: os.Path) = {
+    val args = Seq("cicdec", file.getPath, targetDir.toString)
+    val result = os.proc(args).call(
+      cwd = os.pwd,
+      check = false,
+      mergeErrIntoOut = true,
+      timeout = Constants.interactivePromptTimeout.toMillis
+    )
+    if (result.exitCode != 0) {
+      throw new ExtractionFailed(s"""Failed to extract Clickteam exe-installer "${file.getName}".""", result.out.text())
+    } else {
+      new WrappedFolder(targetDir)
+    }
   }
 
   private object WrappedArchive {
-    def apply(file: java.io.File, fallbackFilename: Option[String]): WrappedArchive[?] = {
+    def apply(file: java.io.File, fallbackFilename: Option[String], stagingRoot: os.Path): WrappedArchive[?] = {
       val lcNames: Seq[String] = Seq(file.getName.toLowerCase) ++ fallbackFilename.map(_.toLowerCase)
       // If .exe, we'll first assume an NSIS installer. If it fails, we try cicdec as it might be a Clickteam installer.
       if (lcNames.exists(_.endsWith(".exe")) || lcNames.exists(_.endsWith(".rar")))
         try {
           import net.sf.sevenzipjbinding as SZ
-          val raf = new java.io.RandomAccessFile(file, "r")
-          val inArchive = SZ.SevenZip.openInArchive(null /*autodetect format*/, new SZ.impl.RandomAccessFileInStream(raf))
-          new native.Wrapped7zNative(raf, inArchive)
+          try {
+            val raf = new java.io.RandomAccessFile(file, "r")
+            val inArchive = SZ.SevenZip.openInArchive(null /*autodetect format*/, new SZ.impl.RandomAccessFileInStream(raf))
+            new native.Wrapped7zNative(raf, inArchive)
+          } catch {
+            // If 7zip fails, it's probably a Clickteam installer, so try again with cicdec
+            case e: SZ.SevenZipException if lcNames.exists(_.endsWith(".exe")) =>
+              val tempExtractionDir = os.temp.dir(stagingRoot, prefix = "exe", deleteOnExit = false)  // the parent stagingRoot is already temporary and will be deleted
+              tryExtractClickteam(file, tempExtractionDir)
+          }
         } catch {
-
-          // If 7zip fails, it's probably a ClickTeam installer, so try again
-          // with cicdec
-          case e: Exception =>
-            TryClickteam(file)
-
           case e: java.lang.UnsatisfiedLinkError =>  // some platforms may be unsupported, e.g. Apple arm
             throw new ExtractionFailed(s"Failed to load native 7z library.", e.toString)
         }
@@ -87,12 +94,10 @@ object Extractor {
   // such as cicdec - for unzipping unknown archives.
   private class WrappedFolder(folder: os.Path) extends WrappedArchive[os.Path] {
     def close(): Unit = {}
-    def getEntries = os.list(folder).iterator
-    def getEntryPath(entry: os.Path) =
-      val file = new java.io.File(entry.toString)
-      file.getName
-    def isDirectory(entry: os.Path) = false
-    def isUnixSymlink(entry: os.Path) = false
+    def getEntries = os.walk(folder).iterator
+    def getEntryPath(entry: os.Path) = entry.subRelativeTo(folder).toString
+    def isDirectory(entry: os.Path) = os.isDir(entry)
+    def isUnixSymlink(entry: os.Path) = os.isLink(entry)
     def extractSelected(entries: Seq[(os.Path, os.Path)], overwrite: Boolean): Unit =
       for ((src, target) <- entries) {
         os.copy.over(src, target, replaceExisting = overwrite)
@@ -244,9 +249,10 @@ class Extractor(logger: Logger) {
     predicate: os.SubPath => Boolean,
     overwrite: Boolean,
     flatten: Boolean,
-    fallbackFilename: Option[String]
+    fallbackFilename: Option[String],
+    stagingRoot: os.Path
   ): Seq[os.Path] = {
-    scala.util.Using.resource(Extractor.WrappedArchive(archive, fallbackFilename)) { zip =>
+    scala.util.Using.resource(Extractor.WrappedArchive(archive, fallbackFilename, stagingRoot)) { zip =>
       // first we read the acceptable file names contained in the zip file
       val entries /*: Seq[(zip.A, os.SubPath)]*/ = zip.getEntries
         .flatMap { e =>
@@ -305,17 +311,17 @@ class Extractor(logger: Logger) {
     }
   }
 
-  def extract(archive: java.io.File, fallbackFilename: Option[String], destination: os.Path, recipe: InstallRecipe, jarExtractionOpt: Option[Extractor.JarExtraction]): Unit = try {
+  def extract(archive: java.io.File, fallbackFilename: Option[String], destination: os.Path, recipe: InstallRecipe, jarExtractionOpt: Option[Extractor.JarExtraction], stagingRoot: os.Path): Unit = try {
     // first extract just the main files
-    extractByPredicate(archive, destination, recipe.accepts, overwrite = true, flatten = false, fallbackFilename)
+    extractByPredicate(archive, destination, recipe.accepts, overwrite = true, flatten = false, fallbackFilename, stagingRoot = stagingRoot)
     // additionally, extract jar files contained in the zip file to a temporary location
     for (Extractor.JarExtraction(jarsDir) <- jarExtractionOpt) {
       logger.debug(s"Searching for nested archives:")
-      val jarFiles = extractByPredicate(archive, jarsDir, Extractor.acceptNestedArchive, overwrite = false, flatten = true, fallbackFilename)  // overwrite=false, as we want to extract any given jar only once per staging process
+      val jarFiles = extractByPredicate(archive, jarsDir, Extractor.acceptNestedArchive, overwrite = false, flatten = true, fallbackFilename, stagingRoot = stagingRoot)  // overwrite=false, as we want to extract any given jar only once per staging process
       // finally extract the jar files themselves (without recursively extracting jars contained inside)
       for (jarFile <- jarFiles if Extractor.acceptNestedArchive(jarFile)) {
         logger.debug(s"Extracting nested archive ${jarFile.last}")
-        extract(jarFile.toIO, fallbackFilename = None, destination, recipe, jarExtractionOpt = None)
+        extract(jarFile.toIO, fallbackFilename = None, destination, recipe, jarExtractionOpt = None, stagingRoot = stagingRoot)
       }
     }
   } catch {
