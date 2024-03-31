@@ -18,7 +18,7 @@ object Extractor {
   }
 
   private def tryExtractClickteam(file: java.io.File, targetDir: os.Path) = {
-    val args = Seq("cicdec", file.getPath, targetDir.toString)
+    val args = Constants.cicdecCommand ++ Seq(file.getPath, targetDir.toString)
     val result = os.proc(args).call(
       cwd = os.pwd,
       check = false,

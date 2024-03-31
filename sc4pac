@@ -8,4 +8,13 @@
 
 
 SCRIPTDIR="${0%/*}"
+
+# The environment variable `SC4PAC_MONO_CMD` is only needed on Linux and macOS and is set here if not defined.
+# If you happen to run this script on Windows without Mono installed, remove the environment variable.
+: ${SC4PAC_MONO_CMD="mono"}
+export SC4PAC_MONO_CMD
+
+: ${SC4PAC_CICDEC_CMD="${SCRIPTDIR}/cicdec/cicdec.exe"}
+export SC4PAC_CICDEC_CMD
+
 java -jar "${SCRIPTDIR}/target/scala-3.3.0/sc4pac-cli.jar" "$@"

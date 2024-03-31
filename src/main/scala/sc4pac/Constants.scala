@@ -66,6 +66,15 @@ object Constants {
     */
   lazy val simtropolisCookie: Option[String] = Option(System.getenv("SC4PAC_SIMTROPOLIS_COOKIE")).filter(_.nonEmpty)
 
+  /* On non-Windows platforms, cicdec is invoked by `mono cicdec [args]`, but on Windows Mono is not required: `cicdec [args]`.
+   * We choose reasonable defaults, but allow customizing these two commands via environment variables (which are set in the launch scripts).
+   * Note that these commands must consist of a single command (not multiple space-separated commands).
+   * If `cicdec` is in your path, these environment variables are not needed.
+   */
+  lazy val monoCommand: Option[String] = Option(System.getenv("SC4PAC_MONO_CMD")).filter(_.nonEmpty)
+  lazy val cicdecCommand: Seq[String] =
+    monoCommand.toSeq ++ Seq(Option(System.getenv("SC4PAC_CICDEC_CMD")).filter(_.nonEmpty).getOrElse("cicdec"))
+
   def isSc4pacAsset(module: Module): Boolean = module.organization == Constants.sc4pacAssetOrg
 
   lazy val isInteractive: Boolean = try {

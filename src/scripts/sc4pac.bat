@@ -10,4 +10,7 @@ REM     .\sc4pac
 
 
 SET SCRIPTDIR=%~dp0.
+
+IF "%SC4PAC_CICDEC_CMD%"=="" SET "SC4PAC_CICDEC_CMD=%SCRIPTDIR%\cicdec\cicdec.exe"
+
 java -jar "%SCRIPTDIR%\sc4pac-cli.jar" %*
