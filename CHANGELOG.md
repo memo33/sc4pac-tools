@@ -1,6 +1,8 @@
 # Changelog
 
 ## [Unreleased]
+### Changed
+- decreased caching period of channel table-of-contents file from 24 hours to 30 minutes to receive package updates sooner
 
 
 ## [0.4.1] - 2024-03-25

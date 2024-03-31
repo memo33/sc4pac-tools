@@ -3,6 +3,7 @@ package sc4pac
 
 import coursier.core.{Configuration, Organization, Type, Module}
 import java.util.regex.Pattern
+import scala.concurrent.duration.DurationInt
 
 object Constants {
   val compile = Configuration.compile  // includes only metadata as dependencies
@@ -27,6 +28,9 @@ object Constants {
   val sslRetryCount = 3  // Coursier legacy
   val resumeIncompleteDownloadAttemps = 4
   val fuzzySearchThreshold = 50  // 0..100
+  val cacheTtl = 12.hours
+  val channelContentsTtl = 30.minutes
+  val channelContentsTtlShort = 60.seconds
   val interactivePromptTimeout = java.time.Duration.ofSeconds(240)
   val urlConnectTimeout = java.time.Duration.ofSeconds(60)
   val urlReadTimeout = java.time.Duration.ofSeconds(60)  // timeout in case of internet outage while downloading a file
