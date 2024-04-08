@@ -18,9 +18,9 @@ object Extractor {
   }
 
   private def tryExtractClickteam(file: java.io.File, targetDir: os.Path, logger: Logger) = {
-    logger.debug(s"Attempting to extract as Clickteam exe installer.")
-    val args = Constants.cicdecCommand ++ Seq(file.getPath, targetDir.toString)
-    val result = os.proc(args).call(
+    val args = Seq(file.getPath, targetDir.toString)
+    logger.debug(s"""Attempting to extract Clickteam exe installer "${args(0)}" to "${args(1)}"""")
+    val result = os.proc(Constants.cicdecCommand ++ args).call(
       cwd = os.pwd,
       check = false,
       mergeErrIntoOut = true,
@@ -225,7 +225,11 @@ object Extractor {
       val archivePath = os.Path(cache.localFile(archiveUrl), scopeRoot)
       val cachePath = os.Path(cache.location, scopeRoot)
       val archiveSubPath = archivePath.subRelativeTo(cachePath)
-      JarExtraction(jarsRoot / archiveSubPath)
+      // we hash the the archiveSubPath to keep paths short
+      val hash = java.security.MessageDigest.getInstance("SHA-1")
+        .digest(archiveSubPath.toString.getBytes("UTF-8"))
+        .take(4).map("%02x".format(_)).mkString // 4 bytes = 8 hex characters
+      JarExtraction(jarsRoot / hash)
     }
   }
 
