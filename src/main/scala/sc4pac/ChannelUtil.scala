@@ -138,7 +138,7 @@ object ChannelUtil {
 
       // write channel contents
       val channel = {
-        val c = JD.Channel.create(scheme = Constants.currentChannelScheme, packagesMap)
+        val c = JD.Channel.create(scheme = Constants.channelSchemeVersions.max, packagesMap)
         c.copy(contents = c.contents.sortBy(item => (item.group, item.name)))
       }
       scala.util.Using.resource(java.nio.file.Files.newBufferedWriter((tempJsonDir / JsonRepoUtil.channelContentsFilename).toNIO)) { out =>
