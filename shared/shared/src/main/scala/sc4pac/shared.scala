@@ -82,12 +82,19 @@ abstract class SharedData {
     implicit val packageAssetRw: ReadWriter[PackageAsset] = ReadWriter.merge(Asset.assetRw, Package.packageRw)
   }
 
+  case class ArchiveType(format: String, version: String) derives ReadWriter
+  object ArchiveType {
+    val clickteamFormat = "Clickteam"
+    // val clickteamVersions = Seq(20, 24, 30, 35, 40)  // supported by cicdec 3.0.1
+  }
+
   @upickle.implicits.key("Asset")
   case class Asset(
     assetId: String,
     version: String,
     url: String,
     lastModified: Instant = null.asInstanceOf[Instant],
+    archiveType: Option[ArchiveType] = None,
     requiredBy: Seq[BareModule] = Seq.empty  // optional and only informative (mangles all variants and versions, is limited to one channel,
                                              // can easily become outdated since json files are cached indefinitely)
   ) extends PackageAsset /*derives ReadWriter*/ {

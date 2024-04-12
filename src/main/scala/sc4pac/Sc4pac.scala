@@ -167,7 +167,7 @@ trait UpdateService { this: Sc4pac =>
   private def stage(
     tempPluginsRoot: os.Path,
     dependency: DepModule,
-    artifactsById: Map[BareAsset, (Artifact, java.io.File)],
+    artifactsById: Map[BareAsset, (Artifact, java.io.File, DepAsset)],
     stagingRoot: os.Path,
     progress: Sc4pac.Progress
   ): Task[(Seq[os.SubPath], Seq[Warning])] = {
@@ -181,9 +181,8 @@ trait UpdateService { this: Sc4pac =>
           val w = s"An artifact is missing and has been skipped, so it must be installed manually: ${id.orgName}"
           logger.warn(w)
           Seq(w)
-        case Some(art, archive) =>
+        case Some(art, archive, depAsset) =>
           val recipe = JD.InstallRecipe.fromAssetReference(assetData)
-          // TODO check if archive type is zip
           val extractor = new Extractor(logger)
           val fallbackFilename = cache.getFallbackFilename(archive)
           val jarsRoot = stagingRoot / "jars"
@@ -193,6 +192,7 @@ trait UpdateService { this: Sc4pac =>
             tempPluginsRoot / pkgFolder,
             recipe,
             Some(Extractor.JarExtraction.fromUrl(art.url, cache, jarsRoot = jarsRoot, scopeRoot = scopeRoot)),
+            hints = depAsset.archiveType,
             stagingRoot)
           // TODO catch IOExceptions
           Seq.empty
@@ -278,7 +278,7 @@ trait UpdateService { this: Sc4pac =>
       * If everything is properly extracted, the files are later moved to the
       * actual plugins folder in the publication step.
       */
-    def stageAll(deps: Seq[DepModule], artifactsById: Map[BareAsset, (Artifact, java.io.File)]): ZIO[Scope & Prompter, Throwable, StageResult] = {
+    def stageAll(deps: Seq[DepModule], artifactsById: Map[BareAsset, (Artifact, java.io.File, DepAsset)]): ZIO[Scope & Prompter, Throwable, StageResult] = {
 
       val makeTempStagingDir: ZIO[Scope, java.io.IOException, os.Path] =
         ZIO.acquireRelease(
@@ -420,7 +420,7 @@ trait UpdateService { this: Sc4pac =>
         // TODO if some artifacts fail to be fetched, fall back to installing remaining packages (maybe not(?), as this leads to missing dependencies,
         // but there needs to be a manual workaround in case of permanently missing artifacts)
         depsToStage     =  plan.toInstall.collect{ case d: DepModule => d }.toSeq  // keep only non-assets
-        artifactsById   =  assetsToInstall.map((dep, art, file) => dep.toBareDep -> (art, file)).toMap
+        artifactsById   =  assetsToInstall.map((dep, art, file) => dep.toBareDep -> (art, file, dep)).toMap
         _               =  require(artifactsById.size == assetsToInstall.size, s"artifactsById is not 1-to-1: $assetsToInstall")
         flag            <- ZIO.scoped(stageAll(depsToStage, artifactsById)
                                       .flatMap(publishToPlugins(_, pluginsLockData, plan)))
