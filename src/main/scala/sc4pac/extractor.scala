@@ -22,12 +22,19 @@ object Extractor {
     logger.debug(s"""Attempting to extract v$clickteamVersion Clickteam exe installer "${args(0)}" to "${args(1)}"""")
     if (clickteamVersion.toIntOption.isDefined) {  // we validate the version to guard against malicous code injection
       val options = Seq("-v", clickteamVersion)
-      val result = os.proc(Constants.cicdecCommand ++ options ++ args).call(
-        cwd = os.pwd,
-        check = false,
-        mergeErrIntoOut = true,
-        timeout = Constants.interactivePromptTimeout.toMillis
-      )
+      val result =
+        try {
+          os.proc(Constants.cicdecCommand ++ options ++ args).call(
+            cwd = os.pwd,
+            check = false,
+            mergeErrIntoOut = true,
+            timeout = Constants.interactivePromptTimeout.toMillis
+          )
+        } catch { case e: java.io.IOException =>
+          throw new ExtractionFailed("""Failed to run "cicdec.exe" for Clickteam exe-installer extraction. """ +
+            """On macOS and Linux, make sure that "mono" is installed on your system: https://www.mono-project.com/docs/getting-started/install/""",
+            e.getMessage)
+        }
       if (result.exitCode == 0) {
         new WrappedFolder(targetDir)
       } else {
