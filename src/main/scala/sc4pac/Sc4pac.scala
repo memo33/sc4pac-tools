@@ -17,9 +17,9 @@ import sc4pac.Resolution.{Dep, DepModule, DepAsset}
 
 // TODO Use `Runtime#reportFatal` or `Runtime.setReportFatal` to log fatal errors like stack overflow
 
-class Sc4pac(val repositories: Seq[MetadataRepository], val cache: FileCache, val tempRoot: os.Path, val logger: Logger, val scopeRoot: os.Path) extends UpdateService {  // TODO defaults
+class Sc4pac(val repositories: Seq[MetadataRepository], val cache: FileCache, val tempRoot: os.Path, val logger: Logger, val profileRoot: os.Path) extends UpdateService {  // TODO defaults
 
-  given context: ResolutionContext = new ResolutionContext(repositories, cache, logger, scopeRoot)
+  given context: ResolutionContext = new ResolutionContext(repositories, cache, logger, profileRoot)
 
   import CoursierZio.*  // implicit coursier-zio interop
 
@@ -27,13 +27,13 @@ class Sc4pac(val repositories: Seq[MetadataRepository], val cache: FileCache, va
 
   private def modifyExplicitModules[R](modify: Seq[BareModule] => ZIO[R, Throwable, Seq[BareModule]]): ZIO[R, Throwable, Seq[BareModule]] = {
     for {
-      pluginsData  <- JsonIo.read[JD.Plugins](JD.Plugins.path(scopeRoot))  // at this point, file should already exist
+      pluginsData  <- JsonIo.read[JD.Plugins](JD.Plugins.path(profileRoot))  // at this point, file should already exist
       modsOrig     =  pluginsData.explicit
       modsNext     <- modify(modsOrig)
       _            <- ZIO.unless(modsNext == modsOrig) {
                         val pluginsDataNext = pluginsData.copy(explicit = modsNext)
                         // we do not check whether file was modified as this entire operation is synchronous and fast, in most cases
-                        JsonIo.write(JD.Plugins.path(scopeRoot), pluginsDataNext, None)(ZIO.succeed(()))
+                        JsonIo.write(JD.Plugins.path(profileRoot), pluginsDataNext, None)(ZIO.succeed(()))
                       }
     } yield modsNext
   }
@@ -191,7 +191,7 @@ trait UpdateService { this: Sc4pac =>
             fallbackFilename,
             tempPluginsRoot / pkgFolder,
             recipe,
-            Some(Extractor.JarExtraction.fromUrl(art.url, cache, jarsRoot = jarsRoot, scopeRoot = scopeRoot)),
+            Some(Extractor.JarExtraction.fromUrl(art.url, cache, jarsRoot = jarsRoot, profileRoot = profileRoot)),
             hints = depAsset.archiveType,
             stagingRoot)
           // TODO catch IOExceptions
@@ -263,7 +263,7 @@ trait UpdateService { this: Sc4pac =>
   }
 
   /** Update all installed packages from modules (the list of explicitly added packages). */
-  def update(modules: Seq[BareModule], globalVariant0: Variant, pluginsRoot: os.Path): RIO[ScopeRoot & Prompter, Boolean] = {
+  def update(modules: Seq[BareModule], globalVariant0: Variant, pluginsRoot: os.Path): RIO[ProfileRoot & Prompter, Boolean] = {
 
     // - before starting to remove anything, we download and extract everything
     //   to install into temp folders (staging)
@@ -342,7 +342,7 @@ trait UpdateService { this: Sc4pac =>
       // - remove old packages
       // - move new packages into plugins folder
       // - write json database and release lock
-      val task = JsonIo.write(JD.PluginsLock.path(scopeRoot), pluginsLockData.updateTo(plan, staged.files.toMap), Some(pluginsLockData)) {
+      val task = JsonIo.write(JD.PluginsLock.path(profileRoot), pluginsLockData.updateTo(plan, staged.files.toMap), Some(pluginsLockData)) {
         for {
           _ <- remove(plan.toRemove, pluginsLockData.installed, pluginsRoot)
                  // .catchAll(???)  // TODO catch exceptions
@@ -403,8 +403,8 @@ trait UpdateService { this: Sc4pac =>
     }
 
     def storeGlobalVariant(globalVariant: Variant): Task[Unit] = for {
-      pluginsData <- JsonIo.read[JD.Plugins](JD.Plugins.path(scopeRoot))  // json file should exist already
-      _           <- JsonIo.write(JD.Plugins.path(scopeRoot), pluginsData.copy(config = pluginsData.config.copy(variant = globalVariant)), None)(ZIO.succeed(()))
+      pluginsData <- JsonIo.read[JD.Plugins](JD.Plugins.path(profileRoot))  // json file should exist already
+      _           <- JsonIo.write(JD.Plugins.path(profileRoot), pluginsData.copy(config = pluginsData.config.copy(variant = globalVariant)), None)(ZIO.succeed(()))
     } yield ()
 
     // TODO catch coursier.error.ResolutionError$CantDownloadModule (e.g. when json files have syntax issues)
@@ -471,7 +471,7 @@ object Sc4pac {
   case class StageResult(tempPluginsRoot: os.Path, files: Seq[(DepModule, Seq[os.SubPath])], stagingRoot: os.Path)
 
 
-  private def fetchChannelData(repoUri: java.net.URI, cache: FileCache, channelContentsTtl: scala.concurrent.duration.Duration): ZIO[ScopeRoot, ErrStr, MetadataRepository] = {
+  private def fetchChannelData(repoUri: java.net.URI, cache: FileCache, channelContentsTtl: scala.concurrent.duration.Duration): ZIO[ProfileRoot, ErrStr, MetadataRepository] = {
     import CoursierZio.*  // implicit coursier-zio interop
     val contentsUrl = MetadataRepository.channelContentsUrl(repoUri).toString
     val artifact = Artifact(contentsUrl).withChanging(true)  // changing as the remote file is updated whenever any remote package is added or updated
@@ -481,8 +481,8 @@ object Sc4pac {
                               .file(artifact)  // requires initialized logger
                               .run.absolve
                               .mapError { case e @ (_: coursier.cache.ArtifactError | scala.util.control.NonFatal(_)) => e.getMessage }
-      scopeRoot           <- ZIO.service[ScopeRoot]
-      repo                <- MetadataRepository.create(os.Path(channelContentsFile: java.io.File, scopeRoot.path), repoUri)
+      profileRoot         <- ZIO.service[ProfileRoot]
+      repo                <- MetadataRepository.create(os.Path(channelContentsFile: java.io.File, profileRoot.path), repoUri)
     } yield repo
   }
 
@@ -494,8 +494,8 @@ object Sc4pac {
     } yield result
   }
 
-  private[sc4pac] def initializeRepositories(repoUris: Seq[java.net.URI], cache: FileCache, channelContentsTtl: scala.concurrent.duration.Duration): RIO[ScopeRoot, Seq[MetadataRepository]] = {
-    val task: RIO[ScopeRoot, Seq[MetadataRepository]] = ZIO.collectPar(repoUris) { url =>
+  private[sc4pac] def initializeRepositories(repoUris: Seq[java.net.URI], cache: FileCache, channelContentsTtl: scala.concurrent.duration.Duration): RIO[ProfileRoot, Seq[MetadataRepository]] = {
+    val task: RIO[ProfileRoot, Seq[MetadataRepository]] = ZIO.collectPar(repoUris) { url =>
       fetchChannelData(url, cache, channelContentsTtl)
         .mapError((err: ErrStr) => { System.err.println(s"Failed to read channel data: $err"); None })
     }.filterOrFail(_.nonEmpty)(error.NoChannelsAvailable("No channels available", repoUris.toString))
@@ -505,7 +505,7 @@ object Sc4pac {
     wrapService(cache.logger.using(_), task)  // properly initializes logger (avoids Uninitialized TermDisplay)
   }
 
-  def init(config: JD.Config): RIO[ScopeRoot & Logger, Sc4pac] = {
+  def init(config: JD.Config): RIO[ProfileRoot & Logger, Sc4pac] = {
     import CoursierZio.*  // implicit coursier-zio interop
     // val refreshLogger = coursier.cache.loggers.RefreshLogger.create(System.err)  // TODO System.err seems to cause less collisions between refreshing progress and ordinary log messages
     val coursierPool = coursier.cache.internal.ThreadUtil.fixedThreadPool(size = 2)  // limit parallel downloads to 2 (ST rejects too many connections)
@@ -517,8 +517,8 @@ object Sc4pac {
         // .withCachePolicies(Seq(coursier.cache.CachePolicy.ForceDownload))  // TODO cache policy
       repos     <- initializeRepositories(config.channels, cache, Constants.channelContentsTtl)  // 30 minutes
       tempRoot  <- config.tempRootAbs
-      scopeRoot <- ZIO.service[ScopeRoot]
-    } yield Sc4pac(repos, cache, tempRoot, logger, scopeRoot.path)
+      profileRoot <- ZIO.service[ProfileRoot]
+    } yield Sc4pac(repos, cache, tempRoot, logger, profileRoot.path)
   }
 
   def parseModules(modules: Seq[String]): Either[ErrStr, Seq[BareModule]] = {

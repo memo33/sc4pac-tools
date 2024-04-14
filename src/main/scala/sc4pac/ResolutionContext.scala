@@ -7,7 +7,7 @@ class ResolutionContext(
   val repositories: Seq[MetadataRepository],
   val cache: FileCache,
   val logger: Logger,
-  val scopeRoot: os.Path
+  val profileRoot: os.Path
 ) {
 
   object coursierApi {

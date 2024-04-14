@@ -16,9 +16,9 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
   private def jsonResponse[A : UP.Writer](obj: A): Response = Response.json(UP.write(obj, indent = options.indent))
   private def jsonFrame[A : UP.Writer](obj: A): WebSocketFrame = WebSocketFrame.Text(UP.write(obj, indent = options.indent))
 
-  /** Sends a 409 ScopeNotInitialized if Plugins cannot be loaded. */
-  private val readPluginsOr409: ZIO[ScopeRoot, Response, JD.Plugins] =
-    JD.Plugins.read.mapError((err: ErrStr) => jsonResponse(ErrorMessage.ScopeNotInitialized("Scope not initialized", err)).status(Status.Conflict))
+  /** Sends a 409 ProfileNotInitialized if Plugins cannot be loaded. */
+  private val readPluginsOr409: ZIO[ProfileRoot, Response, JD.Plugins] =
+    JD.Plugins.read.mapError((err: ErrStr) => jsonResponse(ErrorMessage.ProfileNotInitialized("Profile not initialized", err)).status(Status.Conflict))
 
   private def expectedFailureMessage(err: cli.Commands.ExpectedFailure): ErrorMessage = err match {
     case abort: error.Sc4pacVersionNotFound => ErrorMessage.VersionNotFound(abort.title, abort.detail)
@@ -48,7 +48,7 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
   }
 
   /** Handles some errors and provides http logger (not used for websocket). */
-  private def wrapHttpEndpoint(task: ZIO[ScopeRoot & Logger, Throwable | Response, Response]): ZIO[ScopeRoot, Throwable, Response] = {
+  private def wrapHttpEndpoint(task: ZIO[ProfileRoot & Logger, Throwable | Response, Response]): ZIO[ProfileRoot, Throwable, Response] = {
     task.provideSomeLayer(httpLogger)
       .catchAll {
         case response: Response => ZIO.succeed(response)
@@ -78,17 +78,17 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
       .mapError(failedLabels => jsonResponse(errMsg(failedLabels)).status(Status.BadRequest))
   }
 
-  def routes: Routes[ScopeRoot, Nothing] = Routes(
+  def routes: Routes[ProfileRoot, Nothing] = Routes(
 
     // 200, 400, 409
     Method.POST / "init" -> handler { (req: Request) =>
       wrapHttpEndpoint {
         for {
-          scopeRoot   <- ZIO.serviceWith[ScopeRoot](_.path)
-          _           <- ZIO.attemptBlockingIO(os.exists(JD.Plugins.path(scopeRoot)) || os.exists(JD.PluginsLock.path(scopeRoot)))
+          profileRoot <- ZIO.serviceWith[ProfileRoot](_.path)
+          _           <- ZIO.attemptBlockingIO(os.exists(JD.Plugins.path(profileRoot)) || os.exists(JD.PluginsLock.path(profileRoot)))
                            .filterOrFail(_ == false)(jsonResponse(
-                             ErrorMessage.InitNotAllowed("Scope already initialized.",
-                               "Manually delete the corresponding .json files if you are sure you want to initialize a new scope.")
+                             ErrorMessage.InitNotAllowed("Profile already initialized.",
+                               "Manually delete the corresponding .json files if you are sure you want to initialize a new profile.")
                            ).status(Status.Conflict))
           defPlugins  <- JD.Plugins.defaultPluginsRoot
           defCache    <- JD.Plugins.defaultCacheRoot
@@ -97,8 +97,8 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
                            "Pass the locations of the folders as JSON dictionary: {plugins: <path>, cache: <path>}.",
                            platformDefaults = Map("plugins" -> defPlugins.map(_.toString), "cache" -> defCache.map(_.toString))
                          ))
-          pluginsRoot =  os.Path(initArgs.plugins, scopeRoot)
-          cacheRoot   =  os.Path(initArgs.cache, scopeRoot)
+          pluginsRoot =  os.Path(initArgs.plugins, profileRoot)
+          cacheRoot   =  os.Path(initArgs.cache, profileRoot)
           _           <- ZIO.attemptBlockingIO {
                            os.makeDir.all(pluginsRoot)  // TODO ask for confirmation?
                            os.makeDir.all(cacheRoot)
@@ -145,7 +145,7 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
         failure = ZIO.succeed[Response](_),
         success = pluginsData =>
           Handler.webSocket { wsChannel =>
-            val updateTask: zio.RIO[ScopeRoot & WebSocketLogger, Message] =
+            val updateTask: zio.RIO[ProfileRoot & WebSocketLogger, Message] =
               for {
                 pac          <- Sc4pac.init(pluginsData.config)
                 pluginsRoot  <- pluginsData.config.pluginsRootAbs
@@ -154,7 +154,7 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
                                   .provideSomeLayer(zio.ZLayer.succeed(WebSocketPrompter(wsChannel, wsLogger)))
               } yield ResultMessage(ok = true)
 
-            val wsTask: zio.RIO[ScopeRoot, Unit] =
+            val wsTask: zio.RIO[ProfileRoot, Unit] =
               WebSocketLogger.run(send = msg => wsChannel.send(Read(jsonFrame(msg)))) {
                 for {
                   finalMsg <- updateTask.catchSome { case err: cli.Commands.ExpectedFailure => ZIO.succeed(expectedFailureMessage(err)) }
@@ -163,7 +163,7 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
               } // wsLogger is shut down here (TODO use resource for safer closing)
 
             wsTask.zipRight(wsChannel.shutdown).map(_ => System.err.println("Shutting down websocket."))
-          }.toResponse: zio.URIO[ScopeRoot, Response]
+          }.toResponse: zio.URIO[ProfileRoot, Response]
       )
     },
 

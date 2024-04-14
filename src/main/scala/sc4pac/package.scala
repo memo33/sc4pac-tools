@@ -65,12 +65,5 @@ package object sc4pac {
     zio.Runtime.default.unsafe.run(effect).getOrThrowFiberFailure()
   }
 
-  // opaque type ScopeRoot = os.Path
-  // object ScopeRoot {
-  //   def apply(path: os.Path): ScopeRoot = path
-  // }
-  // extension (scopeRoot: ScopeRoot) {
-  //   def path: os.Path = scopeRoot
-  // }
-  class ScopeRoot(val path: os.Path)
+  class ProfileRoot(val path: os.Path)
 }

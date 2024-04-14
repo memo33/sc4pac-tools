@@ -26,7 +26,7 @@ object Commands {
 
   val cliEnvironment = {
     val logger = CliLogger()
-    zio.ZEnvironment(ScopeRoot(os.pwd), logger, CliPrompter(logger, autoYes = false))
+    zio.ZEnvironment(ProfileRoot(os.pwd), logger, CliPrompter(logger, autoYes = false))
   }
 
   // TODO strip escape sequences if jansi failed with a link error
@@ -258,7 +258,7 @@ object Commands {
       runMainExit(task.provideEnvironment(cliEnvironment), exit)
     }
 
-    def iterateInstalled(pluginsData: JD.Plugins): zio.RIO[ScopeRoot, Iterator[(DepModule, Boolean)]] = {
+    def iterateInstalled(pluginsData: JD.Plugins): zio.RIO[ProfileRoot, Iterator[(DepModule, Boolean)]] = {
       for (installed <- JD.PluginsLock.listInstalled) yield {
         val sorted = installed.sortBy(mod => (mod.group.value, mod.name.value))
         val explicit: Set[BareModule] = pluginsData.explicit.toSet
@@ -311,7 +311,7 @@ object Commands {
       }
     }
 
-    def removeAndWrite(data: JD.Plugins, selected: Seq[String]): zio.RIO[ScopeRoot, Unit] = {
+    def removeAndWrite(data: JD.Plugins, selected: Seq[String]): zio.RIO[ProfileRoot, Unit] = {
       val data2 = data.copy(config = data.config.copy(variant = data.config.variant -- selected))
       for {
         path <- JD.Plugins.pathURIO
@@ -449,7 +449,7 @@ object Commands {
     |Start a local server to use the HTTP API.
     |
     |Example:
-    |  sc4pac server --indent 2 --scope-root scopes/scope-1/
+    |  sc4pac server --indent 2 --profile-root profiles/profile-1/
     """.stripMargin.trim)
   final case class ServerOptions(
     @ValueDescription("number") @Group("Server") @Tag("Server")
@@ -461,22 +461,22 @@ object Commands {
     @ValueDescription("path") @Group("Server") @Tag("Server")
     @HelpMessage(s"root directory containing sc4pac-plugins.json (default: current working directory), newly created if necessary; "
       + "can be used for managing multiple different plugins folders")
-    scopeRoot: String = "",
+    profileRoot: String = "",
   ) extends Sc4pacCommandOptions
 
   case object Server extends Command[ServerOptions] {
     def run(options: ServerOptions, args: RemainingArgs): Unit = {
       if (options.indent < -1)
         error(caseapp.core.Error.Other(s"Indentation must be -1 or larger."))
-      val scopeRoot: os.Path = if (options.scopeRoot.isEmpty) os.pwd else os.Path(java.nio.file.Paths.get(options.scopeRoot), os.pwd)
-      if (!os.exists(scopeRoot)) {
-        println(s"Creating sc4pac scope directory: $scopeRoot")
-        os.makeDir.all(scopeRoot)
+      val profileRoot: os.Path = if (options.profileRoot.isEmpty) os.pwd else os.Path(java.nio.file.Paths.get(options.profileRoot), os.pwd)
+      if (!os.exists(profileRoot)) {
+        println(s"Creating sc4pac profile directory: $profileRoot")
+        os.makeDir.all(profileRoot)
       }
       val task: Task[Unit] = {
         val app = sc4pac.api.Api(options).routes.toHttpApp
         println(s"Starting sc4pac server on port ${options.port}...")
-        zio.http.Server.serve(app).provide(zio.http.Server.defaultWithPort(options.port), zio.ZLayer.succeed(ScopeRoot(scopeRoot)))
+        zio.http.Server.serve(app).provide(zio.http.Server.defaultWithPort(options.port), zio.ZLayer.succeed(ProfileRoot(profileRoot)))
       }
       runMainExit(task, exit)
     }
