@@ -8,6 +8,8 @@
 
 ### Changed
 - decreased caching period of channel table-of-contents file from 24 hours to 30 minutes to receive package updates sooner
+- The API was upgraded to version 1.2.
+- The `sc4pac server` option `--scope-root` was renamed to `--profile-root` and the corresponding error to `/error/profile-not-initialized`.
 
 
 ## [0.4.1] - 2024-03-25

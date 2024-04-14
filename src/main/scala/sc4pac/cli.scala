@@ -462,13 +462,22 @@ object Commands {
     @HelpMessage(s"root directory containing sc4pac-plugins.json (default: current working directory), newly created if necessary; "
       + "can be used for managing multiple different plugins folders")
     profileRoot: String = "",
+    @ValueDescription("path") @Group("Server") @Tag("Server")
+    @HelpMessage("deprecated (use --profile-root instead)")
+    scopeRoot: String = "",
   ) extends Sc4pacCommandOptions
 
   case object Server extends Command[ServerOptions] {
     def run(options: ServerOptions, args: RemainingArgs): Unit = {
       if (options.indent < -1)
         error(caseapp.core.Error.Other(s"Indentation must be -1 or larger."))
-      val profileRoot: os.Path = if (options.profileRoot.isEmpty) os.pwd else os.Path(java.nio.file.Paths.get(options.profileRoot), os.pwd)
+      val profileRoot: os.Path = {
+        val optProfileRoot = if (options.scopeRoot.nonEmpty) {
+          println("Option --scope-root is deprecated. Use --profile-root instead.")
+          options.scopeRoot
+        } else options.profileRoot
+        if (optProfileRoot.isEmpty) os.pwd else os.Path(java.nio.file.Paths.get(optProfileRoot), os.pwd)
+      }
       if (!os.exists(profileRoot)) {
         println(s"Creating sc4pac profile directory: $profileRoot")
         os.makeDir.all(profileRoot)
