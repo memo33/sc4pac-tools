@@ -1,6 +1,11 @@
 # Changelog
 
 ## [Unreleased]
+### Added
+- support for extracting Clickteam exe-installers using the external program `cicdec.exe`.
+  On macOS and Linux, this requires [mono](https://www.mono-project.com/docs/getting-started/install/) to be installed on your system.
+  Assets containing Clickteam installers must include the new `archiveType` property in the metadata.
+
 ### Changed
 - decreased caching period of channel table-of-contents file from 24 hours to 30 minutes to receive package updates sooner
 
