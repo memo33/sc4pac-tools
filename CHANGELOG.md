@@ -1,6 +1,9 @@
 # Changelog
 
 ## [Unreleased]
+
+
+## [0.4.2] - 2024-04-18
 ### Added
 - support for extracting Clickteam exe-installers using the external program `cicdec.exe`.
   On macOS and Linux, this requires [mono](https://www.mono-project.com/docs/getting-started/install/) to be installed on your system.
@@ -75,7 +78,8 @@
 ## [0.1.5] - 2023-09-26
 …
 
-[Unreleased]: https://github.com/memo33/sc4pac-tools/compare/0.4.1...HEAD
+[Unreleased]: https://github.com/memo33/sc4pac-tools/compare/0.4.2...HEAD
+[0.4.2]: https://github.com/memo33/sc4pac-tools/compare/0.4.1...0.4.2
 [0.4.1]: https://github.com/memo33/sc4pac-tools/compare/0.4.0...0.4.1
 [0.4.0]: https://github.com/memo33/sc4pac-tools/compare/0.3.0...0.4.0
 [0.3.0]: https://github.com/memo33/sc4pac-tools/compare/0.2.0...0.3.0
