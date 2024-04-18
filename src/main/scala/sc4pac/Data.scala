@@ -164,7 +164,8 @@ object JsonData extends SharedData {
           assetId = dep.assetId.value,
           version = dep.version,
           url = dep.url,
-          lastModified = dep.lastModified.getOrElse(null)
+          lastModified = dep.lastModified.getOrElse(null),
+          archiveType = None  // not needed in lock file, as only version info is needed to determine if previously installed files are outdated
         ))
       )
     }

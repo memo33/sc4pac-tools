@@ -12,6 +12,11 @@ lastModified: "2023-07-29T21:33:57Z"
 # The direct download link to the artifact (supports zip files, jar files, and jar, zip, 7z or NSIS exe files contained in zip files)
 url: "http://localhost:8090/files/package-d.zip"
 
+# Assets containing a Clickteam exe-installer need to include this `archiveType` section with the correct installer version number:
+# archiveType:
+#   format: Clickteam
+#   version: "40"  # possible versions are 40, 35, 30, 24, 20
+
 ---
 # The following section describes a package.
 # Packages are collections of files that can be installed on user request.

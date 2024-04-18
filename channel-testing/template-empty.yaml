@@ -32,3 +32,7 @@ assetId: "<unique-id>"
 version: "<version>"
 lastModified: "<ISO-8601-timestamp>"
 url: "<asset-url>"
+
+# archiveType:
+#   format: Clickteam
+#   version: "40"  # possible versions are 40, 35, 30, 24, 20

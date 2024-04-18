@@ -19,6 +19,8 @@ Currently, this program only comes with a command-line interface (CLI).
 - Prerequisites:
   - Java 8+ (https://adoptium.net/installation/)
   - enough disk space
+  - Mono ([macOS](https://www.mono-project.com/docs/getting-started/install/)/[Linux](https://repology.org/project/mono/versions), not needed on Windows):
+    This is optional and only needed for a few packages that originally use an installer.
 - [Download the latest release](https://github.com/memo33/sc4pac-tools/releases/latest)
   and extract the contents to any location in your user directory (for example, your Desktop).
 - Open a shell in the new directory (e.g. on Windows, open the folder and type `cmd` in the address bar of the explorer window)

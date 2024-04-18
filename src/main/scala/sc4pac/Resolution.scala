@@ -60,19 +60,24 @@ object Resolution {
     }
   }
 
-  /** An sc4pac asset dependency: a leaf in the dependency tree. */
+  /** An sc4pac asset dependency: a leaf in the dependency tree.
+    * This class contains the functionally relevant internal data.
+    * In contrast, `JD.Asset` is merely used for JSON-serialization.
+    */
   final case class DepAsset(
     assetId: C.ModuleName,
     version: String,
     url: String,
-    lastModified: Option[java.time.Instant]
+    lastModified: Option[java.time.Instant],
+    archiveType: Option[JD.ArchiveType],
   ) extends Dep {
     def isSc4pacAsset: Boolean = true
     def toBareDep: BareAsset = BareAsset(assetId)
   }
   object DepAsset {
     def fromAsset(asset: JD.Asset): DepAsset =
-      DepAsset(assetId = ModuleName(asset.assetId), version = asset.version, url = asset.url, lastModified = Option(asset.lastModified))
+      DepAsset(assetId = ModuleName(asset.assetId), version = asset.version, url = asset.url,
+        lastModified = Option(asset.lastModified), archiveType = asset.archiveType)
   }
 
   /** An sc4pac metadata package dependency. */

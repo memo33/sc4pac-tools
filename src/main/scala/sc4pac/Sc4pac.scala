@@ -167,8 +167,8 @@ trait UpdateService { this: Sc4pac =>
   private def stage(
     tempPluginsRoot: os.Path,
     dependency: DepModule,
-    artifactsById: Map[BareAsset, (Artifact, java.io.File)],
-    jarsRoot: os.Path,
+    artifactsById: Map[BareAsset, (Artifact, java.io.File, DepAsset)],
+    stagingRoot: os.Path,
     progress: Sc4pac.Progress
   ): Task[(Seq[os.SubPath], Seq[Warning])] = {
     def extract(assetData: JD.AssetReference, pkgFolder: os.SubPath): Task[Seq[Warning]] = ZIO.attemptBlocking {
@@ -181,17 +181,19 @@ trait UpdateService { this: Sc4pac =>
           val w = s"An artifact is missing and has been skipped, so it must be installed manually: ${id.orgName}"
           logger.warn(w)
           Seq(w)
-        case Some(art, archive) =>
+        case Some(art, archive, depAsset) =>
           val recipe = JD.InstallRecipe.fromAssetReference(assetData)
-          // TODO check if archive type is zip
           val extractor = new Extractor(logger)
           val fallbackFilename = cache.getFallbackFilename(archive)
+          val jarsRoot = stagingRoot / "jars"
           extractor.extract(
             archive,
             fallbackFilename,
             tempPluginsRoot / pkgFolder,
             recipe,
-            Some(Extractor.JarExtraction.fromUrl(art.url, cache, jarsRoot = jarsRoot, scopeRoot = scopeRoot)))
+            Some(Extractor.JarExtraction.fromUrl(art.url, cache, jarsRoot = jarsRoot, scopeRoot = scopeRoot)),
+            hints = depAsset.archiveType,
+            stagingRoot)
           // TODO catch IOExceptions
           Seq.empty
       }
@@ -276,7 +278,7 @@ trait UpdateService { this: Sc4pac =>
       * If everything is properly extracted, the files are later moved to the
       * actual plugins folder in the publication step.
       */
-    def stageAll(deps: Seq[DepModule], artifactsById: Map[BareAsset, (Artifact, java.io.File)]): ZIO[Scope & Prompter, Throwable, StageResult] = {
+    def stageAll(deps: Seq[DepModule], artifactsById: Map[BareAsset, (Artifact, java.io.File, DepAsset)]): ZIO[Scope & Prompter, Throwable, StageResult] = {
 
       val makeTempStagingDir: ZIO[Scope, java.io.IOException, os.Path] =
         ZIO.acquireRelease(
@@ -299,10 +301,9 @@ trait UpdateService { this: Sc4pac =>
         stagingRoot             <- makeTempStagingDir
         tempPluginsRoot         =  stagingRoot / "plugins"
         _                       <- ZIO.attemptBlocking(os.makeDir(tempPluginsRoot))
-        jarsRoot                =  stagingRoot / "jars"
         numDeps                 =  deps.length
         (stagedFiles, warnings) <- ZIO.foreach(deps.zipWithIndex) { case (dep, idx) =>   // sequentially stages each package
-                                     stage(tempPluginsRoot, dep, artifactsById, jarsRoot, Sc4pac.Progress(idx+1, numDeps))
+                                     stage(tempPluginsRoot, dep, artifactsById, stagingRoot, Sc4pac.Progress(idx+1, numDeps))
                                    }.map(_.unzip)
         pkgWarnings             =  deps.zip(warnings).collect { case (dep, ws) if ws.nonEmpty => (dep.toBareDep, ws) }
         _                       <- ZIO.serviceWithZIO[Prompter](_.confirmInstallationWarnings(pkgWarnings))
@@ -419,7 +420,7 @@ trait UpdateService { this: Sc4pac =>
         // TODO if some artifacts fail to be fetched, fall back to installing remaining packages (maybe not(?), as this leads to missing dependencies,
         // but there needs to be a manual workaround in case of permanently missing artifacts)
         depsToStage     =  plan.toInstall.collect{ case d: DepModule => d }.toSeq  // keep only non-assets
-        artifactsById   =  assetsToInstall.map((dep, art, file) => dep.toBareDep -> (art, file)).toMap
+        artifactsById   =  assetsToInstall.map((dep, art, file) => dep.toBareDep -> (art, file, dep)).toMap
         _               =  require(artifactsById.size == assetsToInstall.size, s"artifactsById is not 1-to-1: $assetsToInstall")
         flag            <- ZIO.scoped(stageAll(depsToStage, artifactsById)
                                       .flatMap(publishToPlugins(_, pluginsLockData, plan)))
