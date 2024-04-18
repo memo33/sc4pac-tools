@@ -8,6 +8,8 @@
 
 ### Changed
 - decreased caching period of channel table-of-contents file from 24 hours to 30 minutes to receive package updates sooner
+- The API was upgraded to version 1.2.
+- The `sc4pac server` option `--scope-root` was renamed to `--profile-root` and the corresponding error to `/error/profile-not-initialized`.
 
 
 ## [0.4.1] - 2024-03-25
@@ -27,7 +29,7 @@
 
 ### Changed
 - The API was upgraded to version 1.1.
-- The API now sends `/error/scope-not-initialized` & `/error/init/not-allowed` with HTTP status code 409 instead of 405.
+- The API now sends `/error/profile-not-initialized` & `/error/init/not-allowed` with HTTP status code 409 instead of 405.
 - The API endpoint `/packages.list` now includes a `category` for each package.
 
 ### Fixed

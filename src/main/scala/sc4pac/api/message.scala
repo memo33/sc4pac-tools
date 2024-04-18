@@ -84,8 +84,8 @@ sealed trait ErrorMessage extends Message derives UP.ReadWriter {
 object ErrorMessage {
   @upickle.implicits.key("/error/server-error")
   case class ServerError(title: String, detail: String) extends ErrorMessage derives UP.ReadWriter
-  @upickle.implicits.key("/error/scope-not-initialized")
-  case class ScopeNotInitialized(title: String, detail: String) extends ErrorMessage derives UP.ReadWriter
+  @upickle.implicits.key("/error/profile-not-initialized")
+  case class ProfileNotInitialized(title: String, detail: String) extends ErrorMessage derives UP.ReadWriter
   @upickle.implicits.key("/error/version-not-found")
   case class VersionNotFound(title: String, detail: String) extends ErrorMessage derives UP.ReadWriter
   @upickle.implicits.key("/error/asset-not-found")

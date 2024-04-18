@@ -1,4 +1,4 @@
-# API - version 1.1
+# API - version 1.2
 
 The API allows other programs to control *sc4pac* in a client-server fashion.
 
@@ -29,7 +29,7 @@ GET  /update              (websocket)
 - All endpoints may return some generic errors:
   - 400 (incorrect input)
   - 404 (non-existing packages, assets, etc.)
-  - 409 `/error/scope-not-initialized` (when not initialized)
+  - 409 `/error/profile-not-initialized` (when not initialized)
   - 500 (unexpected unresolvable situations)
   - 502 (download failures)
 - Errors are of the form
@@ -43,8 +43,8 @@ GET  /update              (websocket)
 
 ## init
 
-Initialize the scope by configuring the location of plugins and cache.
-Scopes are used to manage multiple plugins folders.
+Initialize the profile by configuring the location of plugins and cache.
+Profiles are used to manage multiple plugins folders.
 
 Synopsis: `POST /init {plugins: "<path>", cache: "<path>"}`
 
@@ -55,7 +55,7 @@ Returns:
   `platformDefaults: {plugins: ["<path>", …], cache: ["<path>", …]}`
   for recommended platform-specific locations to use.
 
-  ?> When managing multiple scopes, use the same cache for all of them.
+  ?> When managing multiple profiles, use the same cache for all of them.
 
 - 200 `{"$type": "/result", "ok": true}` on success.
 
@@ -74,11 +74,11 @@ Returns:
   "platformDefaults": {
     "plugins": [
       "/home/memo/Documents/SimCity 4/Plugins",
-      "/home/memo/git/sc4/sc4pac/scopes/scope-1/plugins"
+      "/home/memo/git/sc4/sc4pac/profiles/profile-1/plugins"
     ],
     "cache": [
       "/home/memo/.cache/sc4pac",
-      "/home/memo/git/sc4/sc4pac/scopes/scope-1/cache"
+      "/home/memo/git/sc4/sc4pac/profiles/profile-1/cache"
     ]
   }
 }

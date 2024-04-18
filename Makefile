@@ -17,7 +17,7 @@ host-web: # channel-testing-web
 # 	sbt -Dcoursier.credentials="$(realpath sc4pac-credentials.properties)"
 
 clean:
-	rm -rf plugins temp sc4pac-plugins.json sc4pac-plugins-lock.json scopes
+	rm -rf plugins temp sc4pac-plugins.json sc4pac-plugins-lock.json profiles
 clean-cache: clean
 	rm -rf cache
 

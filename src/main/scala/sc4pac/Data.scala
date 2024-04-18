@@ -45,15 +45,15 @@ object JsonData extends SharedData {
     variant: Variant,
     channels: Seq[java.net.URI]
   ) derives ReadWriter {
-    val pluginsRootAbs: RIO[ScopeRoot, os.Path] = ZIO.service[ScopeRoot].map(scopeRoot => os.Path(pluginsRoot, scopeRoot.path))
-    val cacheRootAbs: RIO[ScopeRoot, os.Path] = ZIO.service[ScopeRoot].map(scopeRoot => os.Path(cacheRoot, scopeRoot.path))
-    val tempRootAbs: RIO[ScopeRoot, os.Path] = ZIO.service[ScopeRoot].map(scopeRoot => os.Path(tempRoot, scopeRoot.path))
+    val pluginsRootAbs: RIO[ProfileRoot, os.Path] = ZIO.service[ProfileRoot].map(profileRoot => os.Path(pluginsRoot, profileRoot.path))
+    val cacheRootAbs: RIO[ProfileRoot, os.Path] = ZIO.service[ProfileRoot].map(profileRoot => os.Path(cacheRoot, profileRoot.path))
+    val tempRootAbs: RIO[ProfileRoot, os.Path] = ZIO.service[ProfileRoot].map(profileRoot => os.Path(tempRoot, profileRoot.path))
   }
   object Config {
-    /** Turns an absolute path into a relative one if it is a subpath of scopeRoot, otherwise returns an absolute path. */
-    def subRelativize(path: os.Path, scopeRoot: ScopeRoot): NioPath = {
+    /** Turns an absolute path into a relative one if it is a subpath of profileRoot, otherwise returns an absolute path. */
+    def subRelativize(path: os.Path, profileRoot: ProfileRoot): NioPath = {
       try {
-        val sub: os.SubPath = path.subRelativeTo(scopeRoot.path)
+        val sub: os.SubPath = path.subRelativeTo(profileRoot.path)
         sub.toNIO
       } catch {
         case _: IllegalArgumentException => path.toNIO
@@ -63,24 +63,24 @@ object JsonData extends SharedData {
 
   case class Plugins(config: Config, explicit: Seq[BareModule]) derives ReadWriter
   object Plugins {
-    def path(scopeRoot: os.Path): os.Path = scopeRoot / "sc4pac-plugins.json"
+    def path(profileRoot: os.Path): os.Path = profileRoot / "sc4pac-plugins.json"
 
-    def pathURIO: URIO[ScopeRoot, os.Path] = ZIO.service[ScopeRoot].map(scopeRoot => Plugins.path(scopeRoot.path))
+    def pathURIO: URIO[ProfileRoot, os.Path] = ZIO.service[ProfileRoot].map(profileRoot => Plugins.path(profileRoot.path))
 
     private val projDirs = dev.dirs.ProjectDirectories.from("", cli.BuildInfo.organization, cli.BuildInfo.name)  // qualifier, organization, application
 
-    val defaultPluginsRoot: URIO[ScopeRoot, Seq[os.Path]] = ZIO.serviceWith[ScopeRoot](scopeRoot => Seq(
+    val defaultPluginsRoot: URIO[ProfileRoot, Seq[os.Path]] = ZIO.serviceWith[ProfileRoot](profileRoot => Seq(
       os.home / "Documents" / "SimCity 4" / "Plugins",
-      scopeRoot.path / "plugins"
+      profileRoot.path / "plugins"
     ))
 
-    val defaultCacheRoot: URIO[ScopeRoot, Seq[os.Path]] = ZIO.serviceWith[ScopeRoot](scopeRoot => Seq(
+    val defaultCacheRoot: URIO[ProfileRoot, Seq[os.Path]] = ZIO.serviceWith[ProfileRoot](profileRoot => Seq(
       os.Path(java.nio.file.Paths.get(projDirs.cacheDir)),
-      scopeRoot.path / "cache"
+      profileRoot.path / "cache"
     ))
 
     /** Prompt for pluginsRoot and cacheRoot. This has a `CliPrompter` constraint as we only want to prompt about this using the CLI. */
-    val promptForPaths: RIO[ScopeRoot & CliPrompter, (os.Path, os.Path)] = {
+    val promptForPaths: RIO[ProfileRoot & CliPrompter, (os.Path, os.Path)] = {
       val task = for {
         defaultPlugins <- defaultPluginsRoot
         pluginsRoot    <- Prompt.paths("Choose the location of your Plugins folder. (It is recommended to start with an empty folder.)", defaultPlugins)
@@ -95,15 +95,15 @@ object JsonData extends SharedData {
     }
 
     /** Init and write. */
-    def init(pluginsRoot: os.Path, cacheRoot: os.Path): RIO[ScopeRoot, Plugins] = {
+    def init(pluginsRoot: os.Path, cacheRoot: os.Path): RIO[ProfileRoot, Plugins] = {
       for {
-        scopeRoot    <- ZIO.service[ScopeRoot]
-        tempRoot     <- ZIO.succeed(scopeRoot.path / "temp")  // customization not needed
+        profileRoot  <- ZIO.service[ProfileRoot]
+        tempRoot     <- ZIO.succeed(profileRoot.path / "temp")  // customization not needed
         data         =  Plugins(
                           config = Config(
-                            pluginsRoot = Config.subRelativize(pluginsRoot, scopeRoot),
-                            cacheRoot = Config.subRelativize(cacheRoot, scopeRoot),
-                            tempRoot = Config.subRelativize(tempRoot, scopeRoot),
+                            pluginsRoot = Config.subRelativize(pluginsRoot, profileRoot),
+                            cacheRoot = Config.subRelativize(cacheRoot, profileRoot),
+                            tempRoot = Config.subRelativize(tempRoot, profileRoot),
                             variant = Map.empty,
                             channels = Constants.defaultChannelUrls),
                           explicit = Seq.empty)
@@ -112,7 +112,7 @@ object JsonData extends SharedData {
       } yield data
     }
 
-    val read: ZIO[ScopeRoot, ErrStr, Plugins] = Plugins.pathURIO.flatMap { pluginsPath =>
+    val read: ZIO[ProfileRoot, ErrStr, Plugins] = Plugins.pathURIO.flatMap { pluginsPath =>
       val task: IO[ErrStr | java.io.IOException, Plugins] =
         ZIO.ifZIO(ZIO.attemptBlockingIO(os.exists(pluginsPath)))(
           onFalse = ZIO.fail(s"Configuration file does not exist: $pluginsPath"),
@@ -122,7 +122,7 @@ object JsonData extends SharedData {
     }
 
     /** Read Plugins from file if it exists, else create it and write it to file. */
-    val readOrInit: RIO[ScopeRoot & CliPrompter, Plugins] = Plugins.pathURIO.flatMap { pluginsPath =>
+    val readOrInit: RIO[ProfileRoot & CliPrompter, Plugins] = Plugins.pathURIO.flatMap { pluginsPath =>
       ZIO.ifZIO(ZIO.attemptBlocking(os.exists(pluginsPath)))(
         onTrue = JsonIo.read[Plugins](pluginsPath),
         onFalse = for {
@@ -171,12 +171,12 @@ object JsonData extends SharedData {
     }
   }
   object PluginsLock {
-    def path(scopeRoot: os.Path): os.Path = scopeRoot / "sc4pac-plugins-lock.json"
+    def path(profileRoot: os.Path): os.Path = profileRoot / "sc4pac-plugins-lock.json"
 
-    def pathURIO: URIO[ScopeRoot, os.Path] = ZIO.service[ScopeRoot].map(scopeRoot => PluginsLock.path(scopeRoot.path))
+    def pathURIO: URIO[ProfileRoot, os.Path] = ZIO.service[ProfileRoot].map(profileRoot => PluginsLock.path(profileRoot.path))
 
     /** Read PluginsLock from file if it exists, else create it and write it to file. */
-    val readOrInit: RIO[ScopeRoot, PluginsLock] = PluginsLock.pathURIO.flatMap { pluginsLockPath =>
+    val readOrInit: RIO[ProfileRoot, PluginsLock] = PluginsLock.pathURIO.flatMap { pluginsLockPath =>
       ZIO.ifZIO(ZIO.attemptBlocking(os.exists(pluginsLockPath)))(
         onTrue = JsonIo.read[PluginsLock](pluginsLockPath),
         onFalse = {
@@ -186,7 +186,7 @@ object JsonData extends SharedData {
       )
     }
 
-    val listInstalled: RIO[ScopeRoot, Seq[DepModule]] = PluginsLock.pathURIO.flatMap { pluginsLockPath =>
+    val listInstalled: RIO[ProfileRoot, Seq[DepModule]] = PluginsLock.pathURIO.flatMap { pluginsLockPath =>
       ZIO.ifZIO(ZIO.attemptBlocking(os.exists(pluginsLockPath)))(
         onTrue = JsonIo.read[PluginsLock](pluginsLockPath).map(_.installed.map(_.toDepModule)),
         onFalse = ZIO.succeed(Seq.empty)
