@@ -16,10 +16,7 @@
       },
       "assets": [
         {
-          "assetId": "memo-testing-first",
-          "include": [
-            "/file1.*"
-          ]
+          "assetId": "memo-testing-first"
         },
         {
           "assetId": "memo-testing-second"

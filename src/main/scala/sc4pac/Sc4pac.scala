@@ -178,24 +178,24 @@ trait UpdateService { this: Sc4pac =>
       val id = BareAsset(ModuleName(assetData.assetId))
       artifactsById.get(id) match {
         case None =>
-          val w = s"An artifact is missing and has been skipped, so it must be installed manually: ${id.orgName}"
-          logger.warn(w)
-          Seq(w)
+          Seq(s"An asset is missing and has been skipped, so it needs to be installed manually: ${id.orgName}. " +
+             "Please report this to the maintainers of the package metadata.")
         case Some(art, archive, depAsset) =>
-          val recipe = JD.InstallRecipe.fromAssetReference(assetData)
+          val (recipe, regexWarnings) = JD.InstallRecipe.fromAssetReference(assetData)
           val extractor = new Extractor(logger)
           val fallbackFilename = cache.getFallbackFilename(archive)
           val jarsRoot = stagingRoot / "jars"
-          extractor.extract(
-            archive,
-            fallbackFilename,
-            tempPluginsRoot / pkgFolder,
-            recipe,
-            Some(Extractor.JarExtraction.fromUrl(art.url, cache, jarsRoot = jarsRoot, profileRoot = profileRoot)),
-            hints = depAsset.archiveType,
-            stagingRoot)
+          val usedPatterns =
+            extractor.extract(
+              archive,
+              fallbackFilename,
+              tempPluginsRoot / pkgFolder,
+              recipe,
+              Some(Extractor.JarExtraction.fromUrl(art.url, cache, jarsRoot = jarsRoot, profileRoot = profileRoot)),
+              hints = depAsset.archiveType,
+              stagingRoot)
           // TODO catch IOExceptions
-          Seq.empty
+          regexWarnings ++ recipe.usedPatternWarnings(usedPatterns)
       }
     }
 
@@ -237,6 +237,7 @@ trait UpdateService { this: Sc4pac =>
                               _  <- ZIO.attemptBlocking(os.makeDir.all(tempPluginsRoot / pkgFolder))  // create folder even if package does not have any assets or files
                               ws <- ZIO.foreach(variant.assets)(extract(_, pkgFolder))
                             } yield ws.flatten)
+      _                  <- ZIO.foreach(artifactWarnings)(w => ZIO.attempt(logger.warn(w)))  // to avoid conflicts with spinner animation, we print warnings after extraction already finished
       dlls               <- linkDlls(pkgFolder)
       warnings           <- if (pkgData.info.warning.nonEmpty) ZIO.attempt { val w = pkgData.info.warning; logger.warn(w); Seq(w) }
                             else ZIO.succeed(Seq.empty)
@@ -305,7 +306,7 @@ trait UpdateService { this: Sc4pac =>
         (stagedFiles, warnings) <- ZIO.foreach(deps.zipWithIndex) { case (dep, idx) =>   // sequentially stages each package
                                      stage(tempPluginsRoot, dep, artifactsById, stagingRoot, Sc4pac.Progress(idx+1, numDeps))
                                    }.map(_.unzip)
-        pkgWarnings             =  deps.zip(warnings).collect { case (dep, ws) if ws.nonEmpty => (dep.toBareDep, ws) }
+        pkgWarnings             =  deps.zip(warnings: Seq[Seq[Warning]]).collect { case (dep, ws) if ws.nonEmpty => (dep.toBareDep, ws) }
         _                       <- ZIO.serviceWithZIO[Prompter](_.confirmInstallationWarnings(pkgWarnings))
                                      .filterOrFail(_ == true)(error.Sc4pacAbort())
       } yield StageResult(tempPluginsRoot, deps.zip(stagedFiles), stagingRoot)

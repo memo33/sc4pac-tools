@@ -12,8 +12,8 @@ variants:
   dependencies: []
   assets:
   - assetId: "memo-testing-first"
-    include:
-    - "/file1.*"
+    # include:
+    # - "/file1.*"
   - assetId: "memo-testing-second"
 
 - variant: { driveside: "left" }

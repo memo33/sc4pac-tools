@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+### Added
+- warning about outdated metadata, in case an inclusion/exclusion pattern does not match any files in an Asset anymore.
+
 
 ## [0.4.2] - 2024-04-18
 ### Added

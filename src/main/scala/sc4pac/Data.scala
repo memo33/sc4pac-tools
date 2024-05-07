@@ -7,6 +7,7 @@ import upickle.default.{ReadWriter, readwriter, stringKeyRW, macroRW}
 import java.nio.file.{Path as NioPath}
 import zio.{ZIO, IO, Task, RIO, URIO}
 import java.util.regex.Pattern
+import scala.collection.mutable.Builder
 
 import sc4pac.Resolution.{Dep, DepModule, DepAsset}
 
@@ -195,26 +196,58 @@ object JsonData extends SharedData {
   }
 
   case class InstallRecipe(include: Seq[Pattern], exclude: Seq[Pattern]) {
-    def accepts(path: String): Boolean = {
-      include.exists(_.matcher(path).find()) && !exclude.exists(_.matcher(path).find())
+    def makeAcceptancePredicate(): (Builder[Pattern, Set[Pattern]], os.SubPath => Boolean) = {
+      val usedPatternsBuilder = Set.newBuilder[Pattern] += InstallRecipe.defaultExcludePattern  // default exclude pattern is not required to match anything
+
+      val accepts: os.SubPath => Boolean = { path =>
+        val pathString = path.segments.mkString("/", "/", "")  // paths are checked with leading / and with / as separator
+        include.find(_.matcher(pathString).find()) match {
+          case None => false
+          case Some(matchedPattern) =>
+            usedPatternsBuilder += matchedPattern
+            exclude.find(_.matcher(pathString).find()) match {
+              case None => true
+              case Some(matchedPattern) =>
+                usedPatternsBuilder += matchedPattern
+                false
+            }
+        }
+      }
+
+      (usedPatternsBuilder, accepts)
     }
-    def accepts(path: os.SubPath): Boolean = accepts(path.segments.mkString("/", "/", ""))  // paths are checked with leading / and with / as separator
+
+    def usedPatternWarnings(usedPatterns: Set[Pattern]): Seq[Warning] = {
+      val unused: Seq[Pattern] = (include.iterator ++ exclude).filter(p => !usedPatterns.contains(p)).toSeq
+      if (unused.isEmpty) {
+        Seq.empty
+      } else {
+        Seq(
+          "The package metadata seems to be out-of-date, so the package may not have been fully installed. " +
+          "Please report this to the maintainers of the package metadata. " +
+          "These inclusion/exclusion patterns did not match any files in the asset: " + unused.mkString(" "))
+      }
+    }
   }
   object InstallRecipe {
-    def fromAssetReference(data: AssetReference): InstallRecipe = {
-      val mkPattern = Pattern.compile(_, Pattern.CASE_INSENSITIVE)
+    private val mkPattern = Pattern.compile(_, Pattern.CASE_INSENSITIVE)
+    private val defaultIncludePattern = mkPattern(Constants.defaultInclude)
+    private val defaultExcludePattern = mkPattern(Constants.defaultExclude)
+
+    def fromAssetReference(data: AssetReference): (InstallRecipe, Seq[Warning]) = {
+      val warnings = Seq.newBuilder[Warning]
       def toRegex(s: String): Option[Pattern] = try {
         Some(mkPattern(s))
       } catch {
         case e: java.util.regex.PatternSyntaxException =>
-          System.err.println(s"include/exclude pattern contains invalid regex: $e")  // TODO logger
+          warnings += s"The package metadata contains a malformed regex: $e"
           None
       }
       val include = data.include.flatMap(toRegex)
       val exclude = data.exclude.flatMap(toRegex)
-      InstallRecipe(
-        include = if (include.isEmpty) Seq(mkPattern(Constants.defaultInclude)) else include,
-        exclude = if (exclude.isEmpty) Seq(mkPattern(Constants.defaultExclude)) else exclude)
+      (InstallRecipe(
+        include = if (include.isEmpty) Seq(defaultIncludePattern) else include,
+        exclude = if (exclude.isEmpty) Seq(defaultExcludePattern) else exclude), warnings.result())
     }
   }
 

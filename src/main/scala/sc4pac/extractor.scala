@@ -6,6 +6,7 @@ import org.apache.commons.compress.archivers.zip.{ZipFile, ZipArchiveEntry}
 import org.apache.commons.compress.archivers.sevenz.{SevenZFile, SevenZArchiveEntry}
 import org.apache.commons.compress.utils.IOUtils
 import java.nio.file.StandardOpenOption
+import java.util.regex.Pattern
 
 import sc4pac.JsonData as JD
 import sc4pac.error.ExtractionFailed
@@ -328,6 +329,8 @@ class Extractor(logger: Logger) {
     }
   }
 
+  /** Extracts files from the archive that match the inclusion/exclusion recipe, including one level of nested archives.
+    * Returns the patterns that have matched. */
   def extract(
     archive: java.io.File,
     fallbackFilename: Option[String],
@@ -336,9 +339,10 @@ class Extractor(logger: Logger) {
     jarExtractionOpt: Option[Extractor.JarExtraction],
     hints: Option[JD.ArchiveType],
     stagingRoot: os.Path,
-  ): Unit = try {
+  ): Set[Pattern] = try {
+    val (usedPatternsBuilder, predicate) = recipe.makeAcceptancePredicate()  // tracks used patterns to warn about unused patterns
     // first extract just the main files
-    extractByPredicate(archive, destination, recipe.accepts, overwrite = true, flatten = false, fallbackFilename, hints, stagingRoot = stagingRoot)
+    extractByPredicate(archive, destination, predicate, overwrite = true, flatten = false, fallbackFilename, hints, stagingRoot = stagingRoot)
     // additionally, extract jar files contained in the zip file to a temporary location
     for (Extractor.JarExtraction(jarsDir) <- jarExtractionOpt) {
       logger.debug(s"Searching for nested archives:")
@@ -346,9 +350,11 @@ class Extractor(logger: Logger) {
       // finally extract the jar files themselves (without recursively extracting jars contained inside)
       for (jarFile <- jarFiles if Extractor.acceptNestedArchive(jarFile)) {
         logger.debug(s"Extracting nested archive ${jarFile.last}")
-        extract(jarFile.toIO, fallbackFilename = None, destination, recipe, jarExtractionOpt = None, hints, stagingRoot = stagingRoot)
+        usedPatternsBuilder ++=
+          extract(jarFile.toIO, fallbackFilename = None, destination, recipe, jarExtractionOpt = None, hints, stagingRoot = stagingRoot)
       }
     }
+    usedPatternsBuilder.result()
   } catch {
     case e: ExtractionFailed => throw e
     case e: java.io.IOException => logger.debugPrintStackTrace(e); throw new ExtractionFailed(s"Failed to extract $archive.", e.getMessage)

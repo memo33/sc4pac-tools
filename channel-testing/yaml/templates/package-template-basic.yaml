@@ -46,7 +46,7 @@ assets:  # Optional list of assets from which to extract files (zero or more)
   - "/file3.*"
   - "^/full/path/to/file4\\.dat$"
   # Optional RegEx exclude patterns tested after includes.
-  # If absent or empty, then by default all file types other than .dat/.sc4model/.sc4lot/.sc4desc/.sc4 are excluded.
+  # If absent or empty, then by default all file types other than .dat/.sc4model/.sc4lot/.sc4desc/.sc4/.dll are excluded.
   exclude: []
 
 # Additional descriptive information, entirely optional.
