@@ -126,12 +126,15 @@ The metadata of the default channel is stored in the [metadata repository](https
 
 ## Build instructions <!-- {docsify-ignore} -->
 
-Compile the CLI with `sbt assembly`.
+Compile the CLI with `sbt assembly` using build tool SBT.
 Create a release bundle with `make dist` in a Unix shell.
 
-For editing the website locally, run `sbt ~web/fastLinkJS` as well as `make channel-testing-web host-web`
+For editing the channel page of the website locally, run `sbt ~web/fastLinkJS` as well as `make channel-testing-web host-web`
 and open `http://localhost:8090/channel/index-dev.html`.
 For publishing the website, refer to the Makefile of the [metadata repository](https://github.com/memo33/sc4pac).
+
+The documentation pages of the website are rendered directly from these [markdown files](https://github.com/memo33/sc4pac/tree/main/docs/)
+and do not require any build step.
 
 ## Roadmap <!-- {docsify-ignore} -->
 
