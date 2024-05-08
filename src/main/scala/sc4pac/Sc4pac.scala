@@ -102,6 +102,15 @@ class Sc4pac(val repositories: Seq[MetadataRepository], val cache: FileCache, va
     } yield pkgOpt
   }
 
+  /** Currenty this does not apply full markdown formatting, but just `pkg=…`
+    * highlighting.
+    */
+  def applyMarkdown(text: String, logger: CliLogger): String = {
+    BareModule.pkgMarkdownRegex.replaceAllIn(text, matcher =>
+      BareModule(Organization(matcher.group(1)), ModuleName(matcher.group(2))).formattedDisplayString(logger.gray, logger.bold)
+    )
+  }
+
   def info(module: BareModule): RIO[CliLogger, Option[Seq[(String, String)]]] = {
     for {
       pkgOpt  <- infoJson(module)
@@ -112,13 +121,13 @@ class Sc4pac(val repositories: Seq[MetadataRepository], val cache: FileCache, va
         b += "Name" -> s"${pkg.group}:${pkg.name}"
         b += "Version" -> pkg.version
         b += "Subfolder" -> pkg.subfolder.toString
-        b += "Summary" -> pkg.info.summary
+        b += "Summary" -> applyMarkdown(pkg.info.summary, logger)
         if (pkg.info.description.nonEmpty)
-          b += "Description" -> pkg.info.description
+          b += "Description" -> applyMarkdown(pkg.info.description, logger)
         if (pkg.info.warning.nonEmpty)
-          b += "Warning" -> pkg.info.warning
+          b += "Warning" -> applyMarkdown(pkg.info.warning, logger)
         if (pkg.info.conflicts.nonEmpty)
-          b += "Conflicts" -> pkg.info.conflicts
+          b += "Conflicts" -> applyMarkdown(pkg.info.conflicts, logger)
         if (pkg.info.author.nonEmpty)
           b += "Author" -> pkg.info.author
         if (pkg.info.website.nonEmpty)

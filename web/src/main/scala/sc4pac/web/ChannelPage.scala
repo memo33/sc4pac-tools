@@ -84,17 +84,34 @@ object ChannelPage {
     )
     else H.code(module.orgName)
 
+  /** Highlights syntax `pkg=group:name` in metadata description text. */
+  def applyMarkdownPkg(line: String): H.Frag = {
+    val builder = Seq.newBuilder[H.Frag]
+    var idx = 0
+    for (m <- BareModule.pkgMarkdownRegex.findAllMatchIn(line)) {
+      if (idx < m.start) {
+        builder += line.substring(idx, m.start)
+      }
+      builder += pkgNameFrag(BareModule(Organization(m.group(1)), ModuleName(m.group(2))), link = true)
+      idx = m.end
+    }
+    if (idx < line.length) {
+      builder += line.substring(idx, line.length)
+    }
+    builder.result()
+  }
+
   def pkgInfoFrag(pkg: JsonData.Package) = {
     val module = pkg.toBareDep
     val b = Seq.newBuilder[H.Frag]
     def add(label: String, child: H.Frag): Unit =
       b += H.tr(H.th(label), H.td(child))
-    def mkPar(text: String) = text.trim.linesIterator.map(H.p(_)).toSeq
+    def mkPar(text: String) = text.trim.linesIterator.map(line => H.p(applyMarkdownPkg(line))).toSeq
 
     // add("Name", pkg.name)
     // add("Group", pkg.group)
     add("Version", pkg.version)
-    add("Summary", if (pkg.info.summary.nonEmpty) pkg.info.summary else "-")
+    add("Summary", if (pkg.info.summary.nonEmpty) applyMarkdownPkg(pkg.info.summary) else "-")
     if (pkg.info.description.nonEmpty)
       add("Description", mkPar(pkg.info.description))
     if (pkg.info.warning.nonEmpty)
@@ -173,7 +190,7 @@ object ChannelPage {
       H.table(H.id := "channelcontents")(H.tbody(items.flatMap { item =>
         if (displayCategory2.isEmpty || item.category == displayCategory2) {  // either show all or filter by category
           item.toBareDep match
-            case mod: BareModule => Some(H.tr(H.td(pkgNameFrag(mod, link = true)), H.td(item.summary)))
+            case mod: BareModule => Some(H.tr(H.td(pkgNameFrag(mod, link = true)), H.td(applyMarkdownPkg(item.summary))))
             case _: BareAsset => None
         } else {
           None

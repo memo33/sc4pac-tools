@@ -8,7 +8,7 @@
     "summary": "One-line summary",
     "warning": "Special instructions to display before installation, such as bulldozing requirements.\n",
     "conflicts": "Notes about incompatibilities",
-    "description": "Longer text with some details.\nYet more text…\n",
+    "description": "Longer text with some details.\nYet more text…\nUse `pkg=group:name` to reference packages in description text.\n",
     "images": [
       "img1.png",
       "img2.png"

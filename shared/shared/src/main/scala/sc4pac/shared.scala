@@ -10,6 +10,9 @@ final case class BareModule(group: Organization, name: ModuleName) extends BareD
   def orgName = s"${group.value}:${name.value}"
   def formattedDisplayString(gray: String => String, bold: String => String): String = gray(s"${group.value}:") + bold(name.value)
 }
+object BareModule {
+  val pkgMarkdownRegex = """`pkg=([^`:\s]+):([^`:\s]+)`""".r
+}
 final case class BareAsset(assetId: ModuleName) extends BareDep {
   def orgName = s"${JsonRepoUtil.sc4pacAssetOrg.value}:${assetId.value}"
 }
