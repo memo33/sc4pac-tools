@@ -166,7 +166,7 @@ object JsonData extends SharedData {
           version = dep.version,
           url = dep.url,
           lastModified = dep.lastModified.getOrElse(null),
-          archiveType = None  // not needed in lock file, as only version info is needed to determine if previously installed files are outdated
+          archiveType = dep.archiveType
         ))
       )
     }
