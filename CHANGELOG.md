@@ -8,6 +8,8 @@
 
 ### Fixed
 - a bug causing assets containing Clickteam installers to be reinstalled whenever running `sc4pac update`.
+- an error arising when building a channel containing empty YAML documents.
+  The error handling for syntactically invalid YAML files is more graceful now, as well.
 
 
 ## [0.4.2] - 2024-04-18

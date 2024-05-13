@@ -66,18 +66,19 @@ object ChannelUtil {
 
   def readAndParsePkgData(path: os.Path, root: Option[os.Path]): IO[ErrStr, IndexedSeq[JD.PackageAsset]] = {
     val metadataSource = root.map(path.subRelativeTo)
-    val docs: IndexedSeq[Either[ParsingFailure | org.yaml.snakeyaml.scanner.ScannerException, Json]] =
+    val docs: IndexedSeq[Either[ParsingFailure | org.yaml.snakeyaml.scanner.ScannerException | org.yaml.snakeyaml.parser.ParserException, Json]] =
       scala.util.Using.resource(new java.io.FileReader(path.toIO)){ reader =>
         try {
           io.circe.yaml.parser.parseDocuments(reader).toIndexedSeq
             .filter(either => !either.exists(_.isNull))  // this allows empty documents
-        } catch {
-          case e: org.yaml.snakeyaml.scanner.ScannerException => IndexedSeq(Left(e))  // apparently io.circe does not catch these
+        } catch {  // apparently io.circe does not catch these
+          case e: (org.yaml.snakeyaml.scanner.ScannerException | org.yaml.snakeyaml.parser.ParserException) =>
+            IndexedSeq(Left(e))
         }
       }
     ZIO.validatePar(docs) { doc =>
       ZIO.fromEither(doc).flatMap(parsePkgData(_, metadataSource))
-    }.mapError(errs => s"format error in $path: ${errs.mkString(", ")}")
+    }.mapError(errs => s"Format error in $path: ${errs.mkString(", ")}")
   }
 
   private def writePackageJsonBlocking(pkgData: JD.PackageAsset, tempJsonDir: os.Path): Unit = {
@@ -101,18 +102,9 @@ object ChannelUtil {
     * - files do not include the version number which avoids the need for renaming
     * - files can include multiple package definitions
     */
-  def convertYamlToJson(inputDirs: Seq[os.Path], outputDir: os.Path): Task[Unit] = ZIO.attemptBlockingIO {
-    os.makeDir.all(outputDir)
-    val tempJsonDir = os.temp.dir(outputDir, prefix = "json", deleteOnExit = true)
-    try {
-      // packages without requiredBy (unless explicitly added in yaml)
-      val packages: Seq[JD.PackageAsset] = inputDirs.flatMap { inputDir =>
-        os.walk.stream(inputDir)
-          .filter(_.last.endsWith(".yaml"))
-          .flatMap(path => unsafeRun(readAndParsePkgData(path, root = Some(inputDir))): IndexedSeq[JD.PackageAsset])  // TODO unsafe
-          .toSeq
-      }
+  def convertYamlToJson(inputDirs: Seq[os.Path], outputDir: os.Path): Task[Unit] = {
 
+    def processPackages(packages: Seq[JD.PackageAsset], tempJsonDir: os.Path): Task[Unit] = ZIO.attemptBlockingIO {
       // compute dependents (reverse dependencies)
       val dependents: collection.Map[BareDep, Set[BareModule]] = {
         val m = collection.mutable.Map.empty[BareDep, Set[BareModule]]
@@ -183,8 +175,28 @@ object ChannelUtil {
       os.move.over(tempJsonDir / "metadata", outputDir / "metadata", createFolders = true)
       os.move.over(tempJsonDir / JsonRepoUtil.channelContentsFilename, outputDir / JsonRepoUtil.channelContentsFilename, createFolders = true)
       System.err.println(s"Successfully wrote channel contents of ${packagesMap.size} packages and assets.")
-    } finally {
-      os.remove.all(tempJsonDir)  // deleteOnExit does not seem to work reliably, so explicitly delete temp folder
+    }
+
+    val packagesTask: Task[Seq[JD.PackageAsset]] =
+      ZIO.foreach(inputDirs) { inputDir =>
+        ZIO.foreach(os.walk.stream(inputDir).filter(_.last.endsWith(".yaml")).toSeq) { path =>
+          readAndParsePkgData(path, root = Some(inputDir))
+        }.map(_.flatten)
+      }.map(_.flatten)
+      .mapError(error.YamlFormatIssue(_))
+
+    // result
+    ZIO.blocking {
+      ZIO.acquireReleaseWith(  /*acquire*/
+        ZIO.attemptBlockingIO {
+          os.makeDir.all(outputDir)
+          os.temp.dir(outputDir, prefix = "json", deleteOnExit = true)  // tempJsonDir
+        }
+      )(  /*release*/  // deleteOnExit does not seem to work reliably, so explicitly delete temp folder after use
+        tempJsonDir => ZIO.succeed(os.remove.all(tempJsonDir))
+      ){ tempJsonDir =>  /*use*/
+        packagesTask.flatMap(processPackages(_, tempJsonDir))
+      }
     }
   }
 
