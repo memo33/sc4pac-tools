@@ -66,8 +66,15 @@ object ChannelUtil {
 
   def readAndParsePkgData(path: os.Path, root: Option[os.Path]): IO[ErrStr, IndexedSeq[JD.PackageAsset]] = {
     val metadataSource = root.map(path.subRelativeTo)
-    val docs: IndexedSeq[Either[ParsingFailure, Json]] =
-      scala.util.Using.resource(new java.io.FileReader(path.toIO))(io.circe.yaml.parser.parseDocuments(_).toIndexedSeq)
+    val docs: IndexedSeq[Either[ParsingFailure | org.yaml.snakeyaml.scanner.ScannerException, Json]] =
+      scala.util.Using.resource(new java.io.FileReader(path.toIO)){ reader =>
+        try {
+          io.circe.yaml.parser.parseDocuments(reader).toIndexedSeq
+            .filter(either => !either.exists(_.isNull))  // this allows empty documents
+        } catch {
+          case e: org.yaml.snakeyaml.scanner.ScannerException => IndexedSeq(Left(e))  // apparently io.circe does not catch these
+        }
+      }
     ZIO.validatePar(docs) { doc =>
       ZIO.fromEither(doc).flatMap(parsePkgData(_, metadataSource))
     }.mapError(errs => s"format error in $path: ${errs.mkString(", ")}")
