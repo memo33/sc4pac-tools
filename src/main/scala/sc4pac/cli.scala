@@ -339,13 +339,17 @@ object Commands {
           MetadataRepository.parseChannelUrl(text) match {
             case Left(err) => error(caseapp.core.Error.Other(s"Malformed URL: $err"))
             case Right(uri) =>
-              val task = for {
-                data  <- JD.Plugins.readOrInit
-                data2 =  data.copy(config = data.config.copy(channels = (data.config.channels :+ uri).distinct))
-                path  <- JD.Plugins.pathURIO
-                _     <- JsonIo.write(path, data2, None)(ZIO.succeed(()))
-              } yield ()
-              runMainExit(task.provideEnvironment(cliEnvironment), exit)
+              if (uri.getScheme == "file" && !java.io.File(uri).exists()) {
+                error(caseapp.core.Error.Other(s"Local channel file does not exist: $uri"))
+              } else {
+                val task = for {
+                  data  <- JD.Plugins.readOrInit
+                  data2 =  data.copy(config = data.config.copy(channels = (data.config.channels :+ uri).distinct))
+                  path  <- JD.Plugins.pathURIO
+                  _     <- JsonIo.write(path, data2, None)(ZIO.succeed(()))
+                } yield ()
+                runMainExit(task.provideEnvironment(cliEnvironment), exit)
+              }
           }
         case Nil => fullHelpAsked(commandName)
         case _ => error(caseapp.core.Error.Other("A single argument is needed: channel-URL"))
