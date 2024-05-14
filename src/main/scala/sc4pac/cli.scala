@@ -327,7 +327,14 @@ object Commands {
     |
     |Examples:
     |  sc4pac channel add "${Constants.defaultChannelUrls.head}"
-    |  sc4pac channel add "file:///c:/absolute/path/to/local/channel/"
+    |  sc4pac channel add "file:///C:/absolute/path/to/local/channel/"
+    |
+    |The URL in the examples above points to a directory structure consisting of JSON files created by the ${emph("sc4pac channel build")} command.
+    |
+    |For convenience, the channel URL may also point to a single YAML file instead, which skips the ${emph("sc4pac channel build")} step. This is mainly intended for testing purposes.
+    |
+    |  sc4pac channel add "file:///C:/Users/Dumbledore/Desktop/hogwarts-castle.yaml"
+    |  sc4pac channel add "https://raw.githubusercontent.com/memo33/sc4pac/main/docs/hogwarts-castle.yaml"
     """.stripMargin.trim)
   final case class ChannelAddOptions() extends Sc4pacCommandOptions
 
@@ -347,6 +354,8 @@ object Commands {
                   data2 =  data.copy(config = data.config.copy(channels = (data.config.channels :+ uri).distinct))
                   path  <- JD.Plugins.pathURIO
                   _     <- JsonIo.write(path, data2, None)(ZIO.succeed(()))
+                  count =  data2.config.channels.length - data.config.channels.length
+                  _     <- ZIO.succeed{ println(if (count == 0) "Channel already exists." else s"Added 1 channel.") }
                 } yield ()
                 runMainExit(task.provideEnvironment(cliEnvironment), exit)
               }
@@ -390,7 +399,12 @@ object Commands {
                                 ZIO.succeed((url: java.net.URI) => args.all.exists(pattern => url.toString.contains(pattern)))
                               }
               (drop, keep) =  data.config.channels.partition(isSelected)
-              _            <- ZIO.succeed { if (drop.nonEmpty) println(("The following channels have been removed:" +: drop).mkString(f"%n")) }
+              _            <- ZIO.succeed {
+                                if (drop.nonEmpty)
+                                  println(("The following channels have been removed:" +: drop).mkString(f"%n"))
+                                else
+                                  println("No matching channel found, so none of the channels have been removed.")
+                              }
               data2        =  data.copy(config = data.config.copy(channels = keep))
               path         <- JD.Plugins.pathURIO
               _            <- JsonIo.write(path, data2, None)(ZIO.succeed(()))

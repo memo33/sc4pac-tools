@@ -6,11 +6,14 @@
 - warning about outdated metadata, in case an inclusion/exclusion pattern does not match any files in an Asset anymore.
 - support for rendering package identifiers in metadata description text, using syntax `` `pkg=group:name` ``.
 
+### Changed
+- The `channel add/remove` commands now show a message about the result of the command.
+
 ### Fixed
 - a bug causing assets containing Clickteam installers to be reinstalled whenever running `sc4pac update`.
 - an error arising when building a channel containing empty YAML documents.
   The error handling for syntactically invalid YAML files is more graceful now, as well.
-- the dates in the `lastModified` field are now more lenient in terms of surrounding whitespace.
+- The dates in the `lastModified` field are now more lenient in terms of surrounding whitespace.
 
 
 ## [0.4.2] - 2024-04-18
