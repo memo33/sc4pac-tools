@@ -36,10 +36,17 @@ object ChannelUtil {
     variants: Seq[YamlVariantData] = Seq.empty,
     variantDescriptions: Map[String, Map[String, String]] = Map.empty  // variantKey -> variantValue -> description
   ) derives ReadWriter {
-    def toPackageData(metadataSource: Option[os.SubPath]) = JD.Package(
-      group = group, name = name, version = version, subfolder = subfolder, info = info,
-      variants = (if (variants.isEmpty) Seq(YamlVariantData(Map.empty)) else variants).map(_.toVariantData(dependencies, assets)),
-      variantDescriptions = variantDescriptions, metadataSource = metadataSource)
+    def toPackageData(metadataSource: Option[os.SubPath]): IO[ErrStr, JD.Package] = {
+      val variants2 = (if (variants.isEmpty) Seq(YamlVariantData(Map.empty)) else variants).map(_.toVariantData(dependencies, assets))
+      // validate that variants form a DecisionTree
+      Sc4pac.DecisionTree.fromVariants(variants2.map(_.variant)) match {
+        case Left(errStr) => ZIO.fail(errStr)
+        case Right(_) => ZIO.succeed(JD.Package(
+          group = group, name = name, version = version, subfolder = subfolder, info = info,
+          variants = variants2,
+          variantDescriptions = variantDescriptions, metadataSource = metadataSource))
+      }
+    }
   }
 
   case class YamlAsset(
@@ -58,7 +65,7 @@ object ChannelUtil {
 
   private def parsePkgData(j: Json, metadataSource: Option[os.SubPath]): IO[ErrStr, JD.PackageAsset] = {
     ZIO.validateFirst(Seq(  // we use ZIO validate for error accumulation
-      parseCirceJson[YamlPackageData](_: Json).map(_.toPackageData(metadataSource)),
+      parseCirceJson[YamlPackageData](_: Json).flatMap(_.toPackageData(metadataSource)),
       parseCirceJson[YamlAsset](_: Json).map(_.toAsset)
     ))(parse => parse(j))
       .mapError(errs => errs.mkString("(", " | ", ")"))

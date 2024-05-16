@@ -14,6 +14,7 @@
 - an error arising when building a channel containing empty YAML documents.
   The error handling for syntactically invalid YAML files is more graceful now, as well.
 - The dates in the `lastModified` field are now more lenient in terms of surrounding whitespace.
+- an issue in which incomplete variant definitions were not detected
 
 
 ## [0.4.2] - 2024-04-18
