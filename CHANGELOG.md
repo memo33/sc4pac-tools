@@ -15,6 +15,7 @@
   The error handling for syntactically invalid YAML files is more graceful now, as well.
 - The dates in the `lastModified` field are now more lenient in terms of surrounding whitespace.
 - an issue in which incomplete variant definitions were not detected
+- a rare bug in which the variant selection was not stored if all packages were up-to-date
 
 
 ## [0.4.2] - 2024-04-18

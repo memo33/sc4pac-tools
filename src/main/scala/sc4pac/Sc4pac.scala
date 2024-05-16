@@ -424,8 +424,8 @@ trait UpdateService { this: Sc4pac =>
       plan            =  UpdatePlan.fromResolution(resolution, installed = pluginsLockData.dependenciesWithAssets)
       continue        <- ZIO.serviceWithZIO[Prompter](_.confirmUpdatePlan(plan))
                            .filterOrFail(_ == true)(error.Sc4pacAbort())
-      flagOpt         <- ZIO.unless(plan.isUpToDate || !continue)(for {
-        _               <- ZIO.unless(globalVariant == globalVariant0)(storeGlobalVariant(globalVariant))  // only store something after confirmation
+      _               <- ZIO.unless(!continue || globalVariant == globalVariant0)(storeGlobalVariant(globalVariant))  // only store something after confirmation
+      flagOpt         <- ZIO.unless(!continue || plan.isUpToDate)(for {
         assetsToInstall <- resolution.fetchArtifactsOf(resolution.transitiveDependencies.filter(plan.toInstall).reverse)  // we start by fetching artifacts in reverse as those have fewest dependencies of their own
         // TODO if some artifacts fail to be fetched, fall back to installing remaining packages (maybe not(?), as this leads to missing dependencies,
         // but there needs to be a manual workaround in case of permanently missing artifacts)
