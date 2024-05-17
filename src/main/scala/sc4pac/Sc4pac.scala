@@ -17,9 +17,9 @@ import sc4pac.Resolution.{Dep, DepModule, DepAsset}
 
 // TODO Use `Runtime#reportFatal` or `Runtime.setReportFatal` to log fatal errors like stack overflow
 
-class Sc4pac(val repositories: Seq[MetadataRepository], val cache: FileCache, val tempRoot: os.Path, val logger: Logger, val profileRoot: os.Path) extends UpdateService {  // TODO defaults
+class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) extends UpdateService {  // TODO defaults
 
-  given context: ResolutionContext = new ResolutionContext(repositories, cache, logger, profileRoot)
+  val logger = context.logger
 
   import CoursierZio.*  // implicit coursier-zio interop
 
@@ -27,13 +27,13 @@ class Sc4pac(val repositories: Seq[MetadataRepository], val cache: FileCache, va
 
   private def modifyExplicitModules[R](modify: Seq[BareModule] => ZIO[R, Throwable, Seq[BareModule]]): ZIO[R, Throwable, Seq[BareModule]] = {
     for {
-      pluginsData  <- JsonIo.read[JD.Plugins](JD.Plugins.path(profileRoot))  // at this point, file should already exist
+      pluginsData  <- JsonIo.read[JD.Plugins](JD.Plugins.path(context.profileRoot))  // at this point, file should already exist
       modsOrig     =  pluginsData.explicit
       modsNext     <- modify(modsOrig)
       _            <- ZIO.unless(modsNext == modsOrig) {
                         val pluginsDataNext = pluginsData.copy(explicit = modsNext)
                         // we do not check whether file was modified as this entire operation is synchronous and fast, in most cases
-                        JsonIo.write(JD.Plugins.path(profileRoot), pluginsDataNext, None)(ZIO.succeed(()))
+                        JsonIo.write(JD.Plugins.path(context.profileRoot), pluginsDataNext, None)(ZIO.succeed(()))
                       }
     } yield modsNext
   }
@@ -61,18 +61,18 @@ class Sc4pac(val repositories: Seq[MetadataRepository], val cache: FileCache, va
         ZIO.succeed(modsOrig)
       } else {
         for {
-          logger   <- ZIO.service[CliLogger]
+          cliLogger <- ZIO.service[CliLogger]
           selected <- Prompt.numberedMultiSelect(
                         "Select packages to remove:",
                         modsOrig.sortBy(m => (m.group.value, m.name.value)),
-                        _.formattedDisplayString(logger.gray, identity)
+                        _.formattedDisplayString(cliLogger.gray, identity)
                       ).map(_.toSet)
         } yield modsOrig.filterNot(selected)
       }
     }
   }
 
-  val iterateAllChannelContents: Task[Iterator[JD.ChannelItem]] = ZIO.attempt { repositories.iterator.flatMap(_.iterateChannelContents) }
+  val iterateAllChannelContents: Task[Iterator[JD.ChannelItem]] = ZIO.attempt { context.repositories.iterator.flatMap(_.iterateChannelContents) }
 
   /** Fuzzy-search across all repositories.
     * The selection of results is ordered in descending order and includes the
@@ -96,45 +96,45 @@ class Sc4pac(val repositories: Seq[MetadataRepository], val cache: FileCache, va
 
   def infoJson(module: BareModule): Task[Option[JD.Package]] = {
     val mod = Module(module.group, module.name, attributes = Map.empty)
-    for {
+    (for {
       version <- Find.concreteVersion(mod, Constants.versionLatestRelease)
       pkgOpt  <- Find.packageData[JD.Package](mod, version)
-    } yield pkgOpt
+    } yield pkgOpt).provideSomeLayer(zio.ZLayer.succeed(context))
   }
 
   /** Currenty this does not apply full markdown formatting, but just `pkg=…`
     * highlighting.
     */
-  def applyMarkdown(text: String, logger: CliLogger): String = {
+  def applyMarkdown(text: String, cliLogger: CliLogger): String = {
     BareModule.pkgMarkdownRegex.replaceAllIn(text, matcher =>
-      BareModule(Organization(matcher.group(1)), ModuleName(matcher.group(2))).formattedDisplayString(logger.gray, logger.bold)
+      BareModule(Organization(matcher.group(1)), ModuleName(matcher.group(2))).formattedDisplayString(cliLogger.gray, cliLogger.bold)
     )
   }
 
   def info(module: BareModule): RIO[CliLogger, Option[Seq[(String, String)]]] = {
     for {
-      pkgOpt  <- infoJson(module)
-      logger  <- ZIO.service[CliLogger]
+      pkgOpt    <- infoJson(module)
+      cliLogger <- ZIO.service[CliLogger]
     } yield {
       pkgOpt.map { pkg =>
         val b = Seq.newBuilder[(String, String)]
         b += "Name" -> s"${pkg.group}:${pkg.name}"
         b += "Version" -> pkg.version
         b += "Subfolder" -> pkg.subfolder.toString
-        b += "Summary" -> applyMarkdown(pkg.info.summary, logger)
+        b += "Summary" -> applyMarkdown(pkg.info.summary, cliLogger)
         if (pkg.info.description.nonEmpty)
-          b += "Description" -> applyMarkdown(pkg.info.description, logger)
+          b += "Description" -> applyMarkdown(pkg.info.description, cliLogger)
         if (pkg.info.warning.nonEmpty)
-          b += "Warning" -> applyMarkdown(pkg.info.warning, logger)
+          b += "Warning" -> applyMarkdown(pkg.info.warning, cliLogger)
         if (pkg.info.conflicts.nonEmpty)
-          b += "Conflicts" -> applyMarkdown(pkg.info.conflicts, logger)
+          b += "Conflicts" -> applyMarkdown(pkg.info.conflicts, cliLogger)
         if (pkg.info.author.nonEmpty)
           b += "Author" -> pkg.info.author
         if (pkg.info.website.nonEmpty)
           b += "Website" -> pkg.info.website
 
         def mkDeps(vd: JD.VariantData) = {
-          val deps = vd.bareDependencies.collect{ case m: BareModule => m.formattedDisplayString(logger.gray, identity) }
+          val deps = vd.bareDependencies.collect{ case m: BareModule => m.formattedDisplayString(cliLogger.gray, identity) }
           if (deps.isEmpty) "None" else deps.mkString(" ")
         }
 
@@ -179,7 +179,7 @@ trait UpdateService { this: Sc4pac =>
     artifactsById: Map[BareAsset, (Artifact, java.io.File, DepAsset)],
     stagingRoot: os.Path,
     progress: Sc4pac.Progress
-  ): Task[(Seq[os.SubPath], Seq[Warning])] = {
+  ): RIO[ResolutionContext, (Seq[os.SubPath], Seq[Warning])] = {
     def extract(assetData: JD.AssetReference, pkgFolder: os.SubPath): Task[Seq[Warning]] = ZIO.attemptBlocking {
       // Given an AssetReference, we look up the corresponding artifact file
       // by ID. This relies on the 1-to-1-correspondence between sc4pacAssets
@@ -192,7 +192,7 @@ trait UpdateService { this: Sc4pac =>
         case Some(art, archive, depAsset) =>
           val (recipe, regexWarnings) = JD.InstallRecipe.fromAssetReference(assetData)
           val extractor = new Extractor(logger)
-          val fallbackFilename = cache.getFallbackFilename(archive)
+          val fallbackFilename = context.cache.getFallbackFilename(archive)
           val jarsRoot = stagingRoot / "jars"
           val usedPatterns =
             extractor.extract(
@@ -200,7 +200,7 @@ trait UpdateService { this: Sc4pac =>
               fallbackFilename,
               tempPluginsRoot / pkgFolder,
               recipe,
-              Some(Extractor.JarExtraction.fromUrl(art.url, cache, jarsRoot = jarsRoot, profileRoot = profileRoot)),
+              Some(Extractor.JarExtraction.fromUrl(art.url, context.cache, jarsRoot = jarsRoot, profileRoot = context.profileRoot)),
               hints = depAsset.archiveType,
               stagingRoot)
           // TODO catch IOExceptions
@@ -288,7 +288,7 @@ trait UpdateService { this: Sc4pac =>
       * If everything is properly extracted, the files are later moved to the
       * actual plugins folder in the publication step.
       */
-    def stageAll(deps: Seq[DepModule], artifactsById: Map[BareAsset, (Artifact, java.io.File, DepAsset)]): ZIO[Scope & Prompter, Throwable, StageResult] = {
+    def stageAll(deps: Seq[DepModule], artifactsById: Map[BareAsset, (Artifact, java.io.File, DepAsset)]): RIO[Scope & Prompter & ResolutionContext, StageResult] = {
 
       val makeTempStagingDir: ZIO[Scope, java.io.IOException, os.Path] =
         ZIO.acquireRelease(
@@ -352,7 +352,7 @@ trait UpdateService { this: Sc4pac =>
       // - remove old packages
       // - move new packages into plugins folder
       // - write json database and release lock
-      val task = JsonIo.write(JD.PluginsLock.path(profileRoot), pluginsLockData.updateTo(plan, staged.files.toMap), Some(pluginsLockData)) {
+      val task = JsonIo.write(JD.PluginsLock.path(context.profileRoot), pluginsLockData.updateTo(plan, staged.files.toMap), Some(pluginsLockData)) {
         for {
           _ <- remove(plan.toRemove, pluginsLockData.installed, pluginsRoot)
                  // .catchAll(???)  // TODO catch exceptions
@@ -398,7 +398,7 @@ trait UpdateService { this: Sc4pac =>
       }
     }
 
-    def doPromptingForVariant[A](globalVariant: Variant)(task: Variant => Task[A]): RIO[Prompter, (A, Variant)] = {
+    def doPromptingForVariant[R, A](globalVariant: Variant)(task: Variant => RIO[R, A]): RIO[Prompter & R, (A, Variant)] = {
       ZIO.iterate(Left(globalVariant): Either[Variant, (A, Variant)])(_.isLeft) {
         case Right(_) => throw new AssertionError
         case Left(globalVariant) =>
@@ -413,12 +413,12 @@ trait UpdateService { this: Sc4pac =>
     }
 
     def storeGlobalVariant(globalVariant: Variant): Task[Unit] = for {
-      pluginsData <- JsonIo.read[JD.Plugins](JD.Plugins.path(profileRoot))  // json file should exist already
-      _           <- JsonIo.write(JD.Plugins.path(profileRoot), pluginsData.copy(config = pluginsData.config.copy(variant = globalVariant)), None)(ZIO.succeed(()))
+      pluginsData <- JsonIo.read[JD.Plugins](JD.Plugins.path(context.profileRoot))  // json file should exist already
+      _           <- JsonIo.write(JD.Plugins.path(context.profileRoot), pluginsData.copy(config = pluginsData.config.copy(variant = globalVariant)), None)(ZIO.succeed(()))
     } yield ()
 
     // TODO catch coursier.error.ResolutionError$CantDownloadModule (e.g. when json files have syntax issues)
-    for {
+    val updateTask = for {
       pluginsLockData <- JD.PluginsLock.readOrInit
       (resolution, globalVariant) <- doPromptingForVariant(globalVariant0)(Resolution.resolve(modules, _))
       plan            =  UpdatePlan.fromResolution(resolution, installed = pluginsLockData.dependenciesWithAssets)
@@ -438,6 +438,7 @@ trait UpdateService { this: Sc4pac =>
       } yield flag)
     } yield flagOpt.getOrElse(false)  // TODO decide what flag means
 
+    updateTask.provideSomeLayer(zio.ZLayer.succeed(context))
   }
 
 }
@@ -528,7 +529,8 @@ object Sc4pac {
       repos     <- initializeRepositories(config.channels, cache, Constants.channelContentsTtl)  // 30 minutes
       tempRoot  <- config.tempRootAbs
       profileRoot <- ZIO.service[ProfileRoot]
-    } yield Sc4pac(repos, cache, tempRoot, logger, profileRoot.path)
+      context   = new ResolutionContext(repos, cache, logger, profileRoot.path)
+    } yield Sc4pac(context, tempRoot)
   }
 
   def parseModules(modules: Seq[String]): Either[ErrStr, Seq[BareModule]] = {
