@@ -96,10 +96,10 @@ class Sc4pac(val repositories: Seq[MetadataRepository], val cache: FileCache, va
 
   def infoJson(module: BareModule): Task[Option[JD.Package]] = {
     val mod = Module(module.group, module.name, attributes = Map.empty)
-    for {
+    (for {
       version <- Find.concreteVersion(mod, Constants.versionLatestRelease)
       pkgOpt  <- Find.packageData[JD.Package](mod, version)
-    } yield pkgOpt
+    } yield pkgOpt).provideSomeLayer(zio.ZLayer.succeed(context))
   }
 
   /** Currenty this does not apply full markdown formatting, but just `pkg=…`
@@ -179,7 +179,7 @@ trait UpdateService { this: Sc4pac =>
     artifactsById: Map[BareAsset, (Artifact, java.io.File, DepAsset)],
     stagingRoot: os.Path,
     progress: Sc4pac.Progress
-  ): Task[(Seq[os.SubPath], Seq[Warning])] = {
+  ): RIO[ResolutionContext, (Seq[os.SubPath], Seq[Warning])] = {
     def extract(assetData: JD.AssetReference, pkgFolder: os.SubPath): Task[Seq[Warning]] = ZIO.attemptBlocking {
       // Given an AssetReference, we look up the corresponding artifact file
       // by ID. This relies on the 1-to-1-correspondence between sc4pacAssets
@@ -288,7 +288,7 @@ trait UpdateService { this: Sc4pac =>
       * If everything is properly extracted, the files are later moved to the
       * actual plugins folder in the publication step.
       */
-    def stageAll(deps: Seq[DepModule], artifactsById: Map[BareAsset, (Artifact, java.io.File, DepAsset)]): ZIO[Scope & Prompter, Throwable, StageResult] = {
+    def stageAll(deps: Seq[DepModule], artifactsById: Map[BareAsset, (Artifact, java.io.File, DepAsset)]): RIO[Scope & Prompter & ResolutionContext, StageResult] = {
 
       val makeTempStagingDir: ZIO[Scope, java.io.IOException, os.Path] =
         ZIO.acquireRelease(
@@ -398,7 +398,7 @@ trait UpdateService { this: Sc4pac =>
       }
     }
 
-    def doPromptingForVariant[A](globalVariant: Variant)(task: Variant => Task[A]): RIO[Prompter, (A, Variant)] = {
+    def doPromptingForVariant[R, A](globalVariant: Variant)(task: Variant => RIO[R, A]): RIO[Prompter & R, (A, Variant)] = {
       ZIO.iterate(Left(globalVariant): Either[Variant, (A, Variant)])(_.isLeft) {
         case Right(_) => throw new AssertionError
         case Left(globalVariant) =>
@@ -418,7 +418,7 @@ trait UpdateService { this: Sc4pac =>
     } yield ()
 
     // TODO catch coursier.error.ResolutionError$CantDownloadModule (e.g. when json files have syntax issues)
-    for {
+    val updateTask = for {
       pluginsLockData <- JD.PluginsLock.readOrInit
       (resolution, globalVariant) <- doPromptingForVariant(globalVariant0)(Resolution.resolve(modules, _))
       plan            =  UpdatePlan.fromResolution(resolution, installed = pluginsLockData.dependenciesWithAssets)
@@ -438,6 +438,7 @@ trait UpdateService { this: Sc4pac =>
       } yield flag)
     } yield flagOpt.getOrElse(false)  // TODO decide what flag means
 
+    updateTask.provideSomeLayer(zio.ZLayer.succeed(context))
   }
 
 }

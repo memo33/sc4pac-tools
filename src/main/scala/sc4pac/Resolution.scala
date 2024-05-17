@@ -3,7 +3,7 @@ package sc4pac
 
 import coursier.core as C
 import coursier.util.Artifact
-import zio.{ZIO, IO, Task}
+import zio.{ZIO, IO, Task, RIO}
 import scala.collection.immutable.TreeSeqMap
 
 import sc4pac.JsonData as JD
@@ -40,7 +40,7 @@ object Resolution {
       * Given an asset reference dependency, look up its url and lastModified
       * attributes.
       */
-    private[Resolution] def fromBareDependency(dependency: BareDep, globalVariant: Variant)(using ResolutionContext): Task[Dep] = dependency match {
+    private[Resolution] def fromBareDependency(dependency: BareDep, globalVariant: Variant): RIO[ResolutionContext, Dep] = dependency match {
       case BareAsset(assetId) =>
         // assets do not have variants
         val mod = C.Module(Constants.sc4pacAssetOrg, assetId, attributes = Map.empty)
@@ -119,10 +119,10 @@ object Resolution {
     * implicitly always take the latest version. That way, we do not need to
     * worry about reconciliation strategies or dependency cycles.
     */
-  def resolve(initialDependencies: Seq[BareDep], globalVariant: Variant)(using context: ResolutionContext): Task[Resolution] = {
+  def resolve(initialDependencies: Seq[BareDep], globalVariant: Variant): RIO[ResolutionContext, Resolution] = {
 
     // TODO avoid looking up variants and packageData multiple times
-    def lookupDependencies(dep: BareDep): Task[Seq[BareDep]] = dep match {
+    def lookupDependencies(dep: BareDep): RIO[ResolutionContext, Seq[BareDep]] = dep match {
       case dep: BareAsset => ZIO.succeed(Seq.empty)
       case mod: BareModule => {
         Find.matchingVariant(mod, Constants.versionLatestRelease, globalVariant)
@@ -133,7 +133,7 @@ object Resolution {
     // Here we iteratively compute transitive dependencies.
     // The keys contain all reachable dependencies, the values may be empty sequences.
     // The TreeSeqMap preserves insertion order.
-    val computeReachableDependencies: Task[TreeSeqMap[BareDep, Seq[BareDep]]] =
+    val computeReachableDependencies: RIO[ResolutionContext, TreeSeqMap[BareDep, Seq[BareDep]]] =
       ZIO.iterate((TreeSeqMap.empty[BareDep, Seq[BareDep]], initialDependencies))(_._2.nonEmpty) { (seen, remaining) =>
         for {
           seen2 <- ZIO.foreachPar(remaining.filterNot(seen.contains))(d => lookupDependencies(d).map(ds => (d, ds)))
