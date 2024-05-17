@@ -57,23 +57,11 @@ object Constants {
   lazy val noColor: Boolean = (System.getenv("NO_COLOR") match { case null | "" => false; case _ => true }) ||
                               (System.getenv("SC4PAC_NO_COLOR") match { case null | "" => false; case _ => true })
 
-  /** Basic support for authentication to Simtropolis. To use this:
+  /** Basic support for authentication to Simtropolis is provided via cookies. Format:
     *
-    * - Use your web browser to sign in to Simtropolis.
-    * - Inspect the cookies by opening the browser Dev Tools:
-    *   - in Firefox: Storage > Cookies
-    *   - in Chrome: Application > Storage > Cookies
-    * - Set the environment variable `SC4PAC_SIMTROPOLIS_COOKIE` to the value of
-    *   the session cookie during downloads, e.g.:
+    *     SC4PAC_SIMTROPOLIS_COOKIE=ips4_device_key=<value>; ips4_member_id=<value>; ips4_login_key=<value>
     *
-    *     SC4PAC_SIMTROPOLIS_COOKIE="ips4_IPSSessionFront=<value>" ./sc4pac update
-    *
-    * - The above works for the duration of the browser session. For longer-lived
-    *   access, sign in to Simtropolis with the "remember me" option and use the
-    *   following cookies (taking note of their expiration dates):
-    *
-    *     SC4PAC_SIMTROPOLIS_COOKIE="ips4_device_key=<value>; ips4_member_id=<value>; ips4_login_key=<value>" ./sc4pac update
-    *
+    * For details, see the instructions in `sc4pac.bat`.
     */
   lazy val simtropolisCookie: Option[String] = Option(System.getenv("SC4PAC_SIMTROPOLIS_COOKIE")).filter(_.nonEmpty)
 

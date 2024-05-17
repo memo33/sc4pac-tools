@@ -4,8 +4,14 @@
 #
 #     ./sc4pac
 
-
 SCRIPTDIR="${0%/*}"
+
+# Basic support for authentication to Simtropolis is provided via cookies.
+# Either set this as environment variable or uncomment the line below and fill in the values.
+# For details, see the instructions in `sc4pac.bat`.
+#
+# export SC4PAC_SIMTROPOLIS_COOKIE="ips4_device_key=<value>; ips4_member_id=<value>; ips4_login_key=<value>"
+
 
 # We set defaults for environment variables if they are not defined.
 # The environment variable `SC4PAC_MONO_CMD` is only needed on Linux and macOS.

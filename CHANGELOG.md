@@ -8,6 +8,8 @@
 
 ### Changed
 - The `channel add/remove` commands now show a message about the result of the command.
+- The instructions for setting the Simtropolis authentication cookie have been moved to the file
+  [sc4pac.bat](https://github.com/memo33/sc4pac-tools/blob/main/src/scripts/sc4pac.bat#L13-L32).
 
 ### Fixed
 - a bug causing assets containing Clickteam installers to be reinstalled whenever running `sc4pac update`.
