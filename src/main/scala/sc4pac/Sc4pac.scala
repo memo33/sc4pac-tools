@@ -17,9 +17,9 @@ import sc4pac.Resolution.{Dep, DepModule, DepAsset}
 
 // TODO Use `Runtime#reportFatal` or `Runtime.setReportFatal` to log fatal errors like stack overflow
 
-class Sc4pac(val repositories: Seq[MetadataRepository], val cache: FileCache, val tempRoot: os.Path, val logger: Logger, val profileRoot: os.Path) extends UpdateService {  // TODO defaults
+class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) extends UpdateService {  // TODO defaults
 
-  given context: ResolutionContext = new ResolutionContext(repositories, cache, logger, profileRoot)
+  val logger = context.logger
 
   import CoursierZio.*  // implicit coursier-zio interop
 
@@ -27,13 +27,13 @@ class Sc4pac(val repositories: Seq[MetadataRepository], val cache: FileCache, va
 
   private def modifyExplicitModules[R](modify: Seq[BareModule] => ZIO[R, Throwable, Seq[BareModule]]): ZIO[R, Throwable, Seq[BareModule]] = {
     for {
-      pluginsData  <- JsonIo.read[JD.Plugins](JD.Plugins.path(profileRoot))  // at this point, file should already exist
+      pluginsData  <- JsonIo.read[JD.Plugins](JD.Plugins.path(context.profileRoot))  // at this point, file should already exist
       modsOrig     =  pluginsData.explicit
       modsNext     <- modify(modsOrig)
       _            <- ZIO.unless(modsNext == modsOrig) {
                         val pluginsDataNext = pluginsData.copy(explicit = modsNext)
                         // we do not check whether file was modified as this entire operation is synchronous and fast, in most cases
-                        JsonIo.write(JD.Plugins.path(profileRoot), pluginsDataNext, None)(ZIO.succeed(()))
+                        JsonIo.write(JD.Plugins.path(context.profileRoot), pluginsDataNext, None)(ZIO.succeed(()))
                       }
     } yield modsNext
   }
@@ -72,7 +72,7 @@ class Sc4pac(val repositories: Seq[MetadataRepository], val cache: FileCache, va
     }
   }
 
-  val iterateAllChannelContents: Task[Iterator[JD.ChannelItem]] = ZIO.attempt { repositories.iterator.flatMap(_.iterateChannelContents) }
+  val iterateAllChannelContents: Task[Iterator[JD.ChannelItem]] = ZIO.attempt { context.repositories.iterator.flatMap(_.iterateChannelContents) }
 
   /** Fuzzy-search across all repositories.
     * The selection of results is ordered in descending order and includes the
@@ -192,7 +192,7 @@ trait UpdateService { this: Sc4pac =>
         case Some(art, archive, depAsset) =>
           val (recipe, regexWarnings) = JD.InstallRecipe.fromAssetReference(assetData)
           val extractor = new Extractor(logger)
-          val fallbackFilename = cache.getFallbackFilename(archive)
+          val fallbackFilename = context.cache.getFallbackFilename(archive)
           val jarsRoot = stagingRoot / "jars"
           val usedPatterns =
             extractor.extract(
@@ -200,7 +200,7 @@ trait UpdateService { this: Sc4pac =>
               fallbackFilename,
               tempPluginsRoot / pkgFolder,
               recipe,
-              Some(Extractor.JarExtraction.fromUrl(art.url, cache, jarsRoot = jarsRoot, profileRoot = profileRoot)),
+              Some(Extractor.JarExtraction.fromUrl(art.url, context.cache, jarsRoot = jarsRoot, profileRoot = context.profileRoot)),
               hints = depAsset.archiveType,
               stagingRoot)
           // TODO catch IOExceptions
@@ -352,7 +352,7 @@ trait UpdateService { this: Sc4pac =>
       // - remove old packages
       // - move new packages into plugins folder
       // - write json database and release lock
-      val task = JsonIo.write(JD.PluginsLock.path(profileRoot), pluginsLockData.updateTo(plan, staged.files.toMap), Some(pluginsLockData)) {
+      val task = JsonIo.write(JD.PluginsLock.path(context.profileRoot), pluginsLockData.updateTo(plan, staged.files.toMap), Some(pluginsLockData)) {
         for {
           _ <- remove(plan.toRemove, pluginsLockData.installed, pluginsRoot)
                  // .catchAll(???)  // TODO catch exceptions
@@ -413,8 +413,8 @@ trait UpdateService { this: Sc4pac =>
     }
 
     def storeGlobalVariant(globalVariant: Variant): Task[Unit] = for {
-      pluginsData <- JsonIo.read[JD.Plugins](JD.Plugins.path(profileRoot))  // json file should exist already
-      _           <- JsonIo.write(JD.Plugins.path(profileRoot), pluginsData.copy(config = pluginsData.config.copy(variant = globalVariant)), None)(ZIO.succeed(()))
+      pluginsData <- JsonIo.read[JD.Plugins](JD.Plugins.path(context.profileRoot))  // json file should exist already
+      _           <- JsonIo.write(JD.Plugins.path(context.profileRoot), pluginsData.copy(config = pluginsData.config.copy(variant = globalVariant)), None)(ZIO.succeed(()))
     } yield ()
 
     // TODO catch coursier.error.ResolutionError$CantDownloadModule (e.g. when json files have syntax issues)
@@ -529,7 +529,8 @@ object Sc4pac {
       repos     <- initializeRepositories(config.channels, cache, Constants.channelContentsTtl)  // 30 minutes
       tempRoot  <- config.tempRootAbs
       profileRoot <- ZIO.service[ProfileRoot]
-    } yield Sc4pac(repos, cache, tempRoot, logger, profileRoot.path)
+      context   = new ResolutionContext(repos, cache, logger, profileRoot.path)
+    } yield Sc4pac(context, tempRoot)
   }
 
   def parseModules(modules: Seq[String]): Either[ErrStr, Seq[BareModule]] = {

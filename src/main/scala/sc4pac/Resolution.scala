@@ -179,9 +179,9 @@ class Resolution(reachableDeps: TreeSeqMap[BareDep, Seq[BareDep]], nonbareDeps: 
   /** Download artifacts of a subset of the dependency set of the resolution, or
     * take files from cache in case they are still up-to-date.
     */
-  def fetchArtifactsOf(subset: Seq[Dep])(using context: ResolutionContext): Task[Seq[(DepAsset, Artifact, java.io.File)]] = {
+  def fetchArtifactsOf(subset: Seq[Dep]): RIO[ResolutionContext, Seq[(DepAsset, Artifact, java.io.File)]] = {
     val assetsArtifacts = subset.collect{ case d: DepAsset => (d, MetadataRepository.createArtifact(d.url, d.lastModified)) }
-    val fetchTask =
+    def fetchTask(context: ResolutionContext) =
       ZIO.foreachPar(assetsArtifacts) { (dep, art) =>
         context.cache.file(art).run.absolve.map(file => (dep, art, file))
       }
@@ -195,7 +195,10 @@ class Resolution(reachableDeps: TreeSeqMap[BareDep, Seq[BareDep]], nonbareDeps: 
       }
 
     import CoursierZio.*  // implicit coursier-zio interop
-    Resolution.deleteStaleCachedFiles(assetsArtifacts, context.cache)
-      .zipRight(context.logger.using(context.logger.fetchingAssets(fetchTask)))
+    for {
+      context <- ZIO.service[ResolutionContext]
+      _       <- Resolution.deleteStaleCachedFiles(assetsArtifacts, context.cache)
+      result  <- context.logger.using(context.logger.fetchingAssets(fetchTask(context)))
+    } yield result
   }
 }
