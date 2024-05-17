@@ -61,11 +61,11 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) extends Upda
         ZIO.succeed(modsOrig)
       } else {
         for {
-          logger   <- ZIO.service[CliLogger]
+          cliLogger <- ZIO.service[CliLogger]
           selected <- Prompt.numberedMultiSelect(
                         "Select packages to remove:",
                         modsOrig.sortBy(m => (m.group.value, m.name.value)),
-                        _.formattedDisplayString(logger.gray, identity)
+                        _.formattedDisplayString(cliLogger.gray, identity)
                       ).map(_.toSet)
         } yield modsOrig.filterNot(selected)
       }
@@ -105,36 +105,36 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) extends Upda
   /** Currenty this does not apply full markdown formatting, but just `pkg=…`
     * highlighting.
     */
-  def applyMarkdown(text: String, logger: CliLogger): String = {
+  def applyMarkdown(text: String, cliLogger: CliLogger): String = {
     BareModule.pkgMarkdownRegex.replaceAllIn(text, matcher =>
-      BareModule(Organization(matcher.group(1)), ModuleName(matcher.group(2))).formattedDisplayString(logger.gray, logger.bold)
+      BareModule(Organization(matcher.group(1)), ModuleName(matcher.group(2))).formattedDisplayString(cliLogger.gray, cliLogger.bold)
     )
   }
 
   def info(module: BareModule): RIO[CliLogger, Option[Seq[(String, String)]]] = {
     for {
-      pkgOpt  <- infoJson(module)
-      logger  <- ZIO.service[CliLogger]
+      pkgOpt    <- infoJson(module)
+      cliLogger <- ZIO.service[CliLogger]
     } yield {
       pkgOpt.map { pkg =>
         val b = Seq.newBuilder[(String, String)]
         b += "Name" -> s"${pkg.group}:${pkg.name}"
         b += "Version" -> pkg.version
         b += "Subfolder" -> pkg.subfolder.toString
-        b += "Summary" -> applyMarkdown(pkg.info.summary, logger)
+        b += "Summary" -> applyMarkdown(pkg.info.summary, cliLogger)
         if (pkg.info.description.nonEmpty)
-          b += "Description" -> applyMarkdown(pkg.info.description, logger)
+          b += "Description" -> applyMarkdown(pkg.info.description, cliLogger)
         if (pkg.info.warning.nonEmpty)
-          b += "Warning" -> applyMarkdown(pkg.info.warning, logger)
+          b += "Warning" -> applyMarkdown(pkg.info.warning, cliLogger)
         if (pkg.info.conflicts.nonEmpty)
-          b += "Conflicts" -> applyMarkdown(pkg.info.conflicts, logger)
+          b += "Conflicts" -> applyMarkdown(pkg.info.conflicts, cliLogger)
         if (pkg.info.author.nonEmpty)
           b += "Author" -> pkg.info.author
         if (pkg.info.website.nonEmpty)
           b += "Website" -> pkg.info.website
 
         def mkDeps(vd: JD.VariantData) = {
-          val deps = vd.bareDependencies.collect{ case m: BareModule => m.formattedDisplayString(logger.gray, identity) }
+          val deps = vd.bareDependencies.collect{ case m: BareModule => m.formattedDisplayString(cliLogger.gray, identity) }
           if (deps.isEmpty) "None" else deps.mkString(" ")
         }
 
