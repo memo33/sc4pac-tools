@@ -39,7 +39,7 @@ assets:  # Optional list of assets from which to extract files (zero or more)
   # (starting with and separated by _forward_ slashes for platform independence).
   # Note that special characters need to be escaped: \.[]{}()<>*+-=!?^$| (see https://docs.oracle.com/javase/8/docs/api/java/util/regex/Pattern.html).
   # The matching is case-insensitive for file-system independence.
-  # By default, every file is included.
+  # By default, every plugin file is included (.dat/.sc4model/.sc4lot/.sc4desc/.sc4/.dll).
   include:
   - "/folder/file1.dat"
   - "/folder2/"
