@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+
+## [0.4.3] - 2024-05-21
 ### Added
 - warning about outdated metadata, in case an inclusion/exclusion pattern does not match any files in an Asset anymore.
 - support for rendering package identifiers in metadata description text, using syntax `` `pkg=group:name` ``.
@@ -98,7 +100,8 @@
 ## [0.1.5] - 2023-09-26
 …
 
-[Unreleased]: https://github.com/memo33/sc4pac-tools/compare/0.4.2...HEAD
+[Unreleased]: https://github.com/memo33/sc4pac-tools/compare/0.4.3...HEAD
+[0.4.3]: https://github.com/memo33/sc4pac-tools/compare/0.4.2...0.4.3
 [0.4.2]: https://github.com/memo33/sc4pac-tools/compare/0.4.1...0.4.2
 [0.4.1]: https://github.com/memo33/sc4pac-tools/compare/0.4.0...0.4.1
 [0.4.0]: https://github.com/memo33/sc4pac-tools/compare/0.3.0...0.4.0

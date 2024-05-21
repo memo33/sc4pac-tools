@@ -86,6 +86,7 @@ See [CLI](https://memo33.github.io/sc4pac/#/cli?id=command-line-interface) for d
 650-religion
 660-parks
 700-transit
+710-automata
 777-network-addon-mod  (installed manually)
 900-overrides
 ```
