@@ -8,6 +8,7 @@ import java.nio.file.{Path as NioPath}
 import zio.{ZIO, IO, Task, RIO, URIO}
 import java.util.regex.Pattern
 import scala.collection.mutable.Builder
+import scala.collection.immutable.ArraySeq
 
 import sc4pac.Resolution.{Dep, DepModule, DepAsset}
 
@@ -251,6 +252,24 @@ object JsonData extends SharedData {
     }
   }
 
-  case class CheckFile(filename: Option[String]) derives ReadWriter
+  case class Checksum(sha256: Option[ArraySeq[Byte]])
+  object Checksum {
+    def bytesToString(bytes: ArraySeq[Byte]): String = bytes.map("%02x".format(_)).mkString
+    def stringToBytes(hexString: String): ArraySeq[Byte] = {
+      if (hexString.length % 2 != 0 || hexString.isEmpty) {
+        throw new NumberFormatException(s"Checksum requires an even number of hex characters: $hexString")
+      } else {
+        hexString.grouped(2).map(ss => java.lang.Short.parseShort(ss, 16).toByte).to(ArraySeq)
+      }
+    }
+
+    implicit val checksumRw: ReadWriter[Checksum] =
+      readwriter[Map[String, String]].bimap[Checksum](
+        (checksum: Checksum) => checksum.sha256.map("sha256" -> bytesToString(_)).toMap,
+        (m: Map[String, String]) => Checksum(sha256 = m.get("sha256").map(stringToBytes))
+      )
+  }
+
+  case class CheckFile(filename: Option[String], checksum: Checksum = Checksum(sha256 = None)) derives ReadWriter
 
 }
