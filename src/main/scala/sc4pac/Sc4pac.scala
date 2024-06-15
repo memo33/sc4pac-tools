@@ -4,7 +4,7 @@ package sc4pac
 import scala.collection.immutable.{Set, Seq}
 import coursier.{Type, Resolve, Fetch}
 import coursier.core.{Module, Organization, ModuleName, Dependency, Publication, Configuration}
-import coursier.util.{Artifact, EitherT, Gather}
+import coursier.util.Artifact
 import java.nio.file.Path
 import zio.{IO, ZIO, UIO, Task, Scope, RIO}
 import upickle.default as UP
@@ -20,8 +20,6 @@ import sc4pac.Resolution.{Dep, DepModule, DepAsset}
 class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) extends UpdateService {  // TODO defaults
 
   val logger = context.logger
-
-  import CoursierZio.*  // implicit coursier-zio interop
 
   // TODO check resolution.conflicts
 
@@ -159,8 +157,6 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) extends Upda
 
 
 trait UpdateService { this: Sc4pac =>
-
-  import CoursierZio.*  // implicit coursier-zio interop
 
   private def packageFolderName(dependency: DepModule): String = {
     val variantTokens = dependency.variant.toSeq.sortBy(_._1).map(_._2)
@@ -408,7 +404,7 @@ trait UpdateService { this: Sc4pac =>
           task(globalVariant)
             .map(x => Right((x, globalVariant)))
             .catchSome(handler)
-            .catchSomeDefect(handler)  // Since Repository works with EitherT[Task, ErrStr, _], Sc4pacMissingVariant is a `defect` rather than a regular `error`
+            .catchSomeDefect(handler)  // legacy: Originally Repository used EitherT[Task, ErrStr, _], so Sc4pacMissingVariant was a `defect` rather than a regular `error`
       }.map(_.toOption.get)
     }
 
@@ -483,7 +479,6 @@ object Sc4pac {
 
 
   private def fetchChannelData(repoUri: java.net.URI, cache: FileCache, channelContentsTtl: scala.concurrent.duration.Duration): ZIO[ProfileRoot, ErrStr, MetadataRepository] = {
-    import CoursierZio.*  // implicit coursier-zio interop
     val contentsUrl = MetadataRepository.channelContentsUrl(repoUri).toString
     val artifact = Artifact(contentsUrl).withChanging(true)  // changing as the remote file is updated whenever any remote package is added or updated
     for {
@@ -516,7 +511,6 @@ object Sc4pac {
   }
 
   def init(config: JD.Config): RIO[ProfileRoot & Logger, Sc4pac] = {
-    import CoursierZio.*  // implicit coursier-zio interop
     // val refreshLogger = coursier.cache.loggers.RefreshLogger.create(System.err)  // TODO System.err seems to cause less collisions between refreshing progress and ordinary log messages
     val coursierPool = coursier.cache.internal.ThreadUtil.fixedThreadPool(size = 2)  // limit parallel downloads to 2 (ST rejects too many connections)
     for {

@@ -4,7 +4,7 @@ package sc4pac
 import coursier.core.{Repository, Module, Publication, ArtifactSource, Versions, Version,
   Dependency, Project, Classifier, Extension, Type, Configuration, ModuleName, Organization, Info}
 import coursier.cache as CC
-import coursier.util.{Artifact, EitherT, Monad, Task}
+import coursier.util.Artifact
 import upickle.default.{read, macroRW, ReadWriter, Reader, writeTo}
 import zio.{ZIO, IO}
 
@@ -45,7 +45,7 @@ sealed abstract class MetadataRepository(val baseUri: java.net.URI) {
   /** For a module (no asset, no variant) of a given version, fetch the
     * corresponding `JD.Package` contained in its json file.
     */
-  def fetchModuleJson[A <: JD.PackageAsset : Reader](module: Module, version: String, fetch: MetadataRepository.Fetch): IO[CC.ArtifactError | ErrStr, A]
+  def fetchModuleJson[A <: JD.PackageAsset : Reader](module: Module, version: String, fetch: MetadataRepository.Fetch): zio.Task[A]
 
   def iterateChannelContents: Iterator[JD.ChannelItem]
 }
@@ -147,10 +147,11 @@ private class JsonRepository(
   /** For a module (no asset, no variant) of a given version, fetch the
     * corresponding `JD.Package` contained in its json file.
     */
-  def fetchModuleJson[A <: JD.PackageAsset : Reader](module: Module, version: String, fetch: MetadataRepository.Fetch): IO[CC.ArtifactError | ErrStr, A] = {
+  def fetchModuleJson[A <: JD.PackageAsset : Reader](module: Module, version: String, fetch: MetadataRepository.Fetch): zio.Task[A] = {
     val dep = CoursierUtil.bareDepFromModule(module)
     if (!containsVersion(dep, version)) {
-      ZIO.fail(s"no versions of $module found in repository $baseUri")
+      ZIO.fail(new Sc4pacVersionNotFound(s"No versions of ${module.orgName} found in repository $baseUri.",
+        "Either the package name is spelled incorrectly or the metadata stored in the corresponding channel is incorrect or incomplete."))
     } else {
       // TODO use flatter directory (remove version folder, rename maven folder)
       val remoteUrl = baseUri.resolve(MetadataRepository.jsonSubPath(dep, version).segments0.mkString("/")).toString
@@ -158,9 +159,8 @@ private class JsonRepository(
       // version, they never change and therefore can be cached indefinitely
       val jsonArtifact = Artifact(remoteUrl).withChanging(false)
 
-      fetch(jsonArtifact).flatMap((jsonStr: String) => ZIO.fromEither {
-        JsonIo.readBlocking[A](jsonStr, errMsg = remoteUrl)
-      })
+      fetch(jsonArtifact)
+        .flatMap((jsonStr: String) => JsonIo.read[A](jsonStr, errMsg = remoteUrl))
     }
   }
 
@@ -178,10 +178,12 @@ private class YamlRepository(
     channelData.get(dep).map(_.keys.toSeq).getOrElse(Seq.empty)
   }
 
-  def fetchModuleJson[A <: JD.PackageAsset : Reader](module: Module, version: String, fetch: MetadataRepository.Fetch): IO[CC.ArtifactError | ErrStr, A] = {
+  def fetchModuleJson[A <: JD.PackageAsset : Reader](module: Module, version: String, fetch: MetadataRepository.Fetch): zio.Task[A] = {
     val dep = CoursierUtil.bareDepFromModule(module)
     channelData.get(dep).flatMap(_.get(version)) match {
-      case None => ZIO.fail(s"no versions of $module found in repository $baseUri")
+      case None =>
+        ZIO.fail(new Sc4pacVersionNotFound(s"No versions of ${module.orgName} found in repository $baseUri.",
+          "Either the package name is spelled incorrectly or the metadata stored in the corresponding channel is incorrect or incomplete."))
       case Some(pkgData: JD.PackageAsset) =>
         ZIO.succeed(pkgData.asInstanceOf[A])  // as long as we do not mix up Assets and Packages, casting should not be an issue (could be fixed using type classes)
     }
