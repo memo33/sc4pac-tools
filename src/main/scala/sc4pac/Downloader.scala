@@ -237,7 +237,7 @@ object Downloader {
   private def readFullyTo(
     in: java.io.InputStream,
     out: java.io.OutputStream,
-    logger: coursier.cache.CacheLogger,
+    logger: Logger,
     url: String,
     alreadyDownloaded: Long
   ): Unit = {

@@ -506,7 +506,6 @@ object Sc4pac {
     }.filterOrFail(_.nonEmpty)(error.NoChannelsAvailable("No channels available", repoUris.toString))
     // TODO for long running processes, we might need a way to refresh the channel
     // data occasionally (but for now this is good enough)
-    import CoursierZio.*  // implicit coursier-zio interop
     wrapService(cache.logger.using(_), task)  // properly initializes logger (avoids Uninitialized TermDisplay)
   }
 

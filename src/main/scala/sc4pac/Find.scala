@@ -27,7 +27,6 @@ object Find {
     * across all repositories. If not found at all, try a second time with the
     * repository channel contents updated. */
   def packageData[A <: JD.Package | JD.Asset : Reader](module: C.Module, version: String): RIO[ResolutionContext, Option[A]] = {
-    import CoursierZio.*  // implicit coursier-zio interop
     def tryAllRepos(repos: Seq[MetadataRepository], context: ResolutionContext): Task[Option[A]] = ZIO.collectFirst(repos) { repo =>
       val task: zio.UIO[Option[A]] = {
         repo.fetchModuleJson[A](module, version, context.cache.fetchText).either

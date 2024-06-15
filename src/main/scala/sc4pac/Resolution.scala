@@ -194,7 +194,6 @@ class Resolution(reachableDeps: TreeSeqMap[BareDep, Seq[BareDep]], nonbareDeps: 
           e.getMessage))
       }
 
-    import CoursierZio.*  // implicit coursier-zio interop
     for {
       context <- ZIO.service[ResolutionContext]
       _       <- Resolution.deleteStaleCachedFiles(assetsArtifacts, context.cache)

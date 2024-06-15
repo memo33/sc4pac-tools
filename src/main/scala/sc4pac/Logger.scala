@@ -6,13 +6,31 @@ import sc4pac.Resolution.DepModule
 import org.fusesource.jansi.Ansi
 
 
-trait Logger extends coursier.cache.CacheLogger {
+trait Logger {
   /** For generic messages to the console, not user-facing. */
   def log(msg: String): Unit
   /** For generic messages to the console, not user-facing. */
   def warn(msg: String): Unit
   /** For generic messages to the console, not user-facing. */
   def debug(msg: => String): Unit
+
+  def checkingArtifact(url: String, artifact: coursier.util.Artifact): Unit = {}
+  def downloadingArtifact(url: String, artifact: coursier.util.Artifact): Unit = {}
+  def downloadedArtifact(url: String, success: Boolean): Unit = {}
+  def downloadLength(url: String, len: Long, currentLen: Long, watching: Boolean): Unit = {}
+  def downloadProgress(url: String, downloaded: Long): Unit = {}
+  def gettingLength(url: String): Unit = {}
+  def gettingLengthResult(url: String, length: Option[Long]): Unit = {}
+
+  final def using[A](task: Task[A]): Task[A] = {  // this has no effect anymore, since our custom loggers do not use `init` or `stop`
+    task
+    // for {
+    //   // _ <- ZIO.attempt(logger.init())
+    //   a <- task.either  // sync.attempt(task)
+    //   // _ <- ZIO.attempt(logger.stop())
+    //   t <- ZIO.fromEither(a)  // sync.fromAttempt(a)
+    // } yield t
+  }
 
   def concurrentCacheAccess(url: String): Unit = debug(s"concurrentCacheAccess $url")
 

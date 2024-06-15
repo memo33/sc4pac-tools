@@ -2,7 +2,6 @@ package io.github.memo33
 package sc4pac
 
 import coursier.core as C
-import sc4pac.CoursierZio.*  // implicit coursier-zio interop
 
 class ResolutionContext(
   val repositories: Seq[MetadataRepository],
