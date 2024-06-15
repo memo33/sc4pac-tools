@@ -100,7 +100,7 @@ class FileCache private (
     * - changing and outdated.
     * Otherwise, return local file.
     */
-  def file(artifact: coursier.util.Artifact): coursier.util.EitherT[Task, CC.ArtifactError, java.io.File] = {
+  def file(artifact: coursier.util.Artifact): IO[CC.ArtifactError, java.io.File] = {
     def task0: IO[CC.ArtifactError, java.io.File] = {
       val destFile = localFile(artifact.url)
       ZIO.ifZIO(ZIO.attemptBlockingIO(!destFile.exists() || (artifact.changing && isStale(destFile))))(
@@ -123,7 +123,7 @@ class FileCache private (
 
     // First check if there is a concurrently running task.
     // If so, await its result, otherwise compute the result by running `task0`.
-    coursier.util.EitherT(for {
+    for {
       p0     <- Promise.make[CC.ArtifactError, java.io.File]
       result <- ZIO.acquireReleaseWith(
                   acquire = ZIO.succeed(runningTasks.putIfAbsent(artifact.url, p0))
@@ -131,20 +131,23 @@ class FileCache private (
                   release = _ => ZIO.succeed(runningTasks.remove(artifact.url, p0))  // remove only if equal to our p0
                 ){ p1 =>
                   if (p1 != null)  // key was present: there was already a running task for url
-                    p1.await.either.zipLeft(ZIO.succeed(logger.concurrentCacheAccess(artifact.url)))
+                    p1.await.zipLeft(ZIO.succeed(logger.concurrentCacheAccess(artifact.url)))
                   else
-                    p0.complete(task0).flatMap(_ => p0.await.either)  // Note that `complete` also handles failure of `task0`
+                    p0.complete(task0).flatMap(_ => p0.await)  // Note that `complete` also handles failure of `task0`
                 }
-    } yield (result: Either[CC.ArtifactError, java.io.File]))
+    } yield (result: java.io.File)
   }
 
   /** Retrieve the file contents as String from the cache or download if necessary. */
-  def fetch: coursier.util.Artifact => coursier.util.EitherT[Task, String, String] = { artifact =>
-    file(artifact).leftMap(_.toString).flatMap { (f: java.io.File) =>
-      coursier.util.EitherT {
-        zio.ZIO.attemptBlockingIO {
-          new String(java.nio.file.Files.readAllBytes(f.toPath), java.nio.charset.StandardCharsets.UTF_8)
-        }.mapError(_.toString).either
+  def fetchText: coursier.util.Artifact => IO[CC.ArtifactError, String] = { artifact =>
+    file(artifact).flatMap { (f: java.io.File) =>
+      zio.ZIO.attemptBlockingIO {
+        new String(java.nio.file.Files.readAllBytes(f.toPath), java.nio.charset.StandardCharsets.UTF_8)
+      }.mapError {
+        case e: java.io.IOException => new CC.ArtifactError.DownloadError(
+          s"Caught ${e.getClass().getName()}${Option(e.getMessage).fold("")(" (" + _ + ")")} while reading $f",
+          Some(e)
+        )
       }
     }
   }

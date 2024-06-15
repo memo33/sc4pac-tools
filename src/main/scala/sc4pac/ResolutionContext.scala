@@ -64,17 +64,15 @@ class ResolutionContext(
     // gather available versions of module across all repositories (in parallel)
     def versionsOf(module: C.Module): zio.Task[coursier.core.Versions] = {
 
-      val t: zio.Task[Seq[(MetadataRepository, Either[String, coursier.core.Versions])]] =
-        implicitly[coursier.util.Gather[zio.Task]].gather(
-          for {
-            repo <- repositories
-          } yield (repo.fetchVersions(module, cache.fetch)).run.map(repo -> _.map(_._1))
-        )
+      val t: zio.UIO[Seq[(MetadataRepository, Either[ErrStr, coursier.core.Versions])]] =
+        zio.ZIO.foreachPar(repositories) { repo =>
+          (repo.fetchVersions(module)).either.map(repo -> _.map(_._1))
+        }
 
-      val t0 = cache.logger.using(t)
+      val t0 = cache.logger.using(t: zio.Task[Seq[(MetadataRepository, Either[ErrStr, coursier.core.Versions])]])
 
       t0.map { results =>
-        mergeVersions(results.flatMap(_._2.toSeq).toVector)
+        mergeVersions(results.flatMap(_._2.toSeq).toVector)  // repositories not containing module can be ignored
       }
     }
 

@@ -183,7 +183,7 @@ class Resolution(reachableDeps: TreeSeqMap[BareDep, Seq[BareDep]], nonbareDeps: 
     val assetsArtifacts = subset.collect{ case d: DepAsset => (d, MetadataRepository.createArtifact(d.url, d.lastModified)) }
     def fetchTask(context: ResolutionContext) =
       ZIO.foreachPar(assetsArtifacts) { (dep, art) =>
-        context.cache.file(art).run.absolve.map(file => (dep, art, file))
+        context.cache.file(art).map(file => (dep, art, file))
       }
       .catchSome { case e: (coursier.error.FetchError.DownloadingArtifacts
                           | coursier.cache.ArtifactError.DownloadError

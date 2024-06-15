@@ -490,7 +490,6 @@ object Sc4pac {
       channelContentsFile <- cache
                               .withTtl(Some(channelContentsTtl))
                               .file(artifact)  // requires initialized logger
-                              .run.absolve
                               .mapError { case e @ (_: coursier.cache.ArtifactError | scala.util.control.NonFatal(_)) => e.getMessage }
       profileRoot         <- ZIO.service[ProfileRoot]
       repo                <- MetadataRepository.create(os.Path(channelContentsFile: java.io.File, profileRoot.path), repoUri)
