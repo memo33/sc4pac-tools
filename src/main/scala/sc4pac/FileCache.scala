@@ -14,11 +14,9 @@ class FileCache private (
   csCache: CC.FileCache[Task],
   val logger: Logger,
   runningTasks: ConcurrentHashMap[String, Promise[CC.ArtifactError, java.io.File]]
-) extends CC.Cache[Task] {
+) {
 
   def location: java.io.File = csCache.location
-
-  override def loggerOpt = Some(logger)
 
   def pool: java.util.concurrent.ExecutorService = csCache.pool
 

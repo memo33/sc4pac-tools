@@ -1,6 +1,7 @@
 package io.github.memo33
 package sc4pac
 
+import coursier.core as C
 import sc4pac.CoursierZio.*  // implicit coursier-zio interop
 
 class ResolutionContext(
@@ -29,9 +30,26 @@ class ResolutionContext(
     //   // .withResolution(resolution)
     //   // .run() or .runResult()
 
-    val versions = coursier.Versions(cache).withRepositories(repositories)
-      // .withModule(coursier.parse.ModuleParser.module("memo:package-d", "").getOrElse(???))
-      // .run()
+    // val versions = coursier.Versions(cache).withRepositories(repositories)
+    //   // .withModule(coursier.parse.ModuleParser.module("memo:package-d", "").getOrElse(???))
+    //   // .run()
+
+    def versionsResult(module: C.Module): zio.Task[coursier.Versions.Result] = {
+
+      val t =
+        implicitly[coursier.util.Gather[zio.Task]].gather(
+          for {
+            repo <- repositories
+          } yield repo.versions(module, cache.fetch).run.map(repo -> _.map(_._1))
+        )
+
+      val t0 = cache.logger.using(t)
+
+      t0.map { l =>
+        coursier.Versions.Result(l)
+      }
+    }
+
   }
 
 }
