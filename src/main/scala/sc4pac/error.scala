@@ -26,6 +26,8 @@ final class ExtractionFailed(val title: String, val detail: String) extends java
 
 final class DownloadFailed(val title: String, val detail: String) extends java.io.IOException(s"$title $detail") with Sc4pacErr
 
+final class ChecksumError(val title: String, val detail: String) extends java.io.IOException(s"$title $detail") with Sc4pacErr
+
 final class NoChannelsAvailable(val title: String, val detail: String) extends java.io.IOException(s"$title $detail") with Sc4pacErr
 
 final class SymlinkCreationFailed(msg: String) extends java.io.IOException(msg) with Sc4pacErr

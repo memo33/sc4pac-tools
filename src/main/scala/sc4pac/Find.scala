@@ -2,6 +2,7 @@ package io.github.memo33
 package sc4pac
 
 import coursier.core as C
+import coursier.cache.ArtifactError
 import zio.{ZIO, Task, RIO}
 import upickle.default.Reader
 
@@ -28,11 +29,17 @@ object Find {
     * repository channel contents updated. */
   def packageData[A <: JD.Package | JD.Asset : Reader](module: C.Module, version: String): RIO[ResolutionContext, Option[A]] = {
     def tryAllRepos(repos: Seq[MetadataRepository], context: ResolutionContext): Task[Option[A]] = ZIO.collectFirst(repos) { repo =>
-      val task: zio.UIO[Option[A]] = {
-        repo.fetchModuleJson[A](module, version, context.cache.fetchText).either
-          .map(_.toOption) // repositories not containing module:version can be ignored
+      val task: Task[Option[A]] = {
+        repo.fetchModuleJson[A](module, version, context.cache.fetchText).map(Some(_))
+          .catchSome {
+            case _: error.Sc4pacVersionNotFound => ZIO.succeed(None)  // repositories not containing module:version can be ignored
+            case e: (ArtifactError.WrongChecksum | ArtifactError.ChecksumFormatError | ArtifactError.ChecksumNotFound) =>
+              ZIO.fail(new error.ChecksumError(
+                s"Checksum verification failed for ${module.orgName}. Usually this should not happen and suggests a problem with the channel data.",
+                e.getMessage))
+          }
       }
-      context.cache.logger.using(task: Task[Option[A]])  // properly initializes logger (avoids Uninitialized TermDisplay)
+      context.cache.logger.using(task)  // properly initializes logger (avoids Uninitialized TermDisplay)
     }
 
     ZIO.service[ResolutionContext].flatMap { context =>
