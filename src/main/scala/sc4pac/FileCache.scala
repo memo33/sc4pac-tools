@@ -71,7 +71,8 @@ class FileCache private (
     * Refresh policy: Download only files that are
     * - absent, or
     * - changing and outdated (according to ttl of cache), or
-    * - non-changing artifacts are refreshed if the remote lastModified timestamp is newer than the local file
+    * - non-changing and the remote lastModified timestamp is newer than the local file, or
+    * - expected checksum is given and does not match local file.
     * Otherwise, return local file.
     */
   def file(artifact: Artifact): IO[CC.ArtifactError, java.io.File] = {
@@ -79,10 +80,20 @@ class FileCache private (
       val destFile = localFile(artifact.url)
       ZIO.ifZIO(ZIO.attemptBlockingIO(
           !destFile.exists()
-          || (artifact.changing && isStale(destFile))
-          || (artifact.lastModified.exists(remoteModificationDate => isOlderThan(destFile, remoteModificationDate)))
+          || artifact.changing && isStale(destFile)
+          || artifact.lastModified.exists(remoteModificationDate => isOlderThan(destFile, remoteModificationDate))
+          || validateChecksum(destFile, artifact.checksum).isLeft
         ))(
-        onTrue = new Downloader(artifact, cacheLocation = location, localFile = destFile, logger, pool).download,
+        onTrue = new Downloader(artifact, cacheLocation = location, localFile = destFile, logger, pool).download
+          .flatMap { newFile =>
+            // We enforce that checksums match (if present) to avoid redownloading same file repeatedly.
+            //
+            // In case of pkg.json files, there is a small chance (30 minutes time window, see `channelContentsTtl`)
+            // that checksums become out of sync when a pkg.json is updated remotely and the channel contents file
+            // is already cached locally. This will fix itself after 30 minutes.
+            // Alternatively the sc4pac-channel-contents.json file can be manually deleted from cache.
+            ZIO.fromEither(validateChecksum(newFile, artifact.checksum).map(_ => newFile))  // TODO add special handling for local files?
+          },
         onFalse = ZIO.succeed(destFile)
       ).mapError {
         case e: CC.ArtifactError => e
@@ -128,6 +139,29 @@ class FileCache private (
         )
       }
     }
+  }
+
+  def validateChecksum(file: java.io.File, expectedChecksum: JD.Checksum): Either[CC.ArtifactError, Unit] = {
+    expectedChecksum.sha256 match
+      case None => Right(())  // no validation if no checksum is given
+      case Some(sha256Expected) =>
+        val checkedFile = FileCache.ttlFile(file)
+        if (!checkedFile.exists() || checkedFile.length() == 0)   // zero-length is possible for historic reasons
+          Left(CC.ArtifactError.ChecksumNotFound(sumType = "sha256", file = file.toString))
+        else
+          JsonIo.readBlocking[JD.CheckFile](os.Path(checkedFile.getAbsolutePath()))
+            .left.map { err =>
+              logger.debug(s"Failed to read checksum: $err")
+              CC.ArtifactError.ChecksumFormatError(sumType = "sha256", file = file.toString)
+            }
+            .flatMap { data => data.checksum.sha256.toRight(left = CC.ArtifactError.ChecksumNotFound(sumType = "sha256", file = file.toString)) }
+            .flatMap { sha256Actual =>
+              if (sha256Actual == sha256Expected)
+                Right(())
+              else
+                Left(CC.ArtifactError.WrongChecksum(sumType = "sha256", got = JD.Checksum.bytesToString(sha256Actual),
+                  expected = JD.Checksum.bytesToString(sha256Expected), file = file.toString, sumFile = checkedFile.toString))
+            }
   }
 
   def getFallbackFilename(file: java.io.File): Option[String] = {

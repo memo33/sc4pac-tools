@@ -71,6 +71,7 @@ package object sc4pac {
     url: String,
     changing: Boolean = false,  // if true, redownload local artifact after exceeding time-to-live (ttl)
     lastModified: Option[java.time.Instant] = None,  // redownload local artifact if older than that
+    checksum: JsonData.Checksum = JsonData.Checksum(sha256 = None),  // redownload local artifact if remote checksum does not match anymore
   )
 
 }
