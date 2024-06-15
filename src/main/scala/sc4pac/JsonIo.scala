@@ -28,8 +28,8 @@ object JsonIo {
       Left(s"failed to read $errMsg: ${e.getMessage()}")
   }
 
-  private[sc4pac] def read[A : Reader](jsonPath: os.Path): zio.Task[A] = {
-    ZIO.attemptBlocking(os.read.stream(jsonPath))
+  private[sc4pac] def read[A : Reader](jsonPath: os.Path): zio.IO[java.io.IOException, A] = {
+    ZIO.attemptBlockingIO(os.read.stream(jsonPath))
       .flatMap(read(_, errMsg = jsonPath.toString()))
   }
 
@@ -37,8 +37,8 @@ object JsonIo {
     read(jsonStr, errMsg = jsonStr)
   }
 
-  private[sc4pac] def read[A : Reader](pathOrString: ujson.Readable, errMsg: => ErrStr): zio.Task[A] = {
-    ZIO.attemptBlocking(readBlocking[A](pathOrString, errMsg).left.map(new Sc4pacIoException(_))).absolve
+  private[sc4pac] def read[A : Reader](pathOrString: ujson.Readable, errMsg: => ErrStr): zio.IO[java.io.IOException, A] = {
+    ZIO.attemptBlockingIO(readBlocking[A](pathOrString, errMsg).left.map(new Sc4pacIoException(_))).absolve
   }
 
   // steps:

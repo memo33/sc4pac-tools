@@ -96,9 +96,8 @@ object MetadataRepository {
                      s"The channel $contentsUrl has a newer scheme ($scheme) than supported " +
                      s"by your installation (${Constants.channelSchemeVersions}). Please update to the latest version of sc4pac."
                    ))
-        channel <- ZIO.attemptBlockingIO(JsonIo.readBlocking[JD.Channel](jsonVal, errMsg = contentsUrl))
+        channel <- JsonIo.read[JD.Channel](jsonVal, errMsg = contentsUrl)
                      .mapError(e => s"Failed to read channel contents: $e")
-                     .absolve
       } yield new JsonRepository(baseUri, channel)
     }
   }
