@@ -11,7 +11,7 @@ import sc4pac.error.*
 import sc4pac.Constants.isSc4pacAsset
 import sc4pac.JsonData as JD
 
-sealed abstract class MetadataRepository(val baseUri: java.net.URI /*, globalVariant: Variant*/) extends Repository {
+sealed abstract class MetadataRepository(val baseUri: java.net.URI /*, globalVariant: Variant*/) {
 
   /** Obtain the raw version strings of `dep` contained in this repository. */
   def getRawVersions(dep: BareDep): Seq[String]
@@ -19,7 +19,7 @@ sealed abstract class MetadataRepository(val baseUri: java.net.URI /*, globalVar
   /** Reads the repository's channel contents to obtain all available versions
     * of modules.
     */
-  override def fetchVersions[F[_] : Monad](module: Module, fetch: Repository.Fetch[F]): EitherT[F, ErrStr, (Versions, String)] = {
+  def fetchVersions[F[_] : Monad](module: Module, fetch: Repository.Fetch[F]): EitherT[F, ErrStr, (Versions, String)] = {
     EitherT.fromEither {
       val rawVersions = getRawVersions(CoursierUtil.bareDepFromModule(module))
       if (rawVersions.nonEmpty) {
@@ -45,62 +45,6 @@ sealed abstract class MetadataRepository(val baseUri: java.net.URI /*, globalVar
     * corresponding `JD.Package` contained in its json file.
     */
   def fetchModuleJson[F[_] : Monad, A <: JD.PackageAsset : Reader](module: Module, version: String, fetch: Repository.Fetch[F]): EitherT[F, ErrStr, A]
-
-  /** For a module of a given version, find its metadata (parsed from its json
-    * file) and return it as a `Project` (Coursier's representation of package
-    * metadata, which only mirrors information of Maven pom files, so does not
-    * contain all the information we need for installation, but contains enough
-    * information for Coursier to do resolutions). An `ArtifactSource` is the
-    * corresponding `Repository`.
-    */
-  def find[F[_] : Monad](module: Module, version: String, fetch: Repository.Fetch[F]): EitherT[F, ErrStr, (ArtifactSource, Project)] = {
-    ???  // TODO unused implementation
-    /*
-    if (isSc4pacAsset(module)) {
-      // EitherT.fromEither(Right((this, MetadataRepository.sc4pacAssetProject(module, version))))
-      fetchModuleJson[F, JD.Asset](module, version, fetch)
-        .flatMap { data => EitherT.point((this, data.toProject)) }
-    } else {
-      fetchModuleJson[F, JD.Package](module, version, fetch)
-        .flatMap { data =>
-          data.toProject(globalVariant) match {
-            case Left(err) => throw new Sc4pacMissingVariant(data, msg = err)
-            case Right(proj) => EitherT.point((this, proj))
-          }
-        }
-        // TODO in case of error, we should not cache faulty file
-    }
-    */
-  }
-
-  def artifacts(dependency: Dependency, project: Project, overrideClassifiers: Option[Seq[Classifier]]): Seq[(Publication, Artifact)] = {
-    ???  // TODO unused implementation
-    /*
-    if (overrideClassifiers.nonEmpty) ???  // TODO
-
-    if (!isSc4pacAsset(dependency.module)) {
-      // here project.module contains variants as attributes, unlike dependency.module
-      Seq.empty  // module corresponds to metadata json and does not provide any files itself
-    } else {
-      // Here dependency is an sc4pacAsset. As these are specified as bare
-      // dependencies using just the assetId (without url etc.), it is
-      // expected that dependency.module does not contain url attribute, but
-      // project.module does (since the project is obtained by parsing the json
-      // file of the sc4pacAsset).
-      require(dependency.module == project.module.withAttributes(Map.empty), s"unexpected asset inconsistency: ${dependency.module} vs ${project.module}")  // TODO check this
-      require(project.module.attributes.contains(Constants.urlKey), s"asset should contain url: ${project.module}")
-      val mod = project.module
-      val url = mod.attributes(Constants.urlKey)
-
-      val ext = Extension.empty  // Extension(dep.publication.`type`.value)  // TODO determine extension
-      val typ = /*dep.publication.`type`*/ Constants.sc4pacAssetType
-      val pub = Publication(mod.name.value, typ, ext, Classifier.empty /*Classifier(s"file$idx")*/)  // TODO classifier not needed?
-      require(isSc4pacAsset(mod))  // TODO
-      val lastModifiedOpt: Option[java.time.Instant] = mod.attributes.get(Constants.lastModifiedKey).flatMap(JD.Asset.parseLastModified)
-      Seq((pub, MetadataRepository.createArtifact(url, lastModifiedOpt)))
-    }
-    */
-  }
 
   def iterateChannelContents: Iterator[JD.ChannelItem]
 }

@@ -34,19 +34,47 @@ class ResolutionContext(
     //   // .withModule(coursier.parse.ModuleParser.module("memo:package-d", "").getOrElse(???))
     //   // .run()
 
-    def versionsResult(module: C.Module): zio.Task[coursier.Versions.Result] = {
+    // merges available versions from different repositories
+    private def mergeVersions(versions: Vector[coursier.core.Versions]): coursier.core.Versions = {
+      if (versions.isEmpty)
+        coursier.core.Versions("", "", Nil, None)
+      else if (versions.lengthCompare(1) == 0)
+        versions.head
+      else {
+        val latest  = versions.map(v => coursier.core.Version(v.latest)).max.repr
+        val release = versions.map(v => coursier.core.Version(v.release)).max.repr
 
-      val t =
+        val available = versions
+          .flatMap(_.available)
+          .distinct
+          .map(coursier.core.Version(_))
+          .sorted
+          .map(_.repr)
+          .toList
+
+        val lastUpdated = versions
+          .flatMap(_.lastUpdated.toSeq)
+          .sorted
+          .lastOption
+
+        coursier.core.Versions(latest, release, available, lastUpdated)  // TODO we only need `latest`
+      }
+    }
+
+    // gather available versions of module across all repositories (in parallel)
+    def versionsOf(module: C.Module): zio.Task[coursier.core.Versions] = {
+
+      val t: zio.Task[Seq[(MetadataRepository, Either[String, coursier.core.Versions])]] =
         implicitly[coursier.util.Gather[zio.Task]].gather(
           for {
             repo <- repositories
-          } yield repo.versions(module, cache.fetch).run.map(repo -> _.map(_._1))
+          } yield (repo.fetchVersions(module, cache.fetch)).run.map(repo -> _.map(_._1))
         )
 
       val t0 = cache.logger.using(t)
 
-      t0.map { l =>
-        coursier.Versions.Result(l)
+      t0.map { results =>
+        mergeVersions(results.flatMap(_._2.toSeq).toVector)
       }
     }
 

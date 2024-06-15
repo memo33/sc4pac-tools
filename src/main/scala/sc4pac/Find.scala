@@ -18,7 +18,7 @@ object Find {
     } else {  // pick latest version
       for {
         context <- ZIO.service[ResolutionContext]
-        version <- context.coursierApi.versionsResult(module).map(_.versions.latest)
+        version <- context.coursierApi.versionsOf(module).map(_.latest)
       } yield version
     }
   }
