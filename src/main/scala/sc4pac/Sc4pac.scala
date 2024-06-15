@@ -4,7 +4,6 @@ package sc4pac
 import scala.collection.immutable.{Set, Seq}
 import coursier.{Type, Resolve, Fetch}
 import coursier.core.{Module, Organization, ModuleName, Dependency, Publication, Configuration}
-import coursier.util.Artifact
 import java.nio.file.Path
 import zio.{IO, ZIO, UIO, Task, Scope, RIO}
 import upickle.default as UP

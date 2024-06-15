@@ -14,8 +14,8 @@ trait Logger {
   /** For generic messages to the console, not user-facing. */
   def debug(msg: => String): Unit
 
-  def checkingArtifact(url: String, artifact: coursier.util.Artifact): Unit = {}
-  def downloadingArtifact(url: String, artifact: coursier.util.Artifact): Unit = {}
+  def checkingArtifact(url: String, artifact: Artifact): Unit = {}
+  def downloadingArtifact(url: String, artifact: Artifact): Unit = {}
   def downloadedArtifact(url: String, success: Boolean): Unit = {}
   def downloadLength(url: String, len: Long, currentLen: Long, watching: Boolean): Unit = {}
   def downloadProgress(url: String, downloaded: Long): Unit = {}
@@ -61,7 +61,7 @@ class CliLogger private (out: java.io.PrintStream, useColor: Boolean, isInteract
   def gray(msg: String): String = if (useColor) grayEscape + msg + Console.RESET else msg  // aka bright black
   private val grayEscape = s"${27.toChar}[90m"
 
-  override def downloadingArtifact(url: String, artifact: coursier.util.Artifact) =
+  override def downloadingArtifact(url: String, artifact: Artifact) =
     out.println("  " + cyan(s"> Downloading $url"))
   override def downloadedArtifact(url: String, success: Boolean) =
     if (!success)

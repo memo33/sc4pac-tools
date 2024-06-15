@@ -15,7 +15,7 @@ import Downloader.PartialDownloadSpec
   * Our changes of the implementation resolve issues related to timeouts and resuming partial downloads.
   */
 class Downloader(
-  artifact: coursier.util.Artifact,  // contains the URL
+  artifact: Artifact,  // contains the URL
   cacheLocation: java.io.File,
   localFile: java.io.File,  // the local file after download
   logger: Logger,

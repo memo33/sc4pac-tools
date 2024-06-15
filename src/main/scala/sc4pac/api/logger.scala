@@ -36,7 +36,7 @@ class WebSocketLogger private (private[api] val queue: java.util.concurrent.Link
 
   def discardingUnexpectedMessage(msg: String): Unit = warn(s"Discarding unexpected message: $msg")
 
-  override def downloadingArtifact(url: String, artifact: coursier.util.Artifact): Unit =
+  override def downloadingArtifact(url: String, artifact: Artifact): Unit =
     sendMessageAsync(ProgressMessage.DownloadStarted(url))
 
   override def downloadLength(url: String, len: Long, currentLen: Long, watching: Boolean): Unit =
