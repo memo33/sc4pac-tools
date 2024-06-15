@@ -3,7 +3,8 @@ package sc4pac
 
 import coursier.core.{Repository, Module, Publication, ArtifactSource, Versions, Version,
   Dependency, Project, Classifier, Extension, Type, Configuration, ModuleName, Organization, Info}
-import coursier.util.{Artifact, EitherT, Monad, Task}
+import coursier.cache as CC
+import coursier.util.Artifact
 import upickle.default.{read, macroRW, ReadWriter, Reader, writeTo}
 import zio.{ZIO, IO}
 
@@ -11,7 +12,7 @@ import sc4pac.error.*
 import sc4pac.Constants.isSc4pacAsset
 import sc4pac.JsonData as JD
 
-sealed abstract class MetadataRepository(val baseUri: java.net.URI /*, globalVariant: Variant*/) extends Repository {
+sealed abstract class MetadataRepository(val baseUri: java.net.URI) {
 
   /** Obtain the raw version strings of `dep` contained in this repository. */
   def getRawVersions(dep: BareDep): Seq[String]
@@ -19,8 +20,8 @@ sealed abstract class MetadataRepository(val baseUri: java.net.URI /*, globalVar
   /** Reads the repository's channel contents to obtain all available versions
     * of modules.
     */
-  override def fetchVersions[F[_] : Monad](module: Module, fetch: Repository.Fetch[F]): EitherT[F, ErrStr, (Versions, String)] = {
-    EitherT.fromEither {
+  def fetchVersions(module: Module): IO[ErrStr, (Versions, String)] = {
+    ZIO.fromEither {
       val rawVersions = getRawVersions(CoursierUtil.bareDepFromModule(module))
       if (rawVersions.nonEmpty) {
         val parsedVersions = rawVersions.map(Version(_))
@@ -44,68 +45,15 @@ sealed abstract class MetadataRepository(val baseUri: java.net.URI /*, globalVar
   /** For a module (no asset, no variant) of a given version, fetch the
     * corresponding `JD.Package` contained in its json file.
     */
-  def fetchModuleJson[F[_] : Monad, A <: JD.PackageAsset : Reader](module: Module, version: String, fetch: Repository.Fetch[F]): EitherT[F, ErrStr, A]
-
-  /** For a module of a given version, find its metadata (parsed from its json
-    * file) and return it as a `Project` (Coursier's representation of package
-    * metadata, which only mirrors information of Maven pom files, so does not
-    * contain all the information we need for installation, but contains enough
-    * information for Coursier to do resolutions). An `ArtifactSource` is the
-    * corresponding `Repository`.
-    */
-  def find[F[_] : Monad](module: Module, version: String, fetch: Repository.Fetch[F]): EitherT[F, ErrStr, (ArtifactSource, Project)] = {
-    ???  // TODO unused implementation
-    /*
-    if (isSc4pacAsset(module)) {
-      // EitherT.fromEither(Right((this, MetadataRepository.sc4pacAssetProject(module, version))))
-      fetchModuleJson[F, JD.Asset](module, version, fetch)
-        .flatMap { data => EitherT.point((this, data.toProject)) }
-    } else {
-      fetchModuleJson[F, JD.Package](module, version, fetch)
-        .flatMap { data =>
-          data.toProject(globalVariant) match {
-            case Left(err) => throw new Sc4pacMissingVariant(data, msg = err)
-            case Right(proj) => EitherT.point((this, proj))
-          }
-        }
-        // TODO in case of error, we should not cache faulty file
-    }
-    */
-  }
-
-  def artifacts(dependency: Dependency, project: Project, overrideClassifiers: Option[Seq[Classifier]]): Seq[(Publication, Artifact)] = {
-    ???  // TODO unused implementation
-    /*
-    if (overrideClassifiers.nonEmpty) ???  // TODO
-
-    if (!isSc4pacAsset(dependency.module)) {
-      // here project.module contains variants as attributes, unlike dependency.module
-      Seq.empty  // module corresponds to metadata json and does not provide any files itself
-    } else {
-      // Here dependency is an sc4pacAsset. As these are specified as bare
-      // dependencies using just the assetId (without url etc.), it is
-      // expected that dependency.module does not contain url attribute, but
-      // project.module does (since the project is obtained by parsing the json
-      // file of the sc4pacAsset).
-      require(dependency.module == project.module.withAttributes(Map.empty), s"unexpected asset inconsistency: ${dependency.module} vs ${project.module}")  // TODO check this
-      require(project.module.attributes.contains(Constants.urlKey), s"asset should contain url: ${project.module}")
-      val mod = project.module
-      val url = mod.attributes(Constants.urlKey)
-
-      val ext = Extension.empty  // Extension(dep.publication.`type`.value)  // TODO determine extension
-      val typ = /*dep.publication.`type`*/ Constants.sc4pacAssetType
-      val pub = Publication(mod.name.value, typ, ext, Classifier.empty /*Classifier(s"file$idx")*/)  // TODO classifier not needed?
-      require(isSc4pacAsset(mod))  // TODO
-      val lastModifiedOpt: Option[java.time.Instant] = mod.attributes.get(Constants.lastModifiedKey).flatMap(JD.Asset.parseLastModified)
-      Seq((pub, MetadataRepository.createArtifact(url, lastModifiedOpt)))
-    }
-    */
-  }
+  def fetchModuleJson[A <: JD.PackageAsset : Reader](module: Module, version: String, fetch: MetadataRepository.Fetch): zio.Task[A]
 
   def iterateChannelContents: Iterator[JD.ChannelItem]
 }
 
 object MetadataRepository {
+
+  type Fetch = coursier.util.Artifact => IO[CC.ArtifactError, String]
+
   def channelContentsUrl(baseUri: java.net.URI): java.net.URI =
     if (baseUri.getPath.endsWith(".yaml")) baseUri else baseUri.resolve(JsonRepoUtil.channelContentsFilename)
 
@@ -125,14 +73,14 @@ object MetadataRepository {
     case e: java.net.URISyntaxException => Left(e.getMessage)
   }
 
-  def create(channelContentsFile: os.Path, baseUri: java.net.URI /*, globalVariant: Variant*/): IO[ErrStr, MetadataRepository] = {
+  def create(channelContentsFile: os.Path, baseUri: java.net.URI): IO[ErrStr, MetadataRepository] = {
     if (baseUri.getPath.endsWith(".yaml")) {  // yaml repository
       for {
         contents <- ChannelUtil.readAndParsePkgData(channelContentsFile, root = None)
       } yield {
         val channelData: Map[BareDep, Map[String, JD.PackageAsset]] =
           contents.groupMap(_.toBareDep)(data => data.version -> data).view.mapValues(_.toMap).toMap
-        new YamlRepository(baseUri, channelData /*, globalVariant*/)
+        new YamlRepository(baseUri, channelData)
       }
     } else {  // json repository
       val contentsUrl = channelContentsUrl(baseUri).toString
@@ -148,9 +96,8 @@ object MetadataRepository {
                      s"The channel $contentsUrl has a newer scheme ($scheme) than supported " +
                      s"by your installation (${Constants.channelSchemeVersions}). Please update to the latest version of sc4pac."
                    ))
-        channel <- ZIO.attemptBlockingIO(JsonIo.readBlocking[JD.Channel](jsonVal, errMsg = contentsUrl))
+        channel <- JsonIo.read[JD.Channel](jsonVal, errMsg = contentsUrl)
                      .mapError(e => s"Failed to read channel contents: $e")
-                     .absolve
       } yield new JsonRepository(baseUri, channel)
     }
   }
@@ -185,8 +132,7 @@ object MetadataRepository {
 private class JsonRepository(
   baseUri: java.net.URI,
   channelData: JD.Channel
-  // globalVariant: Variant
-) extends MetadataRepository(baseUri/*, globalVariant*/) {
+) extends MetadataRepository(baseUri) {
 
   /** Obtain the raw version strings of `dep` contained in this repository. */
   def getRawVersions(dep: BareDep): Seq[String] = channelData.versions.get(dep).getOrElse(Seq.empty)
@@ -200,10 +146,11 @@ private class JsonRepository(
   /** For a module (no asset, no variant) of a given version, fetch the
     * corresponding `JD.Package` contained in its json file.
     */
-  def fetchModuleJson[F[_] : Monad, A <: JD.PackageAsset : Reader](module: Module, version: String, fetch: Repository.Fetch[F]): EitherT[F, ErrStr, A] = {
+  def fetchModuleJson[A <: JD.PackageAsset : Reader](module: Module, version: String, fetch: MetadataRepository.Fetch): zio.Task[A] = {
     val dep = CoursierUtil.bareDepFromModule(module)
     if (!containsVersion(dep, version)) {
-      EitherT.fromEither(Left(s"no versions of $module found in repository $baseUri"))
+      ZIO.fail(new Sc4pacVersionNotFound(s"No versions of ${module.orgName} found in repository $baseUri.",
+        "Either the package name is spelled incorrectly or the metadata stored in the corresponding channel is incorrect or incomplete."))
     } else {
       // TODO use flatter directory (remove version folder, rename maven folder)
       val remoteUrl = baseUri.resolve(MetadataRepository.jsonSubPath(dep, version).segments0.mkString("/")).toString
@@ -211,9 +158,8 @@ private class JsonRepository(
       // version, they never change and therefore can be cached indefinitely
       val jsonArtifact = Artifact(remoteUrl).withChanging(false)
 
-      fetch(jsonArtifact).flatMap((jsonStr: String) => EitherT.fromEither {
-        JsonIo.readBlocking[A](jsonStr, errMsg = remoteUrl)
-      })
+      fetch(jsonArtifact)
+        .flatMap((jsonStr: String) => JsonIo.read[A](jsonStr, errMsg = remoteUrl))
     }
   }
 
@@ -225,19 +171,20 @@ private class JsonRepository(
 private class YamlRepository(
   baseUri: java.net.URI,
   channelData: Map[BareDep, Map[String, JD.PackageAsset]]  // name -> version -> json
-  // globalVariant: Variant
-) extends MetadataRepository(baseUri/*, globalVariant*/) {
+) extends MetadataRepository(baseUri) {
 
   def getRawVersions(dep: BareDep): Seq[String] = {
     channelData.get(dep).map(_.keys.toSeq).getOrElse(Seq.empty)
   }
 
-  def fetchModuleJson[F[_] : Monad, A <: JD.PackageAsset : Reader](module: Module, version: String, fetch: Repository.Fetch[F]): EitherT[F, ErrStr, A] = {
+  def fetchModuleJson[A <: JD.PackageAsset : Reader](module: Module, version: String, fetch: MetadataRepository.Fetch): zio.Task[A] = {
     val dep = CoursierUtil.bareDepFromModule(module)
     channelData.get(dep).flatMap(_.get(version)) match {
-      case None => EitherT.fromEither(Left(s"no versions of $module found in repository $baseUri"))
+      case None =>
+        ZIO.fail(new Sc4pacVersionNotFound(s"No versions of ${module.orgName} found in repository $baseUri.",
+          "Either the package name is spelled incorrectly or the metadata stored in the corresponding channel is incorrect or incomplete."))
       case Some(pkgData: JD.PackageAsset) =>
-        EitherT.point(pkgData.asInstanceOf[A])  // as long as we do not mix up Assets and Packages, casting should not be an issue (could be fixed using type classes)
+        ZIO.succeed(pkgData.asInstanceOf[A])  // as long as we do not mix up Assets and Packages, casting should not be an issue (could be fixed using type classes)
     }
   }
 

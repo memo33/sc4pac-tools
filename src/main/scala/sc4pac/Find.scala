@@ -18,7 +18,7 @@ object Find {
     } else {  // pick latest version
       for {
         context <- ZIO.service[ResolutionContext]
-        version <- context.coursierApi.versions.withModule(module).result().map(_.versions.latest)
+        version <- context.coursierApi.versionsOf(module).map(_.latest)
       } yield version
     }
   }
@@ -29,11 +29,11 @@ object Find {
   def packageData[A <: JD.Package | JD.Asset : Reader](module: C.Module, version: String): RIO[ResolutionContext, Option[A]] = {
     import CoursierZio.*  // implicit coursier-zio interop
     def tryAllRepos(repos: Seq[MetadataRepository], context: ResolutionContext): Task[Option[A]] = ZIO.collectFirst(repos) { repo =>
-      val task = {
-        repo.fetchModuleJson[Task, A](module, version, context.cache.fetch).run
+      val task: zio.UIO[Option[A]] = {
+        repo.fetchModuleJson[A](module, version, context.cache.fetchText).either
           .map(_.toOption) // repositories not containing module:version can be ignored
       }
-      context.cache.logger.using(task)  // properly initializes logger (avoids Uninitialized TermDisplay)
+      context.cache.logger.using(task: Task[Option[A]])  // properly initializes logger (avoids Uninitialized TermDisplay)
     }
 
     ZIO.service[ResolutionContext].flatMap { context =>
