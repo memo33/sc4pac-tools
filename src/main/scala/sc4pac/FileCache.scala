@@ -5,6 +5,8 @@ import java.util.concurrent.ConcurrentHashMap
 import coursier.cache as CC
 import zio.{ZIO, IO, Task, Promise}
 
+import sc4pac.JsonData as JD
+
 /** A thin wrapper around Coursier's FileCache providing minimal functionality
   * in order to supply a custom downloader implementation.
   */
@@ -39,36 +41,6 @@ class FileCache private (
     else true  // TODO as a safeguard, verify that local file is inside cache folder
   }
 
-  /** Remove a file from the cache if it is too old, so that the next cache
-    * access retrieves a new copy of it.
-    */
-  def purgeFileIfOlderThan(url: String, timestamp: java.time.Instant): IO[CC.ArtifactError | java.io.IOException, Unit] = {
-    val file = localFile(url)
-    if (!isManagedByCache(url, file)) {
-      ZIO.succeed(())  // we must not delete local files outside of cache
-    } else {
-      ZIO.attemptBlockingIO(CC.CacheLocks.withLockFor(location, file) {
-        if (!file.exists()) {
-          Right(())  // nothing to delete
-        } else {
-          lastCheck(file) match {
-            case Some(downloadedAt) =>
-              if (downloadedAt.isBefore(timestamp)) {
-                val success = file.delete()  // we ignore if deletion fails
-              }
-              Right(())
-            case None =>
-              // Since the .checked file may be missing from cache for various issues
-              // outside our conrol, we always delete the file in this case.
-              System.err.println(s"The cache ttl-file for $file did not exist.")  // TODO logger.warn
-              val success = file.delete()  // we ignore if deletion fails
-              Right(())
-          }
-        }
-      }).absolve
-    }
-  }
-
   // blocking
   private def lastCheck(file: java.io.File): Option[java.time.Instant] = {
     for {
@@ -79,15 +51,18 @@ class FileCache private (
     } yield java.time.Instant.ofEpochMilli(ts)
   }
 
+  private def isOlderThan(file: java.io.File, timestamp: java.time.Instant): Boolean =
+    lastCheck(file).map(downloadedAt => downloadedAt.isBefore(timestamp)).getOrElse(true)
+
   // blocking
+  // For changing artifacts, determine if it is older than ttl.
   private def isStale(file: java.io.File): Boolean = {
     ttl match {
-      case None => true  // if ttl-file does not exist, consider the file outdated
+      case None => true  // if ttl does not exist, consider the file outdated
       case Some(ttl: scala.concurrent.duration.Duration.Infinite) => false
       case Some(ttl: scala.concurrent.duration.FiniteDuration) =>
         import scala.jdk.DurationConverters.*
-        val now = java.time.Instant.now()
-        lastCheck(file).map(_.isBefore(now.minus(ttl.toJava))).getOrElse(true)
+        isOlderThan(file, java.time.Instant.now().minus(ttl.toJava))
     }
   }
 
@@ -95,13 +70,18 @@ class FileCache private (
     *
     * Refresh policy: Download only files that are
     * - absent, or
-    * - changing and outdated.
+    * - changing and outdated (according to ttl of cache), or
+    * - non-changing artifacts are refreshed if the remote lastModified timestamp is newer than the local file
     * Otherwise, return local file.
     */
   def file(artifact: Artifact): IO[CC.ArtifactError, java.io.File] = {
     def task0: IO[CC.ArtifactError, java.io.File] = {
       val destFile = localFile(artifact.url)
-      ZIO.ifZIO(ZIO.attemptBlockingIO(!destFile.exists() || (artifact.changing && isStale(destFile))))(
+      ZIO.ifZIO(ZIO.attemptBlockingIO(
+          !destFile.exists()
+          || (artifact.changing && isStale(destFile))
+          || (artifact.lastModified.exists(remoteModificationDate => isOlderThan(destFile, remoteModificationDate)))
+        ))(
         onTrue = new Downloader(artifact, cacheLocation = location, localFile = destFile, logger, pool).download,
         onFalse = ZIO.succeed(destFile)
       ).mapError {
@@ -155,7 +135,7 @@ class FileCache private (
     if (!checkedFile.exists() || checkedFile.length() == 0)
       None
     else {
-      JsonIo.readBlocking[JsonData.CheckFile](os.Path(checkedFile.getAbsolutePath())) match {
+      JsonIo.readBlocking[JD.CheckFile](os.Path(checkedFile.getAbsolutePath())) match {
         case Left(err) =>
           logger.debug(s"Failed to read filename fallback: $err")
           None

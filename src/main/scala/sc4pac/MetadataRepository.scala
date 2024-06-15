@@ -109,21 +109,6 @@ object MetadataRepository {
   def latestSubPath(group: String, name: String): os.SubPath = {
     os.SubPath(s"metadata/$group/$name/latest")
   }
-
-  def createArtifact(url: String, lastModifiedOpt: Option[java.time.Instant]): Artifact = {
-    val changing = if (lastModifiedOpt.isEmpty) {
-      // We do not know when the remote artifact is updated, so we set the artifact
-      // to be `changing` so that the cache can look for updates from time to time.
-      true
-    } else {
-      // We use the lastModified timestamp to determine when the remote
-      // artifact is newer than a locally cached file.
-      // This is implemented in deleteStaleCachedFiles.
-      false
-      // TODO Consider version string as well.
-    }
-    Artifact(url).withChanging(changing)
-  }
 }
 
 /** This repository operates on a hierarchy of JSON files. The JSON files are loaded on demand.
@@ -155,7 +140,7 @@ private class JsonRepository(
       val remoteUrl = baseUri.resolve(MetadataRepository.jsonSubPath(dep, version).segments0.mkString("/")).toString
       // We have complete control over the json metadata files, so for a fixed
       // version, they never change and therefore can be cached indefinitely
-      val jsonArtifact = Artifact(remoteUrl).withChanging(false)
+      val jsonArtifact = Artifact(remoteUrl, changing = false)
 
       fetch(jsonArtifact)
         .flatMap((jsonStr: String) => JsonIo.read[A](jsonStr, errMsg = remoteUrl))

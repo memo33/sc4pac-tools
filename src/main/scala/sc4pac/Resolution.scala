@@ -98,22 +98,6 @@ object Resolution {
     }
   }
 
-  /** This transforms the resolution.
-    * In case of coursier.cache.ArtifactError,
-    * the file was locked, so could not be deleted (hint: if error persists, manually delete the .lock file)
-    */
-  private def deleteStaleCachedFiles(assetsArtifacts: Seq[(DepAsset, Artifact)], cache: FileCache): Task[Unit] = {
-    ZIO.foreachParDiscard(assetsArtifacts) { case (dep, artifact) =>
-      if (artifact.changing) {
-        ZIO.succeed(())  // artifact is changing, so cache.ttl (time-to-live) determines how long a file is cached
-      } else {
-        val lastModifiedOpt = dep.lastModified
-        assert(lastModifiedOpt.isDefined, s"non-changing assets should have lastModified defined: $artifact $dep")
-        cache.purgeFileIfOlderThan(artifact.url, lastModifiedOpt.get)
-      }
-    }
-  }
-
   /** We resolve dependencies without concrete version information, but
     * implicitly always take the latest version. That way, we do not need to
     * worry about reconciliation strategies or dependency cycles.
@@ -179,7 +163,9 @@ class Resolution(reachableDeps: TreeSeqMap[BareDep, Seq[BareDep]], nonbareDeps: 
     * take files from cache in case they are still up-to-date.
     */
   def fetchArtifactsOf(subset: Seq[Dep]): RIO[ResolutionContext, Seq[(DepAsset, Artifact, java.io.File)]] = {
-    val assetsArtifacts = subset.collect{ case d: DepAsset => (d, MetadataRepository.createArtifact(d.url, d.lastModified)) }
+    val assetsArtifacts = subset.collect{ case d: DepAsset =>
+      (d, Artifact(d.url, changing = d.lastModified.isEmpty, lastModified = d.lastModified))  // non-changing assets should have lastModified defined and vice versa
+    }
     def fetchTask(context: ResolutionContext) =
       ZIO.foreachPar(assetsArtifacts) { (dep, art) =>
         context.cache.file(art).map(file => (dep, art, file))
@@ -195,7 +181,6 @@ class Resolution(reachableDeps: TreeSeqMap[BareDep, Seq[BareDep]], nonbareDeps: 
 
     for {
       context <- ZIO.service[ResolutionContext]
-      _       <- Resolution.deleteStaleCachedFiles(assetsArtifacts, context.cache)
       result  <- context.logger.using(context.logger.fetchingAssets(fetchTask(context)))
     } yield result
   }

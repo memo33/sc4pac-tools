@@ -479,7 +479,7 @@ object Sc4pac {
 
   private def fetchChannelData(repoUri: java.net.URI, cache: FileCache, channelContentsTtl: scala.concurrent.duration.Duration): ZIO[ProfileRoot, ErrStr, MetadataRepository] = {
     val contentsUrl = MetadataRepository.channelContentsUrl(repoUri).toString
-    val artifact = Artifact(contentsUrl).withChanging(true)  // changing as the remote file is updated whenever any remote package is added or updated
+    val artifact = Artifact(contentsUrl, changing = true)  // changing as the remote file is updated whenever any remote package is added or updated
     for {
       channelContentsFile <- cache
                               .withTtl(Some(channelContentsTtl))
