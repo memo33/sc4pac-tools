@@ -1,123 +1,123 @@
 {
-  "scheme": 4,
-  "contents": [
-    {
-      "group": "memo",
-      "name": "demo-package",
-      "versions": [
-        "1.0"
-      ],
-      "checksums": {
-        "1.0": {
-          "sha256": "ad57b4b73d9732bcf313408341564a04a1a372d2c1e19f4f6defbd6792e3a98b"
-        }
-      },
-      "category": [
-        "100-props-textures"
-      ]
-    },
-    {
-      "group": "memo",
-      "name": "package-template-basic",
-      "versions": [
-        "2.0"
-      ],
-      "checksums": {
-        "2.0": {
-          "sha256": "a33b41ad3067041ad53154bd0fb8fd8e65996711c632c367f756a275c975c7fb"
-        }
-      },
-      "summary": "One-line summary",
-      "category": [
-        "100-props-textures"
-      ]
-    },
-    {
-      "group": "memo",
-      "name": "package-template-variants",
-      "versions": [
-        "1.0"
-      ],
-      "checksums": {
-        "1.0": {
-          "sha256": "79b7bc542a7b046797e98e869c52fec8aa3ce17e73080be5ca15f89d495895f6"
-        }
-      },
-      "category": [
-        "150-mods"
-      ]
-    },
-    {
-      "group": "sc4pacAsset",
-      "name": "memo-demo-package-file-a-zip",
-      "versions": [
-        "1.0"
-      ],
-      "checksums": {
-        "1.0": {
-          "sha256": "54ac25f868dec8c017c8199ca1463e6bb8d0a6f5b6137d8292a6b76223b5c3ae"
-        }
-      }
-    },
-    {
-      "group": "sc4pacAsset",
-      "name": "memo-demo-package-file-b-dat",
-      "versions": [
-        "1.0"
-      ],
-      "checksums": {
-        "1.0": {
-          "sha256": "20c5deadf144380750ba69ac422d4436eeea3120173200aabee6c1c22318ad7e"
-        }
-      }
-    },
-    {
-      "group": "sc4pacAsset",
-      "name": "memo-demo-package-file-b-dll",
-      "versions": [
-        "1.0"
-      ],
-      "checksums": {
-        "1.0": {
-          "sha256": "020213f3260803354d7a9752779d9935a93068af31c3d506f8cca9928bdec811"
-        }
-      }
-    },
-    {
-      "group": "sc4pacAsset",
-      "name": "memo-testing-file-d-zip",
-      "versions": [
-        "1.0-1"
-      ],
-      "checksums": {
-        "1.0-1": {
-          "sha256": "d779af33c15fe6f8fffa409bffe360b5417f49eef7b53b673a269be247d56b4b"
-        }
-      }
-    },
-    {
-      "group": "sc4pacAsset",
-      "name": "memo-testing-first",
-      "versions": [
-        "1.0"
-      ],
-      "checksums": {
-        "1.0": {
-          "sha256": "b571d3d0ff97f92601d5dd1824e3274871c97126247d358827211c3b38b494d9"
-        }
-      }
-    },
-    {
-      "group": "sc4pacAsset",
-      "name": "memo-testing-second",
-      "versions": [
-        "1.0"
-      ],
-      "checksums": {
-        "1.0": {
-          "sha256": "bcc4e416fa4a1f86857e6c73e401b230d8ee44b37c8bd5c3e4c7cb96c81dfda1"
-        }
-      }
+ "scheme": 4,
+ "contents": [
+  {
+   "group": "memo",
+   "name": "demo-package",
+   "versions": [
+    "1.0"
+   ],
+   "checksums": {
+    "1.0": {
+     "sha256": "11344c3743316e628fe9f8ccf5cecd3db26f61b99fe1b9dc6d41562902dda06a"
     }
-  ]
+   },
+   "category": [
+    "100-props-textures"
+   ]
+  },
+  {
+   "group": "memo",
+   "name": "package-template-basic",
+   "versions": [
+    "2.0"
+   ],
+   "checksums": {
+    "2.0": {
+     "sha256": "282eae3c72728d2f70c29f144a0a701cb6810e5113ea4aa31250ede56c6159df"
+    }
+   },
+   "summary": "One-line summary",
+   "category": [
+    "100-props-textures"
+   ]
+  },
+  {
+   "group": "memo",
+   "name": "package-template-variants",
+   "versions": [
+    "1.0"
+   ],
+   "checksums": {
+    "1.0": {
+     "sha256": "bb137475621bcf1e736d149c31852deb8c5cadd4b66fd4afa05d5283ea209a92"
+    }
+   },
+   "category": [
+    "150-mods"
+   ]
+  },
+  {
+   "group": "sc4pacAsset",
+   "name": "memo-demo-package-file-a-zip",
+   "versions": [
+    "1.0"
+   ],
+   "checksums": {
+    "1.0": {
+     "sha256": "21942553157081b75f95e60574497b464043499854c71b952ae468ba0fdef5ff"
+    }
+   }
+  },
+  {
+   "group": "sc4pacAsset",
+   "name": "memo-demo-package-file-b-dat",
+   "versions": [
+    "1.0"
+   ],
+   "checksums": {
+    "1.0": {
+     "sha256": "6ffd933281117ab45ec0825f71079446bd3866e18f8b6cffc370e32701c9d4af"
+    }
+   }
+  },
+  {
+   "group": "sc4pacAsset",
+   "name": "memo-demo-package-file-b-dll",
+   "versions": [
+    "1.0"
+   ],
+   "checksums": {
+    "1.0": {
+     "sha256": "6ab4cba6df9775e08a5d498f026aeadef14834c0dbeb1896df19cc9b06ec1c80"
+    }
+   }
+  },
+  {
+   "group": "sc4pacAsset",
+   "name": "memo-testing-file-d-zip",
+   "versions": [
+    "1.0-1"
+   ],
+   "checksums": {
+    "1.0-1": {
+     "sha256": "05cb117b4f1a0cc1f29fae9a9dec7c28e0a5a9522c40104da3a509f4e5d90572"
+    }
+   }
+  },
+  {
+   "group": "sc4pacAsset",
+   "name": "memo-testing-first",
+   "versions": [
+    "1.0"
+   ],
+   "checksums": {
+    "1.0": {
+     "sha256": "382f29bcb19893ab3173e384bd5f404e11593a4401c84a2eebc7d3a65947a7c2"
+    }
+   }
+  },
+  {
+   "group": "sc4pacAsset",
+   "name": "memo-testing-second",
+   "versions": [
+    "1.0"
+   ],
+   "checksums": {
+    "1.0": {
+     "sha256": "8c6872a06da1bbb11ae4d4efd7d853a88440cecaa0fddbe7ae121f2e256e30bc"
+    }
+   }
+  }
+ ]
 }

@@ -1,10 +1,10 @@
 {
-  "$type": "Asset",
-  "assetId": "memo-testing-first",
-  "version": "1.0",
-  "url": "http://localhost:8090/files/package-cFile3.zip",
-  "lastModified": "2023-07-29T21:33:56Z",
-  "requiredBy": [
-    "memo:package-template-variants"
-  ]
+ "$type": "Asset",
+ "assetId": "memo-testing-first",
+ "version": "1.0",
+ "url": "http://localhost:8090/files/package-cFile3.zip",
+ "lastModified": "2023-07-29T21:33:56Z",
+ "requiredBy": [
+  "memo:package-template-variants"
+ ]
 }

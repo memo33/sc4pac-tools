@@ -94,8 +94,8 @@ object ChannelUtil {
     os.makeDir.all(target / os.up)
     scala.util.Using.resource(java.nio.file.Files.newBufferedWriter(target.toNIO)) { out =>
       pkgData match {
-        case data: JD.Package => writeTo(data, out, indent=2)  // writes package json file
-        case data: JD.Asset => writeTo(data, out, indent=2)  // writes asset json file
+        case data: JD.Package => writeTo(data, out, indent=1)  // writes package json file
+        case data: JD.Asset => writeTo(data, out, indent=1)  // writes asset json file
       }
     }
     JD.Checksum(sha256 = Some(Downloader.computeChecksum(target.toIO)))
@@ -150,7 +150,7 @@ object ChannelUtil {
         c.copy(contents = c.contents.sortBy(item => (item.group, item.name)))
       }
       scala.util.Using.resource(java.nio.file.Files.newBufferedWriter((tempJsonDir / JsonRepoUtil.channelContentsFilename).toNIO)) { out =>
-        writeTo(channel, out, indent=2)  // writes channel contents json file
+        writeTo(channel, out, indent=1)  // writes channel contents json file
       }
 
       // create symlinks for latest versions

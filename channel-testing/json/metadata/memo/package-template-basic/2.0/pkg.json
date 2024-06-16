@@ -1,47 +1,47 @@
 {
-  "$type": "Package",
-  "group": "memo",
-  "name": "package-template-basic",
-  "version": "2.0",
-  "subfolder": "100-props-textures",
-  "info": {
-    "summary": "One-line summary",
-    "warning": "Special instructions to display before installation, such as bulldozing requirements.\n",
-    "conflicts": "Notes about incompatibilities",
-    "description": "Longer text with some details.\nYet more text…\nUse syntax `pkg=group:name` to reference packages in description text.\n",
-    "images": [
-      "img1.png",
-      "img2.png"
-    ],
-    "website": "example.org",
-    "requiredBy": [
-      "memo:demo-package"
-    ]
-  },
-  "variants": [
-    {
-      "variant": {},
-      "dependencies": [
-        {
-          "group": "memo",
-          "name": "package-template-variants",
-          "version": "latest.release"
-        }
-      ],
-      "assets": [
-        {
-          "assetId": "memo-testing-file-d-zip",
-          "include": [
-            "/folder/file1.dat",
-            "/folder2/",
-            "/file3.*",
-            "^/full/path/to/file4\\.dat$"
-          ]
-        }
-      ]
-    }
+ "$type": "Package",
+ "group": "memo",
+ "name": "package-template-basic",
+ "version": "2.0",
+ "subfolder": "100-props-textures",
+ "info": {
+  "summary": "One-line summary",
+  "warning": "Special instructions to display before installation, such as bulldozing requirements.\n",
+  "conflicts": "Notes about incompatibilities",
+  "description": "Longer text with some details.\nYet more text…\nUse syntax `pkg=group:name` to reference packages in description text.\n",
+  "images": [
+   "img1.png",
+   "img2.png"
   ],
-  "metadataSource": [
-    "templates/package-template-basic.yaml"
+  "website": "example.org",
+  "requiredBy": [
+   "memo:demo-package"
   ]
+ },
+ "variants": [
+  {
+   "variant": {},
+   "dependencies": [
+    {
+     "group": "memo",
+     "name": "package-template-variants",
+     "version": "latest.release"
+    }
+   ],
+   "assets": [
+    {
+     "assetId": "memo-testing-file-d-zip",
+     "include": [
+      "/folder/file1.dat",
+      "/folder2/",
+      "/file3.*",
+      "^/full/path/to/file4\\.dat$"
+     ]
+    }
+   ]
+  }
+ ],
+ "metadataSource": [
+  "templates/package-template-basic.yaml"
+ ]
 }
