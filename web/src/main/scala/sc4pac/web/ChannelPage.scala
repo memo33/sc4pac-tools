@@ -23,6 +23,7 @@ object JsonData extends SharedData {
   val subPathRw = UP.readwriter[String]
   opaque type Checksum = Map[String, String]
   val checksumRw = UP.readwriter[Map[String, String]]
+  protected def emptyChecksum = Map.empty
 
   private val regexModule = """([^:\s]+):([^:\s]+)""".r
   def parseModule(pkgName: String): Either[String, BareModule] =

@@ -82,7 +82,7 @@ class FileCache private (
           !destFile.exists()
           || artifact.changing && isStale(destFile)
           || artifact.lastModified.exists(remoteModificationDate => isOlderThan(destFile, remoteModificationDate))
-          || validateChecksum(destFile, artifact.checksum).isLeft
+          || verifyChecksum(destFile, artifact).isLeft
         ))(
         onTrue = new Downloader(artifact, cacheLocation = location, localFile = destFile, logger, pool).download
           .flatMap { newFile =>
@@ -92,7 +92,7 @@ class FileCache private (
             // that checksums become out of sync when a pkg.json is updated remotely and the channel contents file
             // is already cached locally. This will fix itself after 30 minutes.
             // Alternatively the sc4pac-channel-contents.json file can be manually deleted from cache.
-            ZIO.fromEither(validateChecksum(newFile, artifact.checksum).map(_ => newFile))  // TODO add special handling for local files?
+            ZIO.fromEither(verifyChecksum(newFile, artifact).map(_ => newFile))  // TODO add special handling for local files?
           },
         onFalse = ZIO.succeed(destFile)
       ).mapError {
@@ -141,10 +141,18 @@ class FileCache private (
     }
   }
 
-  def validateChecksum(file: java.io.File, expectedChecksum: JD.Checksum): Either[CC.ArtifactError, Unit] = {
-    expectedChecksum.sha256 match
+  /** If artifact has an expected checksum, check that it matches the cached
+    * file. This is merely used for checking whether certain cached files are
+    * out-of-date, not for ensuring overall data integrity. */
+  def verifyChecksum(file: java.io.File, artifact: Artifact): Either[CC.ArtifactError, Unit] = {
+    if (!isManagedByCache(artifact.url, file))
+      // For local channels, there's no need to verify checksums as the local
+      // channel files are always up-to-date and Downloader .checked files do not exist.
+      Right(())
+    else artifact.checksum.sha256 match
       case None => Right(())  // no validation if no checksum is given
       case Some(sha256Expected) =>
+        logger.debug(s"Verifying checksum for file $file")
         val checkedFile = FileCache.ttlFile(file)
         if (!checkedFile.exists() || checkedFile.length() == 0)   // zero-length is possible for historic reasons
           Left(CC.ArtifactError.ChecksumNotFound(sumType = "sha256", file = file.toString))

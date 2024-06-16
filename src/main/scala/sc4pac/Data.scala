@@ -264,6 +264,7 @@ object JsonData extends SharedData {
       }
     }
   }
+  protected def emptyChecksum = Checksum.empty
 
   implicit val checksumRw: ReadWriter[Checksum] =
     readwriter[Map[String, String]].bimap[Checksum](

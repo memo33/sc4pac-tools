@@ -44,6 +44,7 @@ abstract class SharedData {
 
   type Checksum
   implicit val checksumRw: ReadWriter[Checksum]
+  protected def emptyChecksum: Checksum
 
   implicit val bareModuleRw: ReadWriter[BareModule]
 
@@ -179,8 +180,8 @@ abstract class SharedData {
   }
 
   case class Channel(scheme: Int, contents: Seq[ChannelItem]) derives ReadWriter {
-    lazy val versions: Map[BareDep, Seq[String]] =
-      contents.map(item => item.toBareDep -> item.versions).toMap
+    lazy val versions: Map[BareDep, Seq[(String, Checksum)]] =
+      contents.iterator.map(item => item.toBareDep -> item.versions.map(v => v -> item.checksums.getOrElse(v, emptyChecksum))).toMap
   }
   object Channel {
     def create(scheme: Int, channelData: Iterable[(BareDep, Iterable[(String, PackageAsset, Checksum)])]): Channel = {  // name -> (version, json, sha)
