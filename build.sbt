@@ -13,6 +13,7 @@ ThisBuild / licenses += ("GPL-3.0-only", url("https://spdx.org/licenses/GPL-3.0-
 ThisBuild / scalaVersion := "3.4.2"
 
 ThisBuild / scalacOptions ++= Seq(
+  // "-Wunused:imports",
   "-unchecked",
   "-deprecation",
   "-feature",

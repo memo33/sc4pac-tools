@@ -1,11 +1,11 @@
 package io.github.memo33
 package sc4pac
 
-import coursier.core.{Repository, Module, ModuleName, Organization}
+import coursier.core.{Module, ModuleName, Organization}
 import coursier.core as C
-import upickle.default.{ReadWriter, readwriter, stringKeyRW, macroRW}
+import upickle.default.{ReadWriter, readwriter}
 import java.nio.file.{Path as NioPath}
-import zio.{ZIO, IO, Task, RIO, URIO}
+import zio.{ZIO, IO, RIO, URIO}
 import java.util.regex.Pattern
 import scala.collection.mutable.Builder
 import scala.collection.immutable.ArraySeq

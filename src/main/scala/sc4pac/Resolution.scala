@@ -2,12 +2,12 @@ package io.github.memo33
 package sc4pac
 
 import coursier.core as C
-import zio.{ZIO, IO, Task, RIO}
+import zio.{ZIO, RIO}
 import scala.collection.immutable.TreeSeqMap
 
 import sc4pac.JsonData as JD
 import sc4pac.Constants.isSc4pacAsset
-import sc4pac.error.{Sc4pacAssetNotFound, Sc4pacAbort}
+import sc4pac.error.Sc4pacAssetNotFound
 import Resolution.{Dep, DepAsset}
 
 object CoursierUtil {

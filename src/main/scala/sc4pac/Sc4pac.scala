@@ -2,14 +2,13 @@ package io.github.memo33
 package sc4pac
 
 import scala.collection.immutable.{Set, Seq}
-import coursier.{Type, Resolve, Fetch}
-import coursier.core.{Module, Organization, ModuleName, Dependency, Publication, Configuration}
-import java.nio.file.Path
-import zio.{IO, ZIO, UIO, Task, Scope, RIO}
+import coursier.Type
+import coursier.core.{Module, Organization, ModuleName}
+import zio.{IO, ZIO, Task, Scope, RIO}
 import upickle.default as UP
 
 import sc4pac.error.*
-import sc4pac.Constants.{isSc4pacAsset, isDll}
+import sc4pac.Constants.isDll
 import sc4pac.JsonData as JD
 import sc4pac.Sc4pac.{StageResult, UpdatePlan}
 import sc4pac.Resolution.{Dep, DepModule, DepAsset}

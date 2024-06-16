@@ -5,7 +5,7 @@ import scala.annotation.tailrec
 import scala.collection.immutable.ArraySeq
 import java.net.URLConnection
 import coursier.cache as CC
-import zio.{ZIO, Task, IO}
+import zio.{ZIO, IO}
 import upickle.default as UP
 import sc4pac.JsonData as JD
 

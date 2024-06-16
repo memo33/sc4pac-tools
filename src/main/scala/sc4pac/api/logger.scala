@@ -2,12 +2,12 @@ package io.github.memo33
 package sc4pac
 package api
 
-import zio.{ZIO, Task, IO}
+import zio.{ZIO, Task}
 import zio.http.WebSocketFrame
 import zio.http.ChannelEvent.{Read, UserEvent, UserEventTriggered}
 
 import Resolution.DepModule
-import PromptMessage.{yesNo, yes}
+import PromptMessage.yes
 
 class WebSocketLogger private (private[api] val queue: java.util.concurrent.LinkedBlockingQueue[WebSocketLogger.Event]) extends Logger {
 

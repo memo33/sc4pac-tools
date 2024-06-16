@@ -1,14 +1,12 @@
 package io.github.memo33
 package sc4pac
 
-import coursier.core.{Repository, Module, Publication, ArtifactSource, Versions, Version,
-  Dependency, Project, Classifier, Extension, Type, Configuration, ModuleName, Organization, Info}
+import coursier.core.{Module, Versions, Version}
 import coursier.cache as CC
-import upickle.default.{read, macroRW, ReadWriter, Reader, writeTo}
+import upickle.default.Reader
 import zio.{ZIO, IO}
 
 import sc4pac.error.*
-import sc4pac.Constants.isSc4pacAsset
 import sc4pac.JsonData as JD
 
 sealed abstract class MetadataRepository(val baseUri: java.net.URI) {

@@ -2,7 +2,7 @@ package io.github.memo33
 package sc4pac
 
 import java.io.IOException
-import zio.{ZIO, IO}
+import zio.ZIO
 import sc4pac.error.Sc4pacTimeout
 
 object Prompt {

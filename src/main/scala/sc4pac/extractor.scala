@@ -1,7 +1,6 @@
 package io.github.memo33
 package sc4pac
 
-import org.apache.commons.compress.archivers.ArchiveEntry
 import org.apache.commons.compress.archivers.zip.{ZipFile, ZipArchiveEntry}
 import org.apache.commons.compress.archivers.sevenz.{SevenZFile, SevenZArchiveEntry}
 import org.apache.commons.compress.utils.IOUtils

@@ -54,7 +54,6 @@ object Find {
             // current sc4pac command to complete.
             // For simplicity, we do not store the new repositories -- this should
             // only affect few packages that have been updated, anyway.
-            import concurrent.duration.DurationInt
             val repoUris = context.repositories.map(_.baseUri)
             context.logger.log(s"Could not find metadata of ${module}. Trying to update channel contents.")
             for {

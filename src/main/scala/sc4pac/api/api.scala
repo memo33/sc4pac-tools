@@ -4,7 +4,7 @@ package api
 
 import zio.http.*
 import zio.http.ChannelEvent.Read
-import zio.{ZIO, Task, IO}
+import zio.{ZIO, IO}
 import upickle.default as UP
 
 import sc4pac.JsonData as JD
