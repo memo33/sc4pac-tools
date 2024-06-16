@@ -174,7 +174,10 @@ private class YamlRepository(
 
   // We pick the latest scheme version as we do not have any other input to work with.
   // If the scheme has been updated, then the yaml files have probably already failed to parse.
-  lazy private val channel = JD.Channel.create(scheme = Constants.channelSchemeVersions.max, channelData)
+  lazy private val channel = JD.Channel.create(
+    scheme = Constants.channelSchemeVersions.max,
+    channelData.view.mapValues(_.view.map { case (version, pkgData) => (version, pkgData, JD.Checksum.empty) })
+  )
 
   def iterateChannelContents: Iterator[JD.ChannelItem] = channel.contents.iterator
 }

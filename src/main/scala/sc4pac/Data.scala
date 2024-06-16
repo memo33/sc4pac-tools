@@ -254,6 +254,7 @@ object JsonData extends SharedData {
 
   case class Checksum(sha256: Option[ArraySeq[Byte]])
   object Checksum {
+    val empty = Checksum(sha256 = None)
     def bytesToString(bytes: ArraySeq[Byte]): String = bytes.map("%02x".format(_)).mkString
     def stringToBytes(hexString: String): ArraySeq[Byte] = {
       if (hexString.length % 2 != 0 || hexString.isEmpty) {
@@ -262,14 +263,14 @@ object JsonData extends SharedData {
         hexString.grouped(2).map(ss => java.lang.Short.parseShort(ss, 16).toByte).to(ArraySeq)
       }
     }
-
-    implicit val checksumRw: ReadWriter[Checksum] =
-      readwriter[Map[String, String]].bimap[Checksum](
-        (checksum: Checksum) => checksum.sha256.map("sha256" -> bytesToString(_)).toMap,
-        (m: Map[String, String]) => Checksum(sha256 = m.get("sha256").map(stringToBytes))
-      )
   }
 
-  case class CheckFile(filename: Option[String], checksum: Checksum = Checksum(sha256 = None)) derives ReadWriter
+  implicit val checksumRw: ReadWriter[Checksum] =
+    readwriter[Map[String, String]].bimap[Checksum](
+      (checksum: Checksum) => checksum.sha256.map("sha256" -> Checksum.bytesToString(_)).toMap,
+      (m: Map[String, String]) => Checksum(sha256 = m.get("sha256").map(Checksum.stringToBytes))
+    )
+
+  case class CheckFile(filename: Option[String], checksum: Checksum = Checksum.empty) derives ReadWriter
 
 }

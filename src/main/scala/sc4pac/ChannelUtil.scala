@@ -88,7 +88,7 @@ object ChannelUtil {
     }.mapError(errs => s"Format error in $path: ${errs.mkString(", ")}")
   }
 
-  private def writePackageJsonBlocking(pkgData: JD.PackageAsset, tempJsonDir: os.Path): Unit = {
+  private def writePackageJsonBlocking(pkgData: JD.PackageAsset, tempJsonDir: os.Path): JD.Checksum = {
     val dep = pkgData.toBareDep
     val target = tempJsonDir / MetadataRepository.jsonSubPath(dep, pkgData.version)
     os.makeDir.all(target / os.up)
@@ -98,6 +98,7 @@ object ChannelUtil {
         case data: JD.Asset => writeTo(data, out, indent=2)  // writes asset json file
       }
     }
+    JD.Checksum(sha256 = Some(Downloader.computeChecksum(target.toIO)))
   }
 
   /** This function reads the yaml package metadata and writes
@@ -127,7 +128,7 @@ object ChannelUtil {
       }
 
       // add dependents (requiredBy) and write package json files
-      val packagesMap: Map[BareDep, Seq[(String, JD.PackageAsset)]] =
+      val packagesMap: Map[BareDep, Seq[(String, JD.PackageAsset, JD.Checksum)]] =
         packages.map { pkgData =>
           val computed = dependents.getOrElse(pkgData.toBareDep, Set.empty)
           // this joins the computed dependents and the dependents explicitly specified in yaml
@@ -139,8 +140,8 @@ object ChannelUtil {
               data.copy(info = data.info.copy(requiredBy =
                 (computed ++ data.info.requiredBy).toSeq.sortBy(i => (i.group, i.name))))
           }
-          writePackageJsonBlocking(pkgData2, tempJsonDir)    // writing json as side effect
-          (pkgData2.toBareDep, (pkgData2.version, pkgData2))
+          val checksum = writePackageJsonBlocking(pkgData2, tempJsonDir)    // writing json as side effect
+          pkgData2.toBareDep -> (pkgData2.version, pkgData2, checksum)
         }.groupMap(_._1)(_._2)
 
       // write channel contents
