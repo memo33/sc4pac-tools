@@ -4,7 +4,6 @@ package sc4pac
 import coursier.core.{Repository, Module, Publication, ArtifactSource, Versions, Version,
   Dependency, Project, Classifier, Extension, Type, Configuration, ModuleName, Organization, Info}
 import coursier.cache as CC
-import coursier.util.Artifact
 import upickle.default.{read, macroRW, ReadWriter, Reader, writeTo}
 import zio.{ZIO, IO}
 
@@ -52,7 +51,7 @@ sealed abstract class MetadataRepository(val baseUri: java.net.URI) {
 
 object MetadataRepository {
 
-  type Fetch = coursier.util.Artifact => IO[CC.ArtifactError, String]
+  type Fetch = Artifact => IO[CC.ArtifactError, String]
 
   def channelContentsUrl(baseUri: java.net.URI): java.net.URI =
     if (baseUri.getPath.endsWith(".yaml")) baseUri else baseUri.resolve(JsonRepoUtil.channelContentsFilename)

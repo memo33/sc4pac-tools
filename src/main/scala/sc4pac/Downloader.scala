@@ -15,7 +15,7 @@ import Downloader.PartialDownloadSpec
   * Our changes of the implementation resolve issues related to timeouts and resuming partial downloads.
   */
 class Downloader(
-  artifact: coursier.util.Artifact,  // contains the URL
+  artifact: Artifact,  // contains the URL
   cacheLocation: java.io.File,
   localFile: java.io.File,  // the local file after download
   logger: Logger,
@@ -237,7 +237,7 @@ object Downloader {
   private def readFullyTo(
     in: java.io.InputStream,
     out: java.io.OutputStream,
-    logger: coursier.cache.CacheLogger,
+    logger: Logger,
     url: String,
     alreadyDownloaded: Long
   ): Unit = {

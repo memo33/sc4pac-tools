@@ -2,7 +2,6 @@ package io.github.memo33
 package sc4pac
 
 import coursier.core as C
-import coursier.util.Artifact
 import zio.{ZIO, IO, Task, RIO}
 import scala.collection.immutable.TreeSeqMap
 
@@ -194,7 +193,6 @@ class Resolution(reachableDeps: TreeSeqMap[BareDep, Seq[BareDep]], nonbareDeps: 
           e.getMessage))
       }
 
-    import CoursierZio.*  // implicit coursier-zio interop
     for {
       context <- ZIO.service[ResolutionContext]
       _       <- Resolution.deleteStaleCachedFiles(assetsArtifacts, context.cache)

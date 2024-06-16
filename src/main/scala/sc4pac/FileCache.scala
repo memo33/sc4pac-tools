@@ -5,8 +5,6 @@ import java.util.concurrent.ConcurrentHashMap
 import coursier.cache as CC
 import zio.{ZIO, IO, Task, Promise}
 
-import sc4pac.CoursierZio.*  // implicit coursier-zio interop
-
 /** A thin wrapper around Coursier's FileCache providing minimal functionality
   * in order to supply a custom downloader implementation.
   */
@@ -100,7 +98,7 @@ class FileCache private (
     * - changing and outdated.
     * Otherwise, return local file.
     */
-  def file(artifact: coursier.util.Artifact): IO[CC.ArtifactError, java.io.File] = {
+  def file(artifact: Artifact): IO[CC.ArtifactError, java.io.File] = {
     def task0: IO[CC.ArtifactError, java.io.File] = {
       val destFile = localFile(artifact.url)
       ZIO.ifZIO(ZIO.attemptBlockingIO(!destFile.exists() || (artifact.changing && isStale(destFile))))(
@@ -139,7 +137,7 @@ class FileCache private (
   }
 
   /** Retrieve the file contents as String from the cache or download if necessary. */
-  def fetchText: coursier.util.Artifact => IO[CC.ArtifactError, String] = { artifact =>
+  def fetchText: Artifact => IO[CC.ArtifactError, String] = { artifact =>
     file(artifact).flatMap { (f: java.io.File) =>
       zio.ZIO.attemptBlockingIO {
         new String(java.nio.file.Files.readAllBytes(f.toPath), java.nio.charset.StandardCharsets.UTF_8)
@@ -171,9 +169,10 @@ class FileCache private (
 
 object FileCache {
   def apply(location: java.io.File, logger: Logger, pool: java.util.concurrent.ExecutorService): FileCache = {
+    import sc4pac.CoursierZio.*  // implicit coursier-zio interop
     val csCache = CC.FileCache[Task]()
       .withLocation(location)
-      .withLogger(logger)
+      // .withLogger(logger)  // TODO verify that this logger really is not needed
       .withPool(pool)
       .withLocalArtifactsShouldBeCached(false)  // not caching local files allows live-editing
     new FileCache(csCache, logger, runningTasks = new ConcurrentHashMap())

@@ -66,4 +66,12 @@ package object sc4pac {
   }
 
   class ProfileRoot(val path: os.Path)
+
+  case class Artifact(
+    url: String,
+    changing: Boolean = false,
+  ) {
+    def withChanging(changing: Boolean) = Artifact(url, changing)
+  }
+
 }
