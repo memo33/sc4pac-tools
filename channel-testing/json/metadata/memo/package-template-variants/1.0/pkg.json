@@ -1,46 +1,46 @@
 {
-  "$type": "Package",
-  "group": "memo",
-  "name": "package-template-variants",
-  "version": "1.0",
-  "subfolder": "150-mods",
-  "info": {
-    "requiredBy": [
-      "memo:package-template-basic"
-    ]
-  },
-  "variants": [
+ "$type": "Package",
+ "group": "memo",
+ "name": "package-template-variants",
+ "version": "1.0",
+ "subfolder": "150-mods",
+ "info": {
+  "requiredBy": [
+   "memo:package-template-basic"
+  ]
+ },
+ "variants": [
+  {
+   "variant": {
+    "driveside": "right"
+   },
+   "assets": [
     {
-      "variant": {
-        "driveside": "right"
-      },
-      "assets": [
-        {
-          "assetId": "memo-testing-first"
-        },
-        {
-          "assetId": "memo-testing-second"
-        }
-      ]
+     "assetId": "memo-testing-first"
     },
     {
-      "variant": {
-        "driveside": "left"
-      },
-      "assets": [
-        {
-          "assetId": "memo-testing-first"
-        }
-      ]
+     "assetId": "memo-testing-second"
     }
-  ],
-  "variantDescriptions": {
-    "driveside": {
-      "right": "if cars in your game drive on the right",
-      "left": "if cars in your game drive on the left"
-    }
+   ]
   },
-  "metadataSource": [
-    "templates/package-template-variants.yaml"
-  ]
+  {
+   "variant": {
+    "driveside": "left"
+   },
+   "assets": [
+    {
+     "assetId": "memo-testing-first"
+    }
+   ]
+  }
+ ],
+ "variantDescriptions": {
+  "driveside": {
+   "right": "if cars in your game drive on the right",
+   "left": "if cars in your game drive on the left"
+  }
+ },
+ "metadataSource": [
+  "templates/package-template-variants.yaml"
+ ]
 }

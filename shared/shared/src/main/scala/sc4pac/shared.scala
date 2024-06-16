@@ -42,6 +42,10 @@ abstract class SharedData {
   type SubPath
   implicit val subPathRw: ReadWriter[SubPath]
 
+  type Checksum
+  implicit val checksumRw: ReadWriter[Checksum]
+  protected def emptyChecksum: Checksum
+
   implicit val bareModuleRw: ReadWriter[BareModule]
 
   case class Dependency(group: String, name: String, version: String) derives ReadWriter
@@ -162,18 +166,25 @@ abstract class SharedData {
     val empty = Info()
   }
 
-  case class ChannelItem(group: String, name: String, versions: Seq[String], summary: String = "", category: Option[String] = None) derives ReadWriter {
+  case class ChannelItem(
+    group: String,
+    name: String,
+    versions: Seq[String],
+    checksums: Map[String, Checksum] = Map.empty,  // version -> checksum (note that Map or Checksum itself could be empty)
+    summary: String = "",
+    category: Option[String] = None,
+  ) derives ReadWriter {
     def isSc4pacAsset: Boolean = group == JsonRepoUtil.sc4pacAssetOrg.value
     def toBareDep: BareDep = if (isSc4pacAsset) BareAsset(ModuleName(name)) else BareModule(Organization(group), ModuleName(name))
     private[sc4pac] def toSearchString: String = s"$group:$name $summary"
   }
 
   case class Channel(scheme: Int, contents: Seq[ChannelItem]) derives ReadWriter {
-    lazy val versions: Map[BareDep, Seq[String]] =
-      contents.map(item => item.toBareDep -> item.versions).toMap
+    lazy val versions: Map[BareDep, Seq[(String, Checksum)]] =
+      contents.iterator.map(item => item.toBareDep -> item.versions.map(v => v -> item.checksums.getOrElse(v, emptyChecksum))).toMap
   }
   object Channel {
-    def create(scheme: Int, channelData: Iterable[(BareDep, Iterable[(String, PackageAsset)])]): Channel = {  // name -> version -> json
+    def create(scheme: Int, channelData: Iterable[(BareDep, Iterable[(String, PackageAsset, Checksum)])]): Channel = {  // name -> (version, json, sha)
       Channel(scheme, channelData.iterator.collect {
         case (dep, versions) if versions.nonEmpty =>
           val (g, n) = dep match {
@@ -181,9 +192,15 @@ abstract class SharedData {
             case a: BareAsset => (JsonRepoUtil.sc4pacAssetOrg.value, a.assetId.value)
           }
           // we arbitrarily pick the summary of the first item (usually there is just one version anyway)
-          val summaryOpt = versions.iterator.collectFirst { case (_, pkg: Package) if pkg.info.summary.nonEmpty => pkg.info.summary }
-          val catOpt = versions.iterator.collectFirst { case (_, pkg: Package) => pkg.subfolder.toString }
-          ChannelItem(group = g, name = n, versions = versions.iterator.map(_._1).toSeq, summary = summaryOpt.getOrElse(""), category = catOpt)
+          val summaryOpt = versions.iterator.collectFirst { case (_, pkg: Package, _) if pkg.info.summary.nonEmpty => pkg.info.summary }
+          val catOpt = versions.iterator.collectFirst { case (_, pkg: Package, _) => pkg.subfolder.toString }
+          ChannelItem(
+            group = g, name = n,
+            versions = versions.iterator.map(_._1).toSeq,
+            checksums = versions.iterator.map(t => (t._1, t._3)).toMap,
+            summary = summaryOpt.getOrElse(""),
+            category = catOpt,
+          )
       }.toSeq)
     }
   }

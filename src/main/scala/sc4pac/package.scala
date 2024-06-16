@@ -69,9 +69,9 @@ package object sc4pac {
 
   case class Artifact(
     url: String,
-    changing: Boolean = false,
-  ) {
-    def withChanging(changing: Boolean) = Artifact(url, changing)
-  }
+    changing: Boolean = false,  // if true, redownload local artifact after exceeding time-to-live (ttl)
+    lastModified: Option[java.time.Instant] = None,  // redownload local artifact if older than that
+    checksum: JsonData.Checksum = JsonData.Checksum.empty,  // redownload local artifact if remote checksum does not match anymore
+  )
 
 }

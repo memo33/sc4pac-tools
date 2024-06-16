@@ -1,33 +1,33 @@
 {
-  "$type": "Package",
-  "group": "memo",
-  "name": "demo-package",
-  "version": "1.0",
-  "subfolder": "100-props-textures",
-  "variants": [
+ "$type": "Package",
+ "group": "memo",
+ "name": "demo-package",
+ "version": "1.0",
+ "subfolder": "100-props-textures",
+ "variants": [
+  {
+   "variant": {},
+   "dependencies": [
     {
-      "variant": {},
-      "dependencies": [
-        {
-          "group": "memo",
-          "name": "package-template-basic",
-          "version": "latest.release"
-        }
-      ],
-      "assets": [
-        {
-          "assetId": "memo-demo-package-file-a-zip"
-        },
-        {
-          "assetId": "memo-demo-package-file-b-dat"
-        },
-        {
-          "assetId": "memo-demo-package-file-b-dll"
-        }
-      ]
+     "group": "memo",
+     "name": "package-template-basic",
+     "version": "latest.release"
     }
-  ],
-  "metadataSource": [
-    "memo/demo-package.yaml"
-  ]
+   ],
+   "assets": [
+    {
+     "assetId": "memo-demo-package-file-a-zip"
+    },
+    {
+     "assetId": "memo-demo-package-file-b-dat"
+    },
+    {
+     "assetId": "memo-demo-package-file-b-dll"
+    }
+   ]
+  }
+ ],
+ "metadataSource": [
+  "memo/demo-package.yaml"
+ ]
 }

@@ -2,10 +2,12 @@ package io.github.memo33
 package sc4pac
 
 import scala.annotation.tailrec
+import scala.collection.immutable.ArraySeq
 import java.net.URLConnection
 import coursier.cache as CC
 import zio.{ZIO, Task, IO}
 import upickle.default as UP
+import sc4pac.JsonData as JD
 
 import Downloader.PartialDownloadSpec
 
@@ -201,7 +203,9 @@ class Downloader(
           for (lastModified <- lastModifiedOpt)
             file.setLastModified(lastModified)
 
-          doTouchCheckFile(file, url, filename)
+          val checksum = Downloader.computeChecksum(file)
+
+          doTouchCheckFile(file, url, filename, checksum)
         }
       }
 
@@ -209,22 +213,20 @@ class Downloader(
       if (conn != null) Downloader.closeConn(conn)
     }
 
-
   }
 
   // Here, filename is the name as declared in the HTTP header. We store it in
   // the ttl file in order to be able to restore it if necessary.
   // As this filename may not be persistent, it makes sense not to store files
   // in the cache under this name directly.
-  def doTouchCheckFile(file: java.io.File, url: String, filename: Option[String]): Unit = {  // without `updateLinks` as we do not download directories
+  // Additionally we store a checksum to be able to quickly check if a file is
+  // still up-to-date by comparing with an expected checksum value.
+  def doTouchCheckFile(file: java.io.File, url: String, filename: Option[String], sha256: ArraySeq[Byte]): Unit = {  // without `updateLinks` as we do not download directories
     val ts = System.currentTimeMillis()
     val f  = FileCache.ttlFile(file)
-    val arr: Array[Byte] =
-      if (filename.isDefined) UP.writeToByteArray(JsonData.CheckFile(filename = filename))
-      else Array.empty[Byte]
-    if (!f.exists() || filename.isDefined) {
-      scala.util.Using.resource(new java.io.FileOutputStream(f)) { fos => fos.write(arr) }
-    }
+    val arr: Array[Byte] =  // with older sc4pac versions, this could be an empty byte array
+      UP.writeToByteArray(JD.CheckFile(filename = filename, checksum = JD.Checksum(sha256 = Some(sha256))))
+    scala.util.Using.resource(new java.io.FileOutputStream(f)) { fos => fos.write(arr) }
     f.setLastModified(ts)
     ()
   }
@@ -412,6 +414,22 @@ object Downloader {
         // For compatibility with `getContentLengthLong` and partial downloads, return length from `start` offset.
         len.toLong - start.toLong
     }
+  }
+
+  // blocking computation of sha256
+  def computeChecksum(file: java.io.File): ArraySeq[Byte] = {
+    val md = java.security.MessageDigest.getInstance("SHA-256")
+    scala.util.Using.resource {
+      new java.io.FileInputStream(file)
+    } { in =>
+      val buf = new Array[Byte](Constants.bufferSizeDownload)
+      var count = in.read(buf)
+      while (count != -1) {
+        md.update(buf, 0, count)
+        count = in.read(buf)
+      }
+    }
+    ArraySeq.from(md.digest())
   }
 
 }

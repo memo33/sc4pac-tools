@@ -238,9 +238,11 @@ object Extractor {
       val cachePath = os.Path(cache.location, profileRoot)
       val archiveSubPath = archivePath.subRelativeTo(cachePath)
       // we hash the the archiveSubPath to keep paths short
-      val hash = java.security.MessageDigest.getInstance("SHA-1")
-        .digest(archiveSubPath.toString.getBytes("UTF-8"))
-        .take(4).map("%02x".format(_)).mkString // 4 bytes = 8 hex characters
+      val hash = JD.Checksum.bytesToString(
+        java.security.MessageDigest.getInstance("SHA-1")
+          .digest(archiveSubPath.toString.getBytes("UTF-8"))
+          .take(4).to(collection.immutable.ArraySeq)  // 4 bytes = 8 hex characters
+      )
       JarExtraction(jarsRoot / hash)
     }
   }

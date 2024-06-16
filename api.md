@@ -107,7 +107,6 @@ Get detailed information about a single package.
 Synopsis: `GET /packages.info?pkg=<pkg>`
 
 Returns: [example](https://memo33.github.io/sc4pac/channel/metadata/memo/industrial-revolution-mod/latest/pkg.json ':include').
-(The `requiredBy` field must be ignored for now due to caching.)
 
 ## packages.search
 

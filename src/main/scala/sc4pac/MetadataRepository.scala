@@ -109,21 +109,6 @@ object MetadataRepository {
   def latestSubPath(group: String, name: String): os.SubPath = {
     os.SubPath(s"metadata/$group/$name/latest")
   }
-
-  def createArtifact(url: String, lastModifiedOpt: Option[java.time.Instant]): Artifact = {
-    val changing = if (lastModifiedOpt.isEmpty) {
-      // We do not know when the remote artifact is updated, so we set the artifact
-      // to be `changing` so that the cache can look for updates from time to time.
-      true
-    } else {
-      // We use the lastModified timestamp to determine when the remote
-      // artifact is newer than a locally cached file.
-      // This is implemented in deleteStaleCachedFiles.
-      false
-      // TODO Consider version string as well.
-    }
-    Artifact(url).withChanging(changing)
-  }
 }
 
 /** This repository operates on a hierarchy of JSON files. The JSON files are loaded on demand.
@@ -134,32 +119,35 @@ private class JsonRepository(
 ) extends MetadataRepository(baseUri) {
 
   /** Obtain the raw version strings of `dep` contained in this repository. */
-  def getRawVersions(dep: BareDep): Seq[String] = channelData.versions.get(dep).getOrElse(Seq.empty)
+  def getRawVersions(dep: BareDep): Seq[String] = channelData.versions.getOrElse(dep, Seq.empty).map(_._1)
 
-  // This only works for concrete versions (so not for "latest.release").
-  // The assumption is that all methods of MetadataRepository are only called with concrete versions.
-  private def containsVersion(dep: BareDep, version: String): Boolean = {
-    getRawVersions(dep).exists(_ == version)
-  }
+  // TODO Avoid fetching the same json file multiple times during a single
+  // update command. This could lead to races during an update. (As the
+  // functionally relevant properties do not change for a fixed version of a
+  // json file, this is mainly a performance concern for now.)
 
   /** For a module (no asset, no variant) of a given version, fetch the
     * corresponding `JD.Package` contained in its json file.
     */
   def fetchModuleJson[A <: JD.PackageAsset : Reader](module: Module, version: String, fetch: MetadataRepository.Fetch): zio.Task[A] = {
     val dep = CoursierUtil.bareDepFromModule(module)
-    if (!containsVersion(dep, version)) {
-      ZIO.fail(new Sc4pacVersionNotFound(s"No versions of ${module.orgName} found in repository $baseUri.",
-        "Either the package name is spelled incorrectly or the metadata stored in the corresponding channel is incorrect or incomplete."))
-    } else {
-      // TODO use flatter directory (remove version folder, rename maven folder)
-      val remoteUrl = baseUri.resolve(MetadataRepository.jsonSubPath(dep, version).segments0.mkString("/")).toString
-      // We have complete control over the json metadata files, so for a fixed
-      // version, they never change and therefore can be cached indefinitely
-      val jsonArtifact = Artifact(remoteUrl).withChanging(false)
+    channelData.versions.get(dep).flatMap(_.find(_._1 == version)) match
+      // This only works for concrete versions (so not for "latest.release").
+      // The assumption is that all methods of MetadataRepository are only called with concrete versions.
+      case None =>
+        ZIO.fail(new Sc4pacVersionNotFound(s"No versions of ${module.orgName} found in repository $baseUri.",
+          "Either the package name is spelled incorrectly or the metadata stored in the corresponding channel is incorrect or incomplete."))
+      case Some((_, checksum)) =>
+        val remoteUrl = baseUri.resolve(MetadataRepository.jsonSubPath(dep, version).segments0.mkString("/")).toString
+        // We have complete control over the json metadata files. Usually, they
+        // do not functionally change for a fixed version, but info fields like
+        // `requiredBy` can change, so we redownload them once the checksum stops matching.
+        // (For local channels, there's no need to verify checksums as the local
+        // channel files are always up-to-date and Downloader .checked files do not exist.)
+        val jsonArtifact = Artifact(remoteUrl, changing = false, checksum = checksum)
 
-      fetch(jsonArtifact)
-        .flatMap((jsonStr: String) => JsonIo.read[A](jsonStr, errMsg = remoteUrl))
-    }
+        fetch(jsonArtifact)
+          .flatMap((jsonStr: String) => JsonIo.read[A](jsonStr, errMsg = remoteUrl))
   }
 
   def iterateChannelContents: Iterator[JD.ChannelItem] = channelData.contents.iterator
@@ -189,7 +177,10 @@ private class YamlRepository(
 
   // We pick the latest scheme version as we do not have any other input to work with.
   // If the scheme has been updated, then the yaml files have probably already failed to parse.
-  lazy private val channel = JD.Channel.create(scheme = Constants.channelSchemeVersions.max, channelData)
+  lazy private val channel = JD.Channel.create(
+    scheme = Constants.channelSchemeVersions.max,
+    channelData.view.mapValues(_.view.map { case (version, pkgData) => (version, pkgData, JD.Checksum.empty) })
+  )
 
   def iterateChannelContents: Iterator[JD.ChannelItem] = channel.contents.iterator
 }
