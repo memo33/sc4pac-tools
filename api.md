@@ -285,8 +285,8 @@ The `responses` field contains the valid response message objects to send back t
 #### Download
 ```
 { "$type": "/progress/download/started", "url": string }
-{ "$type": "/progress/download/length", "url": string, "length": "string (Long)" }
-{ "$type": "/progress/download/downloaded", "url": string, "downloaded": "string (Long)" }
+{ "$type": "/progress/download/length", "url": string, "length": "Long (or string if > 2^53)" }
+{ "$type": "/progress/download/downloaded", "url": string, "downloaded": "Long (or string if > 2^53)" }
 { "$type": "/progress/download/finished", "url": string, "success": boolean }
 ```
 
