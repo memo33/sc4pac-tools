@@ -164,8 +164,24 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
                   unit     <- ZIO.serviceWithZIO[WebSocketLogger](_.sendMessageAwait(finalMsg))
                 } yield unit
               } // wsLogger is shut down here (TODO use resource for safer closing)
+              // wsChannel needs to be explicitly shutdown afterwards
 
-            wsTask.zipRight(wsChannel.shutdown).map(_ => System.err.println("Shutting down websocket."))
+            // We run the update task and wait for shutdown of the channel in parallel.
+            // If client closes websocket connection before update task is completed, we cancel the update task by interrupting it.
+            // Otherwise, the websocket is shut down normally.
+            wsTask.raceWith(wsChannel.awaitShutdown: zio.RIO[Any, Unit])(
+              leftDone = (result, fiberRight) =>  // normal shutdown
+                wsChannel.shutdown
+                  .zipRight(fiberRight.await)
+                  .zipRight(ZIO.serviceWith[Logger](_.log("Update task completed.")))
+                  .zipRight(result),
+              rightDone = (result, fiberLeft) =>  // cancel the update
+                fiberLeft.interruptFork  // forking is important here to be able to interrupt a blocked fiber
+                                         // TODO Some blocking loops like extraction seem to keep running for a while before getting interrupted.
+                  .zipRight(ZIO.serviceWith[Logger](_.log("Update task was cancelled.")))
+                  .zipRight(result)
+            ).provideSomeLayer(httpLogger): zio.RIO[ProfileRoot, Unit]
+
           }.toResponse: zio.URIO[ProfileRoot, Response]
       )
     },

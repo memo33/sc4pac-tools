@@ -4,7 +4,7 @@ package api
 
 import zio.{ZIO, Task}
 import zio.http.WebSocketFrame
-import zio.http.ChannelEvent.{Read, UserEvent, UserEventTriggered}
+import zio.http.ChannelEvent.{Read, Unregistered, UserEvent, UserEventTriggered}
 
 import Resolution.DepModule
 import PromptMessage.yes
@@ -62,7 +62,7 @@ object WebSocketLogger {
 
   private[api] sealed trait Event
   private[api] object Event {
-    case object ShutDown extends Event
+    case object ShutDownMessageQueue extends Event
     case class Plain(message: Message) extends Event
     case class WithCompletion(message: Message, promise: zio.Promise[Nothing, Unit]) extends Event
     case class WithResponse(
@@ -82,7 +82,7 @@ object WebSocketLogger {
     val consume: Task[Boolean] =
       ZIO.iterate(true)(identity) { _ =>
         ZIO.attemptBlocking(queue.take()).flatMap(_ match {
-          case Event.ShutDown =>
+          case Event.ShutDownMessageQueue =>
             logger.log("Shutting down message queue.")
             ZIO.succeed(false)
           case Event.Plain(msg) =>
@@ -104,7 +104,7 @@ object WebSocketLogger {
     (for {
       fiber  <- consume.fork
       result <- ZIO.provideLayer(zio.ZLayer.succeed(logger))(task).either
-      _      <- ZIO.attempt(queue.offer(Event.ShutDown))
+      _      <- ZIO.attempt(queue.offer(Event.ShutDownMessageQueue))
       _      <- fiber.join
     } yield result).absolve
   }
@@ -120,6 +120,7 @@ class WebSocketPrompter(wsChannel: zio.http.WebSocketChannel, logger: WebSocketL
       ZIO.iterate(Option.empty[ResponseMessage])(_.isEmpty) { _ =>
         wsChannel.receive.flatMap {
           case UserEventTriggered(UserEvent.HandshakeComplete) => ZIO.succeed(None)  // ignore expected event
+          case Unregistered => ZIO.succeed(None)  // shutdown of the websocket is handled in api.scala, so we do not need to handle the event here
           case Read(WebSocketFrame.Text(raw)) =>
             JsonIo.read[ResponseMessage](raw).option
               .map(_.filter(message.accept(_)))  // accept only responses with matching token and valid body
@@ -127,7 +128,6 @@ class WebSocketPrompter(wsChannel: zio.http.WebSocketChannel, logger: WebSocketL
                 if (opt.isEmpty) logger.discardingUnexpectedMessage(raw)
                 opt
               }
-          // TODO handle channel close/unregistered events
           case event =>
             logger.discardingUnexpectedMessage(event.toString)
             ZIO.succeed(None)  // discard all unexpected messages (and events) and continue receiving
