@@ -127,6 +127,7 @@ class WebSocketPrompter(wsChannel: zio.http.WebSocketChannel, logger: WebSocketL
                 if (opt.isEmpty) logger.discardingUnexpectedMessage(raw)
                 opt
               }
+          // TODO handle channel close/unregistered events
           case event =>
             logger.discardingUnexpectedMessage(event.toString)
             ZIO.succeed(None)  // discard all unexpected messages (and events) and continue receiving

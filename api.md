@@ -1,4 +1,4 @@
-# API - version 1.2
+# API - version 1.3
 
 The API allows other programs to control *sc4pac* in a client-server fashion.
 
@@ -20,6 +20,9 @@ GET  /variants.list
 POST /variants.reset      ["<label1>", "<label2>", …]
 
 GET  /update              (websocket)
+
+GET  /server.status
+GET  /server.connect      (websocket)
 ```
 
 - Everything JSON.
@@ -298,3 +301,17 @@ The `responses` field contains the valid response message objects to send back t
 ### Errors
 
 See [ErrorMessage](https://github.com/memo33/sc4pac-tools/blob/main/src/main/scala/sc4pac/api/message.scala).
+
+## server.status
+
+Test if the server is running.
+
+Synopsis: `GET  /server.status`
+
+Returns: `{"sc4pacVersion": "0.4.x"}`
+
+## server.connect
+
+Monitor whether the server is still running by opening a websocket at this endpoint.
+No particular messages are exchanged, but if either client or server terminates,
+the other side will be informed about it as the websocket closes.

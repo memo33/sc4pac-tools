@@ -3,7 +3,7 @@ package sc4pac
 package api
 
 import zio.http.*
-import zio.http.ChannelEvent.Read
+import zio.http.ChannelEvent.{Read, Unregistered, UserEvent, UserEventTriggered}
 import zio.{ZIO, IO}
 import upickle.default as UP
 
@@ -12,6 +12,7 @@ import JD.bareModuleRw
 
 
 class Api(options: sc4pac.cli.Commands.ServerOptions) {
+  private val connectionCount = java.util.concurrent.atomic.AtomicInteger(0)
 
   private def jsonResponse[A : UP.Writer](obj: A): Response = Response.json(UP.write(obj, indent = options.indent))
   private def jsonFrame[A : UP.Writer](obj: A): WebSocketFrame = WebSocketFrame.Text(UP.write(obj, indent = options.indent))
@@ -49,7 +50,7 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
     zio.ZLayer.succeed(cliLogger)
   }
 
-  /** Handles some errors and provides http logger (not used for websocket). */
+  /** Handles some errors and provides http logger (not used for update-websocket). */
   private def wrapHttpEndpoint(task: ZIO[ProfileRoot & Logger, Throwable | Response, Response]): ZIO[ProfileRoot, Throwable, Response] = {
     task.provideSomeLayer(httpLogger)
       .catchAll {
@@ -268,6 +269,34 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
           _           <- cli.Commands.VariantReset.removeAndWrite(pluginsData, labels)
         } yield jsonOk
       }
+    },
+
+    // 200
+    Method.GET / "server.status" -> handler {
+      wrapHttpEndpoint {
+        ZIO.succeed(jsonResponse(ServerStatus(sc4pacVersion = cli.BuildInfo.version)))
+      }
+    },
+
+    // websocket allowing to monitor whether server is alive (supports no particular message exchange)
+    Method.GET / "server.connect" -> handler {
+      val num = connectionCount.incrementAndGet()
+      Handler.webSocket { wsChannel =>
+        for {
+          logger <- ZIO.service[Logger]
+          _      <- ZIO.succeed(logger.log(s"Registered websocket connection $num."))
+          _      <- wsChannel.receiveAll {
+                      case UserEventTriggered(UserEvent.HandshakeComplete) => ZIO.succeed(())  // ignore expected event
+                      case Unregistered =>
+                        logger.log(s"Unregistered websocket connection $num.")  // client closed websocket (results in websocket shutdown)
+                        ZIO.succeed(())
+                      case event =>
+                        logger.warn(s"Discarding unexpected websocket event: $event")
+                        ZIO.succeed(())  // discard all unexpected messages (and events) and continue receiving
+                    }
+          _      <- wsChannel.shutdown: zio.UIO[Unit]  // may be redundant
+        } yield logger.log(s"Shut down websocket connection $num.")
+      }.provideSomeLayer(httpLogger).toResponse: zio.URIO[ProfileRoot, Response]
     },
 
   ).handleError(err => jsonResponse(ErrorMessage.ServerError("Unhandled error.", err.getMessage)).status(Status.InternalServerError))
