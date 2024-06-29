@@ -177,8 +177,7 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
                   .zipRight(result),
               rightDone = (result, fiberLeft) =>  // cancel the update
                 fiberLeft.interruptFork  // forking is important here to be able to interrupt a blocked fiber
-                                         // TODO Some blocking loops like extraction seem to keep running for a while before getting interrupted.
-                  .zipRight(ZIO.serviceWith[Logger](_.log("Update task was cancelled.")))
+                  .zipRight(ZIO.serviceWith[Logger](_.log("Update task was canceled.")))
                   .zipRight(result)
             ).provideSomeLayer(httpLogger): zio.RIO[ProfileRoot, Unit]
 

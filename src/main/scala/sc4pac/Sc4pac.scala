@@ -520,9 +520,12 @@ object Sc4pac {
     wrapService(cache.logger.using(_), task)  // properly initializes logger (avoids Uninitialized TermDisplay)
   }
 
+  /** Limits parallel downloads to 2 (ST rejects too many connections). */
+  private[sc4pac] def createThreadPool() = coursier.cache.internal.ThreadUtil.fixedThreadPool(size = 2)
+
   def init(config: JD.Config): RIO[ProfileRoot & Logger, Sc4pac] = {
     // val refreshLogger = coursier.cache.loggers.RefreshLogger.create(System.err)  // TODO System.err seems to cause less collisions between refreshing progress and ordinary log messages
-    val coursierPool = coursier.cache.internal.ThreadUtil.fixedThreadPool(size = 2)  // limit parallel downloads to 2 (ST rejects too many connections)
+    val coursierPool = createThreadPool()
     for {
       cacheRoot <- config.cacheRootAbs
       logger    <- ZIO.service[Logger]

@@ -4,6 +4,7 @@ package sc4pac
 import scala.annotation.tailrec
 import scala.collection.immutable.ArraySeq
 import java.net.URLConnection
+import java.util.concurrent.atomic.AtomicBoolean
 import coursier.cache as CC
 import zio.{ZIO, IO}
 import upickle.default as UP
@@ -45,14 +46,14 @@ class Downloader(
   )
 
   private def remote(file: java.io.File, url: String): IO[CC.ArtifactError, Unit] = {
-    val task = ZIO.fromEither {
+    Downloader.attemptCancelableOnPool(pool, (isCanceled) => {
       val tmp = coursier.paths.CachePath.temporaryFile(file)  // file => .file.part
       logger.downloadingArtifact(url, artifact)
       var success = false
       try {
         val res = downloading(url, file)(
           CC.CacheLocks.withLockOr(cacheLocation, file)(
-            doDownload(file, url, tmp),
+            doDownload(file, url, tmp, isCanceled),
             ifLocked = Some(Left(new CC.ArtifactError.Locked(file)))  // should not be an issue as long as just one instance of sc4pac is running
           ),
           ifLocked = Some(Left(new CC.ArtifactError.Locked(file)))  // should not be an issue as long as just one instance of sc4pac is running
@@ -60,11 +61,9 @@ class Downloader(
         success = res.isRight
         res
       } finally logger.downloadedArtifact(url, success = success)
+    }).catchNonFatalOrDie {
+      case e => ZIO.fail(wrapDownloadError(e, url))
     }
-    // By scheduling the downloads on the `cache.pool`, we use max 2 downloads
-    // in parallel (this requires that the tasks are not already on the
-    // `ZIO.blocking` pool, which would start to download EVERYTHING in parallel).
-    task.onExecutionContext(scala.concurrent.ExecutionContext.fromExecutorService(pool))
   }
 
   /** Wraps download with ArtifactError.DownloadError and ssl retry attempts and
@@ -108,7 +107,7 @@ class Downloader(
   }
 
   /** Download in blocking fashion. */
-  private def doDownload(file: java.io.File, url: String, tmp: java.io.File): Either[CC.ArtifactError, Unit] = {
+  private def doDownload(file: java.io.File, url: String, tmp: java.io.File, isCanceled: AtomicBoolean): Either[CC.ArtifactError, Unit] = {
     var conn: URLConnection = null
 
     try {
@@ -172,8 +171,14 @@ class Downloader(
                   new java.io.FileOutputStream(tmp, partialDownload.isDefined)
                 }
               ) { out =>
-                Downloader.readFullyTo(in, out, logger, url, alreadyDownloaded = partialDownload.map(_.alreadyDownloaded).getOrElse(0L))
-                Right(())
+                val interrupted = !Downloader.readFullyTo(in, out, logger, url, isCanceled, alreadyDownloaded = partialDownload.map(_.alreadyDownloaded).getOrElse(0L))
+                if (interrupted) {
+                  val msg = s"Download was canceled, so partially downloaded file is incomplete: $tmp"
+                  logger.warn(msg)  // we log this directly, since the error cannot usually be handled via API after websocket was closed
+                  Left(new CC.ArtifactError.DownloadError(msg, None))
+                } else {
+                  Right(())
+                }
               }
             }
           }
@@ -236,29 +241,36 @@ class Downloader(
 
 object Downloader {
 
+  /** Returns true on success, false if data transfer was canceled. */
   private def readFullyTo(
     in: java.io.InputStream,
     out: java.io.OutputStream,
     logger: Logger,
     url: String,
+    isCanceled: AtomicBoolean,
     alreadyDownloaded: Long
-  ): Unit = {
+  ): Boolean = {
     val b = new Array[Byte](Constants.bufferSizeDownload)
 
     @tailrec
-    def helper(count: Long, logged: Boolean): Unit = {
-      val read = in.read(b)
-      if (read >= 0) {
-        out.write(b, 0, read)
-        out.flush()
-        if (count / Constants.downloadProgressQuantization < (count + read) / Constants.downloadProgressQuantization) {
-          logger.downloadProgress(url, count + read)  // log only if crossing the quantization marks
-          helper(count + read, logged = true)
-        } else {
-          helper(count + read, logged = false)
-        }
+    def helper(count: Long, logged: Boolean): Boolean = {
+      if (isCanceled.get()) {
+        false
       } else {
-        if (!logged) logger.downloadProgress(url, count)  // log final size
+        val read = in.read(b)
+        if (read >= 0) {
+          out.write(b, 0, read)
+          out.flush()
+          if (count / Constants.downloadProgressQuantization < (count + read) / Constants.downloadProgressQuantization) {
+            logger.downloadProgress(url, count + read)  // log only if crossing the quantization marks
+            helper(count + read, logged = true)
+          } else {
+            helper(count + read, logged = false)
+          }
+        } else {
+          if (!logged) logger.downloadProgress(url, count)  // log final size
+          true
+        }
       }
     }
     helper(alreadyDownloaded, logged = false)
@@ -430,6 +442,22 @@ object Downloader {
       }
     }
     ArraySeq.from(md.digest())
+  }
+
+  /** This executes an effect on a pool, with the option to cancel the effectful
+    * computation. On interrupt, the atomic boolean is flipped from false to true.
+    *
+    * By scheduling the downloads on the `cache.pool`, we use max 2 downloads
+    * in parallel. (This requires that the effects are not already executed on the
+    * `ZIO.blocking` pool, which would start to download EVERYTHING in parallel).
+    */
+  def attemptCancelableOnPool[E, A](pool: java.util.concurrent.ExecutorService, effect: AtomicBoolean => Either[E, A]): IO[Throwable | E, A] = {
+    val isCanceled = AtomicBoolean(false)
+    ZIO.attempt(effect(isCanceled))
+      .onExecutionContext(scala.concurrent.ExecutionContext.fromExecutorService(pool))
+      .fork.flatMap(_.join)
+      .onInterrupt(ZIO.succeed(isCanceled.set(true)))
+      .absolve
   }
 
 }
