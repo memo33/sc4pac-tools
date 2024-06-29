@@ -174,21 +174,21 @@ trait UpdateService { this: Sc4pac =>
     stagingRoot: os.Path,
     progress: Sc4pac.Progress
   ): RIO[ResolutionContext, (Seq[os.SubPath], Seq[Warning])] = {
-    def extract(assetData: JD.AssetReference, pkgFolder: os.SubPath): Task[Seq[Warning]] = ZIO.attemptBlocking {
+    def extract(assetData: JD.AssetReference, pkgFolder: os.SubPath): Task[Seq[Warning]] = {
       // Given an AssetReference, we look up the corresponding artifact file
       // by ID. This relies on the 1-to-1-correspondence between sc4pacAssets
       // and artifact files.
       val id = BareAsset(ModuleName(assetData.assetId))
       artifactsById.get(id) match {
         case None =>
-          Seq(s"An asset is missing and has been skipped, so it needs to be installed manually: ${id.orgName}. " +
-             "Please report this to the maintainers of the package metadata.")
+          ZIO.succeed(Seq(s"An asset is missing and has been skipped, so it needs to be installed manually: ${id.orgName}. " +
+                           "Please report this to the maintainers of the package metadata."))
         case Some(art, archive, depAsset) =>
           val (recipe, regexWarnings) = JD.InstallRecipe.fromAssetReference(assetData)
           val extractor = new Extractor(logger)
-          val fallbackFilename = context.cache.getFallbackFilename(archive)
           val jarsRoot = stagingRoot / "jars"
-          val usedPatterns =
+
+          def doExtract(fallbackFilename: Option[String]) =
             extractor.extract(
               archive,
               fallbackFilename,
@@ -197,8 +197,21 @@ trait UpdateService { this: Sc4pac =>
               Some(Extractor.JarExtraction.fromUrl(art.url, context.cache, jarsRoot = jarsRoot, profileRoot = context.profileRoot)),
               hints = depAsset.archiveType,
               stagingRoot)
-          // TODO catch IOExceptions
-          regexWarnings ++ recipe.usedPatternWarnings(usedPatterns)
+
+          for {
+            fallbackFilename <- ZIO.attemptBlockingIO(context.cache.getFallbackFilename(archive))
+            archiveSize      <- ZIO.attemptBlockingIO(archive.length())
+            usedPatterns     <- if (archiveSize >= Constants.largeArchiveSizeInterruptible) {
+                                  logger.debug(s"(Interruptible extraction of ${assetData.assetId})")
+                                  // comes at a performance cost, so we only make extraction interruptible for large files
+                                  ZIO.attemptBlockingInterrupt(doExtract(fallbackFilename))
+                                } else {
+                                  ZIO.attemptBlocking(doExtract(fallbackFilename))
+                                }
+          } yield {
+            // TODO catch IOExceptions
+            regexWarnings ++ recipe.usedPatternWarnings(usedPatterns)
+          }
       }
     }
 
