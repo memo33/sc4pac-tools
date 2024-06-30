@@ -366,7 +366,9 @@ trait UpdateService { this: Sc4pac =>
           _ <- movePackagesToPlugins(staged)
         } yield true  // TODO return result
       }
-      logger.publishing(removalOnly = plan.toInstall.isEmpty)(task)
+      // As this task alters the actual plugins, we make it uninterruptible to ensure completion in case the update is canceled.
+      // The task is reasonably fast, as it just removes/moves/copies files.
+      logger.publishing(removalOnly = plan.toInstall.isEmpty)(task.uninterruptible)
         .catchSome {  // TODO expose publish warnings to clients
           case e: Sc4pacPublishWarning => logger.warn(e.getMessage); ZIO.succeed(true)  // TODO return result
         }
