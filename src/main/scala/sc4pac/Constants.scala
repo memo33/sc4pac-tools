@@ -64,6 +64,12 @@ object Constants {
     * For details, see the instructions in `sc4pac.bat`.
     */
   lazy val simtropolisCookie: Option[String] = Option(System.getenv("SC4PAC_SIMTROPOLIS_COOKIE")).filter(_.nonEmpty)
+    .map { s =>
+      if (s.startsWith("\"") || s.endsWith("\"")) {
+        System.err.println("Warning: SC4PAC_SIMTROPOLIS_COOKIE should not be surrounded by quotes. Remove the quotes and try again.")
+      }
+      s
+    }
 
   /* On non-Windows platforms, cicdec is invoked by `mono cicdec [args]`, but on Windows Mono is not required: `cicdec [args]`.
    * We choose reasonable defaults, but allow customizing these two commands via environment variables (which are set in the launch scripts).
