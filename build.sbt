@@ -63,7 +63,7 @@ assembly / assemblyJarName := s"${name.value}-cli.jar"
 //
 assembly / assemblyMergeStrategy := {
   case p0 @ PathList("META-INF", xs @ _*) =>
-    (xs.map(_.toLowerCase)) match {
+    (xs.map(_.toLowerCase(java.util.Locale.ENGLISH))) match {
       case p1 if p1.last == "module-info.class" => MergeStrategy.discard
       case p1 if p1.last == "javax.inject.named" => MergeStrategy.filterDistinctLines
       case p1 if p1.last == "io.netty.versions.properties" => MergeStrategy.filterDistinctLines

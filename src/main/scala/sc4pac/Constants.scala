@@ -92,5 +92,5 @@ object Constants {
     true
   }
 
-  def isDll(path: os.Path): Boolean = path.last.toLowerCase.endsWith(".dll")
+  def isDll(path: os.Path): Boolean = path.last.toLowerCase(java.util.Locale.ENGLISH).endsWith(".dll")
 }

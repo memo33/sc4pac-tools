@@ -50,7 +50,7 @@ object Prompt {
     } yield {
       if (input.isEmpty) default
       else {
-        val matches: Seq[String] = options.filter(_.toLowerCase().startsWith(input.toLowerCase()))
+        val matches: Seq[String] = options.filter(_.toLowerCase(java.util.Locale.ENGLISH).startsWith(input.toLowerCase(java.util.Locale.ENGLISH)))
         matches match {
           case Seq(unique) => Some(unique)
           case _ => None

@@ -13,7 +13,7 @@ import sc4pac.error.ExtractionFailed
 object Extractor {
 
   def acceptNestedArchive(p: os.BasePath) = {
-    val name = p.last.toLowerCase
+    val name = p.last.toLowerCase(java.util.Locale.ENGLISH)
     name.endsWith(".jar") || name.endsWith(".zip") || name.endsWith(".7z") || name.endsWith(".exe")
   }
 
@@ -47,7 +47,7 @@ object Extractor {
 
   private object WrappedArchive {
     def apply(file: java.io.File, fallbackFilename: Option[String], stagingRoot: os.Path, logger: Logger, hints: Option[JD.ArchiveType]): WrappedArchive[?] = {
-      val lcNames: Seq[String] = Seq(file.getName.toLowerCase) ++ fallbackFilename.map(_.toLowerCase)
+      val lcNames: Seq[String] = Seq(file.getName.toLowerCase(java.util.Locale.ENGLISH)) ++ fallbackFilename.map(_.toLowerCase(java.util.Locale.ENGLISH))
       if (lcNames.exists(_.endsWith(".exe")) && hints.exists(_.format.equalsIgnoreCase(JD.ArchiveType.clickteamFormat))) {
         /* Clickteam installer */
         val tempExtractionDir = os.temp.dir(stagingRoot, prefix = "exe", deleteOnExit = false)  // the parent stagingRoot is already temporary and will be deleted
