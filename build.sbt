@@ -100,7 +100,13 @@ libraryDependencies += "me.xdrop" % "fuzzywuzzy" % "1.4.0"  // fuzzy search
 
 libraryDependencies += "net.sf.sevenzipjbinding" % "sevenzipjbinding" % "16.02-2.01"  // native 7z for NSIS extraction
 
-libraryDependencies += "net.sf.sevenzipjbinding" % "sevenzipjbinding-all-platforms" % "16.02-2.01"  // native 7z for NSIS extraction
+// libraryDependencies += "net.sf.sevenzipjbinding" % "sevenzipjbinding-all-platforms" % "16.02-2.01"  // native 7z for NSIS extraction
+
+// https://www.mucommander.com/maven/com/mucommander/sevenzipjbinding-all-platforms/16.02-2.01/sevenzipjbinding-all-platforms-16.02-2.01.pom
+// https://www.mucommander.com/maven/com/mucommander/sevenzipjbinding-all-platforms/16.02-2.01/sevenzipjbinding-all-platforms-16.02-2.01.jar
+// resolvers += "mucommander internal Maven repository" at "https://www.mucommander.com/maven/"
+libraryDependencies += ("com.mucommander" % "sevenzipjbinding-all-platforms" % "16.02-2.01" // patched by muCommander for Apple M1 support
+  from "https://www.mucommander.com/maven/com/mucommander/sevenzipjbinding-all-platforms/16.02-2.01/sevenzipjbinding-all-platforms-16.02-2.01.jar")
 
 libraryDependencies += "dev.zio" %% "zio-http" % "3.0.0-RC3" exclude("org.scala-lang.modules", "scala-collection-compat_3")  // server
 

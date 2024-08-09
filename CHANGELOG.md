@@ -1,6 +1,8 @@
 # Changelog
 
 ## [Unreleased]
+### Fixed
+- support for Apple silicon M1 (#4) (previously, some packages using NSIS exe installers could not be extracted on that platform)
 
 
 ## [0.4.3] - 2024-05-21
