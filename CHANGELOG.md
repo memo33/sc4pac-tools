@@ -2,7 +2,13 @@
 
 ## [Unreleased]
 ### Fixed
-- support for Apple silicon M1 (#4) (previously, some packages using NSIS exe installers could not be extracted on that platform)
+- support for Apple silicon M1 (#4) (previously, some packages using NSIS exe installers could not be extracted on that platform).
+- a rare issue that could arise on platforms with a non-English locale (Turkish, in particular).
+
+### Changed
+- The subfolder `050-early-mods` was renamed to `050-load-first` for clarity. The old folder can safely be deleted.
+- improved detection of ouf-of-date metadata JSON files. (The channels now provide checksums for each JSON file, so that the locally stored metadata is refreshed when necessary. This helps keep some informative data in sync, such as images or reverse dependencies.)
+- internal refactoring and maintenance.
 
 
 ## [0.4.3] - 2024-05-21

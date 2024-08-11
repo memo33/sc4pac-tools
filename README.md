@@ -68,7 +68,7 @@ See [CLI](https://memo33.github.io/sc4pac/#/cli?id=command-line-interface) for d
 (preliminary)
 
 ```
-050-early-mods
+050-load-first
 100-props-textures
 150-mods
 170-terrain
