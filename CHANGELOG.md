@@ -1,6 +1,9 @@
 # Changelog
 
 ## [Unreleased]
+
+
+## [0.4.4] - 2024-08-11
 ### Fixed
 - support for Apple silicon M1 (#4) (previously, some packages using NSIS exe installers could not be extracted on that platform).
 - a rare issue that could arise on platforms with a non-English locale (Turkish, in particular).
@@ -108,7 +111,8 @@
 ## [0.1.5] - 2023-09-26
 …
 
-[Unreleased]: https://github.com/memo33/sc4pac-tools/compare/0.4.3...HEAD
+[Unreleased]: https://github.com/memo33/sc4pac-tools/compare/0.4.4...HEAD
+[0.4.4]: https://github.com/memo33/sc4pac-tools/compare/0.4.3...0.4.4
 [0.4.3]: https://github.com/memo33/sc4pac-tools/compare/0.4.2...0.4.3
 [0.4.2]: https://github.com/memo33/sc4pac-tools/compare/0.4.1...0.4.2
 [0.4.1]: https://github.com/memo33/sc4pac-tools/compare/0.4.0...0.4.1
