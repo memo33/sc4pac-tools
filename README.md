@@ -69,6 +69,7 @@ See [CLI](https://memo33.github.io/sc4pac/#/cli?id=command-line-interface) for d
 
 ```
 050-load-first
+075-my-plugins         (your existing manually installed plugins)
 100-props-textures
 150-mods
 170-terrain
@@ -88,6 +89,7 @@ See [CLI](https://memo33.github.io/sc4pac/#/cli?id=command-line-interface) for d
 700-transit
 710-automata
 777-network-addon-mod  (installed manually)
+891-my-overrides       (your manually installed zzz-folders)
 900-overrides
 ```
 [(source)](https://github.com/memo33/sc4pac/blob/main/.github/sc4pac-yaml-schema.py#L10-L33)
@@ -95,6 +97,19 @@ See [CLI](https://memo33.github.io/sc4pac/#/cli?id=command-line-interface) for d
 Packages are installed into even-numbered subfolders, as the order in which files are loaded by the game is important.
 Files you install manually should be put into odd-numbered subfolders
 (ideally before `900-overrides`).
+
+## Migrating an existing Plugins folder
+
+If you already have a non-empty Plugins folder and want to switch to *sc4pac*,
+start by moving the bulk of your manually installed files into a new subfolder `075-my-plugins`
+and your zzz-folders into `891-my-overrides` to ensure correct load order.
+Once you install more and more packages and dependencies with *sc4pac*,
+delete the corresponding older, redundant, manually installed files
+to avoid duplication or version conflicts.
+If a dependency was installed with *sc4pac*, there is no need to keep older manually installed copies of it.
+
+In the long run, create additional odd-numbered subfolders for better organization of your manually installed files
+and to fine-tune load order.
 
 
 ## Details

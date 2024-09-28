@@ -24,7 +24,7 @@ REM - Set the environment variable `SC4PAC_SIMTROPOLIS_COOKIE` to the required c
 REM
 REM   * Either uncomment the line below by removing the `REM` and fill in the <value> placeholders.
 REM
-REM   * Or set the enironment variable as a User Variable in your system settings, using the same format.
+REM   * Or set the environment variable as a User Variable in your system settings, using the same format.
 REM
 REM   Note that the cookies will expire after a few months.
 REM
