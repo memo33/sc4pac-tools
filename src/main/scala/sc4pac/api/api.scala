@@ -334,6 +334,26 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
         }.provideSomeLayer(httpLogger).toResponse: zio.URIO[ProfilesDir, Response]
       },
 
+      // 200
+      Method.GET / "profiles.list" -> handler {
+        wrapHttpEndpoint {
+          JD.Profiles.readOrInit.map(jsonResponse)
+        }
+      },
+
+      // 200, 400
+      Method.POST / "profiles.add" -> handler { (req: Request) =>
+        wrapHttpEndpoint {
+          for {
+            profileName <- parseOr400[ProfileName](req.body, ErrorMessage.BadRequest("Missing profile name.", "Pass the \"name\" of the new profile."))
+            ps          <- JD.Profiles.readOrInit
+            (ps2, p)    = ps.add(profileName.name)
+            jsonPath    <- JD.Profiles.pathURIO
+            _           <- JsonIo.write(jsonPath, ps2, None)(ZIO.succeed(()))
+          } yield jsonResponse(p)
+        }
+      },
+
     )
 
     (profileRoutes2 ++ genericRoutes)

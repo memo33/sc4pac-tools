@@ -144,3 +144,5 @@ case class ChannelContentsItem(`package`: BareModule, version: String, summary: 
 case class InitArgs(plugins: String, cache: String) derives UP.ReadWriter
 
 case class ServerStatus(sc4pacVersion: String) derives UP.ReadWriter
+
+case class ProfileName(name: String) derives UP.ReadWriter

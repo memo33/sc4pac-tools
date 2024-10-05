@@ -23,6 +23,9 @@ GET  /update              (websocket)
 
 GET  /server.status
 GET  /server.connect      (websocket)
+
+GET  /profiles.list
+POST /profiles.add        {name: string}
 ```
 
 - Everything JSON.
@@ -315,3 +318,25 @@ Returns: `{"sc4pacVersion": "0.4.x"}`
 Monitor whether the server is still running by opening a websocket at this endpoint.
 No particular messages are exchanged, but if either client or server terminates,
 the other side will be informed about it as the websocket closes.
+
+## profiles.list
+
+Get the list of all existing profiles, each corresponding to a Plugins folder.
+
+Synopsis: `GET /profiles.list`
+
+Returns:
+```
+{
+  profiles: [{id: "<id-1>", name: string}, …],
+  currentProfileId: ["<id-1>"]
+}
+```
+
+## profiles.add
+
+Create a new profile and make it the currently active one. Make sure to call `/init` afterwards.
+
+Synopsis: `POST /profiles.add {name: string}`
+
+Returns: `{"id": "<id>", "name": string}`
