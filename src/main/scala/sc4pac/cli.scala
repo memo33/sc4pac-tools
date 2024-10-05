@@ -468,7 +468,7 @@ object Commands {
     |Start a local server to use the HTTP API.
     |
     |Example:
-    |  sc4pac server --indent 2 --profile-root profiles/profile-1/
+    |  sc4pac server --indent 1 --profiles-dir profiles
     """.stripMargin.trim)
   final case class ServerOptions(
     @ValueDescription("number") @Group("Server") @Tag("Server")
@@ -478,33 +478,24 @@ object Commands {
     @HelpMessage(s"indentation of JSON responses (default: -1, no indentation)")
     indent: Int = -1,
     @ValueDescription("path") @Group("Server") @Tag("Server")
-    @HelpMessage(s"root directory containing sc4pac-plugins.json (default: current working directory), newly created if necessary; "
-      + "can be used for managing multiple different plugins folders")
-    profileRoot: String = "",
-    @ValueDescription("path") @Group("Server") @Tag("Server")
-    @HelpMessage("deprecated (use --profile-root instead)")
-    scopeRoot: String = "",
+    @HelpMessage(s"directory containing the sc4pac-profiles.json file and profile sub-directories (default: current working directory), newly created if necessary")
+    profilesDir: String = "",
   ) extends Sc4pacCommandOptions
 
   case object Server extends Command[ServerOptions] {
     def run(options: ServerOptions, args: RemainingArgs): Unit = {
       if (options.indent < -1)
         error(caseapp.core.Error.Other(s"Indentation must be -1 or larger."))
-      val profileRoot: os.Path = {
-        val optProfileRoot = if (options.scopeRoot.nonEmpty) {
-          println("Option --scope-root is deprecated. Use --profile-root instead.")
-          options.scopeRoot
-        } else options.profileRoot
-        if (optProfileRoot.isEmpty) os.pwd else os.Path(java.nio.file.Paths.get(optProfileRoot), os.pwd)
-      }
-      if (!os.exists(profileRoot)) {
-        println(s"Creating sc4pac profile directory: $profileRoot")
-        os.makeDir.all(profileRoot)
+      val profilesDir: os.Path =
+        if (options.profilesDir.isEmpty) os.pwd else os.Path(java.nio.file.Paths.get(options.profilesDir), os.pwd)
+      if (!os.exists(profilesDir)) {
+        println(s"Creating sc4pac profiles directory: $profilesDir")
+        os.makeDir.all(profilesDir)
       }
       val task: Task[Unit] = {
         val app = sc4pac.api.Api(options).routes.toHttpApp
         println(s"Starting sc4pac server on port ${options.port}...")
-        zio.http.Server.serve(app).provide(zio.http.Server.defaultWithPort(options.port), zio.ZLayer.succeed(ProfileRoot(profileRoot)))
+        zio.http.Server.serve(app).provide(zio.http.Server.defaultWithPort(options.port), zio.ZLayer.succeed(ProfilesDir(profilesDir)))
       }
       runMainExit(task, exit)
     }

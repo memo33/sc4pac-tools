@@ -3,7 +3,7 @@
 ## [Unreleased]
 
 ### Changed
-- The API was upgraded to version 1.3.
+- The API was upgraded to version 2.0.
 
 
 ## [0.4.4] - 2024-08-11

@@ -274,4 +274,9 @@ object JsonData extends SharedData {
 
   case class CheckFile(filename: Option[String], checksum: Checksum = Checksum.empty) derives ReadWriter
 
+  case class Profile(id: ProfileId, name: String) derives ReadWriter
+
+  // or GuiConfig or GuiSettings
+  case class Profiles(profiles: Seq[Profile], currentProfileId: Option[ProfileId]) derives ReadWriter
+
 }

@@ -1,4 +1,4 @@
-# API - version 1.3
+# API - version 2.0
 
 The API allows other programs to control *sc4pac* in a client-server fashion.
 
