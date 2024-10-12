@@ -112,6 +112,7 @@ object Extractor {
     def isUnixSymlink(entry: os.Path) = os.isLink(entry)
     def extractSelected(entries: Seq[(os.Path, os.Path)], overwrite: Boolean): Unit =
       for ((src, target) <- entries) {
+        os.makeDir.all(target / os.up)
         os.copy.over(src, target, replaceExisting = overwrite)
       }
   }
