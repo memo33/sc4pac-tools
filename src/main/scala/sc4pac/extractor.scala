@@ -45,7 +45,7 @@ object Extractor {
     }
   }
 
-  private object WrappedArchive {
+  private[sc4pac] object WrappedArchive {
     def apply(file: java.io.File, fallbackFilename: Option[String], stagingRoot: os.Path, logger: Logger, hints: Option[JD.ArchiveType]): WrappedArchive[?] = {
       val lcNames: Seq[String] = Seq(file.getName.toLowerCase(java.util.Locale.ENGLISH)) ++ fallbackFilename.map(_.toLowerCase(java.util.Locale.ENGLISH))
       if (lcNames.exists(_.endsWith(".exe")) && hints.exists(_.format.equalsIgnoreCase(JD.ArchiveType.clickteamFormat))) {
@@ -56,9 +56,7 @@ object Extractor {
         /* NSIS installer or rar file (extractable with native 7zip) */
         try {
           import net.sf.sevenzipjbinding as SZ
-          val raf = new java.io.RandomAccessFile(file, "r")
-          val inArchive = SZ.SevenZip.openInArchive(null /*autodetect format*/, new SZ.impl.RandomAccessFileInStream(raf))
-          new native.Wrapped7zNative(raf, inArchive)
+          native.Wrapped7zNative(file)
         } catch {
           case e: java.lang.UnsatisfiedLinkError =>  // some platforms may be unsupported, e.g. Apple arm
             throw new ExtractionFailed(s"Failed to load native 7z library.", e.toString)
@@ -83,7 +81,7 @@ object Extractor {
     }
   }
 
-  private sealed trait WrappedArchive[A] extends AutoCloseable {
+  private[sc4pac] sealed trait WrappedArchive[A] extends AutoCloseable {
     /** Enumerate all entries contained in the archive. */
     def getEntries: Iterator[A]
     /** The stringified subpath of the entry within the archive. */
@@ -96,15 +94,83 @@ object Extractor {
       *   - an entry selected for extraction,
       *   - the corresponding full target path for this entry.
       * The target paths are already mapped to discard redundant top-level
-      * directories, so can differ from the what `getEntryPath` returned.
+      * directories, so can differ from what `getEntryPath` returned.
       */
     def extractSelected(entries: Seq[(A, os.Path)], overwrite: Boolean): Unit
+
+    /** Extract the zip archive: filter the entries by a predicate, strip the
+      * common prefix from all paths for a more flattened folder structure, and
+      * optionally overwrite existing files.
+      */
+    def extractByPredicate(
+      destination: os.Path,
+      predicate: os.SubPath => Boolean,
+      overwrite: Boolean,
+      flatten: Boolean,
+      logger: Logger,
+    ): Seq[os.Path] = {
+      // first we read the acceptable file names contained in the zip file
+      val entries: Seq[(A, os.SubPath)] = getEntries
+        .flatMap { e =>
+          val relativePathString = getEntryPath(e)
+          val subPathOpt =  // sanitized entry path
+            if (relativePathString.isEmpty || relativePathString.startsWith("/") || relativePathString.startsWith("""\""")) {
+              None
+            } else if (isUnixSymlink(e)) {  // skip symlinks as precaution
+              None
+            } else try {
+              Some(os.SubPath(relativePathString))
+            } catch { case _: IllegalArgumentException =>
+              None
+            }
+          if (!subPathOpt.isDefined) {
+            logger.debug(s"""Ignoring disallowed archive entry path "$relativePathString".""")
+          }
+          subPathOpt.map(e -> _)
+        }
+        .filter { (e, p) =>
+          if (isDirectory(e)) {
+            false
+          } else {
+            val include = predicate(p)
+            logger.extractingArchiveEntry(p, include)
+            include
+          }
+        }
+        .toSeq
+
+      if (entries.isEmpty) {
+        Seq.empty  // nothing to extract
+      } else {
+        // map zip entry names to file names (within destination directory)
+        val mapper: os.SubPath => os.SubPath = if (flatten) {
+          (subpath) => subpath.subRelativeTo(subpath / os.up)  // keep just filename
+        } else {
+          // determine the prefix common to all files, so we can strip it for a semi-flattened folder structure
+          val prefix: os.SubPath =
+            if (entries.lengthCompare(1) == 0) entries.head._2 / os.up
+            else entries.iterator.map(_._2).reduceLeft(Extractor.commonPrefix)
+          (subpath) => subpath.subRelativeTo(prefix)
+        }
+
+        os.makeDir.all(destination)
+        val extracted: Seq[os.Path] = entries.map((_, subpath) => destination / mapper(subpath))
+        val selected = entries.zip(extracted).flatMap { case ((entry, _), target) =>
+            if (!overwrite && os.exists(target))
+              None  // do nothing, as file has already been extracted previously (this avoids re-extracting large nested archives)
+            else
+              Some(entry, target)
+          }
+        extractSelected(selected, overwrite)
+        extracted  // Note that this includes some pre-existing files not in `selected`, but only files accepted by predicate
+      }
+    }
   }
 
   // Wrapper for reading from normal folders. This could be useful if we're
   // reading from the local filesystem, or if we're using third party tools -
   // such as cicdec - for unzipping unknown archives.
-  private class WrappedFolder(folder: os.Path) extends WrappedArchive[os.Path] {
+  private[sc4pac] class WrappedFolder(folder: os.Path) extends WrappedArchive[os.Path] {
     def close(): Unit = {}
     def getEntries = os.walk(folder).iterator
     def getEntryPath(entry: os.Path) = entry.subRelativeTo(folder).toString
@@ -117,7 +183,7 @@ object Extractor {
       }
   }
 
-  private class WrappedZip(archive: ZipFile) extends WrappedArchive[ZipArchiveEntry] {
+  private[sc4pac] class WrappedZip(archive: ZipFile) extends WrappedArchive[ZipArchiveEntry] {
     export archive.close
     import scala.jdk.CollectionConverters.*
     def getEntries = archive.getEntries.asScala
@@ -130,7 +196,7 @@ object Extractor {
 
   // A single .dat/.dll/.sc4* file that can just be copied to the target with a
   // new name. The name of `file` itself is not meaningful as it comes from the URL in the file cache.
-  private class WrappedNonarchive(file: os.Path, filename: String) extends WrappedArchive[os.Path] {
+  private[sc4pac] class WrappedNonarchive(file: os.Path, filename: String) extends WrappedArchive[os.Path] {
     def close(): Unit = {}
     def getEntries = Iterator(file)
     def getEntryPath(entry: os.Path) = filename  // entry.last has no meaningful relevance
@@ -142,7 +208,7 @@ object Extractor {
       }
   }
 
-  private class Wrapped7z(archive: SevenZFile) extends WrappedArchive[SevenZArchiveEntry] {
+  private[sc4pac] class Wrapped7z(archive: SevenZFile) extends WrappedArchive[SevenZArchiveEntry] {
     export archive.close
     import scala.jdk.CollectionConverters.*
     def getEntries = archive.getEntries.iterator.asScala
@@ -165,9 +231,16 @@ object Extractor {
     }
   }
 
-  private object native {
+  private[sc4pac] object native {
     import net.sf.sevenzipjbinding as SZ
 
+    object Wrapped7zNative {
+      def apply(file: java.io.File): Wrapped7zNative = {
+        val raf = new java.io.RandomAccessFile(file, "r")
+        val inArchive = SZ.SevenZip.openInArchive(null /*autodetect format*/, new SZ.impl.RandomAccessFileInStream(raf))
+        new native.Wrapped7zNative(raf, inArchive)
+      }
+    }
     class Wrapped7zNative(raf: java.io.RandomAccessFile, archive: SZ.IInArchive) extends WrappedArchive[Int] {
       def close() =
         try {
@@ -258,79 +331,6 @@ object Extractor {
 
 class Extractor(logger: Logger) {
 
-  /** Extract the zip archive: filter the entries by a predicate, strip the
-    * common prefix from all paths for a more flattened folder structure, and
-    * optionally overwrite existing files.
-    */
-  private def extractByPredicate(
-    archive: java.io.File,
-    destination: os.Path,
-    predicate: os.SubPath => Boolean,
-    overwrite: Boolean,
-    flatten: Boolean,
-    fallbackFilename: Option[String],
-    hints: Option[JD.ArchiveType],
-    stagingRoot: os.Path
-  ): Seq[os.Path] = {
-    scala.util.Using.resource(Extractor.WrappedArchive(archive, fallbackFilename, stagingRoot, logger, hints)) { zip =>
-      // first we read the acceptable file names contained in the zip file
-      val entries /*: Seq[(zip.A, os.SubPath)]*/ = zip.getEntries
-        .flatMap { e =>
-          val relativePathString = zip.getEntryPath(e)
-          val subPathOpt =  // sanitized entry path
-            if (relativePathString.isEmpty || relativePathString.startsWith("/") || relativePathString.startsWith("""\""")) {
-              None
-            } else if (zip.isUnixSymlink(e)) {  // skip symlinks as precaution
-              None
-            } else try {
-              Some(os.SubPath(relativePathString))
-            } catch { case _: IllegalArgumentException =>
-              None
-            }
-          if (!subPathOpt.isDefined) {
-            logger.debug(s"""Ignoring disallowed archive entry path "$relativePathString".""")
-          }
-          subPathOpt.map(e -> _)
-        }
-        .filter { (e, p) =>
-          if (zip.isDirectory(e)) {
-            false
-          } else {
-            val include = predicate(p)
-            logger.extractingArchiveEntry(p, include)
-            include
-          }
-        }
-        .toSeq
-
-      if (entries.isEmpty) {
-        Seq.empty  // nothing to extract
-      } else {
-        // map zip entry names to file names (within destination directory)
-        val mapper: os.SubPath => os.SubPath = if (flatten) {
-          (subpath) => subpath.subRelativeTo(subpath / os.up)  // keep just filename
-        } else {
-          // determine the prefix common to all files, so we can strip it for a semi-flattened folder structure
-          val prefix: os.SubPath =
-            if (entries.lengthCompare(1) == 0) entries.head._2 / os.up
-            else entries.iterator.map(_._2).reduceLeft(Extractor.commonPrefix)
-          (subpath) => subpath.subRelativeTo(prefix)
-        }
-
-        os.makeDir.all(destination)
-        val extracted: Seq[os.Path] = entries.map((_, subpath) => destination / mapper(subpath))
-        val selected = entries.zip(extracted).flatMap { case ((entry, _), target) =>
-            if (!overwrite && os.exists(target))
-              None  // do nothing, as file has already been extracted previously (this avoids re-extracting large nested archives)
-            else
-              Some(entry, target)
-          }
-        zip.extractSelected(selected, overwrite)
-        extracted  // Note that this includes some pre-existing files not in `selected`, but only files accepted by predicate
-      }
-    }
-  }
-
   /** Extracts files from the archive that match the inclusion/exclusion recipe, including one level of nested archives.
     * Returns the patterns that have matched. */
   def extract(
@@ -343,17 +343,19 @@ class Extractor(logger: Logger) {
     stagingRoot: os.Path,
   ): Set[Pattern] = try {
     val (usedPatternsBuilder, predicate) = recipe.makeAcceptancePredicate()  // tracks used patterns to warn about unused patterns
-    // first extract just the main files
-    extractByPredicate(archive, destination, predicate, overwrite = true, flatten = false, fallbackFilename, hints, stagingRoot = stagingRoot)
-    // additionally, extract jar files contained in the zip file to a temporary location
-    for (Extractor.JarExtraction(jarsDir) <- jarExtractionOpt) {
-      logger.debug(s"Searching for nested archives:")
-      val jarFiles = extractByPredicate(archive, jarsDir, Extractor.acceptNestedArchive, overwrite = false, flatten = true, fallbackFilename, hints, stagingRoot = stagingRoot)  // overwrite=false, as we want to extract any given jar only once per staging process
-      // finally extract the jar files themselves (without recursively extracting jars contained inside)
-      for (jarFile <- jarFiles if Extractor.acceptNestedArchive(jarFile)) {
-        logger.debug(s"Extracting nested archive ${jarFile.last}")
-        usedPatternsBuilder ++=
-          extract(jarFile.toIO, fallbackFilename = None, destination, recipe, jarExtractionOpt = None, hints, stagingRoot = stagingRoot)
+    scala.util.Using.resource(Extractor.WrappedArchive(archive, fallbackFilename, stagingRoot, logger, hints)) { wrappedArchive =>
+      // first extract just the main files
+      wrappedArchive.extractByPredicate(destination, predicate, overwrite = true, flatten = false, logger)
+      // additionally, extract jar files/nested archives contained in the zip file to a temporary location
+      for (Extractor.JarExtraction(jarsDir) <- jarExtractionOpt) {
+        logger.debug(s"Searching for nested archives:")
+        val jarFiles = wrappedArchive.extractByPredicate(jarsDir, Extractor.acceptNestedArchive, overwrite = false, flatten = true, logger)  // overwrite=false, as we want to extract any given jar only once per staging process
+        // finally extract the jar files themselves (without recursively extracting jars contained inside)
+        for (jarFile <- jarFiles if Extractor.acceptNestedArchive(jarFile)) {
+          logger.debug(s"Extracting nested archive ${jarFile.last}")
+          usedPatternsBuilder ++=
+            extract(jarFile.toIO, fallbackFilename = None, destination, recipe, jarExtractionOpt = None, hints, stagingRoot = stagingRoot)
+        }
       }
     }
     usedPatternsBuilder.result()

@@ -43,6 +43,7 @@ lazy val root = (project in file("."))
 
 
 Compile / run / fork := true
+Test / test / fork := true  // necessary for class loading of native 7z library, see https://stackoverflow.com/questions/44483924/how-to-properly-load-a-native-library-for-sbt-tests
 
 Compile / mainClass := Some("io.github.memo33.sc4pac.cli.CliMain")
 
