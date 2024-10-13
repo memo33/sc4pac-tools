@@ -3,6 +3,7 @@
 ## [Unreleased]
 ### Fixed
 - an extraction failure affecting Clickteam exe installers containing files in subfolders
+- an encoding issue that could affect console output on Windows with Java 19+
 
 
 ## [0.4.4] - 2024-08-11
