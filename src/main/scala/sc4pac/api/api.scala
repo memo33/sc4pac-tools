@@ -122,6 +122,7 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
           pluginsRoot =  os.Path(initArgs.plugins, profileRoot)
           cacheRoot   =  os.Path(initArgs.cache, profileRoot)
           _           <- ZIO.attemptBlockingIO {
+                           os.makeDir.all(profileRoot)
                            os.makeDir.all(pluginsRoot)  // TODO ask for confirmation?
                            os.makeDir.all(cacheRoot)
                          }
@@ -368,6 +369,7 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
             ps          <- JD.Profiles.readOrInit
             (ps2, p)    = ps.add(profileName.name)
             jsonPath    <- JD.Profiles.pathURIO
+            _           <- ZIO.attemptBlockingIO { os.makeDir.all(jsonPath / os.up) }
             _           <- JsonIo.write(jsonPath, ps2, None)(ZIO.succeed(()))
           } yield jsonResponse(p)
         }
@@ -376,6 +378,6 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
     )
 
     (profileRoutes2 ++ genericRoutes)
-      .handleError(err => jsonResponse(ErrorMessage.ServerError("Unhandled error.", err.getMessage)).status(Status.InternalServerError))
+      .handleError(err => jsonResponse(ErrorMessage.ServerError("Unhandled error.", err.toString)).status(Status.InternalServerError))
   }
 }
