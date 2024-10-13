@@ -1,6 +1,8 @@
 # Changelog
 
 ## [Unreleased]
+### Fixed
+- an extraction failure affecting Clickteam exe installers containing files in subfolders
 
 
 ## [0.4.4] - 2024-08-11

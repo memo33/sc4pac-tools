@@ -43,6 +43,7 @@ lazy val root = (project in file("."))
 
 
 Compile / run / fork := true
+Test / test / fork := true  // necessary for class loading of native 7z library, see https://stackoverflow.com/questions/44483924/how-to-properly-load-a-native-library-for-sbt-tests
 
 Compile / mainClass := Some("io.github.memo33.sc4pac.cli.CliMain")
 
@@ -80,7 +81,7 @@ libraryDependencies += "dev.zio" %% "zio-nio" % "2.0.1" exclude("org.scala-lang.
 
 libraryDependencies += "dev.zio" %% "zio" % "2.0.15"  // IO
 
-libraryDependencies += "com.lihaoyi" %% "os-lib" % "0.9.1"  // file system utilities
+libraryDependencies += "com.lihaoyi" %% "os-lib" % "0.11.1"  // file system utilities
 
 libraryDependencies += "com.lihaoyi" %% "upickle" % "3.1.2"  // json serialization
 
