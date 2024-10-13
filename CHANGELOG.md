@@ -8,6 +8,7 @@
 ### Changed
 - improved error message if channel-build fails randomly in case old files could not be removed (#6)
 - improved `sc4pac` bash script to allow symlinking into path on Linux/macOS
+- The progress spinner animation was switched to ASCII symbols for compatibility with non-Unicode fonts in some terminals.
 
 
 ## [0.4.5] - 2024-10-17

@@ -100,7 +100,10 @@ class CliLogger private (out: java.io.PrintStream, useColor: Boolean, isInteract
   // private val spinnerSymbols = collection.immutable.ArraySeq("⡿", "⣟", "⣯", "⣷", "⣾", "⣽", "⣻", "⢿").reverse
   private val spinnerSymbols = {
     val n = 6
-    val xs = collection.immutable.ArraySeq.tabulate(n+1)(i => "▪"*i + "▫"*(n-i))  // supported by Windows default font Consolas
+    val xs = collection.immutable.ArraySeq.tabulate(n+1) { i =>
+      // "▪"*i + "▫"*(n-i)  // supported by Windows default font Consolas, but not Windows default code page
+      "#"*i + "."*(n-i)
+    }
     xs.dropRight(1) ++ xs.drop(1).map(_.reverse).reverse
   }
 
