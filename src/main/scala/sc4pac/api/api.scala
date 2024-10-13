@@ -4,7 +4,7 @@ package api
 
 import zio.http.*
 import zio.http.ChannelEvent.{Read, Unregistered, UserEvent, UserEventTriggered}
-import zio.{ZIO, IO}
+import zio.{ZIO, IO, URIO}
 import upickle.default as UP
 
 import sc4pac.JsonData as JD
@@ -17,9 +17,19 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
   private def jsonResponse[A : UP.Writer](obj: A): Response = Response.json(UP.write(obj, indent = options.indent))
   private def jsonFrame[A : UP.Writer](obj: A): WebSocketFrame = WebSocketFrame.Text(UP.write(obj, indent = options.indent))
 
+  private val makePlatformDefaults: URIO[ProfileRoot, Map[String, Seq[String]]] =
+    for {
+      defPlugins  <- JD.Plugins.defaultPluginsRoot
+      defCache    <- JD.Plugins.defaultCacheRoot
+    } yield Map("plugins" -> defPlugins.map(_.toString), "cache" -> defCache.map(_.toString))
+
   /** Sends a 409 ProfileNotInitialized if Plugins cannot be loaded. */
   private val readPluginsOr409: ZIO[ProfileRoot, Response, JD.Plugins] =
-    JD.Plugins.read.mapError((err: ErrStr) => jsonResponse(ErrorMessage.ProfileNotInitialized("Profile not initialized", err)).status(Status.Conflict))
+    JD.Plugins.read.flatMapError { (err: ErrStr) =>
+      for {
+        defaults <- makePlatformDefaults
+      } yield jsonResponse(ErrorMessage.ProfileNotInitialized("Profile not initialized", err, platformDefaults = defaults)).status(Status.Conflict)
+    }
 
   private def expectedFailureMessage(err: cli.Commands.ExpectedFailure): ErrorMessage = err match {
     case abort: error.Sc4pacVersionNotFound => ErrorMessage.VersionNotFound(abort.title, abort.detail)
@@ -51,7 +61,7 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
   }
 
   /** Handles some errors and provides http logger (not used for update-websocket). */
-  private def wrapHttpEndpoint(task: ZIO[ProfileRoot & Logger, Throwable | Response, Response]): ZIO[ProfileRoot, Throwable, Response] = {
+  private def wrapHttpEndpoint[R](task: ZIO[R & Logger, Throwable | Response, Response]): ZIO[R, Throwable, Response] = {
     task.provideSomeLayer(httpLogger)
       .catchAll {
         case response: Response => ZIO.succeed(response)
@@ -81,10 +91,20 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
       .mapError(failedLabels => jsonResponse(errMsg(failedLabels)).status(Status.BadRequest))
   }
 
-  def routes: Routes[ProfileRoot, Nothing] = Routes(
+  /** Routes that require a `profile=id` query parameter as part of the URL. */
+  def profileRoutes: Routes[ProfileRoot, Throwable] = Routes(
+
+    // 200, 409
+    Method.GET / "profile.read" -> handler { (req: Request) =>
+      wrapHttpEndpoint {
+        for {
+          pluginsData <- readPluginsOr409
+        } yield jsonResponse(pluginsData.config)
+      }
+    },
 
     // 200, 400, 409
-    Method.POST / "init" -> handler { (req: Request) =>
+    Method.POST / "profile.init" -> handler { (req: Request) =>
       wrapHttpEndpoint {
         for {
           profileRoot <- ZIO.serviceWith[ProfileRoot](_.path)
@@ -93,21 +113,21 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
                              ErrorMessage.InitNotAllowed("Profile already initialized.",
                                "Manually delete the corresponding .json files if you are sure you want to initialize a new profile.")
                            ).status(Status.Conflict))
-          defPlugins  <- JD.Plugins.defaultPluginsRoot
-          defCache    <- JD.Plugins.defaultCacheRoot
+          defaults    <- makePlatformDefaults
           initArgs    <- parseOr400[InitArgs](req.body, ErrorMessage.BadInit(
                            """Parameters "plugins" and "cache" are required.""",
                            "Pass the locations of the folders as JSON dictionary: {plugins: <path>, cache: <path>}.",
-                           platformDefaults = Map("plugins" -> defPlugins.map(_.toString), "cache" -> defCache.map(_.toString))
+                           platformDefaults = defaults,
                          ))
           pluginsRoot =  os.Path(initArgs.plugins, profileRoot)
           cacheRoot   =  os.Path(initArgs.cache, profileRoot)
           _           <- ZIO.attemptBlockingIO {
+                           os.makeDir.all(profileRoot)
                            os.makeDir.all(pluginsRoot)  // TODO ask for confirmation?
                            os.makeDir.all(cacheRoot)
                          }
           pluginsData <- JD.Plugins.init(pluginsRoot = pluginsRoot, cacheRoot = cacheRoot)
-        } yield jsonOk
+        } yield jsonResponse(pluginsData.config)
       }
     },
 
@@ -286,34 +306,78 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
       }
     },
 
-    // 200
-    Method.GET / "server.status" -> handler {
-      wrapHttpEndpoint {
-        ZIO.succeed(jsonResponse(ServerStatus(sc4pacVersion = cli.BuildInfo.version)))
-      }
-    },
+  )
 
-    // websocket allowing to monitor whether server is alive (supports no particular message exchange)
-    Method.GET / "server.connect" -> handler {
-      val num = connectionCount.incrementAndGet()
-      Handler.webSocket { wsChannel =>
-        for {
-          logger <- ZIO.service[Logger]
-          _      <- ZIO.succeed(logger.log(s"Registered websocket connection $num."))
-          _      <- wsChannel.receiveAll {
-                      case UserEventTriggered(UserEvent.HandshakeComplete) => ZIO.succeed(())  // ignore expected event
-                      case Unregistered =>
-                        logger.log(s"Unregistered websocket connection $num.")  // client closed websocket (results in websocket shutdown)
-                        ZIO.succeed(())
-                      case event =>
-                        logger.warn(s"Discarding unexpected websocket event: $event")
-                        ZIO.succeed(())  // discard all unexpected messages (and events) and continue receiving
-                    }
-          _      <- wsChannel.shutdown: zio.UIO[Unit]  // may be redundant
-        } yield logger.log(s"Shut down websocket connection $num.")
-      }.provideSomeLayer(httpLogger).toResponse: zio.URIO[ProfileRoot, Response]
-    },
+  def routes: Routes[ProfilesDir, Nothing] = {
+    // Extract profile ID from URL query parameter and add it to environment.
+    // 400 error if "profile" parameter is absent.
+    val profileRoutes2 =
+      profileRoutes.transform((handler0) => handler { (req: Request) =>
+        req.url.queryParams.get("profile") match {
+          case Some[ProfileId](id) =>
+            handler0(req).provideSomeLayer(zio.ZLayer.fromFunction((dir: ProfilesDir) => ProfileRoot(dir.path / id)))
+          case None =>
+            ZIO.fail(jsonResponse(ErrorMessage.BadRequest(
+              """URL query parameter "profile" is required.""", "Pass the profile ID as query."
+            )).status(Status.BadRequest))
+        }
+      })
 
-  ).handleError(err => jsonResponse(ErrorMessage.ServerError("Unhandled error.", err.getMessage)).status(Status.InternalServerError))
+    // profile-independent routes
+    val genericRoutes = Routes[ProfilesDir, Throwable](
 
+      // 200
+      Method.GET / "server.status" -> handler {
+        wrapHttpEndpoint {
+          ZIO.succeed(jsonResponse(ServerStatus(sc4pacVersion = cli.BuildInfo.version)))
+        }
+      },
+
+      // websocket allowing to monitor whether server is alive (supports no particular message exchange)
+      Method.GET / "server.connect" -> handler {
+        val num = connectionCount.incrementAndGet()
+        Handler.webSocket { wsChannel =>
+          for {
+            logger <- ZIO.service[Logger]
+            _      <- ZIO.succeed(logger.log(s"Registered websocket connection $num."))
+            _      <- wsChannel.receiveAll {
+                        case UserEventTriggered(UserEvent.HandshakeComplete) => ZIO.succeed(())  // ignore expected event
+                        case Unregistered =>
+                          logger.log(s"Unregistered websocket connection $num.")  // client closed websocket (results in websocket shutdown)
+                          ZIO.succeed(())
+                        case event =>
+                          logger.warn(s"Discarding unexpected websocket event: $event")
+                          ZIO.succeed(())  // discard all unexpected messages (and events) and continue receiving
+                      }
+            _      <- wsChannel.shutdown: zio.UIO[Unit]  // may be redundant
+          } yield logger.log(s"Shut down websocket connection $num.")
+        }.provideSomeLayer(httpLogger).toResponse: zio.URIO[ProfilesDir, Response]
+      },
+
+      // 200
+      Method.GET / "profiles.list" -> handler {
+        wrapHttpEndpoint {
+          JD.Profiles.readOrInit.map(jsonResponse)
+        }
+      },
+
+      // 200, 400
+      Method.POST / "profiles.add" -> handler { (req: Request) =>
+        wrapHttpEndpoint {
+          for {
+            profileName <- parseOr400[ProfileName](req.body, ErrorMessage.BadRequest("Missing profile name.", "Pass the \"name\" of the new profile."))
+            ps          <- JD.Profiles.readOrInit
+            (ps2, p)    = ps.add(profileName.name)
+            jsonPath    <- JD.Profiles.pathURIO
+            _           <- ZIO.attemptBlockingIO { os.makeDir.all(jsonPath / os.up) }
+            _           <- JsonIo.write(jsonPath, ps2, None)(ZIO.succeed(()))
+          } yield jsonResponse(p)
+        }
+      },
+
+    )
+
+    (profileRoutes2 ++ genericRoutes)
+      .handleError(err => jsonResponse(ErrorMessage.ServerError("Unhandled error.", err.toString)).status(Status.InternalServerError))
+  }
 }

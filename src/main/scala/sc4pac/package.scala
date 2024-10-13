@@ -3,6 +3,7 @@ package object sc4pac {
   type ErrStr = String
   type Warning = String
   type Variant = Map[String, String]
+  type ProfileId = String
 
   object CoursierZio {
     // from https://github.com/kitlangton/scala-update/blob/2249cd613c6490142201a0cfd9cbcf7b2ecbda36/src/main/scala/update/versions/ZioSyncInstance.scala
@@ -65,7 +66,10 @@ package object sc4pac {
     zio.Runtime.default.unsafe.run(effect).getOrThrowFiberFailure()
   }
 
+  /** Root directory of an individual profile. */
   class ProfileRoot(val path: os.Path)
+  /** Directory containing all the profiles. */
+  class ProfilesDir(val path: os.Path)
 
   case class Artifact(
     url: String,

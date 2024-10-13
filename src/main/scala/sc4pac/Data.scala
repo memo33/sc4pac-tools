@@ -274,4 +274,34 @@ object JsonData extends SharedData {
 
   case class CheckFile(filename: Option[String], checksum: Checksum = Checksum.empty) derives ReadWriter
 
+  case class Profile(id: ProfileId, name: String) derives ReadWriter
+
+  // or GuiConfig or GuiSettings
+  case class Profiles(profiles: Seq[Profile], currentProfileId: Option[ProfileId]) derives ReadWriter {
+
+    private def nextId: ProfileId = {
+      val existing = profiles.map(_.id).toSet
+      Iterator.from(1).map(_.toString).dropWhile(existing).next
+    }
+
+    def add(name: String): (Profiles, Profile) = {
+      val id = nextId
+      val profile = Profile(id = id, name = name)
+      (Profiles(profiles :+ profile, currentProfileId = Some(id)), profile)
+    }
+  }
+  object Profiles {
+    def path(profilesDir: os.Path): os.Path = profilesDir / "sc4pac-profiles.json"
+
+    def pathURIO: URIO[ProfilesDir, os.Path] = ZIO.service[ProfilesDir].map(profilesDir => Profiles.path(profilesDir.path))
+
+    /** Read Profiles from file if it exists, else create it and write it to file. */
+    val readOrInit: RIO[ProfilesDir, Profiles] = Profiles.pathURIO.flatMap { jsonPath =>
+      ZIO.ifZIO(ZIO.attemptBlocking(os.exists(jsonPath)))(
+        onTrue = JsonIo.read[Profiles](jsonPath),
+        onFalse = ZIO.succeed(Profiles(Seq.empty, None))
+      )
+    }
+  }
+
 }

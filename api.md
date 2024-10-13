@@ -1,34 +1,38 @@
-# API - version 1.3
+# API - version 2.0
 
 The API allows other programs to control *sc4pac* in a client-server fashion.
 
 In a nutshell:
 
 ```
-POST /init                {plugins: "<path>", cache: "<path>"}
+GET  /profile.read?profile=id
+POST /profile.init?profile=id        {plugins: "<path>", cache: "<path>"}
 
-GET  /packages.list
-GET  /packages.info?pkg=<pkg>
-GET  /packages.search?q=<text>
+GET  /packages.list?profile=id
+GET  /packages.info?pkg=<pkg>&profile=id
+GET  /packages.search?q=<text>&profile=id
 
-GET  /plugins.added.list
-GET  /plugins.installed.list
-POST /plugins.add         ["<pkg1>", "<pkg2>", …]
-POST /plugins.remove      ["<pkg1>", "<pkg2>", …]
+GET  /plugins.added.list?profile=id
+GET  /plugins.installed.list?profile=id
+POST /plugins.add?profile=id         ["<pkg1>", "<pkg2>", …]
+POST /plugins.remove?profile=id      ["<pkg1>", "<pkg2>", …]
 
-GET  /variants.list
-POST /variants.reset      ["<label1>", "<label2>", …]
+GET  /variants.list?profile=id
+POST /variants.reset?profile=id      ["<label1>", "<label2>", …]
 
-GET  /update              (websocket)
+GET  /update?profile=id              (websocket)
 
 GET  /server.status
-GET  /server.connect      (websocket)
+GET  /server.connect                 (websocket)
+
+GET  /profiles.list
+POST /profiles.add                   {name: string}
 ```
 
 - Everything JSON.
 - Package placeholders `<pkg>` are of the form `<group>:<name>`.
 - Launch the server using the `sc4pac server` command.
-- On the first time, invoke `/init` before anything else.
+- On the first time, invoke `/profile.init` before anything else.
 - All endpoints may return some generic errors:
   - 400 (incorrect input)
   - 404 (non-existing packages, assets, etc.)
@@ -44,12 +48,25 @@ GET  /server.connect      (websocket)
   }
   ```
 
-## init
+## profile.read
+
+Read the config data stored for this profile.
+
+Synopsis: `GET /profile.read?profile=id`
+
+Returns:
+- 200 `{pluginsRoot: string, cacheRoot: string, …}`.
+- 409 `/error/profile-not-initialized` when not initialized.
+  The response contains
+  `platformDefaults: {plugins: ["<path>", …], cache: ["<path>", …]}`
+  for recommended platform-specific locations to use for initialization.
+
+## profile.init
 
 Initialize the profile by configuring the location of plugins and cache.
 Profiles are used to manage multiple plugins folders.
 
-Synopsis: `POST /init {plugins: "<path>", cache: "<path>"}`
+Synopsis: `POST /profile.init?profile=id {plugins: "<path>", cache: "<path>"}`
 
 Returns:
 - 409 `/error/init/not-allowed` if already initialized.
@@ -60,13 +77,13 @@ Returns:
 
   ?> When managing multiple profiles, use the same cache for all of them.
 
-- 200 `{"$type": "/result", "ok": true}` on success.
+- 200 `{pluginsRoot: string, cacheRoot: string, …}`, same as `/profile.read`.
 
 **Examples:**
 
 Without parameters:
 ```sh
-curl -X POST http://localhost:51515/init
+curl -X POST http://localhost:51515/profile.init?profile=<id>
 ```
 Returns:
 ```json
@@ -89,14 +106,14 @@ Returns:
 
 With parameters:
 ```sh
-curl -X POST -d '{"plugins":"plugins","cache":"cache"}' http://localhost:51515/init
+curl -X POST -d '{"plugins":"plugins","cache":"cache"}' http://localhost:51515/profile.init?profile=<id>
 ```
 
 ## packages.list
 
 Get the list of all installable packages by fetching all channels.
 
-Synopsis: `GET /packages.list`
+Synopsis: `GET /packages.list?profile=id`
 
 Returns:
 ```
@@ -107,7 +124,7 @@ Returns:
 
 Get detailed information about a single package.
 
-Synopsis: `GET /packages.info?pkg=<pkg>`
+Synopsis: `GET /packages.info?pkg=<pkg>&profile=id`
 
 Returns: [example](https://memo33.github.io/sc4pac/channel/metadata/memo/industrial-revolution-mod/latest/pkg.json ':include').
 
@@ -115,7 +132,7 @@ Returns: [example](https://memo33.github.io/sc4pac/channel/metadata/memo/industr
 
 Search for a package in all channels.
 
-Synopsis: `GET /packages.search?q=<text>`
+Synopsis: `GET /packages.search?q=<text>&profile=id`
 
 Optionally, bound the relevance by passing a `threshold` paramater ranging from 0 to 100.
 
@@ -129,7 +146,7 @@ Returns:
 Get the list of packages that have been added explicitly (not necessarily installed yet).
 These packages are precisely the ones that can be removed.
 
-Synopsis: `GET /plugins.added.list`
+Synopsis: `GET /plugins.added.list?profile=id`
 
 Returns: `["<pkg>", …]`
 
@@ -137,7 +154,7 @@ Returns: `["<pkg>", …]`
 
 Get the list of packages that are currently installed in your plugins.
 
-Synopsis: `GET /plugins.installed.list`
+Synopsis: `GET /plugins.installed.list?profile=id`
 
 Returns:
 ```
@@ -156,13 +173,13 @@ Returns:
 
 Add packages to the list of packages to install explicitly.
 
-Synopsis: `POST /plugins.add ["<pkg1>", "<pkg2>", …]`
+Synopsis: `POST /plugins.add?profile=id ["<pkg1>", "<pkg2>", …]`
 
 Returns: `{"$type": "/result", "ok": true}`
 
 Example:
 ```sh
-curl -X POST -d '["cyclone-boom:save-warning"]' http://localhost:51515/plugins.add
+curl -X POST -d '["cyclone-boom:save-warning"]' http://localhost:51515/plugins.add?profile=<id>
 ```
 
 ## plugins.remove
@@ -170,7 +187,7 @@ curl -X POST -d '["cyclone-boom:save-warning"]' http://localhost:51515/plugins.a
 Remove packages from the list of packages to install explicitly.
 Only packages previously added can be removed.
 
-Synopsis: `POST /plugins.remove ["<pkg1>", "<pkg2>", …]`
+Synopsis: `POST /plugins.remove?profile=id ["<pkg1>", "<pkg2>", …]`
 
 Returns:
 - 400 `/error/bad-request` if one of the submitted packages is not in `/plugins.added.list`
@@ -178,14 +195,14 @@ Returns:
 
 Example:
 ```sh
-curl -X POST -d '["cyclone-boom:save-warning"]' http://localhost:51515/plugins.remove
+curl -X POST -d '["cyclone-boom:save-warning"]' http://localhost:51515/plugins.remove?profile=<id>
 ```
 
 ## variants.list
 
 Get the list of configured variants of your plugins folder.
 
-Synopsis: `GET  /variants.list`
+Synopsis: `GET  /variants.list?profile=id`
 
 Returns: `{"<driveside>": "<right>", "<nightmode>": "<dark>", …}`
 
@@ -193,7 +210,7 @@ Returns: `{"<driveside>": "<right>", "<nightmode>": "<dark>", …}`
 
 Reset selected variants by removing them from `/variants.list`.
 
-Synopsis: `POST /variants.reset ["<driveside>", "<nightmode>", …]`
+Synopsis: `POST /variants.reset?profile=id ["<driveside>", "<nightmode>", …]`
 
 Returns:
 - 400 `/error/bad-request` if one of the variant labels is not in `/variants.list`
@@ -201,7 +218,7 @@ Returns:
 
 Example:
 ```sh
-curl -X POST -d '["nightmode"]' http://localhost:51515/variants.reset
+curl -X POST -d '["nightmode"]' http://localhost:51515/variants.reset?profile=<id>
 ```
 
 ## update
@@ -212,7 +229,7 @@ The websocket sends a series of messages, some of which expect a specific respon
 
 Example using Javascript in your web browser:
 ```javascript
-let ws = new WebSocket('ws://localhost:51515/update');
+let ws = new WebSocket('ws://localhost:51515/update?profile=id');
 // ws.send(JSON.stringify({"$type": "/prompt/response", token: "<token>", body: "Yes"}))
 ```
 The messages sent from the server are logged in the network tab of the browser dev tools.
@@ -315,3 +332,25 @@ Returns: `{"sc4pacVersion": "0.4.x"}`
 Monitor whether the server is still running by opening a websocket at this endpoint.
 No particular messages are exchanged, but if either client or server terminates,
 the other side will be informed about it as the websocket closes.
+
+## profiles.list
+
+Get the list of all existing profiles, each corresponding to a Plugins folder.
+
+Synopsis: `GET /profiles.list`
+
+Returns:
+```
+{
+  profiles: [{id: "<id-1>", name: string}, …],
+  currentProfileId: ["<id-1>"]
+}
+```
+
+## profiles.add
+
+Create a new profile and make it the currently active one. Make sure to call `/profile.init` afterwards.
+
+Synopsis: `POST /profiles.add {name: string}`
+
+Returns: `{"id": "<id>", "name": string}`
