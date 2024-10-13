@@ -80,7 +80,7 @@ libraryDependencies += "dev.zio" %% "zio-nio" % "2.0.1" exclude("org.scala-lang.
 
 libraryDependencies += "dev.zio" %% "zio" % "2.0.15"  // IO
 
-libraryDependencies += "com.lihaoyi" %% "os-lib" % "0.9.1"  // file system utilities
+libraryDependencies += "com.lihaoyi" %% "os-lib" % "0.11.1"  // file system utilities
 
 libraryDependencies += "com.lihaoyi" %% "upickle" % "3.1.2"  // json serialization
 
