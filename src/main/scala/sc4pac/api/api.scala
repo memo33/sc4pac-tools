@@ -4,7 +4,7 @@ package api
 
 import zio.http.*
 import zio.http.ChannelEvent.{Read, Unregistered, UserEvent, UserEventTriggered}
-import zio.{ZIO, IO}
+import zio.{ZIO, IO, URIO}
 import upickle.default as UP
 
 import sc4pac.JsonData as JD
@@ -17,9 +17,19 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
   private def jsonResponse[A : UP.Writer](obj: A): Response = Response.json(UP.write(obj, indent = options.indent))
   private def jsonFrame[A : UP.Writer](obj: A): WebSocketFrame = WebSocketFrame.Text(UP.write(obj, indent = options.indent))
 
+  private val makePlatformDefaults: URIO[ProfileRoot, Map[String, Seq[String]]] =
+    for {
+      defPlugins  <- JD.Plugins.defaultPluginsRoot
+      defCache    <- JD.Plugins.defaultCacheRoot
+    } yield Map("plugins" -> defPlugins.map(_.toString), "cache" -> defCache.map(_.toString))
+
   /** Sends a 409 ProfileNotInitialized if Plugins cannot be loaded. */
   private val readPluginsOr409: ZIO[ProfileRoot, Response, JD.Plugins] =
-    JD.Plugins.read.mapError((err: ErrStr) => jsonResponse(ErrorMessage.ProfileNotInitialized("Profile not initialized", err)).status(Status.Conflict))
+    JD.Plugins.read.flatMapError { (err: ErrStr) =>
+      for {
+        defaults <- makePlatformDefaults
+      } yield jsonResponse(ErrorMessage.ProfileNotInitialized("Profile not initialized", err, platformDefaults = defaults)).status(Status.Conflict)
+    }
 
   private def expectedFailureMessage(err: cli.Commands.ExpectedFailure): ErrorMessage = err match {
     case abort: error.Sc4pacVersionNotFound => ErrorMessage.VersionNotFound(abort.title, abort.detail)
@@ -84,8 +94,17 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
   /** Routes that require a `profile=id` query parameter as part of the URL. */
   def profileRoutes: Routes[ProfileRoot, Throwable] = Routes(
 
+    // 200, 409
+    Method.GET / "profile.read" -> handler { (req: Request) =>
+      wrapHttpEndpoint {
+        for {
+          pluginsData <- readPluginsOr409
+        } yield jsonResponse(pluginsData.config)
+      }
+    },
+
     // 200, 400, 409
-    Method.POST / "init" -> handler { (req: Request) =>
+    Method.POST / "profile.init" -> handler { (req: Request) =>
       wrapHttpEndpoint {
         for {
           profileRoot <- ZIO.serviceWith[ProfileRoot](_.path)
@@ -94,12 +113,11 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
                              ErrorMessage.InitNotAllowed("Profile already initialized.",
                                "Manually delete the corresponding .json files if you are sure you want to initialize a new profile.")
                            ).status(Status.Conflict))
-          defPlugins  <- JD.Plugins.defaultPluginsRoot
-          defCache    <- JD.Plugins.defaultCacheRoot
+          defaults    <- makePlatformDefaults
           initArgs    <- parseOr400[InitArgs](req.body, ErrorMessage.BadInit(
                            """Parameters "plugins" and "cache" are required.""",
                            "Pass the locations of the folders as JSON dictionary: {plugins: <path>, cache: <path>}.",
-                           platformDefaults = Map("plugins" -> defPlugins.map(_.toString), "cache" -> defCache.map(_.toString))
+                           platformDefaults = defaults,
                          ))
           pluginsRoot =  os.Path(initArgs.plugins, profileRoot)
           cacheRoot   =  os.Path(initArgs.cache, profileRoot)
@@ -108,7 +126,7 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
                            os.makeDir.all(cacheRoot)
                          }
           pluginsData <- JD.Plugins.init(pluginsRoot = pluginsRoot, cacheRoot = cacheRoot)
-        } yield jsonOk
+        } yield jsonResponse(pluginsData.config)
       }
     },
 
@@ -306,6 +324,7 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
 
     // profile-independent routes
     val genericRoutes = Routes[ProfilesDir, Throwable](
+
       // 200
       Method.GET / "server.status" -> handler {
         wrapHttpEndpoint {

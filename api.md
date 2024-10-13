@@ -5,7 +5,8 @@ The API allows other programs to control *sc4pac* in a client-server fashion.
 In a nutshell:
 
 ```
-POST /init                {plugins: "<path>", cache: "<path>"}
+GET  /profile.read
+POST /profile.init        {plugins: "<path>", cache: "<path>"}
 
 GET  /packages.list
 GET  /packages.info?pkg=<pkg>
@@ -31,7 +32,7 @@ POST /profiles.add        {name: string}
 - Everything JSON.
 - Package placeholders `<pkg>` are of the form `<group>:<name>`.
 - Launch the server using the `sc4pac server` command.
-- On the first time, invoke `/init` before anything else.
+- On the first time, invoke `/profile.init` before anything else.
 - All endpoints may return some generic errors:
   - 400 (incorrect input)
   - 404 (non-existing packages, assets, etc.)
@@ -47,12 +48,25 @@ POST /profiles.add        {name: string}
   }
   ```
 
-## init
+## profile.read
+
+Read the config data stored for this profile.
+
+Synopsis: `GET /profile.read?profile=id`
+
+Returns:
+- 200 `{pluginsRoot: string, cacheRoot: string, …}`.
+- 409 `/error/profile-not-initialized` when not initialized.
+  The response contains
+  `platformDefaults: {plugins: ["<path>", …], cache: ["<path>", …]}`
+  for recommended platform-specific locations to use for initialization.
+
+## profile.init
 
 Initialize the profile by configuring the location of plugins and cache.
 Profiles are used to manage multiple plugins folders.
 
-Synopsis: `POST /init {plugins: "<path>", cache: "<path>"}`
+Synopsis: `POST /profile.init?profile=id {plugins: "<path>", cache: "<path>"}`
 
 Returns:
 - 409 `/error/init/not-allowed` if already initialized.
@@ -63,13 +77,13 @@ Returns:
 
   ?> When managing multiple profiles, use the same cache for all of them.
 
-- 200 `{"$type": "/result", "ok": true}` on success.
+- 200 `{pluginsRoot: string, cacheRoot: string, …}`, same as `/profile.read`.
 
 **Examples:**
 
 Without parameters:
 ```sh
-curl -X POST http://localhost:51515/init
+curl -X POST http://localhost:51515/profile.init
 ```
 Returns:
 ```json
@@ -92,7 +106,7 @@ Returns:
 
 With parameters:
 ```sh
-curl -X POST -d '{"plugins":"plugins","cache":"cache"}' http://localhost:51515/init
+curl -X POST -d '{"plugins":"plugins","cache":"cache"}' http://localhost:51515/profile.init
 ```
 
 ## packages.list
@@ -335,7 +349,7 @@ Returns:
 
 ## profiles.add
 
-Create a new profile and make it the currently active one. Make sure to call `/init` afterwards.
+Create a new profile and make it the currently active one. Make sure to call `/profile.init` afterwards.
 
 Synopsis: `POST /profiles.add {name: string}`
 
