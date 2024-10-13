@@ -305,15 +305,11 @@ object Extractor {
     */
   case class JarExtraction(jarsDir: os.Path)
   object JarExtraction {
-    def fromUrl[F[_]](archiveUrl: String, cache: FileCache, jarsRoot: os.Path, profileRoot: os.Path): JarExtraction = {
-      // we use cache to find a consistent archiveSubPath based on the url
-      val archivePath = os.Path(cache.localFile(archiveUrl), profileRoot)
-      val cachePath = os.Path(cache.location, profileRoot)
-      val archiveSubPath = archivePath.subRelativeTo(cachePath)
-      // we hash the the archiveSubPath to keep paths short
+    def fromUrl[F[_]](archiveUrl: String, jarsRoot: os.Path): JarExtraction = {
+      // we hash the the URL to find a deterministic and short storage path
       val hash = JD.Checksum.bytesToString(
         java.security.MessageDigest.getInstance("SHA-1")
-          .digest(archiveSubPath.toString.getBytes("UTF-8"))
+          .digest(archiveUrl.getBytes("UTF-8"))
           .take(4).to(collection.immutable.ArraySeq)  // 4 bytes = 8 hex characters
       )
       JarExtraction(jarsRoot / hash)
