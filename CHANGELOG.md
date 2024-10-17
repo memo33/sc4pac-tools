@@ -1,6 +1,9 @@
 # Changelog
 
 ## [Unreleased]
+
+
+## [0.4.5] - 2024-10-17
 ### Fixed
 - an extraction failure affecting Clickteam exe installers containing files in subfolders
 - an encoding issue that could affect console output on Windows with Java 19+
@@ -114,7 +117,8 @@
 ## [0.1.5] - 2023-09-26
 …
 
-[Unreleased]: https://github.com/memo33/sc4pac-tools/compare/0.4.4...HEAD
+[Unreleased]: https://github.com/memo33/sc4pac-tools/compare/0.4.5...HEAD
+[0.4.4]: https://github.com/memo33/sc4pac-tools/compare/0.4.4...0.4.5
 [0.4.4]: https://github.com/memo33/sc4pac-tools/compare/0.4.3...0.4.4
 [0.4.3]: https://github.com/memo33/sc4pac-tools/compare/0.4.2...0.4.3
 [0.4.2]: https://github.com/memo33/sc4pac-tools/compare/0.4.1...0.4.2
