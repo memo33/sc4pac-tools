@@ -8,6 +8,19 @@
 - an extraction failure affecting Clickteam exe installers containing files in subfolders
 - an encoding issue that could affect console output on Windows with Java 19+
 
+### Changed
+- The naming convention for per-package variants was changed.
+  ```
+  SFBT.tree-family         -> sfbt:essentials:tree-family
+  USL.light-color          -> kodlovag:uniform-street-lighting-mod:light-color
+  nam-slope-mod.difficulty -> nam-team:tunnel-and-slope-mod:difficulty
+  CETC.mode                -> 11241036:central-european-tree-controller:mode
+  ```
+  Once you update, pick the same variants you already installed before. The old ones can be deleted:
+  ```
+  sc4pac variant reset SFBT.tree-family USL.light-color nam-slope-mod.difficulty CETC.mode
+  ```
+
 
 ## [0.4.4] - 2024-08-11
 ### Fixed
