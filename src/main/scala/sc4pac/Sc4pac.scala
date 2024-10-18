@@ -194,7 +194,7 @@ trait UpdateService { this: Sc4pac =>
               fallbackFilename,
               tempPluginsRoot / pkgFolder,
               recipe,
-              Some(Extractor.JarExtraction.fromUrl(art.url, context.cache, jarsRoot = jarsRoot, profileRoot = context.profileRoot)),
+              Some(Extractor.JarExtraction.fromUrl(art.url, jarsRoot = jarsRoot)),
               hints = depAsset.archiveType,
               stagingRoot)
 

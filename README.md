@@ -158,13 +158,13 @@ and do not require any build step.
 - [x] Command-line interface (CLI) with all important commands
 - [ ] Improve resilience of downloads
   - [x] missing content-length (ST)
-  - [ ] authentication (ST), [partially implemented](https://github.com/memo33/sc4pac-tools/blob/main/src/scripts/sc4pac.bat#L13-L32)
+  - [x] authentication (ST), [partially implemented](https://github.com/memo33/sc4pac-tools/blob/main/src/scripts/sc4pac.bat#L13-L32)
   - [x] incomplete downloads (SC4E)
   - [ ] non-persistent URLs (Moddb)
   - [ ] handling servers that have gone offline
 - [x] Collaborative central [metadata channel](https://github.com/memo33/sc4pac)
 - [x] [Website and online documentation](https://memo33.github.io/sc4pac/)
 - [x] Server API (backend): https://memo33.github.io/sc4pac/#/api or [api.md](api.md)
-- [ ] Graphical UI (frontend) aka Mod manager
+- [ ] Graphical UI (frontend) aka Mod manager: [sc4pac GUI](https://github.com/memo33/sc4pac-gui)
 
 </div>
