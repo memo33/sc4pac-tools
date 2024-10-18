@@ -20,6 +20,9 @@ POST /plugins.remove?profile=id      ["<pkg1>", "<pkg2>", …]
 GET  /variants.list?profile=id
 POST /variants.reset?profile=id      ["<label1>", "<label2>", …]
 
+GET  /channels.list?profile=id
+POST /channels.set?profile=id        ["<url1>", "<url2>", …]
+
 GET  /update?profile=id              (websocket)
 
 GET  /server.status
@@ -219,6 +222,29 @@ Returns:
 Example:
 ```sh
 curl -X POST -d '["nightmode"]' http://localhost:51515/variants.reset?profile=<id>
+```
+
+## channels.list
+
+Get the ordered list of configured channel URLs.
+
+Synopsis: `GET /channels.list?profile=id`
+
+Returns: `["<url1>", "<url2>", …]`
+
+## channels.set
+
+Overwrite the list of channel URLs. If empty, the default channel is added instead.
+
+Synopsis: `POST /channels.set?profile=id ["<url1>", "<url2">, …]`
+
+Returns:
+- 400 `/error/bad-request`
+- 200 `{"$type": "/result", "ok": true}`
+
+Example:
+```sh
+curl -X POST -d '["url"]' http://localhost:51515/channels.set?profile=<id>
 ```
 
 ## update

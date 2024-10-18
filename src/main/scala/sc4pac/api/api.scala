@@ -8,7 +8,7 @@ import zio.{ZIO, IO, URIO}
 import upickle.default as UP
 
 import sc4pac.JsonData as JD
-import JD.bareModuleRw
+import JD.{bareModuleRw, uriRw}
 
 
 class Api(options: sc4pac.cli.Commands.ServerOptions) {
@@ -302,6 +302,30 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
                            s"Variant does not exist: ${failedLabels.mkString(", ")}", "Get /variants.list for the currently configured variants."
                          ))
           _           <- cli.Commands.VariantReset.removeAndWrite(pluginsData, labels)
+        } yield jsonOk
+      }
+    },
+
+    // 200, 409
+    Method.GET / "channels.list" -> handler {
+      wrapHttpEndpoint {
+        for {
+          pluginsData <- readPluginsOr409
+        } yield jsonResponse(pluginsData.config.channels)
+      }
+    },
+
+    // 200, 400, 409
+    Method.POST / "channels.set" -> handler { (req: Request) =>
+      wrapHttpEndpoint {
+        for {
+          urls         <- parseOr400[Seq[java.net.URI]](req.body, ErrorMessage.BadRequest("Malformed channel URLs.", "Pass channels as an array of strings."))
+          pluginsData  <- readPluginsOr409
+          pluginsData2 =  pluginsData.copy(config = pluginsData.config.copy(channels =
+                            if (urls.nonEmpty) urls.distinct else Constants.defaultChannelUrls
+                          ))
+          path         <- JD.Plugins.pathURIO
+          _            <- JsonIo.write(path, pluginsData2, None)(ZIO.succeed(()))
         } yield jsonOk
       }
     },
