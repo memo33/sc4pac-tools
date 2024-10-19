@@ -1,6 +1,8 @@
 # Changelog
 
 ## [Unreleased]
+### Added
+- a few channel stats have been added to channel JSON file, such as which categories contain how many packages
 
 
 ## [0.4.5] - 2024-10-17

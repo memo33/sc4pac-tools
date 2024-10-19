@@ -179,13 +179,31 @@ abstract class SharedData {
     private[sc4pac] def toSearchString: String = s"$group:$name $summary"
   }
 
-  case class Channel(scheme: Int, contents: Seq[ChannelItem]) derives ReadWriter {
+  case class Channel(
+    scheme: Int,
+    stats: Channel.Stats = null,  // added between scheme 4 and 5 (backward compatible: recomputed for smaller schemes, so never actually null)
+    contents: Seq[ChannelItem],
+  ) {
     lazy val versions: Map[BareDep, Seq[(String, Checksum)]] =
       contents.iterator.map(item => item.toBareDep -> item.versions.map(v => v -> item.checksums.getOrElse(v, emptyChecksum))).toMap
   }
   object Channel {
+
+    private val channelRwDefault: ReadWriter[Channel] = macroRW
+    implicit val channelRw: ReadWriter[Channel] =
+      channelRwDefault.bimap[Channel](identity, c => if (c.stats != null) c else createAddStats(c.scheme, c.contents))
+
+    /* recomputes the channel stats */
+    def createAddStats(scheme: Int, contents: Seq[ChannelItem]): Channel = {
+      val m = collection.mutable.Map.empty[String, Int]
+      for (item <- contents; cat <- item.category) {
+        m(cat) = m.getOrElse(cat, 0) + 1
+      }
+      Channel(scheme, Stats.fromMap(m), contents = contents)
+    }
+
     def create(scheme: Int, channelData: Iterable[(BareDep, Iterable[(String, PackageAsset, Checksum)])]): Channel = {  // name -> (version, json, sha)
-      Channel(scheme, channelData.iterator.collect {
+      createAddStats(scheme, contents = channelData.iterator.collect {
         case (dep, versions) if versions.nonEmpty =>
           val (g, n) = dep match {
             case m: BareModule => (m.group.value, m.name.value)
@@ -202,6 +220,27 @@ abstract class SharedData {
             category = catOpt,
           )
       }.toSeq)
+    }
+
+    case class CategoryItem(category: String, count: Int) derives ReadWriter
+    case class Stats(totalPackageCount: Int, categories: Seq[CategoryItem]) derives ReadWriter
+    object Stats {
+
+      def fromMap(categoriesMap: collection.Map[String, Int]): Stats = {
+        val categories = categoriesMap.iterator.map(t => CategoryItem(t._1, t._2)).toSeq.sortBy(_.category)
+        Stats(
+          totalPackageCount = categories.foldLeft(0)(_ + _.count),
+          categories = categories,
+        )
+      }
+
+      def aggregate(stats: Seq[Stats]): Stats = {
+        val m = collection.mutable.Map.empty[String, Int]
+        for (stat <- stats.iterator; c <- stat.categories) {
+          m(c.category) = m.getOrElse(c.category, 0) + c.count
+        }
+        Stats.fromMap(m)
+      }
     }
   }
 
