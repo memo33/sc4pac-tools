@@ -22,6 +22,7 @@ POST /variants.reset?profile=id      ["<label1>", "<label2>", …]
 
 GET  /channels.list?profile=id
 POST /channels.set?profile=id        ["<url1>", "<url2>", …]
+GET  /channels.stats?profile=id
 
 GET  /update?profile=id              (websocket)
 
@@ -246,6 +247,14 @@ Example:
 ```sh
 curl -X POST -d '["url"]' http://localhost:51515/channels.set?profile=<id>
 ```
+
+## channels.stats
+
+Get the combined stats of all the channels.
+
+Synopsis: `GET /channels.stats?profile=id`
+
+Returns: `{"totalPackageCount": int, "categories": [{"category": "150-mods", "count": int}, …]}`
 
 ## update
 

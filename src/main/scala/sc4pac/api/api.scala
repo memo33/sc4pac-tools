@@ -330,6 +330,17 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
       }
     },
 
+    // 200, 409
+    Method.GET / "channels.stats" -> handler {
+      wrapHttpEndpoint {
+        for {
+          pluginsData   <- readPluginsOr409
+          pac           <- Sc4pac.init(pluginsData.config)
+          combinedStats =  JD.Channel.Stats.aggregate(pac.context.repositories.map(_.channel.stats))
+        } yield jsonResponse(combinedStats)
+      }
+    },
+
   )
 
   def routes: Routes[ProfilesDir, Nothing] = {
