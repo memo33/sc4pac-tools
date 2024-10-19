@@ -493,7 +493,11 @@ object Commands {
         os.makeDir.all(profilesDir)
       }
       val task: Task[Unit] = {
-        val app = sc4pac.api.Api(options).routes.toHttpApp
+        // Enabling CORS is important so that web browsers do not block the
+        // request response for lack of the following response header:
+        //     access-control-allow-origin: http://localhost:12345
+        // (e.g. when Flutter-web is hosted on port 12345)
+        val app = sc4pac.api.Api(options).routes.toHttpApp @@ zio.http.Middleware.cors
         println(s"Starting sc4pac server on port ${options.port}...")
         zio.http.Server.serve(app).provide(zio.http.Server.defaultWithPort(options.port), zio.ZLayer.succeed(ProfilesDir(profilesDir)))
       }
