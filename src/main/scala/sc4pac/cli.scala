@@ -189,7 +189,7 @@ object Commands {
           pluginsData  <- JD.Plugins.readOrInit
           pac          <- Sc4pac.init(pluginsData.config)
           query        =  args.all.mkString(" ")
-          searchResult <- pac.search(query, options.threshold)
+          searchResult <- pac.search(query, options.threshold, category = None)
           installed    <- JD.PluginsLock.listInstalled.map(_.map(_.toBareDep).toSet)
           logger       <- ZIO.service[CliLogger]
         } yield {

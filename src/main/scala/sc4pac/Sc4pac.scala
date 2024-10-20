@@ -74,14 +74,18 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) extends Upda
     * The selection of results is ordered in descending order and includes the
     * module, the relevance ratio and the description.
     */
-  def search(query: String, threshold: Int): Task[Seq[(BareModule, Int, Option[String])]] = iterateAllChannelContents.map { itemsIter =>
+  def search(query: String, threshold: Int, category: Option[String]): Task[Seq[(BareModule, Int, Option[String])]] = iterateAllChannelContents.map { itemsIter =>
     val results: Seq[(BareModule, Int, Option[String])] =
       itemsIter.flatMap { item =>
         if (item.isSc4pacAsset) {
           None
+        } else if (category.isDefined && item.category != category) {
+          None
         } else {
           // TODO reconsider choice of search algorithm
-          val ratio = me.xdrop.fuzzywuzzy.FuzzySearch.tokenSetRatio(query, item.toSearchString)
+          val ratio =
+            if (query.isEmpty && category.isDefined) 100  // return the entire category
+            else me.xdrop.fuzzywuzzy.FuzzySearch.tokenSetRatio(query, item.toSearchString)
           if (ratio >= threshold) {
             Some(BareModule(Organization(item.group), ModuleName(item.name)), ratio, Option(item.summary).filter(_.nonEmpty))
           } else None
