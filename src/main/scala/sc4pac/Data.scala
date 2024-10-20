@@ -140,6 +140,7 @@ object JsonData extends SharedData {
     def moduleWithAttributes = Module(Organization(group), ModuleName(name), attributes=VariantData.variantToAttributes(variant))
     // def toDependency = DepVariant.fromDependency(C.Dependency(moduleWithAttributes, version))  // TODO remove?
     def toDepModule = DepModule(Organization(group), ModuleName(name), version = version, variant = variant)
+    def toBareModule = BareModule(Organization(group), ModuleName(name))
   }
 
   case class PluginsLock(installed: Seq[InstalledData], assets: Seq[Asset]) derives ReadWriter {
@@ -188,12 +189,15 @@ object JsonData extends SharedData {
       )
     }
 
-    val listInstalled: RIO[ProfileRoot, Seq[DepModule]] = PluginsLock.pathURIO.flatMap { pluginsLockPath =>
+    val listInstalled2: RIO[ProfileRoot, Seq[InstalledData]] = PluginsLock.pathURIO.flatMap { pluginsLockPath =>
       ZIO.ifZIO(ZIO.attemptBlocking(os.exists(pluginsLockPath)))(
-        onTrue = JsonIo.read[PluginsLock](pluginsLockPath).map(_.installed.map(_.toDepModule)),
+        onTrue = JsonIo.read[PluginsLock](pluginsLockPath).map(_.installed),
         onFalse = ZIO.succeed(Seq.empty)
       )
     }
+
+    val listInstalled: RIO[ProfileRoot, Seq[DepModule]] = listInstalled2.map(_.map(_.toDepModule))
+
   }
 
   case class InstallRecipe(include: Seq[Pattern], exclude: Seq[Pattern]) {

@@ -144,8 +144,24 @@ If `category` is passed, but `q` is empty, then all packages of that category ar
 
 Returns:
 ```
-[{package: "<pkg>", relevance: 100, summary: string}, …]
+[
+  {
+    package: "<pkg>",
+    relevance: 100,
+    summary: string,
+    status?: {
+      explicit: boolean,
+      installed?: {
+        version: string,
+        variant: {"<label>": "<value>", …}
+      }
+    }
+  },
+  …
+]
 ```
+The `status` field contains the local installation status if the package has been explicitly added or actually installed.
+
 
 ## plugins.added.list
 
@@ -172,6 +188,30 @@ Returns:
     explicit: boolean
   },
   …
+]
+```
+
+## plugins.search
+
+Filter the list of added or installed packages by search text or category.
+
+Synopsis: `GET /plugins.search?profile=id&q=<text>&threshold=<percentage>&category=<cat>`
+
+Returns:
+```
+[
+  {
+    package: "<pkg>",
+    relevance: 100,
+    (summary: string,)  // TODO not available offline
+    status: {
+      explicit: boolean,
+      installed?: {
+        version: string,
+        variant: {"<label>": "<value>", …}
+      }
+    }
+  }, …
 ]
 ```
 

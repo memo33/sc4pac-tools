@@ -223,8 +223,15 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
           pluginsData  <- readPluginsOr409
           pac          <- Sc4pac.init(pluginsData.config)
           searchResult <- pac.search(searchText, threshold, category = categoryOpt)
+          explicit     =  pluginsData.explicit.toSet
+          installed    <- JD.PluginsLock.listInstalled2.map(mods => mods.iterator.map(m => m.toBareModule -> m).toMap)
         } yield jsonResponse(searchResult.map { case (pkg, ratio, summaryOpt) =>
-          SearchResultItem(pkg, relevance = ratio, summary = summaryOpt.getOrElse(""))
+          val status = InstalledStatus(
+            explicit = explicit.contains(pkg),
+            installed = installed.get(pkg).map(m => InstalledStatus.Installed(version = m.version, variant = m.variant)).orNull,
+          )
+          val statusOrNull = if (status.explicit || status.installed != null) status else null
+          PackageSearchResultItem(pkg, relevance = ratio, summary = summaryOpt.getOrElse(""), status = statusOrNull)
         })
       }
     },

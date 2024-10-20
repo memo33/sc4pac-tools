@@ -137,7 +137,17 @@ object InstalledPkg {
   given installedPkgRw: UP.ReadWriter[InstalledPkg] = UP.stringKeyRW(UP.macroRW)
 }
 
-case class SearchResultItem(`package`: BareModule, relevance: Int, summary: String) derives UP.ReadWriter
+// `installed` may be null
+case class InstalledStatus(explicit: Boolean, installed: InstalledStatus.Installed) derives UP.ReadWriter
+object InstalledStatus {
+  case class Installed(version: String, variant: Variant)
+  given installedRw: UP.ReadWriter[Installed] = UP.stringKeyRW(UP.macroRW)
+}
+
+case class PluginsSearchResultItem(`package`: BareModule, relevance: Int, status: InstalledStatus) derives UP.ReadWriter
+
+// `status` may be null
+case class PackageSearchResultItem(`package`: BareModule, relevance: Int, summary: String, status: InstalledStatus) derives UP.ReadWriter
 
 case class ChannelContentsItem(`package`: BareModule, version: String, summary: String, category: Option[String]) derives UP.ReadWriter
 
