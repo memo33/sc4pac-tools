@@ -1,9 +1,11 @@
 # Changelog
 
 ## [Unreleased]
+### Fixed
+- an issue affecting some old terminals in which the escape sequences used for displaying progress bars were incorrectly printed to the console (#8)
 
 ### Changed
-- improved error message if channel-build fails randomly in case old files could not be removed
+- improved error message if channel-build fails randomly in case old files could not be removed (#6)
 
 
 ## [0.4.5] - 2024-10-17
