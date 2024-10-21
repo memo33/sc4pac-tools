@@ -53,6 +53,7 @@ object Commands {
         case abort: error.Sc4pacTimeout => { System.err.println(Array("Operation aborted.", abort.getMessage).mkString(" ")); exit(1) }
         case abort: error.Sc4pacNotInteractive => { System.err.println(s"Operation aborted as terminal is non-interactive: ${abort.getMessage}"); exit(1) }
         case abort: error.SymlinkCreationFailed => { System.err.println(s"Operation aborted. ${abort.getMessage}"); exit(1) }  // channel-build command
+        case abort: error.FileOpsFailure => { System.err.println(s"Operation aborted. ${abort.getMessage}"); exit(1) }  // channel-build command
         case abort: error.YamlFormatIssue => { System.err.println(s"Operation aborted. ${abort.getMessage}"); exit(1) }  // channel-build command
         case e => { e.printStackTrace(); exit(2) }
       },

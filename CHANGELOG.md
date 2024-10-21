@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+### Changed
+- improved error message if channel-build fails randomly in case old files could not be removed
+
 
 ## [0.4.5] - 2024-10-17
 ### Fixed
