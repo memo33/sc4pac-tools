@@ -117,9 +117,11 @@ class CliLogger private (out: java.io.PrintStream, useColor: Boolean, isInteract
       val coloredSymbols = if (!cyan) spinnerSymbols else spinnerSymbols.map(this.cyan)
       val spin: String => Unit = if (!sameLine) {
         val col = msg.map(_.length + 2).getOrElse(1)
-        (symbol) => out.print(Ansi.ansi().saveCursorPosition().cursorUpLine().cursorToColumn(col).a(symbol).restoreCursorPosition())
+        // There are two different cursor position standards, see https://github.com/fusesource/jansi/issues/226
+        // TODO For macOS Term.app, we may need not use DEC instead of SCO.
+        (symbol) => out.print(Ansi.ansi().saveCursorPositionSCO().cursorUpLine().cursorToColumn(col).a(symbol).restoreCursorPositionSCO())
       } else {
-        (symbol) => out.print(Ansi.ansi().saveCursorPosition().cursorRight(2).a(symbol).restoreCursorPosition())
+        (symbol) => out.print(Ansi.ansi().saveCursorPositionSCO().cursorRight(2).a(symbol).restoreCursorPositionSCO())
       }
       val spinner = ZIO.iterate(0)(_ => true) { i =>
         for (_ <- ZIO.sleep(duration)) yield {  // TODO use zio.Schedule instead?
