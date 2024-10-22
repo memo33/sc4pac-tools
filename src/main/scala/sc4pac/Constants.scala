@@ -32,6 +32,7 @@ object Constants {
   // …: channel stats
   val channelSchemeVersions: Range = 1 to 4  // supported versions
 
+  val pluginsLockScheme = 2
   val bufferSizeExtract = 64 * 1024  // 64 kiB, bounded by disk speed
   val bufferSizeDownload = 1024 * 1024  // 1 MiB, bounded by download speed
   val bufferSizeDownloadOverlap = 4 * 1024  // for file validity check when resuming partial download

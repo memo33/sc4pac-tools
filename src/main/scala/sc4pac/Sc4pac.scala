@@ -164,8 +164,9 @@ trait UpdateService { this: Sc4pac =>
   }
 
   /** Stage a single package into the temp plugins folder and return a list of
-    * files or folders containing the files belonging to the package.
-    * Moreover, return whether there was a warning.
+    * files or folders containing the files belonging to the package,
+    * the JD.Package info containing metadata relevant for the lock file,
+    * and any warnings.
     */
   private def stage(
     tempPluginsRoot: os.Path,
@@ -173,7 +174,7 @@ trait UpdateService { this: Sc4pac =>
     artifactsById: Map[BareAsset, (Artifact, java.io.File, DepAsset)],
     stagingRoot: os.Path,
     progress: Sc4pac.Progress
-  ): RIO[ResolutionContext, (Seq[os.SubPath], Seq[Warning])] = {
+  ): RIO[ResolutionContext, StageResult.Item] = {
     def extract(assetData: JD.AssetReference, pkgFolder: os.SubPath): Task[Seq[Warning]] = ZIO.attemptBlocking {
       // Given an AssetReference, we look up the corresponding artifact file
       // by ID. This relies on the 1-to-1-correspondence between sc4pacAssets
@@ -244,7 +245,7 @@ trait UpdateService { this: Sc4pac =>
       dlls               <- linkDlls(pkgFolder)
       warnings           <- if (pkgData.info.warning.nonEmpty) ZIO.attempt { val w = pkgData.info.warning; logger.warn(w); Seq(w) }
                             else ZIO.succeed(Seq.empty)
-    } yield (Seq(pkgFolder) ++ dlls, warnings ++ artifactWarnings)
+    } yield StageResult.Item(dependency, Seq(pkgFolder) ++ dlls, pkgData, warnings ++ artifactWarnings)
   }
 
   private def remove(toRemove: Set[Dep], installed: Seq[JD.InstalledData], pluginsRoot: os.Path): Task[Unit] = {
@@ -306,21 +307,21 @@ trait UpdateService { this: Sc4pac =>
         tempPluginsRoot         =  stagingRoot / "plugins"
         _                       <- ZIO.attemptBlocking(os.makeDir(tempPluginsRoot))
         numDeps                 =  deps.length
-        (stagedFiles, warnings) <- ZIO.foreach(deps.zipWithIndex) { case (dep, idx) =>   // sequentially stages each package
+        stagedItems             <- ZIO.foreach(deps.zipWithIndex) { case (dep, idx) =>   // sequentially stages each package
                                      stage(tempPluginsRoot, dep, artifactsById, stagingRoot, Sc4pac.Progress(idx+1, numDeps))
-                                   }.map(_.unzip)
-        pkgWarnings             =  deps.zip(warnings: Seq[Seq[Warning]]).collect { case (dep, ws) if ws.nonEmpty => (dep.toBareDep, ws) }
+                                   }
+        pkgWarnings             =  stagedItems.collect { case item if item.warnings.nonEmpty => (item.dep.toBareDep, item.warnings) }
         _                       <- ZIO.serviceWithZIO[Prompter](_.confirmInstallationWarnings(pkgWarnings))
                                      .filterOrFail(_ == true)(error.Sc4pacAbort())
-      } yield StageResult(tempPluginsRoot, deps.zip(stagedFiles), stagingRoot)
+      } yield StageResult(tempPluginsRoot, stagedItems, stagingRoot)
     }
 
     /** Moves staged files from temp plugins to actual plugins. This effect has
       * no expected failures, but only potentially unexpected defects.
       */
     def movePackagesToPlugins(staged: StageResult): IO[Sc4pacPublishWarning, Unit] = {
-      ZIO.validateDiscard(staged.files) { case (dep, pkgFiles) =>
-        ZIO.foreachDiscard(pkgFiles) { subPath =>
+      ZIO.validateDiscard(staged.items) { item =>
+        ZIO.foreachDiscard(item.files) { subPath =>
           ZIO.attemptBlocking {
             os.move.over(staged.tempPluginsRoot / subPath, pluginsRoot / subPath, replaceExisting = true, createFolders = true)
           } catchSome { case _: java.nio.file.DirectoryNotEmptyException => ZIO.attemptBlocking {
@@ -330,7 +331,7 @@ trait UpdateService { this: Sc4pac =>
           }}
         } refineOrDie { case e: java.io.IOException =>  // TODO this potentially dies on unexpected errors (defects) that should maybe be handled further up top
           logger.warn(e.toString)
-          s"${dep.orgName}"  // failed to move some staged files of this package to plugins
+          s"${item.dep.orgName}"  // failed to move some staged files of this package to plugins
         }
       }.mapError((failedPkgs: ::[ErrStr]) =>
         new Sc4pacPublishWarning(s"Failed to correctly install the following packages (manual intervention needed): ${failedPkgs.mkString(" ")}")
@@ -341,12 +342,12 @@ trait UpdateService { this: Sc4pac =>
     /** Remove old files from plugins and move staged files and folders into
       * plugins folder. Also update the json database of installed files.
       */
-    def publishToPlugins(staged: StageResult, pluginsLockData: JD.PluginsLock, plan: UpdatePlan): Task[Boolean] = {
+    def publishToPlugins(staged: StageResult, pluginsLockData: JD.PluginsLock, pluginsLockDataOrig: JD.PluginsLock, plan: UpdatePlan): Task[Boolean] = {
       // - lock the json database using file lock
       // - remove old packages
       // - move new packages into plugins folder
       // - write json database and release lock
-      val task = JsonIo.write(JD.PluginsLock.path(context.profileRoot), pluginsLockData.updateTo(plan, staged.files.toMap), Some(pluginsLockData)) {
+      val task = JsonIo.write(JD.PluginsLock.path(context.profileRoot), pluginsLockData.updateTo(plan, staged.items), Some(pluginsLockDataOrig)) {
         for {
           _ <- remove(plan.toRemove, pluginsLockData.installed, pluginsRoot)
                  // .catchAll(???)  // TODO catch exceptions
@@ -413,7 +414,8 @@ trait UpdateService { this: Sc4pac =>
 
     // TODO catch coursier.error.ResolutionError$CantDownloadModule (e.g. when json files have syntax issues)
     val updateTask = for {
-      pluginsLockData <- JD.PluginsLock.readOrInit
+      pluginsLockData1 <- JD.PluginsLock.readOrInit
+      pluginsLockData <- JD.PluginsLock.upgradeFromScheme1(pluginsLockData1, iterateAllChannelContents, logger)
       (resolution, globalVariant) <- doPromptingForVariant(globalVariant0)(Resolution.resolve(modules, _))
       plan            =  UpdatePlan.fromResolution(resolution, installed = pluginsLockData.dependenciesWithAssets)
       continue        <- ZIO.serviceWithZIO[Prompter](_.confirmUpdatePlan(plan))
@@ -427,7 +429,7 @@ trait UpdateService { this: Sc4pac =>
         artifactsById   =  assetsToInstall.map((dep, art, file) => dep.toBareDep -> (art, file, dep)).toMap
         _               =  require(artifactsById.size == assetsToInstall.size, s"artifactsById is not 1-to-1: $assetsToInstall")
         flag            <- ZIO.scoped(stageAll(depsToStage, artifactsById)
-                                      .flatMap(publishToPlugins(_, pluginsLockData, plan)))
+                                      .flatMap(publishToPlugins(_, pluginsLockData, pluginsLockData1, plan)))
         _               <- ZIO.attempt(logger.log("Done."))
       } yield flag)
     } yield flagOpt.getOrElse(false)  // TODO decide what flag means
@@ -473,7 +475,10 @@ object Sc4pac {
     override def toString = s"($numerator/$denominator)"
   }
 
-  case class StageResult(tempPluginsRoot: os.Path, files: Seq[(DepModule, Seq[os.SubPath])], stagingRoot: os.Path)
+  case class StageResult(tempPluginsRoot: os.Path, items: Seq[StageResult.Item], stagingRoot: os.Path)
+  object StageResult {
+    class Item(val dep: DepModule, val files: Seq[os.SubPath], val pkgData: JD.Package, val warnings: Seq[Warning])
+  }
 
 
   private def fetchChannelData(repoUri: java.net.URI, cache: FileCache, channelContentsTtl: scala.concurrent.duration.Duration): ZIO[ProfileRoot, ErrStr, MetadataRepository] = {
