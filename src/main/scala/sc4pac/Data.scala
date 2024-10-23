@@ -153,6 +153,7 @@ object JsonData extends SharedData {
     // def toDependency = DepVariant.fromDependency(C.Dependency(moduleWithAttributes, version))  // TODO remove?
     def toDepModule = DepModule(Organization(group), ModuleName(name), version = version, variant = variant)
     def toBareModule = BareModule(Organization(group), ModuleName(name))
+    private[sc4pac] def toSearchString: String = s"$group:$name $summary"  // copied from ChannelItem.toSearchString
   }
 
   case class PluginsLock(scheme: Int = 1, installed: Seq[InstalledData], assets: Seq[Asset]) derives ReadWriter {

@@ -91,6 +91,40 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
       .mapError(failedLabels => jsonResponse(errMsg(failedLabels)).status(Status.BadRequest))
   }
 
+  private def searchParams(req: Request): IO[Response, (String, Int)] = for {
+    searchText <- ZIO.fromOption(req.url.queryParams.get("q")).orElseFail(jsonResponse(ErrorMessage.BadRequest(
+                    """Query parameter "q" is required.""", "Pass the search string as query."
+                  )).status(Status.BadRequest))
+    threshold  <- req.url.queryParams.get("threshold") match {
+                    case None => ZIO.succeed(Constants.fuzzySearchThreshold)  // the default
+                    case Some(s) => ZIO.fromOption(implicitly[Numeric[Int]].parseString(s).filter(i => 0 <= i && i <= 100))
+                      .orElseFail(jsonResponse(ErrorMessage.BadRequest(
+                        "Invalid threshold", "Threshold must be a number between 0 and 100."
+                      )).status(Status.BadRequest))
+                  }
+  } yield (searchText, threshold)
+
+  /** Fuzzy-search across all installed packages.
+    * The selection of results is ordered in descending order and includes the
+    * module, the relevance ratio and the description.
+    * Sc4pac.search implements a similar function and should use the same algorithm.
+    */
+  def searchPlugins(query: String, threshold: Int, category: Option[String], items: Seq[JD.InstalledData]): Seq[(JD.InstalledData, Int)] = {
+    val results: Seq[(JD.InstalledData, Int)] =
+      items.flatMap { item =>
+        if (category.isDefined && item.category != category) {
+          None
+        } else {
+          // TODO reconsider choice of search algorithm
+          val ratio =
+            if (query.isEmpty) 100  // return the entire category (or everything if there is no filter category)
+            else me.xdrop.fuzzywuzzy.FuzzySearch.tokenSetRatio(query, item.toSearchString)
+          if (ratio >= threshold) Some((item, ratio)) else None
+        }
+      }
+    results.sortBy((item, ratio) => (-ratio, item.group, item.name))
+  }
+
   /** Routes that require a `profile=id` query parameter as part of the URL. */
   def profileRoutes: Routes[ProfileRoot, Throwable] = Routes(
 
@@ -209,17 +243,8 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
     Method.GET / "packages.search" -> handler { (req: Request) =>
       wrapHttpEndpoint {
         for {
-          searchText   <- ZIO.fromOption(req.url.queryParams.get("q")).orElseFail(jsonResponse(ErrorMessage.BadRequest(
-                            """Query parameter "q" is required.""", "Pass the search string as query."
-                          )).status(Status.BadRequest))
+          (searchText, threshold) <- searchParams(req)
           categoryOpt  =  req.url.queryParams.get("category")
-          threshold    <- req.url.queryParams.get("threshold") match {
-                            case None => ZIO.succeed(Constants.fuzzySearchThreshold)  // the default
-                            case Some(s) => ZIO.fromOption(implicitly[Numeric[Int]].parseString(s).filter(i => 0 <= i && i <= 100))
-                              .orElseFail(jsonResponse(ErrorMessage.BadRequest(
-                                "Invalid threshold", "Threshold must be a number between 0 and 100."
-                              )).status(Status.BadRequest))
-                          }
           pluginsData  <- readPluginsOr409
           pac          <- Sc4pac.init(pluginsData.config)
           searchResult <- pac.search(searchText, threshold, category = categoryOpt)
@@ -228,13 +253,31 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
         } yield jsonResponse(searchResult.map { case (pkg, ratio, summaryOpt) =>
           val status = InstalledStatus(
             explicit = explicit.contains(pkg),
-            installed = installed.get(pkg).map(m => InstalledStatus.Installed(version = m.version, variant = m.variant)).orNull,
+            installed = installed.get(pkg).map(m => InstalledStatus.Installed(version = m.version, variant = m.variant, installedAt = m.installedAt, updatedAt = m.updatedAt)).orNull,
           )
           val statusOrNull = if (status.explicit || status.installed != null) status else null
           PackageSearchResultItem(pkg, relevance = ratio, summary = summaryOpt.getOrElse(""), status = statusOrNull)
         })
       }
     },
+
+    Method.GET / "plugins.search" -> handler((req: Request) => wrapHttpEndpoint {
+      for {
+        (searchText, threshold) <- searchParams(req)
+        categoryOpt  =  req.url.queryParams.get("category")
+        pluginsData  <- readPluginsOr409
+        installed    <- JD.PluginsLock.listInstalled2
+        searchResult =  searchPlugins(searchText, threshold, categoryOpt, installed)
+        explicit     =  pluginsData.explicit.toSet
+      } yield jsonResponse(searchResult.map { case (item, ratio) =>
+        val mod = item.toBareModule
+        val status = InstalledStatus(
+          explicit = explicit.contains(mod),
+          installed = InstalledStatus.Installed(version = item.version, variant = item.variant, installedAt = item.installedAt, updatedAt = item.updatedAt),
+        )
+        PluginsSearchResultItem(mod, relevance = ratio, summary = item.summary, status = status)
+      })
+    }),
 
     // 200, 400, 404, 409
     Method.GET / "packages.info" -> handler { (req: Request) =>

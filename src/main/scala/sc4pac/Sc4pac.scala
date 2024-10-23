@@ -73,6 +73,7 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) extends Upda
   /** Fuzzy-search across all repositories.
     * The selection of results is ordered in descending order and includes the
     * module, the relevance ratio and the description.
+    * Api.searchPlugins implements a similar function and should use the same algorithm.
     */
   def search(query: String, threshold: Int, category: Option[String]): Task[Seq[(BareModule, Int, Option[String])]] = iterateAllChannelContents.map { itemsIter =>
     val results: Seq[(BareModule, Int, Option[String])] =

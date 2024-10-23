@@ -153,7 +153,9 @@ Returns:
       explicit: boolean,
       installed?: {
         version: string,
-        variant: {"<label>": "<value>", …}
+        variant: {"<label>": "<value>", …},
+        installedAt: "<iso-date>",
+        updatedAt: "<iso-date>"
       }
     }
   },
@@ -193,7 +195,9 @@ Returns:
 
 ## plugins.search
 
-Filter the list of added or installed packages by search text or category.
+Filter the list of installed packages by search text or category.
+Packages explicitly added but not yet installed are not included.
+If search text is empty, all installed packages are returned.
 
 Synopsis: `GET /plugins.search?profile=id&q=<text>&threshold=<percentage>&category=<cat>`
 
@@ -203,12 +207,14 @@ Returns:
   {
     package: "<pkg>",
     relevance: 100,
-    (summary: string,)  // TODO not available offline
+    summary: string,
     status: {
       explicit: boolean,
-      installed?: {
+      installed: {
         version: string,
-        variant: {"<label>": "<value>", …}
+        variant: {"<label>": "<value>", …},
+        installedAt: "<iso-date>",
+        updatedAt: "<iso-date>"
       }
     }
   }, …
