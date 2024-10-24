@@ -107,22 +107,31 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
   /** Fuzzy-search across all installed packages.
     * The selection of results is ordered in descending order and includes the
     * module, the relevance ratio and the description.
-    * Sc4pac.search implements a similar function and should use the same algorithm.
+    * Sc4pac.search implements a similar function and should use a similar algorithm.
     */
-  def searchPlugins(query: String, threshold: Int, category: Option[String], items: Seq[JD.InstalledData]): Seq[(JD.InstalledData, Int)] = {
+  def searchPlugins(query: String, threshold: Int, category: Option[String], items: Seq[JD.InstalledData]): (JD.Channel.Stats, Seq[(JD.InstalledData, Int)]) = {
+    val categoryStats = collection.mutable.Map.empty[String, Int]
     val results: Seq[(JD.InstalledData, Int)] =
       items.flatMap { item =>
-        if (category.isDefined && item.category != category) {
+        // TODO reconsider choice of search algorithm
+        val ratio =
+          if (query.isEmpty) 100  // return the entire category (or everything if there is no filter category)
+          else me.xdrop.fuzzywuzzy.FuzzySearch.tokenSetRatio(query, item.toSearchString)
+        if (ratio < threshold) {
           None
         } else {
-          // TODO reconsider choice of search algorithm
-          val ratio =
-            if (query.isEmpty) 100  // return the entire category (or everything if there is no filter category)
-            else me.xdrop.fuzzywuzzy.FuzzySearch.tokenSetRatio(query, item.toSearchString)
-          if (ratio >= threshold) Some((item, ratio)) else None
+          // search text matches, so count towards categories
+          for (cat <- item.category) {
+            categoryStats(cat) = categoryStats.getOrElse(cat, 0) + 1
+          }
+          if (category.isDefined && item.category != category) {
+            None
+          } else {
+            Some((item, ratio))
+          }
         }
       }
-    results.sortBy((item, ratio) => (-ratio, item.group, item.name))
+    (JD.Channel.Stats.fromMap(categoryStats), results.sortBy((item, ratio) => (-ratio, item.group, item.name)))
   }
 
   /** Routes that require a `profile=id` query parameter as part of the URL. */
@@ -267,16 +276,19 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
         categoryOpt  =  req.url.queryParams.get("category")
         pluginsData  <- readPluginsOr409
         installed    <- JD.PluginsLock.listInstalled2
-        searchResult =  searchPlugins(searchText, threshold, categoryOpt, installed)
+        (stats, searchResult) =  searchPlugins(searchText, threshold, categoryOpt, installed)
         explicit     =  pluginsData.explicit.toSet
-      } yield jsonResponse(searchResult.map { case (item, ratio) =>
-        val mod = item.toBareModule
-        val status = InstalledStatus(
-          explicit = explicit.contains(mod),
-          installed = InstalledStatus.Installed(version = item.version, variant = item.variant, installedAt = item.installedAt, updatedAt = item.updatedAt),
-        )
-        PluginsSearchResultItem(mod, relevance = ratio, summary = item.summary, status = status)
-      })
+      } yield {
+        val items = searchResult.map { case (item, ratio) =>
+          val mod = item.toBareModule
+          val status = InstalledStatus(
+            explicit = explicit.contains(mod),
+            installed = InstalledStatus.Installed(version = item.version, variant = item.variant, installedAt = item.installedAt, updatedAt = item.updatedAt),
+          )
+          PluginsSearchResultItem(mod, relevance = ratio, summary = item.summary, status = status)
+        }
+        jsonResponse(PluginsSearchResult(stats, items))
+      }
     }),
 
     // 200, 400, 404, 409

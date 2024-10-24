@@ -203,22 +203,25 @@ Synopsis: `GET /plugins.search?profile=id&q=<text>&threshold=<percentage>&catego
 
 Returns:
 ```
-[
-  {
-    package: "<pkg>",
-    relevance: 100,
-    summary: string,
-    status: {
-      explicit: boolean,
-      installed: {
-        version: string,
-        variant: {"<label>": "<value>", …},
-        installedAt: "<iso-date>",
-        updatedAt: "<iso-date>"
+{
+  stats: {"totalPackageCount": int, "categories": [{"category": "150-mods", "count": int}, …]}
+  packages: [
+    {
+      package: "<pkg>",
+      relevance: 100,
+      summary: string,
+      status: {
+        explicit: boolean,
+        installed: {
+          version: string,
+          variant: {"<label>": "<value>", …},
+          installedAt: "<iso-date>",
+          updatedAt: "<iso-date>"
+        }
       }
-    }
-  }, …
-]
+    }, …
+  ]
+}
 ```
 
 ## plugins.add
