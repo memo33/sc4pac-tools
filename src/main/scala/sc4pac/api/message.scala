@@ -5,7 +5,7 @@ package api
 import upickle.default as UP
 
 import sc4pac.JsonData as JD
-import JD.bareModuleRw
+import JD.{bareModuleRw, instantRw}
 
 sealed trait Message derives UP.ReadWriter
 
@@ -138,16 +138,19 @@ object InstalledPkg {
 }
 
 // `installed` may be null
-case class InstalledStatus(explicit: Boolean, installed: InstalledStatus.Installed) derives UP.ReadWriter
+case class InstalledStatus(explicit: Boolean, installed: InstalledStatus.Installed = null) derives UP.ReadWriter
 object InstalledStatus {
-  case class Installed(version: String, variant: Variant)
+  case class Installed(version: String, variant: Variant, installedAt: java.time.Instant, updatedAt: java.time.Instant)
   given installedRw: UP.ReadWriter[Installed] = UP.stringKeyRW(UP.macroRW)
 }
 
-case class PluginsSearchResultItem(`package`: BareModule, relevance: Int, status: InstalledStatus) derives UP.ReadWriter
+case class PluginsSearchResult(stats: JD.Channel.Stats, packages: Seq[PluginsSearchResultItem]) derives UP.ReadWriter
+
+// `status` is not null
+case class PluginsSearchResultItem(`package`: BareModule, relevance: Int, summary: String, status: InstalledStatus) derives UP.ReadWriter
 
 // `status` may be null
-case class PackageSearchResultItem(`package`: BareModule, relevance: Int, summary: String, status: InstalledStatus) derives UP.ReadWriter
+case class PackageSearchResultItem(`package`: BareModule, relevance: Int, summary: String, status: InstalledStatus = null) derives UP.ReadWriter
 
 case class ChannelContentsItem(`package`: BareModule, version: String, summary: String, category: Option[String]) derives UP.ReadWriter
 

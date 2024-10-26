@@ -5,10 +5,11 @@ import coursier.core.{Module, ModuleName, Organization}
 import coursier.core as C
 import upickle.default.{ReadWriter, readwriter}
 import java.nio.file.{Path as NioPath}
-import zio.{ZIO, IO, RIO, URIO}
+import zio.{ZIO, IO, RIO, URIO, Task}
 import java.util.regex.Pattern
 import scala.collection.mutable.Builder
 import scala.collection.immutable.ArraySeq
+import java.time.temporal.ChronoUnit
 
 import sc4pac.Resolution.{Dep, DepModule, DepAsset}
 
@@ -135,34 +136,57 @@ object JsonData extends SharedData {
     }
   }
 
-  case class InstalledData(group: String, name: String, variant: Variant, version: String, files: Seq[os.SubPath]) derives ReadWriter {
+  private val installedAtDummy = java.time.Instant.parse("2024-01-01T00:00:00Z")  // placeholder for upgrading from scheme 1
+  case class InstalledData(
+    group: String,
+    name: String,
+    variant: Variant,
+    version: String,
+    files: Seq[os.SubPath],
+    summary: String = "",  // since scheme 2
+    category: Option[String] = None,  // since scheme 2
+    installedAt: Instant = installedAtDummy,  // since scheme 2
+    updatedAt: Instant = installedAtDummy,  // since scheme 2
+  ) derives ReadWriter {
     def moduleWithoutAttributes = Module(Organization(group), ModuleName(name), attributes=Map.empty)
     def moduleWithAttributes = Module(Organization(group), ModuleName(name), attributes=VariantData.variantToAttributes(variant))
     // def toDependency = DepVariant.fromDependency(C.Dependency(moduleWithAttributes, version))  // TODO remove?
     def toDepModule = DepModule(Organization(group), ModuleName(name), version = version, variant = variant)
     def toBareModule = BareModule(Organization(group), ModuleName(name))
+    private[sc4pac] def toSearchString: String = s"$group:$name $summary"  // copied from ChannelItem.toSearchString
   }
 
-  case class PluginsLock(installed: Seq[InstalledData], assets: Seq[Asset]) derives ReadWriter {
+  case class PluginsLock(scheme: Int = 1, installed: Seq[InstalledData], assets: Seq[Asset]) derives ReadWriter {
     def dependenciesWithAssets: Set[Resolution.Dep] =
       (installed.map(_.toDepModule) ++ assets.map(DepAsset.fromAsset(_))).toSet
 
-    def updateTo(plan: Sc4pac.UpdatePlan, filesStaged: Map[DepModule, Seq[os.SubPath]]): PluginsLock = {
+    def updateTo(plan: Sc4pac.UpdatePlan, stagedItems: Seq[Sc4pac.StageResult.Item]): PluginsLock = {
+      val now = java.time.Instant.now().truncatedTo(ChronoUnit.SECONDS)
+      val stagedItemsMap = stagedItems.iterator.map(item => item.dep -> item).toMap
       val orig = dependenciesWithAssets
       val next = plan.toInstall | (orig &~ plan.toRemove)
-      val previousPkgs: Map[DepModule, InstalledData] = installed.map(i => (i.toDepModule, i)).toMap
+      val previousPkgs: Map[BareModule, InstalledData] = installed.map(i => (i.toBareModule, i)).toMap
       val (arts, insts) = next.toSeq.partitionMap {
         case a: DepAsset => Left(a)
         case m: DepModule => Right(m)
       }
       PluginsLock(
-        installed = insts.map(dep => InstalledData(
-          group = dep.group.value,
-          name = dep.name.value,
-          variant = dep.variant,
-          version = dep.version,
-          files = filesStaged.get(dep).getOrElse(previousPkgs(dep).files)
-        )),
+        scheme = Constants.pluginsLockScheme,
+        installed = insts.map { dep =>
+          val stagedItem = stagedItemsMap.get(dep)  // possibly None
+          val bareDep = dep.toBareDep  // we ignore variants when looking up previous package data (mainly for preserving `installedAt`)
+          InstalledData(
+            group = dep.group.value,
+            name = dep.name.value,
+            variant = dep.variant,
+            version = dep.version,
+            files = stagedItem.map(_.files).getOrElse(previousPkgs(bareDep).files),
+            summary = stagedItem.map(item => item.pkgData.info.summary).getOrElse(previousPkgs(bareDep).summary),
+            category = stagedItem.map(item => Some(item.pkgData.subfolder.toString)).getOrElse(previousPkgs(bareDep).category),
+            installedAt = previousPkgs.get(bareDep).map(_.installedAt).getOrElse(now),
+            updatedAt = if (stagedItem.isDefined) now else previousPkgs(bareDep).updatedAt,
+          )
+        },
         assets = arts.map(dep => Asset(
           assetId = dep.assetId.value,
           version = dep.version,
@@ -174,21 +198,55 @@ object JsonData extends SharedData {
     }
   }
   object PluginsLock {
+
+    // called during update task, where PluginsLock file is written
+    private[sc4pac] def upgradeFromScheme1(data: PluginsLock, iterateAllChannelContents: Task[Iterator[ChannelItem]], logger: Logger, pluginsRoot: os.Path): Task[PluginsLock] = {
+      if (data.scheme != 1) {
+        ZIO.succeed(data)
+      } else {
+        logger.log(s"Upgrading sc4pac-plugins-lock scheme from 1 to ${Constants.pluginsLockScheme}.")
+        def modificationTime(inst: InstalledData): Task[Option[Instant]] = ZIO.attemptBlockingIO {
+          inst.files.map(subpath => pluginsRoot / subpath)
+            .find(path => os.exists(path) && os.isDir(path))
+            .map(path => java.time.Instant.ofEpochMilli(os.mtime(path)).truncatedTo(ChronoUnit.SECONDS))
+        }
+        for {
+          channelItems    <- iterateAllChannelContents
+          channelItemsMap =  channelItems.map(item => item.toBareDep -> item).toMap
+          installed       <- ZIO.foreach(data.installed) { inst =>
+                               channelItemsMap.get(inst.toBareModule) match {
+                                 case None => ZIO.succeed(inst)  // package not found for some reason; we ignore this as update would fail anyway which is the bigger issue
+                                 case Some(item) =>
+                                   modificationTime(inst).map { mtimeOpt => inst.copy(
+                                     summary = item.summary,
+                                     category = item.category,
+                                     installedAt = mtimeOpt.getOrElse(inst.installedAt),
+                                     updatedAt = mtimeOpt.getOrElse(inst.updatedAt)
+                                   )
+                                 }
+                               }
+                             }
+        } yield PluginsLock(scheme = Constants.pluginsLockScheme, installed = installed, assets = data.assets)
+      }
+    }
+
     def path(profileRoot: os.Path): os.Path = profileRoot / "sc4pac-plugins-lock.json"
 
     def pathURIO: URIO[ProfileRoot, os.Path] = ZIO.service[ProfileRoot].map(profileRoot => PluginsLock.path(profileRoot.path))
 
-    /** Read PluginsLock from file if it exists, else create it and write it to file. */
+    /** Read PluginsLock from file if it exists, else create it and write it to file.
+      * Does *not* automatically upgrade from scheme 1.*/
     val readOrInit: RIO[ProfileRoot, PluginsLock] = PluginsLock.pathURIO.flatMap { pluginsLockPath =>
       ZIO.ifZIO(ZIO.attemptBlocking(os.exists(pluginsLockPath)))(
         onTrue = JsonIo.read[PluginsLock](pluginsLockPath),
         onFalse = {
-          val data = PluginsLock(Seq.empty, Seq.empty)
+          val data = PluginsLock(Constants.pluginsLockScheme, Seq.empty, Seq.empty)
           JsonIo.write(pluginsLockPath, data, None)(ZIO.succeed(data))
         }
       )
     }
 
+    // does *not* automatically upgrade from scheme 1 (this function is only used for reading, not writing)
     val listInstalled2: RIO[ProfileRoot, Seq[InstalledData]] = PluginsLock.pathURIO.flatMap { pluginsLockPath =>
       ZIO.ifZIO(ZIO.attemptBlocking(os.exists(pluginsLockPath)))(
         onTrue = JsonIo.read[PluginsLock](pluginsLockPath).map(_.installed),
