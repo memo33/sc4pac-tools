@@ -152,6 +152,11 @@ case class PluginsSearchResultItem(`package`: BareModule, relevance: Int, summar
 // `status` may be null
 case class PackageSearchResultItem(`package`: BareModule, relevance: Int, summary: String, status: InstalledStatus = null) derives UP.ReadWriter
 
+case class PackageInfo(local: PackageInfo.Local, remote: JD.Package) derives UP.ReadWriter
+object PackageInfo {
+  case class Local(statuses: Map[BareModule, InstalledStatus]) derives UP.ReadWriter
+}
+
 case class ChannelContentsItem(`package`: BareModule, version: String, summary: String, category: Option[String]) derives UP.ReadWriter
 
 case class InitArgs(plugins: String, cache: String) derives UP.ReadWriter

@@ -3,7 +3,7 @@ package sc4pac
 
 import coursier.core.{Module, ModuleName, Organization}
 import coursier.core as C
-import upickle.default.{ReadWriter, readwriter}
+import upickle.default.{ReadWriter, readwriter, stringKeyRW}
 import java.nio.file.{Path as NioPath}
 import zio.{ZIO, IO, RIO, URIO, Task}
 import java.util.regex.Pattern
@@ -35,11 +35,13 @@ object JsonData extends SharedData {
       case Right(mod) => mod
       case Left(err) => throw new IllegalArgumentException(err)
     }
-  implicit val bareModuleRw: ReadWriter[BareModule] = readwriter[String].bimap[BareModule](_.orgName, bareModuleRead)
-  implicit val bareDepRw: ReadWriter[BareDep] = readwriter[String].bimap[BareDep](_.orgName, { (s: String) =>
+  // Wrapping with `stringKeyRW` is important for Api/packages.info, so that
+  // BareModule can be serialized as key of JSON dictionary (instead of serializing Maps as arrays of arrays).
+  implicit val bareModuleRw: ReadWriter[BareModule] = stringKeyRW(readwriter[String].bimap[BareModule](_.orgName, bareModuleRead))
+  implicit val bareDepRw: ReadWriter[BareDep] = stringKeyRW(readwriter[String].bimap[BareDep](_.orgName, { (s: String) =>
     val prefix = Constants.sc4pacAssetOrg.value + ":"
     if (s.startsWith(prefix)) BareAsset(assetId = C.ModuleName(s.substring(prefix.length))) else bareModuleRead(s)
-  })
+  }))
 
   case class Config(
     pluginsRoot: NioPath,
@@ -154,6 +156,7 @@ object JsonData extends SharedData {
     def toDepModule = DepModule(Organization(group), ModuleName(name), version = version, variant = variant)
     def toBareModule = BareModule(Organization(group), ModuleName(name))
     private[sc4pac] def toSearchString: String = s"$group:$name $summary"  // copied from ChannelItem.toSearchString
+    def toApiInstalled = api.InstalledStatus.Installed(version = version, variant = variant, installedAt = installedAt, updatedAt = updatedAt)
   }
 
   case class PluginsLock(scheme: Int = 1, installed: Seq[InstalledData], assets: Seq[Asset]) derives ReadWriter {

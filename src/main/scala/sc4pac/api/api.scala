@@ -262,7 +262,7 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
         } yield jsonResponse(searchResult.map { case (pkg, ratio, summaryOpt) =>
           val status = InstalledStatus(
             explicit = explicit.contains(pkg),
-            installed = installed.get(pkg).map(m => InstalledStatus.Installed(version = m.version, variant = m.variant, installedAt = m.installedAt, updatedAt = m.updatedAt)).orNull,
+            installed = installed.get(pkg).map(_.toApiInstalled).orNull,
           )
           val statusOrNull = if (status.explicit || status.installed != null) status else null
           PackageSearchResultItem(pkg, relevance = ratio, summary = summaryOpt.getOrElse(""), status = statusOrNull)
@@ -281,10 +281,7 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
       } yield {
         val items = searchResult.map { case (item, ratio) =>
           val mod = item.toBareModule
-          val status = InstalledStatus(
-            explicit = explicit.contains(mod),
-            installed = InstalledStatus.Installed(version = item.version, variant = item.variant, installedAt = item.installedAt, updatedAt = item.updatedAt),
-          )
+          val status = InstalledStatus(explicit = explicit.contains(mod), installed = item.toApiInstalled)
           PluginsSearchResultItem(mod, relevance = ratio, summary = item.summary, status = status)
         }
         jsonResponse(PluginsSearchResult(stats, items))
@@ -301,10 +298,30 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
           mod           <- parseModuleOr400(pkg)
           pluginsData   <- readPluginsOr409
           pac           <- Sc4pac.init(pluginsData.config)
-          infoResultOpt <- pac.infoJson(mod)  // TODO avoid decoding/encoding json
-        } yield infoResultOpt match {
-          case None => jsonResponse(ErrorMessage.PackageNotFound("Package not found.", pkg)).status(Status.NotFound)
-          case Some(pkgData) => jsonResponse(pkgData)
+          remoteData    <- pac.infoJson(mod).someOrFail(  // TODO avoid decoding/encoding json
+                             jsonResponse(ErrorMessage.PackageNotFound("Package not found.", pkg)).status(Status.NotFound)
+                           )
+          explicit      =  pluginsData.explicit.toSet
+          installed     <- JD.PluginsLock.listInstalled2
+        } yield {
+          val targetPkgs = collection.mutable.Set[BareModule](mod)  // original package and direct dependencies
+            ++= remoteData.variants.iterator.flatMap(_.bareModules)
+            ++= remoteData.info.requiredBy  // TODO inter-channel reverse dependencies not supported yet
+          val statuses = collection.mutable.Map.empty[BareModule, InstalledStatus]
+          // first check all installed packages for matches
+          for (inst <- installed) {
+            val instMod = inst.toBareModule
+            if (targetPkgs.contains(instMod)) {
+              statuses(instMod) = InstalledStatus(explicit = explicit.contains(instMod), installed = inst.toApiInstalled)
+            }
+          }
+          // next check explicitly added packages that are not installed yet for matches
+          for (depMod <- targetPkgs) {
+            if (!statuses.contains(depMod) && explicit.contains(depMod)) {
+              statuses(depMod) = InstalledStatus(explicit = true, installed = null)
+            }
+          }
+          jsonResponse(PackageInfo(local = PackageInfo.Local(statuses = statuses.toMap), remote = remoteData))
         }
       }
     },

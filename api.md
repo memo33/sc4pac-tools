@@ -130,7 +130,32 @@ Get detailed information about a single package.
 
 Synopsis: `GET /packages.info?pkg=<pkg>&profile=id`
 
-Returns: [example](https://memo33.github.io/sc4pac/channel/metadata/memo/industrial-revolution-mod/latest/pkg.json ':include').
+Returns:
+```
+{
+  local: {
+    statuses: {
+      "<pkg>": {
+        explicit: boolean,
+        installed?: {
+          version: string,
+          variant: {"<label>": "<value>", …},
+          installedAt: "<iso-date>",
+          updatedAt: "<iso-date>"
+        },
+      },
+      "<dependency1>": …,
+      …
+    }
+  }
+  remote: object
+}
+```
+where `local` contains information about relevant locally installed packages,
+and `remote` corresponds to package metadata stored in the channel:
+[example](https://memo33.github.io/sc4pac/channel/metadata/memo/industrial-revolution-mod/latest/pkg.json ':include').
+
+Returns 404 `/error/package-not-found` if package does not exist.
 
 ## packages.search
 

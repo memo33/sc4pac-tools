@@ -61,9 +61,8 @@ abstract class SharedData {
     dependencies: Seq[Dependency] = Seq.empty,
     assets: Seq[AssetReference] = Seq.empty
   ) derives ReadWriter {
-    def bareDependencies: Seq[BareDep] =
-      dependencies.map(d => BareModule(Organization(d.group), ModuleName(d.name)))
-        ++ assets.map(a => BareAsset(ModuleName(a.assetId)))
+    def bareModules: Seq[BareModule] = dependencies.map(d => BareModule(Organization(d.group), ModuleName(d.name)))
+    def bareDependencies: Seq[BareDep] = bareModules ++ assets.map(a => BareAsset(ModuleName(a.assetId)))
   }
   object VariantData {
     private val variantPrefix = "variant."
