@@ -87,7 +87,7 @@ Returns:
 
 Without parameters:
 ```sh
-curl -X POST http://localhost:51515/profile.init?profile=<id>
+curl -X POST http://localhost:51515/profile.init?profile=1
 ```
 Returns:
 ```json
@@ -110,7 +110,7 @@ Returns:
 
 With parameters:
 ```sh
-curl -X POST -d '{"plugins":"plugins","cache":"cache"}' http://localhost:51515/profile.init?profile=<id>
+curl -X POST -d '{"plugins":"plugins","cache":"cache"}' http://localhost:51515/profile.init?profile=1
 ```
 
 ## packages.list
@@ -259,7 +259,7 @@ Returns: `{"$type": "/result", "ok": true}`
 
 Example:
 ```sh
-curl -X POST -d '["cyclone-boom:save-warning"]' http://localhost:51515/plugins.add?profile=<id>
+curl -X POST -d '["cyclone-boom:save-warning"]' http://localhost:51515/plugins.add?profile=1
 ```
 
 ## plugins.remove
@@ -275,7 +275,7 @@ Returns:
 
 Example:
 ```sh
-curl -X POST -d '["cyclone-boom:save-warning"]' http://localhost:51515/plugins.remove?profile=<id>
+curl -X POST -d '["cyclone-boom:save-warning"]' http://localhost:51515/plugins.remove?profile=1
 ```
 
 ## variants.list
@@ -298,7 +298,7 @@ Returns:
 
 Example:
 ```sh
-curl -X POST -d '["nightmode"]' http://localhost:51515/variants.reset?profile=<id>
+curl -X POST -d '["nightmode"]' http://localhost:51515/variants.reset?profile=1
 ```
 
 ## channels.list
@@ -321,7 +321,7 @@ Returns:
 
 Example:
 ```sh
-curl -X POST -d '["url"]' http://localhost:51515/channels.set?profile=<id>
+curl -X POST -d '["url"]' http://localhost:51515/channels.set?profile=1
 ```
 
 ## channels.stats
@@ -340,7 +340,7 @@ The websocket sends a series of messages, some of which expect a specific respon
 
 Example using Javascript in your web browser:
 ```javascript
-let ws = new WebSocket('ws://localhost:51515/update?profile=id');
+let ws = new WebSocket('ws://localhost:51515/update?profile=1');
 // ws.send(JSON.stringify({"$type": "/prompt/response", token: "<token>", body: "Yes"}))
 ```
 The messages sent from the server are logged in the network tab of the browser dev tools.
