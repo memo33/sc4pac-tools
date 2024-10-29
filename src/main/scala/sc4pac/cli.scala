@@ -467,8 +467,9 @@ object Commands {
   @HelpMessage(s"""
     |Start a local server to use the HTTP API.
     |
-    |Example:
-    |  sc4pac server --indent 1 --profiles-dir profiles
+    |Examples:
+    |  sc4pac server --profiles-dir profiles --indent 1
+    |  sc4pac server --profiles-dir profiles --web-app-dir build/web
     """.stripMargin.trim)
   final case class ServerOptions(
     @ValueDescription("number") @Group("Server") @Tag("Server")
@@ -480,6 +481,9 @@ object Commands {
     @ValueDescription("path") @Group("Server") @Tag("Server")
     @HelpMessage(s"directory containing the sc4pac-profiles.json file and profile sub-directories (default: current working directory), newly created if necessary")
     profilesDir: String = "",
+    @ValueDescription("path") @Group("Server") @Tag("Server")
+    @HelpMessage(s"optional directory containing statically served webapp files (default: no static files)")
+    webAppDir: String = "",
   ) extends Sc4pacCommandOptions
 
   case object Server extends Command[ServerOptions] {
@@ -492,13 +496,20 @@ object Commands {
         println(s"Creating sc4pac profiles directory: $profilesDir")
         os.makeDir.all(profilesDir)
       }
+      val webAppDir: Option[os.Path] =
+        if (options.webAppDir.isEmpty) None else Some(os.Path(java.nio.file.Paths.get(options.webAppDir), os.pwd))
+      if (webAppDir.isDefined && !os.exists(webAppDir.get))
+        error(caseapp.core.Error.Other(s"Webapp directory does not exist: $webAppDir"))
       val task: Task[Unit] = {
         // Enabling CORS is important so that web browsers do not block the
         // request response for lack of the following response header:
         //     access-control-allow-origin: http://localhost:12345
         // (e.g. when Flutter-web is hosted on port 12345)
-        val app = sc4pac.api.Api(options).routes.toHttpApp @@ zio.http.Middleware.cors
+        val app = sc4pac.api.Api(options).routes(webAppDir).toHttpApp @@ zio.http.Middleware.cors
         println(s"Starting sc4pac server on port ${options.port}...")
+        if (webAppDir.isDefined)
+          println(f"%nTo start the sc4pac-gui web-app, open the following URL in your web browser:%n%n" +
+            f"  http://localhost:${options.port}/webapp/%n")
         zio.http.Server.serve(app).provide(zio.http.Server.defaultWithPort(options.port), zio.ZLayer.succeed(ProfilesDir(profilesDir)))
       }
       runMainExit(task, exit)

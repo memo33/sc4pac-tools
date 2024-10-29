@@ -423,7 +423,7 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
 
   )
 
-  def routes: Routes[ProfilesDir, Nothing] = {
+  def routes(webAppDir: Option[os.Path]): Routes[ProfilesDir, Nothing] = {
     // Extract profile ID from URL query parameter and add it to environment.
     // 400 error if "profile" parameter is absent.
     val profileRoutes2 =
@@ -492,7 +492,30 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
 
     )
 
-    (profileRoutes2 ++ genericRoutes)
+    (profileRoutes2 ++ genericRoutes ++ webAppDir.map(staticRoutes).getOrElse(Routes.empty))
       .handleError(err => jsonResponse(ErrorMessage.ServerError("Unhandled error.", err.toString)).status(Status.InternalServerError))
   }
+
+  def staticFileHandler(webAppDir: os.Path, path: zio.http.Path): Handler[Any, Nothing, Request, Response] = {
+    val fileZio =
+      for {
+        subpath <- ZIO.fromTry(scala.util.Try(os.SubPath(path.encode match {
+          case "" | "/" => "index.html"  // show default document
+          case s => s
+        })))
+      } yield (webAppDir / subpath).toIO
+    Handler.fromFileZIO(fileZio).orElse(Handler.notFound)
+  }
+
+  // 200, 404
+  def staticRoutes(webAppDir: os.Path): Routes[Any, Nothing] = Routes(
+    Method.GET / "/" -> handler {
+      Response.redirect(zio.http.URL(zio.http.Path("webapp/")), isPermanent = true)
+    },
+    Method.GET / "webapp" / trailing ->
+      Handler.fromFunctionHandler[(zio.http.Path, Request)] { case (path: zio.http.Path, _: Request) =>
+        staticFileHandler(webAppDir, path).contramap[(zio.http.Path, Request)](_._2)
+      },
+  ).sandbox  // @@ HandlerAspect.requestLogging()  // sandbox converts errors to suitable responses
+
 }
