@@ -1,13 +1,25 @@
-#!/bin/sh
+#!/usr/bin/env bash
 # This file is a modified copy of src/scripts/sc4pac for testing purposes.
 #
 # Invocation of sc4pac command-line interface on Linux or macOS.
 # In a terminal, call:
 #
 #     ./sc4pac
+#
+# You can create an alias or a symlink to this file in order to add it to your
+# path to run it from any directory. Files like sc4pac-plugins.json are then
+# created in that directory, which allows to manage multiple plugins folders.
 
+set -e
+# Find the location of this script, accounting for symlinks, see https://stackoverflow.com/a/246128
+SCRIPTDIR="$( cd -P "$( dirname "$(readlink -f "${BASH_SOURCE[0]}")" )" >/dev/null 2>&1 && pwd )"
 
-SCRIPTDIR="${0%/*}"
+# Basic support for authentication to Simtropolis is provided via cookies.
+# Either set this as environment variable or uncomment the line below and fill in the values.
+# For details, see the instructions in `sc4pac.bat`.
+#
+# export SC4PAC_SIMTROPOLIS_COOKIE="ips4_device_key=<value>; ips4_member_id=<value>; ips4_login_key=<value>"
+
 
 # We set defaults for environment variables if they are not defined.
 # The environment variable `SC4PAC_MONO_CMD` is only needed on Linux and macOS.

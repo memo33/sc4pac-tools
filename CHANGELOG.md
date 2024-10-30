@@ -6,6 +6,7 @@
 
 ### Changed
 - improved error message if channel-build fails randomly in case old files could not be removed (#6)
+- improved `sc4pac` bash script to allow symlinking into path on Linux/macOS
 
 
 ## [0.4.5] - 2024-10-17
