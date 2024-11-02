@@ -54,6 +54,7 @@ object Commands {
         case abort: error.Sc4pacNotInteractive => { System.err.println(s"Operation aborted as terminal is non-interactive: ${abort.getMessage}"); exit(1) }
         case abort: error.SymlinkCreationFailed => { System.err.println(s"Operation aborted. ${abort.getMessage}"); exit(1) }  // channel-build command
         case abort: error.YamlFormatIssue => { System.err.println(s"Operation aborted. ${abort.getMessage}"); exit(1) }  // channel-build command
+        case abort: error.PortOccupied => { System.err.println(abort.getMessage); exit(1) }  // server command
         case e => { e.printStackTrace(); exit(2) }
       },
       success = _ => exit(0)
@@ -469,8 +470,8 @@ object Commands {
     |
     |Examples:
     |  sc4pac server --profiles-dir profiles --indent 1
-    |  sc4pac server --profiles-dir profiles --web-app-dir build/web
-    |  sc4pac server --profiles-dir profiles --auto-shutdown
+    |  sc4pac server --profiles-dir profiles --web-app-dir build/web                ${gray("# used by GUI web")}
+    |  sc4pac server --profiles-dir profiles --auto-shutdown --startup-tag [READY]  ${gray("# used by GUI desktop")}
     """.stripMargin.trim)
   final case class ServerOptions(
     @ValueDescription("number") @Group("Server") @Tag("Server")
@@ -486,8 +487,11 @@ object Commands {
     @HelpMessage(s"optional directory containing statically served webapp files (default: no static files)")
     webAppDir: String = "",
     @ValueDescription("bool") @Group("Server") @Tag("Server")
-    @HelpMessage(f"automatically shut down the server when client closes connection to /server.connect (default: --auto-shutdown=false).%nThis is used by the desktop GUI to ensure the port is cleared when the GUI exits.")
+    @HelpMessage("automatically shut down the server when client closes connection to /server.connect (default: --auto-shutdown=false). This is used by the desktop GUI to ensure the port is cleared when the GUI exits.")
     autoShutdown: Boolean = false,
+    @ValueDescription("string") @Group("Server") @Tag("Server")
+    @HelpMessage(s"optional tag to print once server has started and is listening")
+    startupTag: String = "",
   ) extends Sc4pacCommandOptions
 
   case object Server extends Command[ServerOptions] {
@@ -510,30 +514,45 @@ object Commands {
         //     access-control-allow-origin: http://localhost:12345
         // (e.g. when Flutter-web is hosted on port 12345)
         val app = sc4pac.api.Api(options).routes(webAppDir).toHttpApp @@ zio.http.Middleware.cors
-        println(s"Starting sc4pac server on port ${options.port}...")
-        if (webAppDir.isDefined)
-          println(f"%nTo start the sc4pac-gui web-app, open the following URL in your web browser:%n%n" +
-            f"  http://localhost:${options.port}/webapp/%n")
         for {
-          promise <- zio.Promise.make[Nothing, zio.Fiber[Throwable, Nothing]]
-          fiber   <- zio.http.Server.serve(app)
-                       .provide(
-                         zio.http.Server.defaultWithPort(options.port),
-                         zio.ZLayer.succeed(ProfilesDir(profilesDir)),
-                         zio.ZLayer.succeed(ServerFiber(promise, autoShutdown = options.autoShutdown)),
-                       )
-                       .fork
-          _       <- promise.succeed(fiber)
-          exitVal <- fiber.await
-        } yield exitVal match {
-          case zio.Exit.Failure(cause) if cause.isInterruptedOnly => ()  // interrupt is expected following autoShutdown after /server.connect
-          case _ => println(s"Unexpected termination of fiber: $exitVal")
-        }
+          promise  <- zio.Promise.make[Nothing, zio.Fiber[Throwable, Nothing]]
+          fiber    <- zio.http.Server.install(app)
+                        .zipRight(ZIO.succeed {
+                          if (options.startupTag.nonEmpty)
+                            println(options.startupTag)
+                          println(s"Sc4pac server is listening on port ${options.port}...")
+                          if (webAppDir.isDefined)
+                            println(f"%nTo start the sc4pac-gui web-app, open the following URL in your web browser:%n%n" +
+                              f"  http://localhost:${options.port}/webapp/%n")
+                        })
+                        .zipRight(ZIO.never)  // keep server running indefinitely unless interrupted
+                        .provide(
+                          zio.http.Server.defaultWithPort(options.port)
+                            .mapError { e =>  // usually: "bind(..) failed: Address already in use"
+                              sc4pac.error.PortOccupied(s"Failed to run sc4pac server on port ${options.port}. ${e.getMessage}")
+                            },
+                          zio.ZLayer.succeed(ProfilesDir(profilesDir)),
+                          zio.ZLayer.succeed(ServerFiber(promise)),
+                        )
+                        .fork
+          _        <- promise.succeed(fiber)
+          exitVal  <- fiber.await
+          _        <- exitVal match {
+                        case zio.Exit.Failure(cause) =>
+                          if (cause.isInterruptedOnly) {
+                            ZIO.succeed(())  // interrupt is expected following autoShutdown after /server.connect
+                          } else cause.failureOrCause match {
+                            case Left(err) => ZIO.fail(err)  // converts PortOccupied failure cause to plain error
+                            case Right(cause2) => ZIO.refailCause(cause2)
+                          }
+                        case zio.Exit.Success[Nothing](nothing) => nothing
+                    }
+        } yield ()
       }
       runMainExit(task, exit)
     }
 
-    class ServerFiber(val promise: zio.Promise[Nothing, zio.Fiber[Throwable, Nothing]], val autoShutdown: Boolean)
+    class ServerFiber(val promise: zio.Promise[Nothing, zio.Fiber[Throwable, Nothing]])
   }
 
 }

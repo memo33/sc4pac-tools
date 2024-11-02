@@ -33,3 +33,5 @@ final class NoChannelsAvailable(val title: String, val detail: String) extends j
 final class SymlinkCreationFailed(msg: String) extends java.io.IOException(msg) with Sc4pacErr
 
 final class YamlFormatIssue(msg: String) extends java.io.IOException(msg) with Sc4pacErr
+
+final class PortOccupied(msg: String) extends java.io.IOException(msg) with Sc4pacErr

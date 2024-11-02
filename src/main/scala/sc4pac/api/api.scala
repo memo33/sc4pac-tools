@@ -468,7 +468,7 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
             _      <- wsChannel.shutdown: zio.UIO[Unit]  // may be redundant
             _      <- ZIO.succeed(logger.log(s"Shut down websocket connection $num."))
             server <- ZIO.service[ServerFiber]
-            _      <- if (!server.autoShutdown) ZIO.succeed(())
+            _      <- if (!options.autoShutdown) ZIO.succeed(())
                       else for {
                         fiber  <- server.promise.await
                         _      <- ZIO.succeed(logger.log(s"Connection from client to server was closed. Shutting down server."))
