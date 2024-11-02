@@ -9,6 +9,7 @@ import upickle.default as UP
 
 import sc4pac.JsonData as JD
 import JD.{bareModuleRw, uriRw}
+import sc4pac.cli.Commands.Server.ServerFiber
 
 
 class Api(options: sc4pac.cli.Commands.ServerOptions) {
@@ -423,7 +424,7 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
 
   )
 
-  def routes(webAppDir: Option[os.Path]): Routes[ProfilesDir, Nothing] = {
+  def routes(webAppDir: Option[os.Path]): Routes[ProfilesDir & ServerFiber, Nothing] = {
     // Extract profile ID from URL query parameter and add it to environment.
     // 400 error if "profile" parameter is absent.
     val profileRoutes2 =
@@ -439,7 +440,7 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
       })
 
     // profile-independent routes
-    val genericRoutes = Routes[ProfilesDir, Throwable](
+    val genericRoutes = Routes[ProfilesDir & ServerFiber, Throwable](
 
       // 200
       Method.GET / "server.status" -> handler {
@@ -465,8 +466,16 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
                           ZIO.succeed(())  // discard all unexpected messages (and events) and continue receiving
                       }
             _      <- wsChannel.shutdown: zio.UIO[Unit]  // may be redundant
-          } yield logger.log(s"Shut down websocket connection $num.")
-        }.provideSomeLayer(httpLogger).toResponse: zio.URIO[ProfilesDir, Response]
+            _      <- ZIO.succeed(logger.log(s"Shut down websocket connection $num."))
+            server <- ZIO.service[ServerFiber]
+            _      <- if (!server.autoShutdown) ZIO.succeed(())
+                      else for {
+                        fiber  <- server.promise.await
+                        _      <- ZIO.succeed(logger.log(s"Connection from client to server was closed. Shutting down server."))
+                        _      <- fiber.interrupt.fork
+                      } yield ()
+          } yield ()
+        }.provideSomeLayer(httpLogger).toResponse: zio.URIO[ProfilesDir & ServerFiber, Response]
       },
 
       // 200

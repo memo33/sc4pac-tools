@@ -470,6 +470,7 @@ object Commands {
     |Examples:
     |  sc4pac server --profiles-dir profiles --indent 1
     |  sc4pac server --profiles-dir profiles --web-app-dir build/web
+    |  sc4pac server --profiles-dir profiles --auto-shutdown
     """.stripMargin.trim)
   final case class ServerOptions(
     @ValueDescription("number") @Group("Server") @Tag("Server")
@@ -484,6 +485,9 @@ object Commands {
     @ValueDescription("path") @Group("Server") @Tag("Server")
     @HelpMessage(s"optional directory containing statically served webapp files (default: no static files)")
     webAppDir: String = "",
+    @ValueDescription("bool") @Group("Server") @Tag("Server")
+    @HelpMessage(f"automatically shut down the server when client closes connection to /server.connect (default: --auto-shutdown=false).%nThis is used by the desktop GUI to ensure the port is cleared when the GUI exits.")
+    autoShutdown: Boolean = false,
   ) extends Sc4pacCommandOptions
 
   case object Server extends Command[ServerOptions] {
@@ -510,10 +514,26 @@ object Commands {
         if (webAppDir.isDefined)
           println(f"%nTo start the sc4pac-gui web-app, open the following URL in your web browser:%n%n" +
             f"  http://localhost:${options.port}/webapp/%n")
-        zio.http.Server.serve(app).provide(zio.http.Server.defaultWithPort(options.port), zio.ZLayer.succeed(ProfilesDir(profilesDir)))
+        for {
+          promise <- zio.Promise.make[Nothing, zio.Fiber[Throwable, Nothing]]
+          fiber   <- zio.http.Server.serve(app)
+                       .provide(
+                         zio.http.Server.defaultWithPort(options.port),
+                         zio.ZLayer.succeed(ProfilesDir(profilesDir)),
+                         zio.ZLayer.succeed(ServerFiber(promise, autoShutdown = options.autoShutdown)),
+                       )
+                       .fork
+          _       <- promise.succeed(fiber)
+          exitVal <- fiber.await
+        } yield exitVal match {
+          case zio.Exit.Failure(cause) if cause.isInterruptedOnly => ()  // interrupt is expected following autoShutdown after /server.connect
+          case _ => println(s"Unexpected termination of fiber: $exitVal")
+        }
       }
       runMainExit(task, exit)
     }
+
+    class ServerFiber(val promise: zio.Promise[Nothing, zio.Fiber[Throwable, Nothing]], val autoShutdown: Boolean)
   }
 
 }
