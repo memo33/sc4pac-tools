@@ -31,6 +31,8 @@ GET  /server.connect                 (websocket)
 
 GET  /profiles.list
 POST /profiles.add                   {name: string}
+
+GET  /image.fetch?url=<url>
 ```
 
 - Everything JSON.
@@ -465,3 +467,12 @@ Create a new profile and make it the currently active one. Make sure to call `/p
 Synopsis: `POST /profiles.add {name: string}`
 
 Returns: `{"id": "<id>", "name": string}`
+
+## image.fetch
+
+This endpoint acts as a proxy for downloading an image from a remote URL, adding appropriate CORS headers to the response.
+
+Synopsis: `GET /image.fetch?url=<url>`
+
+Returns the downloaded image (200) or any errors sent by the remote server.
+Returns 400 in case of missing or malformed `url` parameter.

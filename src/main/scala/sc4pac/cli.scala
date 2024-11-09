@@ -495,6 +495,11 @@ object Commands {
   ) extends Sc4pacCommandOptions
 
   case object Server extends Command[ServerOptions] {
+
+    private def followRedirects = zio.http.ZClientAspect.followRedirects(Constants.maxRedirectionsOpt.get)(onRedirectError = { (resp, message) =>
+      ZIO.logInfo(message).as(resp)
+    })
+
     def run(options: ServerOptions, args: RemainingArgs): Unit = {
       if (options.indent < -1)
         error(caseapp.core.Error.Other(s"Indentation must be -1 or larger."))
@@ -531,6 +536,8 @@ object Commands {
                             .mapError { e =>  // usually: "bind(..) failed: Address already in use"
                               sc4pac.error.PortOccupied(s"Failed to run sc4pac server on port ${options.port}. ${e.getMessage}")
                             },
+                          zio.http.Client.default  // for /image.fetch
+                            .map(_.update[zio.http.Client](_.updateHeaders(_.addHeader("User-Agent", Constants.userAgent)) @@ followRedirects)),
                           zio.ZLayer.succeed(ProfilesDir(profilesDir)),
                           zio.ZLayer.succeed(ServerFiber(promise)),
                         )

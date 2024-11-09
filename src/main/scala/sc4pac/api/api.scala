@@ -424,7 +424,7 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
 
   )
 
-  def routes(webAppDir: Option[os.Path]): Routes[ProfilesDir & ServerFiber, Nothing] = {
+  def routes(webAppDir: Option[os.Path]): Routes[ProfilesDir & ServerFiber & Client, Nothing] = {
     // Extract profile ID from URL query parameter and add it to environment.
     // 400 error if "profile" parameter is absent.
     val profileRoutes2 =
@@ -440,7 +440,7 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
       })
 
     // profile-independent routes
-    val genericRoutes = Routes[ProfilesDir & ServerFiber, Throwable](
+    val genericRoutes = Routes[ProfilesDir & ServerFiber & Client, Throwable](
 
       // 200
       Method.GET / "server.status" -> handler {
@@ -501,7 +501,26 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
 
     )
 
-    (profileRoutes2 ++ genericRoutes ++ webAppDir.map(staticRoutes).getOrElse(Routes.empty))
+    val fetchRoutes = Routes[Client, Throwable](
+
+      // 200, 400
+      Method.GET / "image.fetch" -> handler((req: Request) => wrapHttpEndpoint {
+        for {
+          rawUrl <- ZIO.fromOption(req.url.queryParams.getAll("url").headOption).orElseFail(jsonResponse(ErrorMessage.BadRequest(
+                      """Query parameter "url" is required.""", "Pass the remote image url as parameter."
+                    )).status(Status.BadRequest))
+          url    <- ZIO.fromEither(zio.http.URL.decode(rawUrl).left.map(malformedUrl => jsonResponse(ErrorMessage.BadRequest(
+                      "Malformed url", malformedUrl.getMessage
+                    )).status(Status.BadRequest)))
+          // TODO handle retrys
+          resp   <- zio.http.ZClient.batched(Request.get(url))  // TODO this first downloads the entire response body before forwarding the response
+                                                                // Using `ZClient.streaming` instead is blocked on https://github.com/zio/zio-http/issues/3197
+        } yield resp
+      }),
+
+    )
+
+    (profileRoutes2 ++ genericRoutes ++ fetchRoutes ++ webAppDir.map(staticRoutes).getOrElse(Routes.empty))
       .handleError(err => jsonResponse(ErrorMessage.ServerError("Unhandled error.", err.toString)).status(Status.InternalServerError))
   }
 
@@ -516,10 +535,10 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
     Handler.fromFileZIO(fileZio).orElse(Handler.notFound)
   }
 
-  // 200, 404
+  // 200, (308), 404
   def staticRoutes(webAppDir: os.Path): Routes[Any, Nothing] = Routes(
     Method.GET / "/" -> handler {
-      Response.redirect(zio.http.URL(zio.http.Path("webapp/")), isPermanent = true)
+      Response.redirect(zio.http.URL(zio.http.Path("webapp/")), isPermanent = true)  // 308
     },
     Method.GET / "webapp" / trailing ->
       Handler.fromFunctionHandler[(zio.http.Path, Request)] { case (path: zio.http.Path, _: Request) =>
