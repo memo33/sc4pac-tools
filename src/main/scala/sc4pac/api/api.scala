@@ -93,10 +93,10 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
   }
 
   private def searchParams(req: Request): IO[Response, (String, Int)] = for {
-    searchText <- ZIO.fromOption(req.url.queryParams.get("q")).orElseFail(jsonResponse(ErrorMessage.BadRequest(
+    searchText <- ZIO.fromOption(req.url.queryParams.getAll("q").headOption).orElseFail(jsonResponse(ErrorMessage.BadRequest(
                     """Query parameter "q" is required.""", "Pass the search string as query."
                   )).status(Status.BadRequest))
-    threshold  <- req.url.queryParams.get("threshold") match {
+    threshold  <- req.url.queryParams.getAll("threshold").headOption match {
                     case None => ZIO.succeed(Constants.fuzzySearchThreshold)  // the default
                     case Some(s) => ZIO.fromOption(implicitly[Numeric[Int]].parseString(s).filter(i => 0 <= i && i <= 100))
                       .orElseFail(jsonResponse(ErrorMessage.BadRequest(
@@ -254,7 +254,7 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
       wrapHttpEndpoint {
         for {
           (searchText, threshold) <- searchParams(req)
-          categoryOpt  =  req.url.queryParams.get("category")
+          categoryOpt  =  req.url.queryParams.getAll("category").headOption
           pluginsData  <- readPluginsOr409
           pac          <- Sc4pac.init(pluginsData.config)
           searchResult <- pac.search(searchText, threshold, category = categoryOpt)
@@ -274,7 +274,7 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
     Method.GET / "plugins.search" -> handler((req: Request) => wrapHttpEndpoint {
       for {
         (searchText, threshold) <- searchParams(req)
-        categoryOpt  =  req.url.queryParams.get("category")
+        categoryOpt  =  req.url.queryParams.getAll("category").headOption
         pluginsData  <- readPluginsOr409
         installed    <- JD.PluginsLock.listInstalled2
         (stats, searchResult) =  searchPlugins(searchText, threshold, categoryOpt, installed)
@@ -293,7 +293,7 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
     Method.GET / "packages.info" -> handler { (req: Request) =>
       wrapHttpEndpoint {
         for {
-          pkg          <- ZIO.fromOption(req.url.queryParams.get("pkg")).orElseFail(jsonResponse(ErrorMessage.BadRequest(
+          pkg          <- ZIO.fromOption(req.url.queryParams.getAll("pkg").headOption).orElseFail(jsonResponse(ErrorMessage.BadRequest(
                             """Query parameter "pkg" is required.""", "Pass the package identifier as query."
                           )).status(Status.BadRequest))
           mod           <- parseModuleOr400(pkg)
@@ -429,7 +429,7 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
     // 400 error if "profile" parameter is absent.
     val profileRoutes2 =
       profileRoutes.transform((handler0) => handler { (req: Request) =>
-        req.url.queryParams.get("profile") match {
+        req.url.queryParams.getAll("profile").headOption match {
           case Some[ProfileId](id) =>
             handler0(req).provideSomeLayer(zio.ZLayer.fromFunction((dir: ProfilesDir) => ProfileRoot(dir.path / id)))
           case None =>

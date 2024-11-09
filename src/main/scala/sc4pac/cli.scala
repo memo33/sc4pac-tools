@@ -513,7 +513,7 @@ object Commands {
         // request response for lack of the following response header:
         //     access-control-allow-origin: http://localhost:12345
         // (e.g. when Flutter-web is hosted on port 12345)
-        val app = sc4pac.api.Api(options).routes(webAppDir).toHttpApp @@ zio.http.Middleware.cors
+        val app = sc4pac.api.Api(options).routes(webAppDir) @@ zio.http.Middleware.cors
         for {
           promise  <- zio.Promise.make[Nothing, zio.Fiber[Throwable, Nothing]]
           fiber    <- zio.http.Server.install(app)
