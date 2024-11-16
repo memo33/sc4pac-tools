@@ -86,7 +86,7 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) extends Upda
           // TODO reconsider choice of search algorithm
           val ratio =
             if (query.isEmpty && category.isDefined) 100  // return the entire category
-            else me.xdrop.fuzzywuzzy.FuzzySearch.tokenSetRatio(query, item.toSearchString)
+            else me.xdrop.fuzzywuzzy.FuzzySearch.tokenSetPartialRatio(query, item.toSearchString)
           if (ratio >= threshold) {
             Some(BareModule(Organization(item.group), ModuleName(item.name)), ratio, Option(item.summary).filter(_.nonEmpty))
           } else None

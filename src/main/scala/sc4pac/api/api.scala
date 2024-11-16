@@ -117,7 +117,7 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
         // TODO reconsider choice of search algorithm
         val ratio =
           if (query.isEmpty) 100  // return the entire category (or everything if there is no filter category)
-          else me.xdrop.fuzzywuzzy.FuzzySearch.tokenSetRatio(query, item.toSearchString)
+          else me.xdrop.fuzzywuzzy.FuzzySearch.tokenSetPartialRatio(query, item.toSearchString)
         if (ratio < threshold) {
           None
         } else {
