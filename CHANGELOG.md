@@ -6,6 +6,7 @@
 
 ### Changed
 - The API was upgraded to version 2.0.
+- The fuzzy search algorithm was changed to improve results for partial matches.
 
 
 ## [0.4.5] - 2024-10-17

@@ -175,7 +175,7 @@ abstract class SharedData {
   ) derives ReadWriter {
     def isSc4pacAsset: Boolean = group == JsonRepoUtil.sc4pacAssetOrg.value
     def toBareDep: BareDep = if (isSc4pacAsset) BareAsset(ModuleName(name)) else BareModule(Organization(group), ModuleName(name))
-    private[sc4pac] def toSearchString: String = s"$group:$name $summary"
+    private[sc4pac] def toSearchString: String = s"$group:$name $summary".toLowerCase(java.util.Locale.ENGLISH)
   }
 
   case class Channel(

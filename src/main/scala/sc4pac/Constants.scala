@@ -41,7 +41,7 @@ object Constants {
   val maxRedirectionsOpt = Some(20)
   val sslRetryCount = 3  // Coursier legacy
   val resumeIncompleteDownloadAttemps = 4
-  val fuzzySearchThreshold = 50  // 0..100
+  val fuzzySearchThreshold = 80  // 0..100
   val cacheTtl = 12.hours
   val channelContentsTtl = 30.minutes
   val channelContentsTtlShort = 60.seconds

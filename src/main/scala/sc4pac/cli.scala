@@ -178,7 +178,7 @@ object Commands {
   final case class SearchOptions(
     @ValueDescription("number") @Group("Search") @Tag("Search")
     @HelpMessage(s"Fuziness (0..100, default=${Constants.fuzzySearchThreshold}): Smaller numbers lead to more results.")
-    threshold: Int = Constants.fuzzySearchThreshold  // 0..100, default 50
+    threshold: Int = Constants.fuzzySearchThreshold  // 0..100, default 80
   ) extends Sc4pacCommandOptions
 
   case object Search extends Command[SearchOptions] {
