@@ -76,6 +76,7 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) extends Upda
     * Api.searchPlugins implements a similar function and should use the same algorithm.
     */
   def search(query: String, threshold: Int, category: Option[String]): Task[Seq[(BareModule, Int, Option[String])]] = iterateAllChannelContents.map { itemsIter =>
+    val searchTokens = Sc4pac.fuzzySearchTokenize(query)
     val results: Seq[(BareModule, Int, Option[String])] =
       itemsIter.flatMap { item =>
         if (item.isSc4pacAsset) {
@@ -85,8 +86,8 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) extends Upda
         } else {
           // TODO reconsider choice of search algorithm
           val ratio =
-            if (query.isEmpty && category.isDefined) 100  // return the entire category
-            else me.xdrop.fuzzywuzzy.FuzzySearch.tokenSetPartialRatio(query, item.toSearchString)
+            if (searchTokens.isEmpty && category.isDefined) 100  // return the entire category
+            else Sc4pac.fuzzySearchRatio(searchTokens, item.toSearchString, threshold)
           if (ratio >= threshold) {
             Some(BareModule(Organization(item.group), ModuleName(item.name)), ratio, Option(item.summary).filter(_.nonEmpty))
           } else None
@@ -590,6 +591,35 @@ object Sc4pac {
 
       val allKeys = variants.flatMap(_.keysIterator).toSet
       try Right(helper(variants, allKeys)) catch { case e: NoCommonKeys => Left(e.msg) }
+    }
+  }
+
+  private[sc4pac] def fuzzySearchTokenize(searchString: String): IndexedSeq[String] = {
+    searchString.split(' ').toIndexedSeq
+  }
+
+  /** This search implementation tries to work around some deficiencies of the
+    * fuzzywuzzy library algorithms `tokenSetRatio` and `tokenSetPartialRatio`.
+    * (The former does not match partial strings, the latter finds lots of
+    * unsuitable matches for "vip terrain mod" for example.)
+    */
+  private[sc4pac] def fuzzySearchRatio(searchTokens: IndexedSeq[String], text: String, threshold: Int): Int = {
+    if (searchTokens.isEmpty) {
+      0
+    } else {
+      var acc = 0
+      for (token <- searchTokens) {
+        // There is a bug in the fuzzywuzzy library that causes
+        // partialRatio("wolf", "ulisse wolf hybrid-railway-subway-converter tunnel portals for hybrid railway (hrw)")
+        //                                              ^           ^             ^         ^
+        // to output 50 instead of 100, see https://github.com/xdrop/fuzzywuzzy/issues/106
+        // so as mitigation we first check containment.
+        val ratio = if (text.contains(token)) 100 else me.xdrop.fuzzywuzzy.FuzzySearch.partialRatio(token, text)
+        if (ratio >= threshold) {  // this eliminates poor matches for some tokens (however, this leads to inconsistent results for varying thresholds due to double truncation)
+          acc += ratio
+        }
+      }
+      math.round(acc.toFloat / searchTokens.length)
     }
   }
 

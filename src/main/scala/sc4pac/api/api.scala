@@ -112,12 +112,13 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
     */
   def searchPlugins(query: String, threshold: Int, category: Option[String], items: Seq[JD.InstalledData]): (JD.Channel.Stats, Seq[(JD.InstalledData, Int)]) = {
     val categoryStats = collection.mutable.Map.empty[String, Int]
+    val searchTokens = Sc4pac.fuzzySearchTokenize(query)
     val results: Seq[(JD.InstalledData, Int)] =
       items.flatMap { item =>
         // TODO reconsider choice of search algorithm
         val ratio =
-          if (query.isEmpty) 100  // return the entire category (or everything if there is no filter category)
-          else me.xdrop.fuzzywuzzy.FuzzySearch.tokenSetPartialRatio(query, item.toSearchString)
+          if (searchTokens.isEmpty) 100  // return the entire category (or everything if there is no filter category)
+          else Sc4pac.fuzzySearchRatio(searchTokens, item.toSearchString, threshold)
         if (ratio < threshold) {
           None
         } else {
