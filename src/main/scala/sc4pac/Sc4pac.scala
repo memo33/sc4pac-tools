@@ -595,7 +595,7 @@ object Sc4pac {
   }
 
   private[sc4pac] def fuzzySearchTokenize(searchString: String): IndexedSeq[String] = {
-    searchString.split(' ').toIndexedSeq
+    searchString.toLowerCase(java.util.Locale.ENGLISH).split(' ').toIndexedSeq
   }
 
   /** This search implementation tries to work around some deficiencies of the
