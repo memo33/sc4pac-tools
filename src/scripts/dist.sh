@@ -12,6 +12,7 @@ zip --junk-paths "$OUT" target/scala-3.4.2/sc4pac-cli.jar src/scripts/sc4pac src
 if [ ! -e "cicdec" ]
 then
     curl -L https://github.com/Bioruebe/cicdec/releases/download/3.0.1/cicdec.zip > target/cicdec.zip
+    echo "551694690919e668625697be88fedac0b1cfefae321f2440ad48bc65920abe52  target/cicdec.zip" | sha256sum --check
     unzip -d cicdec target/cicdec.zip
 fi
 zip -r "$OUT" cicdec
