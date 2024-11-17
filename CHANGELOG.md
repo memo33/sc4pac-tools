@@ -4,7 +4,13 @@
 ### Added
 - a few channel stats have been added to channel JSON file, such as which categories contain how many packages
 
+### Fixed
+- an issue affecting some old terminals in which the escape sequences used for displaying progress bars were incorrectly printed to the console (#8)
+- an issue that could cause warning messages to mess up the prompt display (#5)
+
 ### Changed
+- improved error message if channel-build fails randomly in case old files could not be removed (#6)
+- improved `sc4pac` bash script to allow symlinking into path on Linux/macOS
 - The API was upgraded to version 2.0.
 - The fuzzy search algorithm was changed to improve results for partial matches.
 

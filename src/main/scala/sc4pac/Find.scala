@@ -30,7 +30,9 @@ object Find {
   def packageData[A <: JD.Package | JD.Asset : Reader](module: C.Module, version: String): RIO[ResolutionContext, Option[A]] = {
     def tryAllRepos(repos: Seq[MetadataRepository], context: ResolutionContext): Task[Option[A]] = ZIO.collectFirst(repos) { repo =>
       val task: Task[Option[A]] = {
-        repo.fetchModuleJson[A](module, version, context.cache.fetchText).map(Some(_))
+        repo.fetchModuleJson[A](module, version, context.cache.fetchText)
+          .uninterruptible  // uninterruptile to avoid incomplete-download error messages when resolving is interrupted to prompt for a variant selection (downloading json should be fairly quick anyway)
+          .map(Some(_))
           .catchSome {
             case _: error.Sc4pacVersionNotFound => ZIO.succeed(None)  // repositories not containing module:version can be ignored
             case e: (ArtifactError.WrongChecksum | ArtifactError.ChecksumFormatError | ArtifactError.ChecksumNotFound) =>

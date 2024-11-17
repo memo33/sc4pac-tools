@@ -180,18 +180,31 @@ object ChannelUtil {
 
       // Finally, we are sure that everything was formatted correctly, so we can
       // move the temp folder to its final destination.
-      os.move.over(tempJsonDir / "metadata", outputDir / "metadata", createFolders = true)
+      try {
+        if (packages.nonEmpty) {  // otherwise metadata folder does not exist (we still want channel contents file though)
+          os.move.over(tempJsonDir / "metadata", outputDir / "metadata", createFolders = true)
+        }
+      } catch {
+        case e: java.nio.file.DirectoryNotEmptyException =>
+          throw new error.FileOpsFailure(
+            s"""Failed to overwrite folder ${outputDir / "metadata"}. If the problem persists, delete it manually and try again.""")
+      }
       os.move.over(tempJsonDir / JsonRepoUtil.channelContentsFilename, outputDir / JsonRepoUtil.channelContentsFilename, createFolders = true)
       System.err.println(s"Successfully wrote channel contents of ${packagesMap.size} packages and assets.")
     }
 
     val packagesTask: Task[Seq[JD.PackageAsset]] =
       ZIO.foreach(inputDirs) { inputDir =>
-        ZIO.foreach(os.walk.stream(inputDir).filter(_.last.endsWith(".yaml")).toSeq) { path =>
-          readAndParsePkgData(path, root = Some(inputDir))
-        }.map(_.flatten)
-      }.map(_.flatten)
-      .mapError(error.YamlFormatIssue(_))
+        ZIO.ifZIO(ZIO.attemptBlockingIO(os.exists(inputDir)))(
+          onFalse = ZIO.fail(new error.FileOpsFailure(s"$inputDir does not exist.")),
+          onTrue = ZIO.foreach(os.walk.stream(inputDir).filter(_.last.endsWith(".yaml")).toSeq) { path =>
+            readAndParsePkgData(path, root = Some(inputDir))
+          }.map(_.flatten)
+        )
+      }.map(_.flatten).mapError {
+        case errStr: String => error.YamlFormatIssue(errStr)
+        case e: java.io.IOException => e
+      }
 
     // result
     ZIO.blocking {
