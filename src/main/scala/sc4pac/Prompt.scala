@@ -50,10 +50,10 @@ object Prompt {
     } yield {
       if (input.isEmpty) default
       else {
-        val matches: Seq[String] = options.filter(_.toLowerCase(java.util.Locale.ENGLISH).startsWith(input.toLowerCase(java.util.Locale.ENGLISH)))
-        matches match {
+        val inputLower = input.toLowerCase(java.util.Locale.ENGLISH)
+        options.filter(_.toLowerCase(java.util.Locale.ENGLISH).startsWith(inputLower)) match {
           case Seq(unique) => Some(unique)
-          case _ => None
+          case matches => matches.find(_ == input).orElse(matches.find(_.toLowerCase(java.util.Locale.ENGLISH) == inputLower))
         }
       }
     }
