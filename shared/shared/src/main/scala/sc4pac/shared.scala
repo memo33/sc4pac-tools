@@ -12,6 +12,7 @@ final case class BareModule(group: Organization, name: ModuleName) extends BareD
 }
 object BareModule {
   val pkgMarkdownRegex = """`pkg=([^`:\s]+):([^`:\s]+)`""".r
+  given lexOrdering: Ordering[BareModule] = Ordering.by(module => (module.group.value, module.name.value))
 }
 final case class BareAsset(assetId: ModuleName) extends BareDep {
   def orgName = s"${JsonRepoUtil.sc4pacAssetOrg.value}:${assetId.value}"
@@ -25,6 +26,13 @@ object JsonRepoUtil {
       case a: BareAsset => (sc4pacAssetOrg.value, a.assetId.value)
     }
     s"metadata/${group}/${name}/${version}/pkg.json"
+  }
+
+  def extPackageSubPath(dep: BareDep): String = {
+    dep match {
+      case m: BareModule => s"metadata/_extPkg/${m.group.value}/${m.name.value}/latest/pkg.json"
+      case a: BareAsset => s"metadata/_extAsset/${a.assetId.value}/latest/pkg.json"
+    }
   }
 
   val sc4pacAssetOrg = Organization("sc4pacAsset")
@@ -166,6 +174,19 @@ abstract class SharedData {
     val empty = Info()
   }
 
+  case class ExternalPackage(
+    group: String,
+    name: String,
+    // channel: Option[String],
+    requiredBy: Seq[BareModule],
+  ) derives ReadWriter
+
+  case class ExternalAsset(
+    assetId: String,
+    // channel: Option[String],
+    requiredBy: Seq[BareModule],
+  ) derives ReadWriter
+
   case class ChannelItem(
     group: String,
     name: String,
@@ -183,6 +204,8 @@ abstract class SharedData {
     scheme: Int,
     stats: Channel.Stats = null,  // added between scheme 4 and 5 (backward compatible: recomputed for smaller schemes, so never actually null)
     contents: Seq[ChannelItem],
+    externalPackages: Seq[Channel.ExtPkg] = Seq.empty,  // default for backward compatibility
+    externalAssets: Seq[Channel.ExtAsset] = Seq.empty,  // default for backward compatibility
   ) {
     lazy val versions: Map[BareDep, Seq[(String, Checksum)]] =
       contents.iterator.map(item => item.toBareDep -> item.versions.map(v => v -> item.checksums.getOrElse(v, emptyChecksum))).toMap
@@ -191,18 +214,28 @@ abstract class SharedData {
 
     private val channelRwDefault: ReadWriter[Channel] = macroRW
     implicit val channelRw: ReadWriter[Channel] =
-      channelRwDefault.bimap[Channel](identity, c => if (c.stats != null) c else createAddStats(c.scheme, c.contents))
+      channelRwDefault.bimap[Channel](identity, c => if (c.stats != null) c else createAddStats(c.scheme, c.contents, c.externalPackages, c.externalAssets))
 
     /* recomputes the channel stats */
-    def createAddStats(scheme: Int, contents: Seq[ChannelItem]): Channel = {
+    def createAddStats(
+      scheme: Int,
+      contents: Seq[ChannelItem],
+      externalPackages: Seq[Channel.ExtPkg],
+      externalAssets: Seq[Channel.ExtAsset],
+    ): Channel = {
       val m = collection.mutable.Map.empty[String, Int]
       for (item <- contents; cat <- item.category) {
         m(cat) = m.getOrElse(cat, 0) + 1
       }
-      Channel(scheme, Stats.fromMap(m), contents = contents)
+      Channel(scheme, Stats.fromMap(m), contents = contents, externalPackages, externalAssets)
     }
 
-    def create(scheme: Int, channelData: Iterable[(BareDep, Iterable[(String, PackageAsset, Checksum)])]): Channel = {  // name -> (version, json, sha)
+    def create(
+      scheme: Int,
+      channelData: Iterable[(BareDep, Iterable[(String, PackageAsset, Checksum)])],  // name -> (version, json, sha)
+      externalPackages: Seq[Channel.ExtPkg],
+      externalAssets: Seq[Channel.ExtAsset],
+    ): Channel = {
       createAddStats(scheme, contents = channelData.iterator.collect {
         case (dep, versions) if versions.nonEmpty =>
           val (g, n) = dep match {
@@ -219,7 +252,7 @@ abstract class SharedData {
             summary = summaryOpt.getOrElse(""),
             category = catOpt,
           )
-      }.toSeq)
+      }.toSeq, externalPackages, externalAssets)
     }
 
     case class CategoryItem(category: String, count: Int) derives ReadWriter
@@ -242,6 +275,10 @@ abstract class SharedData {
         Stats.fromMap(m)
       }
     }
+
+    case class ExtPkg(group: String, name: String, checksum: Checksum) derives ReadWriter
+    case class ExtAsset(name: String, checksum: Checksum) derives ReadWriter
+
   }
 
 }

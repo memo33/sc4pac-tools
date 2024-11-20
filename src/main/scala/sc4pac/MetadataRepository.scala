@@ -109,6 +109,10 @@ object MetadataRepository {
   def latestSubPath(group: String, name: String): os.SubPath = {
     os.SubPath(s"metadata/$group/$name/latest")
   }
+
+  def extPkgJsonSubPath(dep: BareDep): os.SubPath = {
+    os.SubPath(JsonRepoUtil.extPackageSubPath(dep))
+  }
 }
 
 /** This repository operates on a hierarchy of JSON files. The JSON files are loaded on demand.
@@ -180,7 +184,9 @@ private class YamlRepository(
   // TODO Refactor to remove channelData in favor of channel.
   lazy val channel = JD.Channel.create(
     scheme = Constants.channelSchemeVersions.max,
-    channelData.view.mapValues(_.view.map { case (version, pkgData) => (version, pkgData, JD.Checksum.empty) })
+    channelData.view.mapValues(_.view.map { case (version, pkgData) => (version, pkgData, JD.Checksum.empty) }),
+    externalPackages = Seq.empty,  // TODO YamlRepository does not currently support reverse dependencies
+    externalAssets = Seq.empty,  // TODO
   )
 
   def iterateChannelContents: Iterator[JD.ChannelItem] = channel.contents.iterator

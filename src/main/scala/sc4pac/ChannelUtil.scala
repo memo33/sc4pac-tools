@@ -88,15 +88,10 @@ object ChannelUtil {
     }.mapError(errs => s"Format error in $path: ${errs.mkString(", ")}")
   }
 
-  private def writePackageJsonBlocking(pkgData: JD.PackageAsset, tempJsonDir: os.Path): JD.Checksum = {
-    val dep = pkgData.toBareDep
-    val target = tempJsonDir / MetadataRepository.jsonSubPath(dep, pkgData.version)
+  private def writePackageJsonBlocking[A : ReadWriter](pkgData: A, target: os.Path): JD.Checksum = {
     os.makeDir.all(target / os.up)
     scala.util.Using.resource(java.nio.file.Files.newBufferedWriter(target.toNIO)) { out =>
-      pkgData match {
-        case data: JD.Package => writeTo(data, out, indent=1)  // writes package json file
-        case data: JD.Asset => writeTo(data, out, indent=1)  // writes asset json file
-      }
+      writeTo(pkgData, out, indent = 1)  // writes package/asset json file
     }
     JD.Checksum(sha256 = Some(Downloader.computeChecksum(target.toIO)))
   }
@@ -113,8 +108,8 @@ object ChannelUtil {
   def convertYamlToJson(inputDirs: Seq[os.Path], outputDir: os.Path): Task[Unit] = {
 
     def processPackages(packages: Seq[JD.PackageAsset], tempJsonDir: os.Path): Task[Unit] = ZIO.attemptBlockingIO {
-      // compute dependents (reverse dependencies)
-      val dependents: collection.Map[BareDep, Set[BareModule]] = {
+      // compute reverse dependencies (for each asset/package, the set of modules that depend on it)
+      val reverseDependencies: collection.Map[BareDep, Set[BareModule]] = {
         val m = collection.mutable.Map.empty[BareDep, Set[BareModule]]
         packages.foreach {
           case _: JD.Asset => // assets do not depend on anything
@@ -127,26 +122,51 @@ object ChannelUtil {
         m
       }
 
-      // add dependents (requiredBy) and write package json files
+      // add reverseDependencies (requiredBy) to each asset/package and write package json files
       val packagesMap: Map[BareDep, Seq[(String, JD.PackageAsset, JD.Checksum)]] =
         packages.map { pkgData =>
-          val computed = dependents.getOrElse(pkgData.toBareDep, Set.empty)
-          // this joins the computed dependents and the dependents explicitly specified in yaml
+          val computed = reverseDependencies.getOrElse(pkgData.toBareDep, Set.empty)
+          // this joins the computed reverseDependencies and those explicitly specified in yaml
           val pkgData2 = pkgData match {
             case data: JD.Asset =>
               data.copy(requiredBy =
-                (computed ++ data.requiredBy).toSeq.sortBy(i => (i.group, i.name)))
+                (computed ++ data.requiredBy).toSeq.sorted)
             case data: JD.Package =>
               data.copy(info = data.info.copy(requiredBy =
-                (computed ++ data.info.requiredBy).toSeq.sortBy(i => (i.group, i.name))))
+                (computed ++ data.info.requiredBy).toSeq.sorted))
           }
-          val checksum = writePackageJsonBlocking(pkgData2, tempJsonDir)    // writing json as side effect
+          val target = tempJsonDir / MetadataRepository.jsonSubPath(pkgData.toBareDep, pkgData.version)
+          val checksum = writePackageJsonBlocking(pkgData2, target)    // writing json as side effect
           pkgData2.toBareDep -> (pkgData2.version, pkgData2, checksum)
         }.groupMap(_._1)(_._2)
 
+      val (externalPackages, externalAssets) =
+        reverseDependencies.iterator
+          .filter(item => !packagesMap.contains(item._1))
+          .toSeq
+          .partitionMap {
+            case (module: BareModule, requiredBy) =>
+              val data = JD.ExternalPackage(group = module.group.value, name = module.name.value,
+                requiredBy = requiredBy.toSeq.sorted)
+              val target = tempJsonDir / MetadataRepository.extPkgJsonSubPath(module)
+              val checksum = writePackageJsonBlocking(data, target)  // writing json as side effect
+              Left(JD.Channel.ExtPkg(group = module.group.value, name = module.name.value, checksum))
+            case (asset: BareAsset, requiredBy) =>
+              val data = JD.ExternalAsset(assetId = asset.assetId.value,
+                requiredBy = requiredBy.toSeq.sorted)
+              val target = tempJsonDir / MetadataRepository.extPkgJsonSubPath(asset)
+              val checksum = writePackageJsonBlocking(data, target)  // writing json as side effect
+              Right(JD.Channel.ExtAsset(name = asset.assetId.value, checksum = checksum))
+          }
+
       // write channel contents
       val channel = {
-        val c = JD.Channel.create(scheme = Constants.channelSchemeVersions.max, packagesMap)
+        val c = JD.Channel.create(
+          scheme = Constants.channelSchemeVersions.max,
+          packagesMap,
+          externalPackages.sortBy(i => (i.group, i.name)),
+          externalAssets.sortBy(i => i.name),
+        )
         c.copy(contents = c.contents.sortBy(item => (item.group, item.name)))
       }
       scala.util.Using.resource(java.nio.file.Files.newBufferedWriter((tempJsonDir / JsonRepoUtil.channelContentsFilename).toNIO)) { out =>
