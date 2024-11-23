@@ -165,15 +165,15 @@ object ChannelUtil {
 
 }
 
-trait ChannelBuilder {
-  def storePackage(data: JD.Package): Task[JD.Checksum]
-  def storeAsset(data: JD.Asset): Task[JD.Checksum]
-  def storeExtPackage(data: JD.ExternalPackage): Task[JD.Checksum]
-  def storeExtAsset(data: JD.ExternalAsset): Task[JD.Checksum]
+trait ChannelBuilder[+E] {
+  def storePackage(data: JD.Package): IO[E, JD.Checksum]
+  def storeAsset(data: JD.Asset): IO[E, JD.Checksum]
+  def storeExtPackage(data: JD.ExternalPackage): IO[E, JD.Checksum]
+  def storeExtAsset(data: JD.ExternalAsset): IO[E, JD.Checksum]
 
-  def result(packages: Seq[JD.PackageAsset]): Task[JD.Channel] = {
+  def result(packages: Seq[JD.PackageAsset]): IO[E, JD.Channel] = {
     // compute reverse dependencies (for each asset/package, the set of modules that depend on it)
-    val reverseDependenciesTask: Task[collection.Map[BareDep, Set[BareModule]]] = {
+    val reverseDependenciesTask: IO[E, collection.Map[BareDep, Set[BareModule]]] = {
       import scala.jdk.CollectionConverters.*
       for {
         map  <- ZIO.succeed((new java.util.concurrent.ConcurrentHashMap[BareDep, Set[BareModule]]()).asScala)  // concurrent for thread-safe access later on
@@ -192,7 +192,7 @@ trait ChannelBuilder {
     }
 
     // add reverseDependencies (requiredBy) to each asset/package and write package json files
-    def packagesMapTask(reverseDependencies: collection.Map[BareDep, Set[BareModule]]): Task[Map[BareDep, Seq[(String, JD.PackageAsset, JD.Checksum)]]] =
+    def packagesMapTask(reverseDependencies: collection.Map[BareDep, Set[BareModule]]): IO[E, Map[BareDep, Seq[(String, JD.PackageAsset, JD.Checksum)]]] =
       ZIO.foreachPar(packages) { pkgData =>
         val computed = reverseDependencies.getOrElse(pkgData.toBareDep, Set.empty)
         // this joins the computed reverseDependencies and those explicitly specified in yaml
@@ -214,7 +214,7 @@ trait ChannelBuilder {
     def externalTask(
       reverseDependencies: collection.Map[BareDep, Set[BareModule]],
       packagesMap: Map[BareDep, Seq[(String, JD.PackageAsset, JD.Checksum)]],
-    ): Task[(Seq[JD.Channel.ExtPkg], Seq[JD.Channel.ExtAsset])] = {
+    ): IO[E, (Seq[JD.Channel.ExtPkg], Seq[JD.Channel.ExtAsset])] = {
       ZIO.foreachPar(reverseDependencies.iterator.filter(item => !packagesMap.contains(item._1)).toSeq){
         case (module: BareModule, requiredBy) =>
           val data = JD.ExternalPackage(group = module.group.value, name = module.name.value,
@@ -248,7 +248,7 @@ trait ChannelBuilder {
   }
 }
 
-class JsonChannelBuilder(tempJsonDir: os.Path) extends ChannelBuilder {
+class JsonChannelBuilder(tempJsonDir: os.Path) extends ChannelBuilder[Throwable] {
 
   private def writePackageJsonBlocking[A : ReadWriter](pkgData: A, target: os.Path): JD.Checksum = {
     os.makeDir.all(target / os.up)
