@@ -21,6 +21,7 @@ object JsonIo {
     Right(UP.read[A](pathOrString))
   } catch {
     case e @ (_: upickle.core.AbortException
+            | _: upickle.core.Abort
             | _: ujson.ParseException
             | _: java.nio.file.NoSuchFileException
             | _: IllegalArgumentException
