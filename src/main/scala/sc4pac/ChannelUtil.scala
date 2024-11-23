@@ -227,7 +227,7 @@ trait ChannelBuilder[+E] {
             requiredBy = requiredBy.toSeq.sorted)
           for {
             checksum <- storeExtAsset(data)
-          } yield Right(JD.Channel.ExtAsset(name = asset.assetId.value, checksum = checksum))
+          } yield Right(JD.Channel.ExtAsset(assetId = asset.assetId.value, checksum = checksum))
       }
       .map(_.partitionMap(identity))
     }
@@ -241,7 +241,7 @@ trait ChannelBuilder[+E] {
         scheme = Constants.channelSchemeVersions.max,
         packagesMap,
         extPkgs.sortBy(i => (i.group, i.name)),
-        extAssets.sortBy(i => i.name),
+        extAssets.sortBy(i => i.assetId),
       )
       channel.copy(contents = channel.contents.sortBy(item => (item.group, item.name)))
     }

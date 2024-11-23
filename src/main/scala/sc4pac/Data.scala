@@ -29,7 +29,7 @@ object JsonData extends SharedData {
   implicit val uriRw: ReadWriter[java.net.URI] = readwriter[String].bimap[java.net.URI](_.toString(),
     MetadataRepository.parseChannelUrl(_).left.map(new IllegalArgumentException(_)).toTry.get)
 
-  private def bareModuleRead(s: String) =
+  private[sc4pac] def bareModuleRead(s: String) =
     Sc4pac.parseModule(s) match {
       case Right(mod) => mod
       case Left(err) => throw new IllegalArgumentException(err)

@@ -284,7 +284,7 @@ abstract class SharedData {
       def toBareDep: BareModule = BareModule(Organization(group), ModuleName(name))
     }
 
-    case class ExtAsset(name: String, checksum: Checksum) derives ReadWriter
+    case class ExtAsset(assetId: String, checksum: Checksum) derives ReadWriter
 
   }
 
