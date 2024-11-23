@@ -30,8 +30,8 @@ object JsonRepoUtil {
 
   def extPackageSubPath(dep: BareDep): String = {
     dep match {
-      case m: BareModule => s"metadata/_extPkg/${m.group.value}/${m.name.value}/latest/pkg.json"
-      case a: BareAsset => s"metadata/_extAsset/${a.assetId.value}/latest/pkg.json"
+      case m: BareModule => s"metadata/_extpkg/${m.group.value}/${m.name.value}/latest/pkg.json"
+      case a: BareAsset => s"metadata/_extasset/${a.assetId.value}/latest/pkg.json"
     }
   }
 
@@ -179,13 +179,17 @@ abstract class SharedData {
     name: String,
     // channel: Option[String],
     requiredBy: Seq[BareModule],
-  ) derives ReadWriter
+  ) derives ReadWriter {
+    def toBareDep: BareModule = BareModule(Organization(group), ModuleName(name))
+  }
 
   case class ExternalAsset(
     assetId: String,
     // channel: Option[String],
     requiredBy: Seq[BareModule],
-  ) derives ReadWriter
+  ) derives ReadWriter {
+    def toBareDep: BareAsset = BareAsset(ModuleName(assetId))
+  }
 
   case class ChannelItem(
     group: String,
