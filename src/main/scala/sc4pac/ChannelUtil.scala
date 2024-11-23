@@ -36,15 +36,23 @@ object ChannelUtil {
     variants: Seq[YamlVariantData] = Seq.empty,
     variantDescriptions: Map[String, Map[String, String]] = Map.empty  // variantKey -> variantValue -> description
   ) derives ReadWriter {
-    def toPackageData(metadataSource: Option[os.SubPath]): IO[ErrStr, JD.Package] = {
+    def toPackageData(metadataSource: Option[os.SubPath]): ZIO[JD.Channel.Info, ErrStr, JD.Package] = {
       val variants2 = (if (variants.isEmpty) Seq(YamlVariantData(Map.empty)) else variants).map(_.toVariantData(dependencies, assets))
       // validate that variants form a DecisionTree
       Sc4pac.DecisionTree.fromVariants(variants2.map(_.variant)) match {
         case Left(errStr) => ZIO.fail(errStr)
-        case Right(_) => ZIO.succeed(JD.Package(
+        case Right(_) => ZIO.serviceWith[JD.Channel.Info] { channelInfo => JD.Package(
           group = group, name = name, version = version, subfolder = subfolder, info = info,
           variants = variants2,
-          variantDescriptions = variantDescriptions, metadataSource = metadataSource))
+          variantDescriptions = variantDescriptions,
+          metadataSource = metadataSource,  // kept for backward compatibility
+          metadataSourceUrl =
+            for {
+              baseUri <- channelInfo.metadataSourceUrl
+              path    <- metadataSource
+            } yield baseUri.resolve(path.segments0.mkString("/")),
+          channelLabel = channelInfo.channelLabel,
+        )}
       }
     }
   }
@@ -63,7 +71,7 @@ object ChannelUtil {
     ZIO.attempt(ujson.circe.CirceJson.transform(j, upickle.default.reader[A])).refineToOrDie
   }
 
-  private def parsePkgData(j: Json, metadataSource: Option[os.SubPath]): IO[ErrStr, JD.PackageAsset] = {
+  private def parsePkgData(j: Json, metadataSource: Option[os.SubPath]): ZIO[JD.Channel.Info, ErrStr, JD.PackageAsset] = {
     ZIO.validateFirst(Seq(  // we use ZIO validate for error accumulation
       parseCirceJson[YamlPackageData](_: Json).flatMap(_.toPackageData(metadataSource)),
       parseCirceJson[YamlAsset](_: Json).map(_.toAsset)
@@ -71,7 +79,7 @@ object ChannelUtil {
       .mapError(errs => errs.mkString("(", " | ", ")"))
   }
 
-  def readAndParsePkgData(path: os.Path, root: Option[os.Path]): IO[ErrStr, IndexedSeq[JD.PackageAsset]] = {
+  def readAndParsePkgData(path: os.Path, root: Option[os.Path]): ZIO[JD.Channel.Info, ErrStr, IndexedSeq[JD.PackageAsset]] = {
     val metadataSource = root.map(path.subRelativeTo)
     val docs: IndexedSeq[Either[ParsingFailure | org.yaml.snakeyaml.scanner.ScannerException | org.yaml.snakeyaml.parser.ParserException, Json]] =
       scala.util.Using.resource(new java.io.FileReader(path.toIO)){ reader =>
@@ -140,7 +148,7 @@ object ChannelUtil {
       System.err.println(s"Successfully wrote channel contents of ${channel.contents.size} packages and assets.")
     })
 
-    val packagesTask: Task[Seq[JD.PackageAsset]] =
+    val packagesTask: RIO[JD.Channel.Info, Seq[JD.PackageAsset]] =
       ZIO.foreach(inputDirs) { inputDir =>
         ZIO.foreach(os.walk.stream(inputDir).filter(_.last.endsWith(".yaml")).toSeq) { path =>
           readAndParsePkgData(path, root = Some(inputDir))

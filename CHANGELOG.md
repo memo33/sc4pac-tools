@@ -2,7 +2,10 @@
 
 ## [Unreleased]
 ### Added
-- a few channel stats have been added to channel JSON file, such as which categories contain how many packages
+- Added `--label` and `--metadata-source-url` options to `channel build` command. Use these particularly for publicly accessible channels.
+- Added "Channel" label, "Metadata" URL and "Required By" fields to `info` command output.
+- Channels now keep track of inter-channel dependencies. In particular, the "Required By" field includes packages from all channels.
+- A few channel stats have been added to channel JSON file, such as which categories contain how many packages.
 
 
 ## [0.4.5] - 2024-10-17

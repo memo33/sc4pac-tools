@@ -435,7 +435,7 @@ object Commands {
   }
 
   @ArgsName("YAML-input-directories...")
-  @HelpMessage("""
+  @HelpMessage(s"""
     |Build a channel locally by converting YAML files to JSON.
     |
     |On Windows, this command may require special privileges to run.
@@ -444,6 +444,8 @@ object Commands {
     |Examples:
     |  sc4pac channel build --output "channel/json/" "channel/yaml/"
     |  sc4pac channel build --label Local --metadata-source-url https://github.com/memo33/sc4pac/blob/main/src/yaml/ -o channel/json channel/yaml
+    |
+    |Use the options ${emph("--label")} and ${emph("--metadata-source-url")} particularly for building publicly accessible channels.
     """.stripMargin.trim)
   final case class ChannelBuildOptions(
     @ExtraName("o") @ValueDescription("dir") @HelpMessage("Output directory for JSON files") @Group("Main") @Tag("Main")

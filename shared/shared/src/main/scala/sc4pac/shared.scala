@@ -148,7 +148,9 @@ abstract class SharedData {
     info: Info = Info.empty,
     variants: Seq[VariantData],  // should be non-empty, but can consist of a single empty variant
     variantDescriptions: Map[String, Map[String, String]] = Map.empty,  // variantKey -> variantValue -> description
-    metadataSource: Option[SubPath] = None  // path to yaml file
+    metadataSource: Option[SubPath] = None,  // path to yaml file
+    metadataSourceUrl: Option[Uri] = None,  // full URL to yaml file
+    channelLabel: Option[String] = None,
   ) extends PackageAsset {
 
     def toBareDep: BareModule = BareModule(Organization(group), ModuleName(name))

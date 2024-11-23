@@ -76,12 +76,12 @@ object MetadataRepository {
 
   def create(channelContentsFile: os.Path, baseUri: java.net.URI): IO[ErrStr, MetadataRepository] = {
     if (baseUri.getPath.endsWith(".yaml")) {  // yaml repository
-      for {
+      (for {
         packages <- ChannelUtil.readAndParsePkgData(channelContentsFile, root = None)
         // Internally, this picks the latest scheme version as we do not have any other input to work with.
         // If the scheme has been updated, then the yaml files have probably already failed to parse.
         yamlRepo <- YamlChannelBuilder().resultToRepository(baseUri, packages)
-      } yield yamlRepo
+      } yield yamlRepo).provideSomeLayer(zio.ZLayer.succeed(JD.Channel.Info.empty))
     } else {  // json repository
       val contentsUrl = channelContentsUrl(baseUri).toString
       for {
@@ -236,9 +236,8 @@ private class YamlChannelBuilder extends ChannelBuilder[Nothing] {
     JD.Checksum.empty
   }
 
-  def resultToRepository(baseUri: java.net.URI, packages: Seq[JD.PackageAsset]): UIO[YamlRepository] =
+  def resultToRepository(baseUri: java.net.URI, packages: Seq[JD.PackageAsset]): zio.URIO[JD.Channel.Info, YamlRepository] =
     result(packages).map { channel =>
       YamlRepository(baseUri, channel, contents, extPkgs, extAssets)
     }
-    .provideSomeLayer(zio.ZLayer.succeed(JD.Channel.Info.empty))
 }

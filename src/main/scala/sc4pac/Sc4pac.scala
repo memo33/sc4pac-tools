@@ -128,6 +128,8 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) extends Upda
         val b = Seq.newBuilder[(String, String)]
         b += "Name" -> s"${pkg.group}:${pkg.name}"
         b += "Version" -> pkg.version
+        if (pkg.channelLabel.nonEmpty)
+          b += "Channel" -> pkg.channelLabel.get
         b += "Subfolder" -> pkg.subfolder.toString
         b += "Summary" -> applyMarkdown(pkg.info.summary, cliLogger)
         if (pkg.info.description.nonEmpty)
@@ -140,6 +142,8 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) extends Upda
           b += "Author" -> pkg.info.author
         if (pkg.info.website.nonEmpty)
           b += "Website" -> pkg.info.website
+        if (pkg.metadataSourceUrl.nonEmpty)
+          b += "Metadata" -> pkg.metadataSourceUrl.get.toString
 
         def mkDeps(packages: Seq[BareDep]) = {
           val deps = packages.collect{ case m: BareModule => m.formattedDisplayString(cliLogger.gray, identity) }
