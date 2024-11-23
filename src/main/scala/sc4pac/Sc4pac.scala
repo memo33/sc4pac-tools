@@ -90,13 +90,25 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) extends Upda
     results.sortBy((mod, ratio, desc) => (-ratio, mod.group.value, mod.name.value)).distinctBy(_._1)
   }
 
+  /** In addition to existing intra-channel dependencies, add inter-channel
+    * dependencies to `requiredBy` field.
+    */
+  private def addExternalReverseDependencies(module: BareModule, pkg: JD.Package): RIO[ResolutionContext, JD.Package] = {
+    Find.requiredByExternal(module).map { relations =>
+      pkg.copy(info = pkg.info.copy(requiredBy =
+        (pkg.info.requiredBy.iterator ++ relations.iterator.flatMap(_._2)).toSeq.distinct.sorted
+      ))
+    }
+  }
+
   def infoJson(module: BareModule): Task[Option[JD.Package]] = {
     val mod = Module(module.group, module.name, attributes = Map.empty)
-    (for {
+    for {
       version <- Find.concreteVersion(mod, Constants.versionLatestRelease)
       pkgOpt  <- Find.packageData[JD.Package](mod, version)
-    } yield pkgOpt).provideSomeLayer(zio.ZLayer.succeed(context))
-  }
+      pkgOpt2 <- ZIO.foreach(pkgOpt)(addExternalReverseDependencies(module, _))
+    } yield pkgOpt2
+  }.provideSomeLayer(zio.ZLayer.succeed(context))
 
   /** Currenty this does not apply full markdown formatting, but just `pkg=…`
     * highlighting.
@@ -129,20 +141,23 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) extends Upda
         if (pkg.info.website.nonEmpty)
           b += "Website" -> pkg.info.website
 
-        def mkDeps(vd: JD.VariantData) = {
-          val deps = vd.bareDependencies.collect{ case m: BareModule => m.formattedDisplayString(cliLogger.gray, identity) }
+        def mkDeps(packages: Seq[BareDep]) = {
+          val deps = packages.collect{ case m: BareModule => m.formattedDisplayString(cliLogger.gray, identity) }
           if (deps.isEmpty) "None" else deps.mkString(" ")
         }
 
         if (pkg.variants.length == 1 && pkg.variants.head.variant.isEmpty) {
           // no variant
-          b += "Dependencies" -> mkDeps(pkg.variants.head)
+          b += "Dependencies" -> mkDeps(pkg.variants.head.bareDependencies)
         } else {
           // multiple variants
           for (vd <- pkg.variants) {
             b += "Variant" -> JD.VariantData.variantString(vd.variant)
-            b += " Dependencies" -> mkDeps(vd)
+            b += " Dependencies" -> mkDeps(vd.bareDependencies)
           }
+        }
+        if (pkg.info.requiredBy.nonEmpty) {
+          b += "Required By" -> mkDeps(pkg.info.requiredBy)
         }
         // TODO variant descriptions
         // TODO channel URL

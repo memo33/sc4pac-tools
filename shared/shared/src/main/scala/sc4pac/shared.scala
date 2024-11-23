@@ -280,7 +280,10 @@ abstract class SharedData {
       }
     }
 
-    case class ExtPkg(group: String, name: String, checksum: Checksum) derives ReadWriter
+    case class ExtPkg(group: String, name: String, checksum: Checksum) derives ReadWriter {
+      def toBareDep: BareModule = BareModule(Organization(group), ModuleName(name))
+    }
+
     case class ExtAsset(name: String, checksum: Checksum) derives ReadWriter
 
   }

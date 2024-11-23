@@ -46,6 +46,8 @@ sealed abstract class MetadataRepository(val baseUri: java.net.URI) {
     */
   def fetchModuleJson[A <: JD.PackageAsset : Reader](module: Module, version: String, fetch: MetadataRepository.Fetch): zio.Task[A]
 
+  def fetchExternalPackage(module: BareModule, fetch: MetadataRepository.Fetch): zio.Task[Option[JD.ExternalPackage]]
+
   def iterateChannelContents: Iterator[JD.ChannelItem]
 }
 
@@ -121,6 +123,10 @@ private class JsonRepository(
   val channel: JD.Channel,
 ) extends MetadataRepository(baseUri) {
 
+  /* the Map of references to external packages stored in the channel contents file */
+  private lazy val externalPackages: Map[BareModule, JD.Channel.ExtPkg] =
+    channel.externalPackages.view.map(item => item.toBareDep -> item).toMap
+
   /** Obtain the raw version strings of `dep` contained in this repository. */
   def getRawVersions(dep: BareDep): Seq[String] = channel.versions.getOrElse(dep, Seq.empty).map(_._1)
 
@@ -153,6 +159,18 @@ private class JsonRepository(
           .flatMap((jsonStr: String) => JsonIo.read[A](jsonStr, errMsg = remoteUrl))
   }
 
+  def fetchExternalPackage(module: BareModule, fetch: MetadataRepository.Fetch): zio.Task[Option[JD.ExternalPackage]] = {
+    externalPackages.get(module) match {
+      case None => ZIO.succeed(None)
+      case Some(extPkg) =>
+        val remoteUrl = baseUri.resolve(MetadataRepository.extPkgJsonSubPath(module).segments0.mkString("/")).toString
+        val jsonArtifact = Artifact(remoteUrl, changing = false, checksum = extPkg.checksum)
+        fetch(jsonArtifact)
+          .flatMap((jsonStr: String) => JsonIo.read[JD.ExternalPackage](jsonStr, errMsg = remoteUrl))
+          .map(Some(_))
+    }
+  }
+
   def iterateChannelContents: Iterator[JD.ChannelItem] = channel.contents.iterator
 }
 
@@ -179,6 +197,10 @@ private class YamlRepository(
       case Some(pkgData: JD.PackageAsset) =>
         ZIO.succeed(pkgData.asInstanceOf[A])  // as long as we do not mix up Assets and Packages, casting should not be an issue (could be fixed using type classes)
     }
+  }
+
+  def fetchExternalPackage(module: BareModule, fetch: MetadataRepository.Fetch): zio.Task[Option[JD.ExternalPackage]] = {
+    ZIO.succeed(externalPackages.get(module))
   }
 
   def iterateChannelContents: Iterator[JD.ChannelItem] = channel.contents.iterator
