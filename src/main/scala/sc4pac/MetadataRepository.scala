@@ -236,7 +236,9 @@ private class YamlChannelBuilder extends ChannelBuilder[Nothing] {
     JD.Checksum.empty
   }
 
-  def resultToRepository(baseUri: java.net.URI, packages: Seq[JD.PackageAsset]): UIO[YamlRepository] = result(packages).map { channel =>
-    YamlRepository(baseUri, channel, contents, extPkgs, extAssets)
-  }
+  def resultToRepository(baseUri: java.net.URI, packages: Seq[JD.PackageAsset]): UIO[YamlRepository] =
+    result(packages).map { channel =>
+      YamlRepository(baseUri, channel, contents, extPkgs, extAssets)
+    }
+    .provideSomeLayer(zio.ZLayer.succeed(JD.Channel.Info.empty))
 }

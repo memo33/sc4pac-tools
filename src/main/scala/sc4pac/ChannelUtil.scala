@@ -3,7 +3,7 @@ package sc4pac
 
 import io.circe.{ParsingFailure, Json}
 import upickle.default.{Reader, ReadWriter, writeTo}
-import zio.{ZIO, IO, Task}
+import zio.{ZIO, IO, Task, RIO}
 import coursier.core as C
 
 import sc4pac.JsonData as JD
@@ -97,12 +97,12 @@ object ChannelUtil {
     * - files do not include the version number which avoids the need for renaming
     * - files can include multiple package definitions
     */
-  def convertYamlToJson(inputDirs: Seq[os.Path], outputDir: os.Path): Task[Unit] = {
+  def convertYamlToJson(inputDirs: Seq[os.Path], outputDir: os.Path): RIO[JD.Channel.Info, Unit] = {
 
     def writeChannel(
       packages: Seq[JD.PackageAsset],
       tempJsonDir: os.Path,
-    ): Task[Unit] = JsonChannelBuilder(tempJsonDir).result(packages).flatMap(channel => ZIO.attemptBlockingIO {
+    ): RIO[JD.Channel.Info, Unit] = JsonChannelBuilder(tempJsonDir).result(packages).flatMap(channel => ZIO.attemptBlockingIO {
       // write channel contents
       scala.util.Using.resource(java.nio.file.Files.newBufferedWriter((tempJsonDir / JsonRepoUtil.channelContentsFilename).toNIO)) { out =>
         writeTo(channel, out, indent=1)  // writes channel contents json file
@@ -171,7 +171,7 @@ trait ChannelBuilder[+E] {
   def storeExtPackage(data: JD.ExternalPackage): IO[E, JD.Checksum]
   def storeExtAsset(data: JD.ExternalAsset): IO[E, JD.Checksum]
 
-  def result(packages: Seq[JD.PackageAsset]): IO[E, JD.Channel] = {
+  def result(packages: Seq[JD.PackageAsset]): ZIO[JD.Channel.Info, E, JD.Channel] = {
     // compute reverse dependencies (for each asset/package, the set of modules that depend on it)
     val reverseDependenciesTask: IO[E, collection.Map[BareDep, Set[BareModule]]] = {
       import scala.jdk.CollectionConverters.*
@@ -236,9 +236,11 @@ trait ChannelBuilder[+E] {
       reverseDependencies  <- reverseDependenciesTask
       packagesMap          <- packagesMapTask(reverseDependencies)
       (extPkgs, extAssets) <- externalTask(reverseDependencies, packagesMap)
+      info                 <- ZIO.service[JD.Channel.Info]
     } yield {
       val channel = JD.Channel.create(
         scheme = Constants.channelSchemeVersions.max,
+        info,
         packagesMap,
         extPkgs.sortBy(i => (i.group, i.name)),
         extAssets.sortBy(i => i.assetId),

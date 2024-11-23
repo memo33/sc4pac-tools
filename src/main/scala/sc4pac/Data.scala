@@ -17,6 +17,7 @@ object JsonData extends SharedData {
 
   override type Instant = java.time.Instant
   override type SubPath = os.SubPath
+  override type Uri = java.net.URI
 
   // We use OffsetDateTime.parse instead of Instant.parse for compatibility with Java 8 to 11
   implicit val instantRw: ReadWriter[java.time.Instant] =
