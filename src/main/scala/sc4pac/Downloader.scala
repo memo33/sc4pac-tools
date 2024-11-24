@@ -22,7 +22,8 @@ class Downloader(
   cacheLocation: java.io.File,
   localFile: java.io.File,  // the local file after download
   logger: Logger,
-  pool: java.util.concurrent.ExecutorService
+  pool: java.util.concurrent.ExecutorService,
+  cookies: Downloader.Cookies,
 ) {
 
   def download: IO[CC.ArtifactError, java.io.File] = {
@@ -111,7 +112,7 @@ class Downloader(
     var conn: URLConnection = null
 
     try {
-      val (conn0, partialDownload) = Downloader.urlConnectionMaybePartial(url, Downloader.PartialDownloadSpec.initBlocking(tmp))
+      val (conn0, partialDownload) = Downloader.urlConnectionMaybePartial(url, Downloader.PartialDownloadSpec.initBlocking(tmp), cookies)
       conn = conn0
 
       val respCodeOpt = CC.CacheUrl.responseCode(conn)
@@ -241,6 +242,9 @@ class Downloader(
 
 object Downloader {
 
+  class Cookies(val simtropolisCookie: Option[String])
+  private[sc4pac] val emptyCookiesLayer = zio.ZLayer.succeed(Cookies(simtropolisCookie = None))
+
   /** Returns true on success, false if data transfer was canceled. */
   private def readFullyTo(
     in: java.io.InputStream,
@@ -351,7 +355,7 @@ object Downloader {
   /** Open a URL connection for download, optionally for resuming a partial
     * download (if byte-serving is supported by the server).
     */
-  private def urlConnectionMaybePartial(url0: String, specOpt: Option[PartialDownloadSpec]): (URLConnection, Option[PartialDownloadSpec]) = {
+  private def urlConnectionMaybePartial(url0: String, specOpt: Option[PartialDownloadSpec], cookies: Downloader.Cookies): (URLConnection, Option[PartialDownloadSpec]) = {
 
     var conn: URLConnection = null
 
@@ -368,7 +372,7 @@ object Downloader {
             conn0.setReadTimeout(Constants.urlReadTimeout.toMillis.toInt)  // timeout in case of internet outage while downloading a file
 
             // Set session cookie for rudimentary authentication to Simtropolis.
-            for (cookie <- Constants.simtropolisCookie) {
+            for (cookie <- cookies.simtropolisCookie) {
               val host = conn0.getURL().getHost()
               if (host == "simtropolis.com" || host.endsWith(".simtropolis.com")) {
                 conn0.setRequestProperty("Cookie", cookie)
@@ -408,7 +412,7 @@ object Downloader {
 
     res match {
       case Left(specOpt) =>
-        urlConnectionMaybePartial(url0, specOpt)  // reconnect, possibly starting from 0
+        urlConnectionMaybePartial(url0, specOpt, cookies)  // reconnect, possibly starting from 0
       case Right(ret) =>
         ret
     }

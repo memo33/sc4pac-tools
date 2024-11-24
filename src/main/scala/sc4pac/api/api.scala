@@ -214,18 +214,24 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
     // Test the websocket using Javascript in webbrowser (messages are also logged in network tab):
     //     let ws = new WebSocket('ws://localhost:51515/update'); ws.onmessage = function(e) { console.log(e) };
     //     ws.send(JSON.stringify({}))
-    Method.GET / "update" -> handler {
+    Method.GET / "update" -> handler { (req: Request) =>
       readPluginsOr409.foldZIO(
         failure = ZIO.succeed[Response](_),
         success = pluginsData =>
           Handler.webSocket { wsChannel =>
             val updateTask: zio.RIO[ProfileRoot & WebSocketLogger, Message] =
+              val cookies = Downloader.Cookies(req.url.queryParams.getAll("simtropolisCookie").headOption.orElse(Constants.simtropolisCookie))
+              val cookieDesc = cookies.simtropolisCookie.map(c => s"with cookie: ${c.length} bytes").getOrElse("without cookie")
               for {
                 pac          <- Sc4pac.init(pluginsData.config)
                 pluginsRoot  <- pluginsData.config.pluginsRootAbs
                 wsLogger     <- ZIO.service[WebSocketLogger]
+                _            <- ZIO.succeed(wsLogger.log(s"Updating... ($cookieDesc)"))
                 flag         <- pac.update(pluginsData.explicit, globalVariant0 = pluginsData.config.variant, pluginsRoot = pluginsRoot)
-                                  .provideSomeLayer(zio.ZLayer.succeed(WebSocketPrompter(wsChannel, wsLogger)))
+                                  .provideSomeLayer(zio.ZLayer.succeedEnvironment(zio.ZEnvironment(
+                                    WebSocketPrompter(wsChannel, wsLogger),
+                                    cookies,
+                                  )))
               } yield ResultMessage(ok = true)
 
             val wsTask: zio.RIO[ProfileRoot, Unit] =

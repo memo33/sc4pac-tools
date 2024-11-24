@@ -20,6 +20,7 @@
   * initializing a profile now requires a `temp` folder parameter
   * several new endpoints and backward incompatible changes
   * the server can store settings for the client
+  * authentication cookie can now be set by the client
 
 
 ## [0.4.5] - 2024-10-17

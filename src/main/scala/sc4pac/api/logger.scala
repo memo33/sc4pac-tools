@@ -2,7 +2,7 @@ package io.github.memo33
 package sc4pac
 package api
 
-import zio.{ZIO, Task}
+import zio.{ZIO, Task, RIO}
 import zio.http.WebSocketFrame
 import zio.http.ChannelEvent.{Read, Unregistered, UserEvent, UserEventTriggered}
 
@@ -30,7 +30,7 @@ class WebSocketLogger private (private[api] val queue: java.util.concurrent.Link
     ZIO.succeed(sendMessageAsync(ProgressMessage.Extraction(dependency.toBareDep, progress))).zipRight(extraction)
   }
 
-  def fetchingAssets[A](fetching: Task[A]): Task[A] = fetching  // no message needed
+  def fetchingAssets[R, A](fetching: RIO[R, A]): RIO[R, A] = fetching  // no message needed
 
   def publishing[A](removalOnly: Boolean)(publishing: Task[A]): Task[A] = publishing  // no message needed
 

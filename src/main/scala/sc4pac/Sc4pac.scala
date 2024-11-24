@@ -298,7 +298,7 @@ trait UpdateService { this: Sc4pac =>
   }
 
   /** Update all installed packages from modules (the list of explicitly added packages). */
-  def update(modules: Seq[BareModule], globalVariant0: Variant, pluginsRoot: os.Path): RIO[ProfileRoot & Prompter, Boolean] = {
+  def update(modules: Seq[BareModule], globalVariant0: Variant, pluginsRoot: os.Path): RIO[ProfileRoot & Prompter & Downloader.Cookies, Boolean] = {
 
     // - before starting to remove anything, we download and extract everything
     //   to install into temp folders (staging)
@@ -520,6 +520,7 @@ object Sc4pac {
       channelContentsFile <- cache
                               .withTtl(Some(channelContentsTtl))
                               .file(artifact)  // requires initialized logger
+                              .provideSomeLayer(Downloader.emptyCookiesLayer)  // as we do not fetch channel file from Simtropolis, no need for cookies
                               .mapError { case e @ (_: coursier.cache.ArtifactError | scala.util.control.NonFatal(_)) => e.getMessage }
       profileRoot         <- ZIO.service[ProfileRoot]
       repo                <- MetadataRepository.create(os.Path(channelContentsFile: java.io.File, profileRoot.path), repoUri)

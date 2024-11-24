@@ -75,8 +75,8 @@ class FileCache private (
     * - expected checksum is given and does not match local file.
     * Otherwise, return local file.
     */
-  def file(artifact: Artifact): IO[CC.ArtifactError, java.io.File] = {
-    def task0: IO[CC.ArtifactError, java.io.File] = {
+  def file(artifact: Artifact): ZIO[Downloader.Cookies, CC.ArtifactError, java.io.File] = {
+    def task0(cookies: Downloader.Cookies): IO[CC.ArtifactError, java.io.File] = {
       val destFile = localFile(artifact.url)
       ZIO.ifZIO(ZIO.attemptBlockingIO(
           !destFile.exists()
@@ -84,7 +84,7 @@ class FileCache private (
           || artifact.lastModified.exists(remoteModificationDate => isOlderThan(destFile, remoteModificationDate))
           || verifyChecksum(destFile, artifact).isLeft
         ))(
-        onTrue = new Downloader(artifact, cacheLocation = location, localFile = destFile, logger, pool).download
+        onTrue = new Downloader(artifact, cacheLocation = location, localFile = destFile, logger, pool, cookies).download
           .flatMap { newFile =>
             // We enforce that checksums match (if present) to avoid redownloading same file repeatedly.
             //
@@ -122,7 +122,9 @@ class FileCache private (
                   if (p1 != null)  // key was present: there was already a running task for url
                     p1.await.zipLeft(ZIO.succeed(logger.concurrentCacheAccess(artifact.url)))
                   else
-                    p0.complete(task0).flatMap(_ => p0.await)  // Note that `complete` also handles failure of `task0`
+                    ZIO.serviceWithZIO[Downloader.Cookies] { cookies =>
+                      p0.complete(task0(cookies)).flatMap(_ => p0.await)  // Note that `complete` also handles failure of `task0`
+                    }
                 }
     } yield (result: java.io.File)
   }
@@ -139,6 +141,7 @@ class FileCache private (
         )
       }
     }
+    .provideSomeLayer(Downloader.emptyCookiesLayer)  // as we do not fetch text files from Simtropolis, no need for cookies
   }
 
   /** If artifact has an expected checksum, check that it matches the cached

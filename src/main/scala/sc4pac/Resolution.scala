@@ -162,7 +162,7 @@ class Resolution(reachableDeps: TreeSeqMap[BareDep, Seq[BareDep]], nonbareDeps: 
   /** Download artifacts of a subset of the dependency set of the resolution, or
     * take files from cache in case they are still up-to-date.
     */
-  def fetchArtifactsOf(subset: Seq[Dep]): RIO[ResolutionContext, Seq[(DepAsset, Artifact, java.io.File)]] = {
+  def fetchArtifactsOf(subset: Seq[Dep]): RIO[ResolutionContext & Downloader.Cookies, Seq[(DepAsset, Artifact, java.io.File)]] = {
     val assetsArtifacts = subset.collect{ case d: DepAsset =>
       (d, Artifact(d.url, changing = d.lastModified.isEmpty, lastModified = d.lastModified))  // non-changing assets should have lastModified defined and vice versa
     }
@@ -181,7 +181,7 @@ class Resolution(reachableDeps: TreeSeqMap[BareDep, Seq[BareDep]], nonbareDeps: 
 
     for {
       context <- ZIO.service[ResolutionContext]
-      result  <- context.logger.using(context.logger.fetchingAssets(fetchTask(context)))
+      result  <- context.logger.fetchingAssets(fetchTask(context))
     } yield result
   }
 }
