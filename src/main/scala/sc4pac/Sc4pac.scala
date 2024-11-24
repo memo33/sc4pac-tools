@@ -96,24 +96,16 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) extends Upda
     results.sortBy((mod, ratio, desc) => (-ratio, mod.group.value, mod.name.value)).distinctBy(_._1)
   }
 
-  /** In addition to existing intra-channel dependencies, add inter-channel
-    * dependencies to `requiredBy` field.
-    */
-  private def addExternalReverseDependencies(module: BareModule, pkg: JD.Package): RIO[ResolutionContext, JD.Package] = {
-    Find.requiredByExternal(module).map { relations =>
-      pkg.copy(info = pkg.info.copy(requiredBy =
-        (pkg.info.requiredBy.iterator ++ relations.iterator.flatMap(_._2)).toSeq.distinct.sorted
-      ))
-    }
-  }
-
   def infoJson(module: BareModule): Task[Option[JD.Package]] = {
     val mod = Module(module.group, module.name, attributes = Map.empty)
-    for {
-      version <- Find.concreteVersion(mod, Constants.versionLatestRelease)
-      pkgOpt  <- Find.packageData[JD.Package](mod, version)
-      pkgOpt2 <- ZIO.foreach(pkgOpt)(addExternalReverseDependencies(module, _))
-    } yield pkgOpt2
+    Find.concreteVersion(mod, Constants.versionLatestRelease)
+      .flatMap(Find.packageData[JD.Package](mod, _))
+      .zipWithPar(Find.requiredByExternal(module)) {  // In addition to existing intra-channel dependencies, add inter-channel dependency relations to `requiredBy` field.
+        case (Some(pkg), relations) =>
+          val requiredBy2 = (pkg.info.requiredBy.iterator ++ relations.iterator.flatMap(_._2)).toSeq.distinct.sorted
+          Some(pkg.copy(info = pkg.info.copy(requiredBy = requiredBy2)))
+        case (None, _) => None
+      }
   }.provideSomeLayer(zio.ZLayer.succeed(context))
 
   /** Currenty this does not apply full markdown formatting, but just `pkg=…`
