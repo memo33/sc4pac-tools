@@ -22,7 +22,11 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
     for {
       defPlugins  <- JD.Plugins.defaultPluginsRoot
       defCache    <- JD.Plugins.defaultCacheRoot
-    } yield Map("plugins" -> defPlugins.map(_.toString), "cache" -> defCache.map(_.toString))
+    } yield Map(
+      "plugins" -> defPlugins.map(_.toString),
+      "cache" -> defCache.map(_.toString),
+      "temp" -> Seq(JD.Plugins.defaultTempRoot.toString),
+    )
 
   /** Sends a 409 ProfileNotInitialized if Plugins cannot be loaded. */
   private val readPluginsOr409: ZIO[ProfileRoot, Response, JD.Plugins] =
@@ -161,18 +165,19 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
                            ).status(Status.Conflict))
           defaults    <- makePlatformDefaults
           initArgs    <- parseOr400[InitArgs](req.body, ErrorMessage.BadInit(
-                           """Parameters "plugins" and "cache" are required.""",
-                           "Pass the locations of the folders as JSON dictionary: {plugins: <path>, cache: <path>}.",
+                           """Parameters "plugins", "cache" and "temp" are required.""",
+                           "Pass the locations of the folders as JSON dictionary: {plugins: <path>, cache: <path>, temp: <path>}.",
                            platformDefaults = defaults,
                          ))
           pluginsRoot =  os.Path(initArgs.plugins, profileRoot)
           cacheRoot   =  os.Path(initArgs.cache, profileRoot)
+          tempRoot    =  os.FilePath(initArgs.temp)
           _           <- ZIO.attemptBlockingIO {
                            os.makeDir.all(profileRoot)
                            os.makeDir.all(pluginsRoot)  // TODO ask for confirmation?
                            os.makeDir.all(cacheRoot)
                          }
-          pluginsData <- JD.Plugins.init(pluginsRoot = pluginsRoot, cacheRoot = cacheRoot)
+          pluginsData <- JD.Plugins.init(pluginsRoot = pluginsRoot, cacheRoot = cacheRoot, tempRoot = tempRoot)
         } yield jsonResponse(pluginsData.config)
       }
     },

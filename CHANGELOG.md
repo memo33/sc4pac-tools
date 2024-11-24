@@ -14,8 +14,11 @@
 ### Changed
 - improved error message if channel-build fails randomly in case old files could not be removed (#6)
 - improved `sc4pac` bash script to allow symlinking into path on Linux/macOS
-- The API was upgraded to version 2.0.
 - The fuzzy search algorithm was changed to improve results for partial matches.
+- The API was upgraded to version 2.0:
+  * many API endpoints now require a `profile` parameter
+  * initializing a profile now requires a `temp` folder parameter
+  * several new endpoints and backward incompatible changes
 
 
 ## [0.4.5] - 2024-10-17

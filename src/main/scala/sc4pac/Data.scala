@@ -85,6 +85,8 @@ object JsonData extends SharedData {
       profileRoot.path / "cache"
     ))
 
+    val defaultTempRoot: os.FilePath = os.FilePath("temp")
+
     /** Prompt for pluginsRoot and cacheRoot. This has a `CliPrompter` constraint as we only want to prompt about this using the CLI. */
     val promptForPaths: RIO[ProfileRoot & CliPrompter, (os.Path, os.Path)] = {
       val task = for {
@@ -100,16 +102,17 @@ object JsonData extends SharedData {
         onFalse = ZIO.fail(new error.Sc4pacNotInteractive("Path to plugins folder cannot be configured non-interactively (yet).")))  // TODO fallback
     }
 
-    /** Init and write. */
-    def init(pluginsRoot: os.Path, cacheRoot: os.Path): RIO[ProfileRoot, Plugins] = {
+    /** Init and write. Here `tempRoot` may be absolute or relative (to profile
+      * root) to allow GUI to use a shared `../temp` folder for all profiles.
+      */
+    def init(pluginsRoot: os.Path, cacheRoot: os.Path, tempRoot: os.FilePath): RIO[ProfileRoot, Plugins] = {
       for {
         profileRoot  <- ZIO.service[ProfileRoot]
-        tempRoot     <- ZIO.succeed(profileRoot.path / "temp")  // customization not needed
         data         =  Plugins(
                           config = Config(
                             pluginsRoot = Config.subRelativize(pluginsRoot, profileRoot),
                             cacheRoot = Config.subRelativize(cacheRoot, profileRoot),
-                            tempRoot = Config.subRelativize(tempRoot, profileRoot),
+                            tempRoot = tempRoot.toNIO,  // may be relative or absolute
                             variant = Map.empty,
                             channels = Constants.defaultChannelUrls),
                           explicit = Seq.empty)
@@ -133,7 +136,7 @@ object JsonData extends SharedData {
         onTrue = JsonIo.read[Plugins](pluginsPath),
         onFalse = for {
           (pluginsRoot, cacheRoot) <- promptForPaths
-          data                     <- Plugins.init(pluginsRoot, cacheRoot)
+          data                     <- Plugins.init(pluginsRoot, cacheRoot, tempRoot = defaultTempRoot)
         } yield data
       )
     }

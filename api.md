@@ -6,7 +6,7 @@ In a nutshell:
 
 ```
 GET  /profile.read?profile=id
-POST /profile.init?profile=id        {plugins: "<path>", cache: "<path>"}
+POST /profile.init?profile=id        {plugins: "<path>", cache: "<path>", temp: "<path>"}
 
 GET  /packages.list?profile=id
 GET  /packages.info?pkg=<pkg>&profile=id
@@ -64,21 +64,21 @@ Returns:
 - 200 `{pluginsRoot: string, cacheRoot: string, …}`.
 - 409 `/error/profile-not-initialized` when not initialized.
   The response contains
-  `platformDefaults: {plugins: ["<path>", …], cache: ["<path>", …]}`
+  `platformDefaults: {plugins: ["<path>", …], cache: ["<path>", …], temp: ["<path>", …]}`
   for recommended platform-specific locations to use for initialization.
 
 ## profile.init
 
-Initialize the profile by configuring the location of plugins and cache.
+Initialize the profile by configuring the location of plugins, cache and temp folder.
 Profiles are used to manage multiple plugins folders.
 
-Synopsis: `POST /profile.init?profile=id {plugins: "<path>", cache: "<path>"}`
+Synopsis: `POST /profile.init?profile=id {plugins: "<path>", cache: "<path>", temp: "<temp>"}`
 
 Returns:
 - 409 `/error/init/not-allowed` if already initialized.
 - 400 `/error/init/bad-request` if parameters are missing.
   The response contains
-  `platformDefaults: {plugins: ["<path>", …], cache: ["<path>", …]}`
+  `platformDefaults: {plugins: ["<path>", …], cache: ["<path>", …], temp: ["<path>", …]}`
   for recommended platform-specific locations to use.
 
   ?> When managing multiple profiles, use the same cache for all of them.
@@ -95,16 +95,19 @@ Returns:
 ```json
 {
   "$type": "/error/init/bad-request",
-  "title": "Parameters \"plugins\" and \"cache\" are required.",
-  "detail": "Pass the locations of the folders as JSON dictionary: {plugins: <path>, cache: <path>}.",
+  "title": "Parameters \"plugins\", \"cache\" and \"temp\" are required.",
+  "detail": "Pass the locations of the folders as JSON dictionary: {plugins: <path>, cache: <path>, temp: <path>}.",
   "platformDefaults": {
     "plugins": [
       "/home/memo/Documents/SimCity 4/Plugins",
-      "/home/memo/git/sc4/sc4pac/profiles/profile-1/plugins"
+      "/home/memo/git/sc4/sc4pac-gui/profiles/1/plugins"
     ],
     "cache": [
       "/home/memo/.cache/sc4pac",
-      "/home/memo/git/sc4/sc4pac/profiles/profile-1/cache"
+      "/home/memo/git/sc4/sc4pac-gui/profiles/1/cache"
+    ],
+    "temp": [
+      "temp"
     ]
   }
 }
@@ -112,7 +115,7 @@ Returns:
 
 With parameters:
 ```sh
-curl -X POST -d '{"plugins":"plugins","cache":"cache"}' http://localhost:51515/profile.init?profile=1
+curl -X POST -d '{"plugins":"plugins","cache":"cache","temp":"temp"}' http://localhost:51515/profile.init?profile=1
 ```
 
 ## packages.list
