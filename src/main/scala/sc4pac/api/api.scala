@@ -69,6 +69,7 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
         case err: cli.Commands.ExpectedFailure => ZIO.succeed(jsonResponse(expectedFailureMessage(err)).status(expectedFailureStatus(err)))
         case t: Throwable => ZIO.fail(t)
       }
+      .catchAllDefect(t => ZIO.fail(t))
   }
 
   private def parseModuleOr400(module: String): IO[Response, BareModule] = {
@@ -308,7 +309,7 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
         } yield {
           val targetPkgs = collection.mutable.Set[BareModule](mod)  // original package and direct dependencies
             ++= remoteData.variants.iterator.flatMap(_.bareModules)
-            ++= remoteData.info.requiredBy  // TODO inter-channel reverse dependencies not supported yet
+            ++= remoteData.info.requiredBy
           val statuses = collection.mutable.Map.empty[BareModule, InstalledStatus]
           // first check all installed packages for matches
           for (inst <- installed) {
@@ -317,7 +318,7 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
               statuses(instMod) = InstalledStatus(explicit = explicit.contains(instMod), installed = inst.toApiInstalled)
             }
           }
-          // next check explicitly added packages that are not installed yet for matches
+          // next check explicitly added packages that are not installed yet for matches (pending updates)
           for (depMod <- targetPkgs) {
             if (!statuses.contains(depMod) && explicit.contains(depMod)) {
               statuses(depMod) = InstalledStatus(explicit = true, installed = null)
@@ -522,7 +523,10 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
     )
 
     (profileRoutes2 ++ genericRoutes ++ fetchRoutes ++ webAppDir.map(staticRoutes).getOrElse(Routes.empty))
-      .handleError(err => jsonResponse(ErrorMessage.ServerError("Unhandled error.", err.toString)).status(Status.InternalServerError))
+      .handleError { err =>
+        err.printStackTrace()
+        jsonResponse(ErrorMessage.ServerError("Unhandled error.", err.toString)).status(Status.InternalServerError)
+      }
   }
 
   def staticFileHandler(webAppDir: os.Path, path: zio.http.Path): Handler[Any, Nothing, Request, Response] = {
