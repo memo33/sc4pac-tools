@@ -11,6 +11,8 @@ import sc4pac.JsonData as JD
 
 sealed abstract class MetadataRepository(val baseUri: java.net.URI) {
 
+  def channel: JD.Channel
+
   /** Obtain the raw version strings of `dep` contained in this repository. */
   def getRawVersions(dep: BareDep): Seq[String]
 
@@ -113,11 +115,11 @@ object MetadataRepository {
   */
 private class JsonRepository(
   baseUri: java.net.URI,
-  channelData: JD.Channel
+  val channel: JD.Channel,
 ) extends MetadataRepository(baseUri) {
 
   /** Obtain the raw version strings of `dep` contained in this repository. */
-  def getRawVersions(dep: BareDep): Seq[String] = channelData.versions.getOrElse(dep, Seq.empty).map(_._1)
+  def getRawVersions(dep: BareDep): Seq[String] = channel.versions.getOrElse(dep, Seq.empty).map(_._1)
 
   // TODO Avoid fetching the same json file multiple times during a single
   // update command. This could lead to races during an update. (As the
@@ -129,7 +131,7 @@ private class JsonRepository(
     */
   def fetchModuleJson[A <: JD.PackageAsset : Reader](module: Module, version: String, fetch: MetadataRepository.Fetch): zio.Task[A] = {
     val dep = CoursierUtil.bareDepFromModule(module)
-    channelData.versions.get(dep).flatMap(_.find(_._1 == version)) match
+    channel.versions.get(dep).flatMap(_.find(_._1 == version)) match
       // This only works for concrete versions (so not for "latest.release").
       // The assumption is that all methods of MetadataRepository are only called with concrete versions.
       case None =>
@@ -148,7 +150,7 @@ private class JsonRepository(
           .flatMap((jsonStr: String) => JsonIo.read[A](jsonStr, errMsg = remoteUrl))
   }
 
-  def iterateChannelContents: Iterator[JD.ChannelItem] = channelData.contents.iterator
+  def iterateChannelContents: Iterator[JD.ChannelItem] = channel.contents.iterator
 }
 
 /** This repository is read from a single YAML file. All its data is held in memory.
@@ -175,7 +177,8 @@ private class YamlRepository(
 
   // We pick the latest scheme version as we do not have any other input to work with.
   // If the scheme has been updated, then the yaml files have probably already failed to parse.
-  lazy private val channel = JD.Channel.create(
+  // TODO Refactor to remove channelData in favor of channel.
+  lazy val channel = JD.Channel.create(
     scheme = Constants.channelSchemeVersions.max,
     channelData.view.mapValues(_.view.map { case (version, pkgData) => (version, pkgData, JD.Checksum.empty) })
   )
