@@ -32,6 +32,9 @@ GET  /server.connect                 (websocket)
 GET  /profiles.list
 POST /profiles.add                   {name: string}
 
+GET  /settings.all.get
+POST /settings.all.set               <object>
+
 GET  /image.fetch?url=<url>
 ```
 
@@ -470,6 +473,27 @@ Create a new profile and make it the currently active one. Make sure to call `/p
 Synopsis: `POST /profiles.add {name: string}`
 
 Returns: `{"id": "<id>", "name": string}`
+
+## settings.all.get
+
+Get all settings. The settings are profile-independent.
+
+Synopsis: `GET /settings.all.get`
+
+Returns: a client-customizable JSON object that is opaque for the server.
+
+## settings.all.set
+
+Store a custom JSON object as settings. The previous settings object is overwritten.
+
+Synopsis: `POST /settings.all.set <object>`
+
+Returns: `{"$type": "/result", "ok": true}`
+
+Example to clear all settings:
+```sh
+curl -X POST -d '{}' http://localhost:51515/settings.all.set
+```
 
 ## image.fetch
 

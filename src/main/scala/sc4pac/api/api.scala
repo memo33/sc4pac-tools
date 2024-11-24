@@ -488,7 +488,7 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
       // 200
       Method.GET / "profiles.list" -> handler {
         wrapHttpEndpoint {
-          JD.Profiles.readOrInit.map(jsonResponse)
+          JD.Profiles.readOrInit.map(profiles => jsonResponse(profiles.copy(settings = ujson.Obj())))
         }
       },
 
@@ -505,6 +505,22 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
           } yield jsonResponse(p)
         }
       },
+
+      // 200
+      Method.GET / "settings.all.get" -> handler(wrapHttpEndpoint {
+        JD.Profiles.readOrInit.map(profiles => jsonResponse(profiles.settings))
+      }),
+
+      // 200, 400
+      Method.POST / "settings.all.set" -> handler((req: Request) => wrapHttpEndpoint {
+        for {
+          newSettings <- parseOr400[ujson.Value](req.body, ErrorMessage.BadRequest("Missing settings", "Pass the settings as JSON body of the request."))
+          ps          <- JD.Profiles.readOrInit
+          ps2         =  ps.copy(settings = newSettings)
+          jsonPath    <- JD.Profiles.pathURIO
+          _           <- JsonIo.write(jsonPath, ps2, None)(ZIO.succeed(()))
+        } yield jsonOk
+      }),
 
     )
 

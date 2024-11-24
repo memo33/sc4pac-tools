@@ -346,7 +346,7 @@ object JsonData extends SharedData {
   case class Profile(id: ProfileId, name: String) derives ReadWriter
 
   // or GuiConfig or GuiSettings
-  case class Profiles(profiles: Seq[Profile], currentProfileId: Option[ProfileId]) derives ReadWriter {
+  case class Profiles(profiles: Seq[Profile], currentProfileId: Option[ProfileId], settings: ujson.Value = ujson.Obj()) derives ReadWriter {
 
     private def nextId: ProfileId = {
       val existing = profiles.map(_.id).toSet
