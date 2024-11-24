@@ -7,7 +7,7 @@ import zio.{ZIO, Task, RIO}
 import upickle.default.Reader
 
 import sc4pac.JsonData as JD
-import sc4pac.error.{Sc4pacVersionNotFound, Sc4pacMissingVariant}
+import sc4pac.error.{Sc4pacVersionNotFound, Sc4pacMissingVariant, Sc4pacAssetNotFound}
 
 object Find {
 
@@ -85,6 +85,28 @@ object Find {
     concreteVersion(mod, version)
       .flatMap(packageData[JD.Package](mod, _))
       .flatMap(pickVariant)
+  }
+
+  /** Find all external packages that depend on this module. This searches
+    * across all repositories and returns the union of all inter-channel
+    * dependencies on this module.
+    * Intra-channel dependencies are not part of the result (since they are
+    * not listed as external packages, but are part of the regular JD.Package).
+    */
+  def requiredByExternal(module: BareModule): RIO[ResolutionContext, Iterable[(java.net.URI, Seq[BareModule])]] = {
+    for {
+      context      <- ZIO.service[ResolutionContext]
+      (errs, rels) <- ZIO.partitionPar(context.repositories) { repo =>
+                        repo.fetchExternalPackage(module, context.cache.fetchText)
+                          .map(extPkgOpt => repo.baseUri -> extPkgOpt.toSeq.flatMap(_.requiredBy))
+                      }
+      result       <- if (rels.nonEmpty) {  // some channels could be read successfully (so ignore errors for simplicity, even though result may be incomplete)
+                        ZIO.succeed(rels.filter(_._2.nonEmpty))
+                      } else {
+                        ZIO.fail(Sc4pacAssetNotFound(s"Could not find inter-channel reverse dependencies of package ${module.orgName}",
+                          s"Most likely you are offline or the channel metadata is not up-to-date: $errs"))
+                      }
+    } yield result
   }
 
 }

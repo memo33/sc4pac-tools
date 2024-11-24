@@ -24,6 +24,8 @@ object JsonData extends SharedData {
   opaque type Checksum = Map[String, String]
   val checksumRw = UP.readwriter[Map[String, String]]
   protected def emptyChecksum = Map.empty
+  opaque type Uri = String
+  val uriRw = UP.readwriter[String]
 
   private val regexModule = """([^:\s]+):([^:\s]+)""".r
   def parseModule(pkgName: String): Either[String, BareModule] =
@@ -43,7 +45,6 @@ object ChannelPage {
   // val sc4pacUrl = "https://github.com/memo33/sc4pac-tools#sc4pac"
   val sc4pacUrl = "https://memo33.github.io/sc4pac/#/"
   val issueUrl = "https://github.com/memo33/sc4pac/issues"
-  val yamlUrl = "https://github.com/memo33/sc4pac/tree/main/src/yaml/"
 
   lazy val backend = sttp.client4.fetch.FetchBackend()
 
@@ -157,7 +158,7 @@ object ChannelPage {
 
     H.div(
       H.div(H.float := "right")(
-        pkg.metadataSource.toSeq.map(yamlSubPath => H.a(H.cls := "btn", H.href := s"$yamlUrl$yamlSubPath")("Edit metadata"))
+        pkg.metadataSourceUrl.toSeq.map(yamlUrl => H.a(H.cls := "btn", H.href := yamlUrl.toString)("Edit metadata"))
         :+ H.a(H.cls := "btn", H.href := issueUrl)("Report a problem")
       ),
       H.h2(H.clear := "right")(module.orgName),

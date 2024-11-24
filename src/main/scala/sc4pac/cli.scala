@@ -437,7 +437,7 @@ object Commands {
   }
 
   @ArgsName("YAML-input-directories...")
-  @HelpMessage("""
+  @HelpMessage(s"""
     |Build a channel locally by converting YAML files to JSON.
     |
     |On Windows, this command may require special privileges to run.
@@ -445,10 +445,17 @@ object Commands {
     |
     |Examples:
     |  sc4pac channel build --output "channel/json/" "channel/yaml/"
+    |  sc4pac channel build --label Local --metadata-source-url https://github.com/memo33/sc4pac/blob/main/src/yaml/ -o channel/json channel/yaml
+    |
+    |Use the options ${emph("--label")} and ${emph("--metadata-source-url")} particularly for building publicly accessible channels.
     """.stripMargin.trim)
   final case class ChannelBuildOptions(
     @ExtraName("o") @ValueDescription("dir") @HelpMessage("Output directory for JSON files") @Group("Main") @Tag("Main")
-    output: String
+    output: String,
+    @ValueDescription("str") @HelpMessage("Optional short channel name for display in the UI") @Group("Main") @Tag("Main")
+    label: String = null,
+    @ValueDescription("url") @HelpMessage("Optional base URL linking to the online YAML source files (for Edit Metadata button)") @Group("Main") @Tag("Main")
+    metadataSourceUrl: String = null,
   ) extends Sc4pacCommandOptions
 
   /** For internal use, convert yaml files to json.
@@ -460,7 +467,19 @@ object Commands {
       args.all match {
         case Nil => error(caseapp.core.Error.Other("An argument is needed: YAML input directory"))
         case inputs =>
-          val task = ChannelUtil.convertYamlToJson(inputs.map(os.Path(_, os.pwd)), os.Path(options.output, os.pwd))
+          val info = JD.Channel.Info(
+            channelLabel = Option(options.label).filter(_.nonEmpty),
+            metadataSourceUrl =
+              Option(options.metadataSourceUrl).filter(_.nonEmpty)
+                .map(MetadataRepository.parseChannelUrl)
+                .map {
+                  case Left(err) => error(caseapp.core.Error.Other(s"Malformed metadata source URL: $err"))
+                  case Right(uri) => uri
+                },
+          )
+          val task =
+            ChannelUtil.convertYamlToJson(inputs.map(os.Path(_, os.pwd)), os.Path(options.output, os.pwd))
+              .provideSomeLayer(zio.ZLayer.succeed(info))
           runMainExit(task, exit)
       }
     }
