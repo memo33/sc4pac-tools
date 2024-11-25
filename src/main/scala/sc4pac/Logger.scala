@@ -22,16 +22,6 @@ trait Logger {
   def gettingLength(url: String): Unit = {}
   def gettingLengthResult(url: String, length: Option[Long]): Unit = {}
 
-  final def using[A](task: Task[A]): Task[A] = {  // this has no effect anymore, since our custom loggers do not use `init` or `stop`
-    task
-    // for {
-    //   // _ <- ZIO.attempt(logger.init())
-    //   a <- task.either  // sync.attempt(task)
-    //   // _ <- ZIO.attempt(logger.stop())
-    //   t <- ZIO.fromEither(a)  // sync.fromAttempt(a)
-    // } yield t
-  }
-
   def concurrentCacheAccess(url: String): Unit = debug(s"concurrentCacheAccess $url")
 
   def extractingArchiveEntry(entry: os.SubPath, include: Boolean): Unit

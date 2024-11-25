@@ -527,22 +527,13 @@ object Sc4pac {
     } yield repo
   }
 
-  private def wrapService[R : zio.Tag, E, A](use: ZIO[Any, E, A] => ZIO[Any, E, A], task: ZIO[R, E, A]): ZIO[R, E, A] = {
-    for {
-      service <- ZIO.service[R]
-      task2   =  task.provideLayer(zio.ZLayer.succeed(service))
-      result  <- use(task2)
-    } yield result
-  }
-
   private[sc4pac] def initializeRepositories(repoUris: Seq[java.net.URI], cache: FileCache, channelContentsTtl: scala.concurrent.duration.Duration): RIO[ProfileRoot, Seq[MetadataRepository]] = {
-    val task: RIO[ProfileRoot, Seq[MetadataRepository]] = ZIO.collectPar(repoUris) { url =>
+    ZIO.collectPar(repoUris) { url =>
       fetchChannelData(url, cache, channelContentsTtl)
         .mapError((err: ErrStr) => { System.err.println(s"Failed to read channel data: $err"); None })
     }.filterOrFail(_.nonEmpty)(error.NoChannelsAvailable("No channels available", repoUris.toString))
     // TODO for long running processes, we might need a way to refresh the channel
     // data occasionally (but for now this is good enough)
-    wrapService(cache.logger.using(_), task)  // properly initializes logger (avoids Uninitialized TermDisplay)
   }
 
   /** Limits parallel downloads to 2 (ST rejects too many connections). */

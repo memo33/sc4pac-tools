@@ -29,7 +29,6 @@ object Find {
     * repository channel contents updated. */
   def packageData[A <: JD.Package | JD.Asset : Reader](module: C.Module, version: String): RIO[ResolutionContext, Option[A]] = {
     def tryAllRepos(repos: Seq[MetadataRepository], context: ResolutionContext): Task[Option[A]] = ZIO.collectFirst(repos) { repo =>
-      val task: Task[Option[A]] = {
         repo.fetchModuleJson[A](module, version, context.cache.fetchText)
           .uninterruptible  // uninterruptile to avoid incomplete-download error messages when resolving is interrupted to prompt for a variant selection (downloading json should be fairly quick anyway)
           .map(Some(_))
@@ -40,8 +39,6 @@ object Find {
                 s"Checksum verification failed for ${module.orgName}. Usually this should not happen and suggests a problem with the channel data.",
                 e.getMessage))
           }
-      }
-      context.cache.logger.using(task)  // properly initializes logger (avoids Uninitialized TermDisplay)
     }
 
     ZIO.service[ResolutionContext].flatMap { context =>
