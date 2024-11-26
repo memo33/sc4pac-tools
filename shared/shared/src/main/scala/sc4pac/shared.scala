@@ -1,6 +1,7 @@
 package io.github.memo33
 package sc4pac
 
+import java.util.regex.Pattern
 import upickle.default.{ReadWriter, readwriter, macroRW}
 
 sealed trait BareDep {
@@ -200,6 +201,7 @@ abstract class SharedData {
     name: String,
     versions: Seq[String],
     checksums: Map[String, Checksum] = Map.empty,  // version -> checksum (note that Map or Checksum itself could be empty)
+    externalIds: Map[String, Seq[String]] = Map.empty,  // stex or sc4e
     summary: String = "",
     category: Option[String] = None,
   ) derives ReadWriter {
@@ -240,6 +242,21 @@ abstract class SharedData {
       Channel(scheme, info, Stats.fromMap(m), contents = contents, externalPackages, externalAssets)
     }
 
+    val externalIdStex = "stex"
+    val externalIdSc4e = "sc4e"
+
+    private val urlIdPatterns = Seq(
+      externalIdStex -> Pattern.compile("""simtropolis\.com/files/file/(\d+)-.*?(?:$|[?&]r=(\d+).*$)"""),  // matches ID and optional subfile ID
+      externalIdSc4e -> Pattern.compile("""sc4evermore\.com/index.php/downloads/download/(?:\d+-[^/]*/)?(\d+)-.*"""),  // category component is optional
+    )
+    private def findExternalIds(pkg: Package): Map[String, Seq[String]] = {
+      urlIdPatterns.flatMap { (key, pattern) =>
+        val m = pattern.matcher(pkg.info.website)
+        // TODO currently there is just one website, but there could be multiple in the future
+        if (m.find()) Some(key -> Seq(m.group(1))) else None
+      }.toMap
+    }
+
     def create(
       scheme: Int,
       info: Channel.Info,
@@ -260,6 +277,7 @@ abstract class SharedData {
             group = g, name = n,
             versions = versions.iterator.map(_._1).toSeq,
             checksums = versions.iterator.map(t => (t._1, t._3)).toMap,
+            externalIds = versions.iterator.collectFirst { case (_, pkg: Package, _) => findExternalIds(pkg) }.getOrElse(Map.empty),
             summary = summaryOpt.getOrElse(""),
             category = catOpt,
           )
