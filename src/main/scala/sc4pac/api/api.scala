@@ -113,6 +113,7 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
   /** Fuzzy-search across all installed packages.
     * The selection of results is ordered in descending order and includes the
     * module, the relevance ratio and the description.
+    * This does not support searching for STEX/SC4E URLs, as the external IDs are not stored in the local lock file.
     * Sc4pac.search implements a similar function and should use a similar algorithm.
     */
   def searchPlugins(query: String, threshold: Int, category: Option[String], items: Seq[JD.InstalledData]): (JD.Channel.Stats, Seq[(JD.InstalledData, Int)]) = {

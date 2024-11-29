@@ -6,6 +6,7 @@
 - Added "Channel" label, "Metadata" URL and "Required By" fields to `info` command output.
 - Channels now keep track of inter-channel dependencies. In particular, the "Required By" field includes packages from all channels.
 - A few channel stats have been added to channel JSON file, such as which categories contain how many packages.
+- You can search for STEX or SC4E URLs now to find corresponding packages.
 
 ### Fixed
 - an issue affecting some old terminals in which the escape sequences used for displaying progress bars were incorrectly printed to the console (#8)

@@ -249,12 +249,20 @@ abstract class SharedData {
       externalIdStex -> Pattern.compile("""simtropolis\.com/files/file/(\d+)-.*?(?:$|[?&]r=(\d+).*$)"""),  // matches ID and optional subfile ID
       externalIdSc4e -> Pattern.compile("""sc4evermore\.com/index.php/downloads/download/(?:\d+-[^/]*/)?(\d+)-.*"""),  // category component is optional
     )
+
     private def findExternalIds(pkg: Package): Map[String, Seq[String]] = {
-      urlIdPatterns.flatMap { (key, pattern) =>
-        val m = pattern.matcher(pkg.info.website)
+      findExternalId(url = pkg.info.website) match {
         // TODO currently there is just one website, but there could be multiple in the future
-        if (m.find()) Some(key -> Seq(m.group(1))) else None
-      }.toMap
+        case Some(exchangeKey -> externalId) => Map(exchangeKey -> Seq(externalId))
+        case None => Map.empty
+      }
+    }
+
+    def findExternalId(url: String): Option[(String, String)] = {  // stex/sc4e -> id
+      urlIdPatterns.flatMap { (exchangeKey, pattern) =>
+        val m = pattern.matcher(url)
+        if (m.find()) Some(exchangeKey -> m.group(1)) else None
+      }.headOption
     }
 
     def create(

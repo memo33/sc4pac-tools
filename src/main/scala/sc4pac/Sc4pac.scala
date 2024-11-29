@@ -73,9 +73,11 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) extends Upda
   /** Fuzzy-search across all repositories.
     * The selection of results is ordered in descending order and includes the
     * module, the relevance ratio and the description.
+    * If a STEX/SC4E URL is searched, packages with matching external ID are returned.
     * Api.searchPlugins implements a similar function and should use the same algorithm.
     */
   def search(query: String, threshold: Int, category: Option[String]): Task[Seq[(BareModule, Int, Option[String])]] = iterateAllChannelContents.map { itemsIter =>
+    val externalIdOpt: Option[(String, String)] = JD.Channel.findExternalId(url = query)
     val searchTokens = Sc4pac.fuzzySearchTokenize(query)
     val results: Seq[(BareModule, Int, Option[String])] =
       itemsIter.flatMap { item =>
@@ -84,10 +86,13 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) extends Upda
         } else if (category.isDefined && item.category != category) {
           None
         } else {
-          // TODO reconsider choice of search algorithm
-          val ratio =
-            if (searchTokens.isEmpty && category.isDefined) 100  // return the entire category
-            else Sc4pac.fuzzySearchRatio(searchTokens, item.toSearchString, threshold)
+          val ratio = externalIdOpt match {
+            case None =>
+              if (searchTokens.isEmpty && category.isDefined) 100  // return the entire category
+              else Sc4pac.fuzzySearchRatio(searchTokens, item.toSearchString, threshold)
+            case Some(exchangeKey -> externalId) =>
+              if (item.externalIds.get(exchangeKey).exists(_.contains(externalId))) 100 else 0
+          }
           if (ratio >= threshold) {
             Some(BareModule(Organization(item.group), ModuleName(item.name)), ratio, Option(item.summary).filter(_.nonEmpty))
           } else None

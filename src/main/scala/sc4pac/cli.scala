@@ -176,6 +176,14 @@ object Commands {
     |  sc4pac search --threshold 20 "Pause border"    ${gray("# Decrease threshold for more results.")}
     |  ${gray(">>>")} ...
     |
+    |You can search for a URL of a STEX entry or SC4Evermore download page to find any corresponding packages:
+    |
+    |  sc4pac search "https://community.simtropolis.com/files/file/32812-save-warning/"
+    |  ${gray(">>>")} ...
+    |
+    |  sc4pac search "https://www.sc4evermore.com/index.php/downloads/download/26-gameplay-mods/26-bsc-no-maxis"
+    |  ${gray(">>>")} ...
+    |
     """.stripMargin.trim)
   final case class SearchOptions(
     @ValueDescription("number") @Group("Search") @Tag("Search")
