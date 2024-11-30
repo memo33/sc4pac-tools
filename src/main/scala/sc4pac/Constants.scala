@@ -7,8 +7,9 @@ import scala.concurrent.duration.DurationInt
 
 object Constants {
   export JsonRepoUtil.sc4pacAssetOrg  // val sc4pacAssetOrg = Organization("sc4pacAsset")
-  val defaultInclude = """(?<=\.dat|\.sc4model|\.sc4lot|\.sc4desc|\.sc4|\.dll)$"""  // includes only plugin files
-  val defaultExclude = """(?<!\.dat|\.sc4model|\.sc4lot|\.sc4desc|\.sc4|\.dll)$"""  // excludes files with other file types
+  private val dbpfFileTypeOnly = """(?<=\.dat|\.sc4model|\.sc4lot|\.sc4desc|\.sc4)$"""
+  val defaultInclude = dbpfFileTypeOnly  // includes only plugin files (without dll)
+  val defaultExclude = """(?<!\.dat|\.sc4model|\.sc4lot|\.sc4desc|\.sc4)$"""  // excludes files with other file types
   val sc4fileTypePattern = Pattern.compile("""\.dat|\.sc4model|\.sc4lot|\.sc4desc|\.sc4|\.dll$""", Pattern.CASE_INSENSITIVE)
   val versionLatestRelease = "latest.release"
   val defaultChannelUrls = Seq(MetadataRepository.parseChannelUrl("https://memo33.github.io/sc4pac/channel/").toOption.get)

@@ -274,4 +274,12 @@ object JsonData extends SharedData {
 
   case class CheckFile(filename: Option[String], checksum: Checksum = Checksum.empty) derives ReadWriter
 
+  case class IncludeWithChecksum(include: String, sha256: ArraySeq[Byte])
+
+  implicit val includeWithChecksumRw: ReadWriter[IncludeWithChecksum] =
+    readwriter[Map[String, String]].bimap[IncludeWithChecksum](
+      (data: IncludeWithChecksum) => Map("include" -> data.include, "sha256" -> Checksum.bytesToString(data.sha256)),
+      (m: Map[String, String]) => IncludeWithChecksum(include = m("include"), sha256 = Checksum.stringToBytes(m("sha256"))),
+    )
+
 }

@@ -46,6 +46,9 @@ abstract class SharedData {
   implicit val checksumRw: ReadWriter[Checksum]
   protected def emptyChecksum: Checksum
 
+  type IncludeWithChecksum
+  implicit val includeWithChecksumRw: ReadWriter[IncludeWithChecksum]
+
   implicit val bareModuleRw: ReadWriter[BareModule]
 
   case class Dependency(group: String, name: String, version: String) derives ReadWriter
@@ -53,7 +56,8 @@ abstract class SharedData {
   case class AssetReference(
     assetId: String,
     include: Seq[String] = Seq.empty,
-    exclude: Seq[String] = Seq.empty
+    exclude: Seq[String] = Seq.empty,
+    withChecksum: Seq[IncludeWithChecksum] = Seq.empty,
   ) derives ReadWriter
 
   case class VariantData(
