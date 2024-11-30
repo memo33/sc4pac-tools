@@ -439,7 +439,6 @@ trait UpdateService { this: Sc4pac =>
 
 
 object Sc4pac {
-  val assetTypes = Set(Constants.sc4pacAssetType)
 
   case class UpdatePlan(toInstall: Set[Dep], toReinstall: Set[Dep], toRemove: Set[Dep]) {
     def isUpToDate: Boolean = toRemove.isEmpty && toReinstall.isEmpty && toInstall.isEmpty
