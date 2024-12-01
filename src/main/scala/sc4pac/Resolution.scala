@@ -69,6 +69,7 @@ object Resolution {
     url: String,
     lastModified: Option[java.time.Instant],
     archiveType: Option[JD.ArchiveType],
+    checksum: JD.Checksum,
   ) extends Dep {
     def isSc4pacAsset: Boolean = true
     def toBareDep: BareAsset = BareAsset(assetId)
@@ -76,7 +77,7 @@ object Resolution {
   object DepAsset {
     def fromAsset(asset: JD.Asset): DepAsset =
       DepAsset(assetId = ModuleName(asset.assetId), version = asset.version, url = asset.url,
-        lastModified = Option(asset.lastModified), archiveType = asset.archiveType)
+        lastModified = Option(asset.lastModified), archiveType = asset.archiveType, checksum = asset.checksum)
   }
 
   /** An sc4pac metadata package dependency. */

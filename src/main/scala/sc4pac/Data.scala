@@ -167,7 +167,8 @@ object JsonData extends SharedData {
           version = dep.version,
           url = dep.url,
           lastModified = dep.lastModified.getOrElse(null),
-          archiveType = dep.archiveType
+          archiveType = dep.archiveType,
+          checksum = dep.checksum,
         ))
       )
     }

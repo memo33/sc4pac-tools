@@ -106,8 +106,8 @@ abstract class SharedData {
     url: String,
     lastModified: Instant = null.asInstanceOf[Instant],
     archiveType: Option[ArchiveType] = None,
-    requiredBy: Seq[BareModule] = Seq.empty  // optional and only informative (mangles all variants and versions, is limited to one channel,
-                                             // can easily become outdated since json files are cached indefinitely)
+    requiredBy: Seq[BareModule] = Seq.empty,  // optional and only informative (mangles all variants and versions)
+    checksum: Checksum = emptyChecksum,
   ) extends PackageAsset /*derives ReadWriter*/ {
     def attributes: Map[String, String] = {
       val m = Map(Asset.urlKey -> url)
