@@ -358,7 +358,13 @@ object Extractor {
   }
 
   object DbpfValidator extends Validator {
-    private def isDbpf(path: os.Path): Boolean = true  // ??? TODO
+    private val dbpfSignature = Array[Byte]('D', 'B', 'P', 'F')
+
+    private def isDbpf(path: os.Path): Boolean = {
+      val signature = os.read.bytes(path, offset = 0, count = 4)
+      signature.sameElements(dbpfSignature)
+    }
+
     def validate(path: os.Path): Unit = {
       if (!isDbpf(path))
         throw NotADbpfFile("Extracted file is not a DBPF file. " +
