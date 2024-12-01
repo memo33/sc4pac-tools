@@ -199,7 +199,12 @@ object JsonData extends SharedData {
 
   class InstallRecipe(include: Seq[Pattern], exclude: Seq[Pattern], includeWithChecksum: Seq[(Pattern, IncludeWithChecksum)]) {
     def makeAcceptancePredicate(): (Builder[Pattern, Set[Pattern]], Extractor.Predicate) = {
-      val usedPatternsBuilder = Set.newBuilder[Pattern] += InstallRecipe.defaultExcludePattern  // default exclude pattern is not required to match anything
+      val usedPatternsBuilder = {
+        val b = Set.newBuilder[Pattern] += Constants.defaultExcludePattern  // default exclude pattern is not required to match anything
+        if (includeWithChecksum.nonEmpty)
+          b += Constants.defaultIncludePattern  // archives containing DLLs might come without additional DBPF files
+        b
+      }
 
       val accepts: Extractor.Predicate = { path =>
         val pathString = path.segments.mkString("/", "/", "")  // paths are checked with leading / and with / as separator
@@ -240,14 +245,10 @@ object JsonData extends SharedData {
     }
   }
   object InstallRecipe {
-    private val mkPattern = Pattern.compile(_, Pattern.CASE_INSENSITIVE)
-    private val defaultIncludePattern = mkPattern(Constants.defaultInclude)
-    private val defaultExcludePattern = mkPattern(Constants.defaultExclude)
-
     def fromAssetReference(data: AssetReference): (InstallRecipe, Seq[Warning]) = {
       val warnings = Seq.newBuilder[Warning]
       def toRegex(s: String): Option[Pattern] = try {
-        Some(mkPattern(s))
+        Some(Pattern.compile(s, Pattern.CASE_INSENSITIVE))
       } catch {
         case e: java.util.regex.PatternSyntaxException =>
           warnings += s"The package metadata contains a malformed regex: $e"
@@ -257,8 +258,8 @@ object JsonData extends SharedData {
       val exclude = data.exclude.flatMap(toRegex)
       val includeWithChecksum = data.withChecksum.flatMap(item => toRegex(item.include).map(_ -> item))
       (InstallRecipe(
-        include = if (include.isEmpty) Seq(defaultIncludePattern) else include,
-        exclude = if (exclude.isEmpty) Seq(defaultExcludePattern) else exclude,
+        include = if (include.isEmpty) Seq(Constants.defaultIncludePattern) else include,
+        exclude = if (exclude.isEmpty) Seq(Constants.defaultExcludePattern) else exclude,
         includeWithChecksum = includeWithChecksum,
       ), warnings.result())
     }
