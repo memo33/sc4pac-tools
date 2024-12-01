@@ -100,8 +100,16 @@ object Extractor {
       *   - a validator verifying DLL checksums or DBPF file integrity (throws exception)
       * The target paths are already mapped to discard redundant top-level
       * directories, so can differ from what `getEntryPath` returned.
+      *
+      * Usually calls extractEntry as implementation.
       */
-    def extractSelected(entries: Seq[(A, os.Path, Validator)], overwrite: Boolean): Unit
+    def extractSelectedEntries(entries: Seq[(A, os.Path, Validator)], overwrite: Boolean): Unit =
+      for ((entry, target, validator) <- entries) {
+        extractEntry(entry, target, overwrite = overwrite)
+        validator.validate(target).left.foreach(throw _)
+      }
+
+    protected def extractEntry(entry: A, target: os.Path, overwrite: Boolean): Unit
 
     /** Extract the zip archive: filter the entries by a predicate, strip the
       * common prefix from all paths for a more flattened folder structure, and
@@ -167,7 +175,7 @@ object Extractor {
             else
               Some(entry, target, validator)
           }
-        extractSelected(selected, overwrite)
+        extractSelectedEntries(selected, overwrite)
         extracted  // Note that this includes some pre-existing files not in `selected`, but only files accepted by predicate
       }
     }
@@ -182,12 +190,10 @@ object Extractor {
     def getEntryPath(entry: os.Path) = entry.subRelativeTo(folder).toString
     def isDirectory(entry: os.Path) = os.isDir(entry)
     def isUnixSymlink(entry: os.Path) = os.isLink(entry)
-    def extractSelected(entries: Seq[(os.Path, os.Path, Validator)], overwrite: Boolean): Unit =
-      for ((src, target, validator) <- entries) {
-        os.makeDir.all(target / os.up)
-        os.copy.over(src, target, replaceExisting = overwrite)
-        validator.validateOrThrow(target)
-      }
+    protected def extractEntry(src: os.Path, target: os.Path, overwrite: Boolean): Unit = {
+      os.makeDir.all(target / os.up)
+      os.copy.over(src, target, replaceExisting = overwrite)
+    }
   }
 
   private[sc4pac] class WrappedZip(archive: ZipFile) extends WrappedArchive[ZipArchiveEntry] {
@@ -197,11 +203,8 @@ object Extractor {
     def getEntryPath(entry: ZipArchiveEntry): String = entry.getName
     def isDirectory(entry: ZipArchiveEntry): Boolean = entry.isDirectory
     def isUnixSymlink(entry: ZipArchiveEntry) = entry.isUnixSymlink
-    def extractSelected(entries: Seq[(ZipArchiveEntry, os.Path, Validator)], overwrite: Boolean): Unit =
-      for ((entry, target, validator) <- entries) {
-        extractEntryCommons(archive.getInputStream(entry), target, overwrite)
-        validator.validateOrThrow(target)
-      }
+    protected def extractEntry(entry: ZipArchiveEntry, target: os.Path, overwrite: Boolean): Unit =
+      extractEntryCommons(archive.getInputStream(entry), target, overwrite)
   }
 
   // A single .dat/.dll/.sc4* file that can just be copied to the target with a
@@ -212,11 +215,8 @@ object Extractor {
     def getEntryPath(entry: os.Path) = filename  // entry.last has no meaningful relevance
     def isDirectory(entry: os.Path) = false
     def isUnixSymlink(entry: os.Path) = false
-    def extractSelected(entries: Seq[(os.Path, os.Path, Validator)], overwrite: Boolean): Unit =
-      for ((src, target, validator) <- entries) {
-        os.copy.over(src, target, replaceExisting = overwrite)
-        validator.validateOrThrow(target)
-      }
+    protected def extractEntry(src: os.Path, target: os.Path, overwrite: Boolean): Unit =
+      os.copy.over(src, target, replaceExisting = overwrite)
   }
 
   private[sc4pac] class Wrapped7z(archive: SevenZFile) extends WrappedArchive[SevenZArchiveEntry] {
@@ -226,11 +226,8 @@ object Extractor {
     def getEntryPath(entry: SevenZArchiveEntry): String = entry.getName
     def isDirectory(entry: SevenZArchiveEntry): Boolean = entry.isDirectory
     def isUnixSymlink(entry: SevenZArchiveEntry) = false
-    def extractSelected(entries: Seq[(SevenZArchiveEntry, os.Path, Validator)], overwrite: Boolean): Unit =
-      for ((entry, target, validator) <- entries) {
-        extractEntryCommons(archive.getInputStream(entry), target, overwrite)
-        validator.validateOrThrow(target)
-      }
+    protected def extractEntry(entry: SevenZArchiveEntry, target: os.Path, overwrite: Boolean): Unit =
+      extractEntryCommons(archive.getInputStream(entry), target, overwrite)
   }
 
   def options(overwrite: Boolean) =
@@ -267,8 +264,9 @@ object Extractor {
       def getEntryPath(entry: Int) = archive.getProperty(entry, SZ.PropID.PATH).asInstanceOf[String]  // assumes that paths in archive are not null
       def isDirectory(entry: Int) = archive.getProperty(entry, SZ.PropID.IS_FOLDER).asInstanceOf[Boolean]
       def isUnixSymlink(entry: Int) = archive.getProperty(entry, SZ.PropID.SYM_LINK).asInstanceOf[Boolean]
+      protected def extractEntry(entry: Int, target: os.Path, overwrite: Boolean): Unit = throw new AssertionError
 
-      def extractSelected(entries: Seq[(Int, os.Path, Validator)], overwrite: Boolean) = try {
+      override def extractSelectedEntries(entries: Seq[(Int, os.Path, Validator)], overwrite: Boolean) = try {
         val entriesMap: Map[Int, (Int, os.Path, Validator)] = entries.iterator.map(t => t._1 -> t).toMap  // TODO this does not have linear complexity
         val getPath: Int => os.Path = entriesMap(_)._2
 
@@ -304,7 +302,7 @@ object Extractor {
               throw new SZ.SevenZipException(s"Extraction of archive entry failed: ${getPath(index)}.")
             }
             val (_, target, validator) = entriesMap(index)
-            validator.validateOrThrow(target)
+            validator.validate(target).left.foreach(throw _)
           }
 
           def setCompleted(complete: Long): Unit = {}  // TODO logging of progress
@@ -346,7 +344,6 @@ object Extractor {
 
   sealed trait Validator {
     def validate(path: os.Path): Either[ExtractionValidationError, Unit]
-    def validateOrThrow(path: os.Path): Unit = validate(path).left.foreach(throw _)
   }
 
   class ChecksumValidator(includeWithChecksum: JD.IncludeWithChecksum) extends Validator {
@@ -362,7 +359,7 @@ object Extractor {
   }
 
   object DbpfValidator extends Validator {
-    private def isDbpf(path: os.Path): Boolean = ???
+    private def isDbpf(path: os.Path): Boolean = true  // ??? TODO
     def validate(path: os.Path): Either[ExtractionValidationError, Unit] = {
       if (isDbpf(path)) Right(())
       else Left(NotADbpfFile("Extracted file is not a DBPF file. " +
