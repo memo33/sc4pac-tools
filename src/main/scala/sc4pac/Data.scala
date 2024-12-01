@@ -198,10 +198,10 @@ object JsonData extends SharedData {
   }
 
   case class InstallRecipe(include: Seq[Pattern], exclude: Seq[Pattern]) {
-    def makeAcceptancePredicate(): (Builder[Pattern, Set[Pattern]], os.SubPath => Boolean) = {
+    def makeAcceptancePredicate(): (Builder[Pattern, Set[Pattern]], Extractor.Predicate) = {
       val usedPatternsBuilder = Set.newBuilder[Pattern] += InstallRecipe.defaultExcludePattern  // default exclude pattern is not required to match anything
 
-      val accepts: os.SubPath => Boolean = { path =>
+      val accepts: Extractor.Predicate = { path =>
         val pathString = path.segments.mkString("/", "/", "")  // paths are checked with leading / and with / as separator
         include.find(_.matcher(pathString).find()) match {
           case None => false

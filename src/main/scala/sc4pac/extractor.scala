@@ -8,7 +8,7 @@ import java.nio.file.StandardOpenOption
 import java.util.regex.Pattern
 
 import sc4pac.JsonData as JD
-import sc4pac.error.ExtractionFailed
+import sc4pac.error.{ExtractionFailed, ChecksumError, NotADbpfFile}
 
 object Extractor {
 
@@ -104,7 +104,7 @@ object Extractor {
       */
     def extractByPredicate(
       destination: os.Path,
-      predicate: os.SubPath => Boolean,
+      predicate: Extractor.Predicate,
       overwrite: Boolean,
       flatten: Boolean,
       logger: Logger,
@@ -323,6 +323,38 @@ object Extractor {
     }
     os.SubPath(p.segments0.take(i).toIndexedSeq)
   }
+
+  type Predicate = os.SubPath => Boolean
+  type ExtractionValidationError = ChecksumError | NotADbpfFile
+
+  sealed trait Validator {
+    def validate(path: os.Path): Either[ExtractionValidationError, Unit]
+  }
+
+  class ChecksumValidator(includeWithChecksum: JD.IncludeWithChecksum) {
+    def validate(path: os.Path): Either[ExtractionValidationError, Unit] = {
+      val sha256Actual = Downloader.computeChecksum(path.toIO)
+      if (includeWithChecksum.sha256 == sha256Actual) Right(())
+      else Left(ChecksumError("Extracted file has unexpected sha256 checksum. " +
+        "Usually, this means the uploaded file was modified after the channel metadata was last updated, " +
+        "so the integrity of the file cannot be verified by sc4pac. " +
+        "Report this to the maintainers of the metadata.",
+        s"File: $path, got: ${JD.Checksum.bytesToString(sha256Actual)}, expected: ${JD.Checksum.bytesToString(includeWithChecksum.sha256)}"))
+    }
+  }
+
+  object DbpfValidator extends Validator {
+    private def isDbpf(path: os.Path): Boolean = ???
+    def validate(path: os.Path): Either[ExtractionValidationError, Unit] = {
+      if (isDbpf(path)) Right(())
+      else Left(NotADbpfFile("Extracted file is not a DBPF file. " +
+        "If this error is caused by a malformed DBPF file, report this to the original author of the file. " +
+        "Otherwise, if it is a DLL file, the channel metadata must include a checksum for verifying file integrity. " +
+        "Report this to the maintainers of the metadata.",
+        path.toString))
+    }
+  }
+
 }
 
 class Extractor(logger: Logger) {
