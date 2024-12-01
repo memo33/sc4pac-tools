@@ -106,7 +106,7 @@ object Extractor {
     def extractSelectedEntries(entries: Seq[(A, os.Path, Validator)], overwrite: Boolean): Unit =
       for ((entry, target, validator) <- entries) {
         extractEntry(entry, target, overwrite = overwrite)
-        validator.validate(target).left.foreach(throw _)
+        validator.validate(target)
       }
 
     protected def extractEntry(entry: A, target: os.Path, overwrite: Boolean): Unit
@@ -302,7 +302,7 @@ object Extractor {
               throw new SZ.SevenZipException(s"Extraction of archive entry failed: ${getPath(index)}.")
             }
             val (_, target, validator) = entriesMap(index)
-            validator.validate(target).left.foreach(throw _)
+            validator.validate(target)
           }
 
           def setCompleted(complete: Long): Unit = {}  // TODO logging of progress
@@ -340,39 +340,38 @@ object Extractor {
   }
 
   type Predicate = os.SubPath => Option[Validator]
-  type ExtractionValidationError = ChecksumError | NotADbpfFile
 
   sealed trait Validator {
-    def validate(path: os.Path): Either[ExtractionValidationError, Unit]
+    def validate(path: os.Path): Unit
   }
 
   class ChecksumValidator(includeWithChecksum: JD.IncludeWithChecksum) extends Validator {
-    def validate(path: os.Path): Either[ExtractionValidationError, Unit] = {
+    def validate(path: os.Path): Unit = {
       val sha256Actual = Downloader.computeChecksum(path.toIO)
-      if (includeWithChecksum.sha256 == sha256Actual) Right(())
-      else Left(ChecksumError("Extracted file has wrong sha256 checksum. " +
-        "Usually, this means the uploaded file was modified after the channel metadata was last updated, " +
-        "so the integrity of the file cannot be verified by sc4pac. " +
-        "Report this to the maintainers of the metadata.",
-        s"File: $path, got: ${JD.Checksum.bytesToString(sha256Actual)}, expected: ${JD.Checksum.bytesToString(includeWithChecksum.sha256)}"))
+      if (includeWithChecksum.sha256 != sha256Actual)
+        throw ChecksumError("Extracted file has wrong sha256 checksum. " +
+          "Usually, this means the uploaded file was modified after the channel metadata was last updated, " +
+          "so the integrity of the file cannot be verified by sc4pac. " +
+          "Report this to the maintainers of the metadata.",
+          s"File: $path, got: ${JD.Checksum.bytesToString(sha256Actual)}, expected: ${JD.Checksum.bytesToString(includeWithChecksum.sha256)}")
     }
   }
 
   object DbpfValidator extends Validator {
     private def isDbpf(path: os.Path): Boolean = true  // ??? TODO
-    def validate(path: os.Path): Either[ExtractionValidationError, Unit] = {
-      if (isDbpf(path)) Right(())
-      else Left(NotADbpfFile("Extracted file is not a DBPF file. " +
-        "If this error is caused by a malformed DBPF file, report this to the original author of the file. " +
-        "Otherwise, if it is a DLL file, the channel metadata must include a checksum for verifying file integrity. " +
-        "Report this to the maintainers of the metadata.",
-        s"File: $path"))
+    def validate(path: os.Path): Unit = {
+      if (!isDbpf(path))
+        throw NotADbpfFile("Extracted file is not a DBPF file. " +
+          "If this error is caused by a malformed DBPF file, report this to the original author of the file. " +
+          "Otherwise, if it is a DLL file, the channel metadata must include a checksum for verifying file integrity. " +
+          "Report this to the maintainers of the metadata.",
+          s"File: $path")
     }
   }
 
   // Nested archives currently do not use checksums for validation. If desired, the outer archive should use a checksum instead.
   object NestedArchiveNoopValidator extends Validator {
-    def validate(path: os.Path): Either[ExtractionValidationError, Unit] = Right(())
+    def validate(path: os.Path): Unit = {}
   }
 
 }
@@ -409,7 +408,7 @@ class Extractor(logger: Logger) {
     usedPatternsBuilder.result()
   } catch {
     case e: ExtractionFailed => throw e
-    case e: Extractor.ExtractionValidationError => throw new ExtractionFailed(s"Failed to extract $archive.", e.getMessage)
+    case e: (NotADbpfFile | ChecksumError) => throw new ExtractionFailed(s"Failed to extract $archive.", e.getMessage)
     case e: java.io.IOException => logger.debugPrintStackTrace(e); throw new ExtractionFailed(s"Failed to extract $archive.", e.getMessage)
   }
 }
