@@ -87,7 +87,7 @@ object Extractor {
 
   private[sc4pac] sealed trait WrappedArchive[A] extends AutoCloseable {
     /** Enumerate all entries contained in the archive. */
-    def getEntries: Iterator[A]
+    def iterateEntries: Iterator[A]
     /** The stringified subpath of the entry within the archive. */
     def getEntryPath(entry: A): String
     def isDirectory(entry: A): Boolean
@@ -97,10 +97,11 @@ object Extractor {
       * Here, `entries` consists of a sequence of:
       *   - an entry selected for extraction,
       *   - the corresponding full target path for this entry.
+      *   - a validator verifying DLL checksums or DBPF file integrity (throws exception)
       * The target paths are already mapped to discard redundant top-level
       * directories, so can differ from what `getEntryPath` returned.
       */
-    def extractSelected(entries: Seq[(A, os.Path)], overwrite: Boolean): Unit
+    def extractSelected(entries: Seq[(A, os.Path, Validator)], overwrite: Boolean): Unit
 
     /** Extract the zip archive: filter the entries by a predicate, strip the
       * common prefix from all paths for a more flattened folder structure, and
@@ -114,13 +115,13 @@ object Extractor {
       logger: Logger,
     ): Seq[os.Path] = {
       // first we read the acceptable file names contained in the zip file
-      val entries: Seq[(A, os.SubPath)] = getEntries
-        .flatMap { e =>
-          val relativePathString = getEntryPath(e)
+      val entries: Seq[(A, os.SubPath, Validator)] = iterateEntries
+        .flatMap { entry =>
+          val relativePathString = getEntryPath(entry)
           val subPathOpt =  // sanitized entry path
             if (relativePathString.isEmpty || relativePathString.startsWith("/") || relativePathString.startsWith("""\""")) {
               None
-            } else if (isUnixSymlink(e)) {  // skip symlinks as precaution
+            } else if (isUnixSymlink(entry)) {  // skip symlinks as precaution
               None
             } else try {
               Some(os.SubPath(relativePathString))
@@ -130,15 +131,15 @@ object Extractor {
           if (!subPathOpt.isDefined) {
             logger.debug(s"""Ignoring disallowed archive entry path "$relativePathString".""")
           }
-          subPathOpt.map(e -> _)
+          subPathOpt.map(entry -> _)
         }
-        .filter { (e, p) =>
-          if (isDirectory(e)) {
-            false
+        .flatMap { (entry, path) =>
+          if (isDirectory(entry)) {
+            None
           } else {
-            val include = predicate(p).isDefined   // TODO use validator
-            logger.extractingArchiveEntry(p, include)
-            include
+            val validatorOpt = predicate(path)  // TODO in case of WrappedNonarchive, validate against archive checksum instead of IncludeWithChecksum
+            logger.extractingArchiveEntry(path, validatorOpt.isDefined)
+            validatorOpt.map((entry, path, _))
           }
         }
         .toSeq
@@ -158,12 +159,13 @@ object Extractor {
         }
 
         os.makeDir.all(destination)
-        val extracted: Seq[os.Path] = entries.map((_, subpath) => destination / mapper(subpath))
-        val selected = entries.zip(extracted).flatMap { case ((entry, _), target) =>
+        val extracted: Seq[os.Path] = entries.map((_, subpath, _) => destination / mapper(subpath))
+        val selected = entries.zip(extracted).flatMap { case ((entry, _, validator), target) =>
             if (!overwrite && os.exists(target))
+              assert(validator == NestedArchiveNoopValidator)  // important since we do not validate these
               None  // do nothing, as file has already been extracted previously (this avoids re-extracting large nested archives)
             else
-              Some(entry, target)
+              Some(entry, target, validator)
           }
         extractSelected(selected, overwrite)
         extracted  // Note that this includes some pre-existing files not in `selected`, but only files accepted by predicate
@@ -176,51 +178,59 @@ object Extractor {
   // such as cicdec - for unzipping unknown archives.
   private[sc4pac] class WrappedFolder(folder: os.Path) extends WrappedArchive[os.Path] {
     def close(): Unit = {}
-    def getEntries = os.walk(folder).iterator
+    def iterateEntries = os.walk(folder).iterator
     def getEntryPath(entry: os.Path) = entry.subRelativeTo(folder).toString
     def isDirectory(entry: os.Path) = os.isDir(entry)
     def isUnixSymlink(entry: os.Path) = os.isLink(entry)
-    def extractSelected(entries: Seq[(os.Path, os.Path)], overwrite: Boolean): Unit =
-      for ((src, target) <- entries) {
+    def extractSelected(entries: Seq[(os.Path, os.Path, Validator)], overwrite: Boolean): Unit =
+      for ((src, target, validator) <- entries) {
         os.makeDir.all(target / os.up)
         os.copy.over(src, target, replaceExisting = overwrite)
+        validator.validateOrThrow(target)
       }
   }
 
   private[sc4pac] class WrappedZip(archive: ZipFile) extends WrappedArchive[ZipArchiveEntry] {
     export archive.close
     import scala.jdk.CollectionConverters.*
-    def getEntries = archive.getEntries.asScala
+    def iterateEntries = archive.getEntries.asScala
     def getEntryPath(entry: ZipArchiveEntry): String = entry.getName
     def isDirectory(entry: ZipArchiveEntry): Boolean = entry.isDirectory
     def isUnixSymlink(entry: ZipArchiveEntry) = entry.isUnixSymlink
-    def extractSelected(entries: Seq[(ZipArchiveEntry, os.Path)], overwrite: Boolean): Unit =
-      entries.foreach((entry, target) => extractEntryCommons(archive.getInputStream(entry), target, overwrite))
+    def extractSelected(entries: Seq[(ZipArchiveEntry, os.Path, Validator)], overwrite: Boolean): Unit =
+      for ((entry, target, validator) <- entries) {
+        extractEntryCommons(archive.getInputStream(entry), target, overwrite)
+        validator.validateOrThrow(target)
+      }
   }
 
   // A single .dat/.dll/.sc4* file that can just be copied to the target with a
   // new name. The name of `file` itself is not meaningful as it comes from the URL in the file cache.
   private[sc4pac] class WrappedNonarchive(file: os.Path, filename: String) extends WrappedArchive[os.Path] {
     def close(): Unit = {}
-    def getEntries = Iterator(file)
+    def iterateEntries = Iterator(file)
     def getEntryPath(entry: os.Path) = filename  // entry.last has no meaningful relevance
     def isDirectory(entry: os.Path) = false
     def isUnixSymlink(entry: os.Path) = false
-    def extractSelected(entries: Seq[(os.Path, os.Path)], overwrite: Boolean): Unit =
-      for ((src, target) <- entries) {
+    def extractSelected(entries: Seq[(os.Path, os.Path, Validator)], overwrite: Boolean): Unit =
+      for ((src, target, validator) <- entries) {
         os.copy.over(src, target, replaceExisting = overwrite)
+        validator.validateOrThrow(target)
       }
   }
 
   private[sc4pac] class Wrapped7z(archive: SevenZFile) extends WrappedArchive[SevenZArchiveEntry] {
     export archive.close
     import scala.jdk.CollectionConverters.*
-    def getEntries = archive.getEntries.iterator.asScala
+    def iterateEntries = archive.getEntries.iterator.asScala
     def getEntryPath(entry: SevenZArchiveEntry): String = entry.getName
     def isDirectory(entry: SevenZArchiveEntry): Boolean = entry.isDirectory
     def isUnixSymlink(entry: SevenZArchiveEntry) = false
-    def extractSelected(entries: Seq[(SevenZArchiveEntry, os.Path)], overwrite: Boolean): Unit =
-      entries.foreach((entry, target) => extractEntryCommons(archive.getInputStream(entry), target, overwrite))
+    def extractSelected(entries: Seq[(SevenZArchiveEntry, os.Path, Validator)], overwrite: Boolean): Unit =
+      for ((entry, target, validator) <- entries) {
+        extractEntryCommons(archive.getInputStream(entry), target, overwrite)
+        validator.validateOrThrow(target)
+      }
   }
 
   def options(overwrite: Boolean) =
@@ -253,15 +263,16 @@ object Extractor {
           raf.close()
         }
 
-      def getEntries = (0 until archive.getNumberOfItems()).iterator
+      def iterateEntries = (0 until archive.getNumberOfItems()).iterator
       def getEntryPath(entry: Int) = archive.getProperty(entry, SZ.PropID.PATH).asInstanceOf[String]  // assumes that paths in archive are not null
       def isDirectory(entry: Int) = archive.getProperty(entry, SZ.PropID.IS_FOLDER).asInstanceOf[Boolean]
       def isUnixSymlink(entry: Int) = archive.getProperty(entry, SZ.PropID.SYM_LINK).asInstanceOf[Boolean]
 
-      def extractSelected(entries: Seq[(Int, os.Path)], overwrite: Boolean) = try {
-        archive.extract(entries.toArray.map(_._1), false, new SZ.IArchiveExtractCallback {
+      def extractSelected(entries: Seq[(Int, os.Path, Validator)], overwrite: Boolean) = try {
+        val entriesMap: Map[Int, (Int, os.Path, Validator)] = entries.iterator.map(t => t._1 -> t).toMap  // TODO this does not have linear complexity
+        val getPath: Int => os.Path = entriesMap(_)._2
 
-          val getPath: Int => os.Path = entries.toMap  // TODO this does not have linear complexity
+        archive.extract(entries.toArray.map(_._1), false, new SZ.IArchiveExtractCallback {
           var index: Int = 0
           var out: java.io.OutputStream = null
 
@@ -292,6 +303,8 @@ object Extractor {
             if (!success || extractOperationResult != SZ.ExtractOperationResult.OK) {
               throw new SZ.SevenZipException(s"Extraction of archive entry failed: ${getPath(index)}.")
             }
+            val (_, target, validator) = entriesMap(index)
+            validator.validateOrThrow(target)
           }
 
           def setCompleted(complete: Long): Unit = {}  // TODO logging of progress
@@ -333,13 +346,14 @@ object Extractor {
 
   sealed trait Validator {
     def validate(path: os.Path): Either[ExtractionValidationError, Unit]
+    def validateOrThrow(path: os.Path): Unit = validate(path).left.foreach(throw _)
   }
 
   class ChecksumValidator(includeWithChecksum: JD.IncludeWithChecksum) extends Validator {
     def validate(path: os.Path): Either[ExtractionValidationError, Unit] = {
       val sha256Actual = Downloader.computeChecksum(path.toIO)
       if (includeWithChecksum.sha256 == sha256Actual) Right(())
-      else Left(ChecksumError("Extracted file has unexpected sha256 checksum. " +
+      else Left(ChecksumError("Extracted file has wrong sha256 checksum. " +
         "Usually, this means the uploaded file was modified after the channel metadata was last updated, " +
         "so the integrity of the file cannot be verified by sc4pac. " +
         "Report this to the maintainers of the metadata.",
@@ -355,7 +369,7 @@ object Extractor {
         "If this error is caused by a malformed DBPF file, report this to the original author of the file. " +
         "Otherwise, if it is a DLL file, the channel metadata must include a checksum for verifying file integrity. " +
         "Report this to the maintainers of the metadata.",
-        path.toString))
+        s"File: $path"))
     }
   }
 
@@ -398,6 +412,7 @@ class Extractor(logger: Logger) {
     usedPatternsBuilder.result()
   } catch {
     case e: ExtractionFailed => throw e
+    case e: Extractor.ExtractionValidationError => throw new ExtractionFailed(s"Failed to extract $archive.", e.getMessage)
     case e: java.io.IOException => logger.debugPrintStackTrace(e); throw new ExtractionFailed(s"Failed to extract $archive.", e.getMessage)
   }
 }
