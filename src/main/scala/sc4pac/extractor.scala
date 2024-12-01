@@ -12,9 +12,13 @@ import sc4pac.error.{ExtractionFailed, ChecksumError, NotADbpfFile}
 
 object Extractor {
 
-  def acceptNestedArchive(p: os.BasePath) = {
+  def acceptNestedArchive(p: os.BasePath): Option[Validator] = {
     val name = p.last.toLowerCase(java.util.Locale.ENGLISH)
-    name.endsWith(".jar") || name.endsWith(".zip") || name.endsWith(".7z") || name.endsWith(".exe")
+    if (name.endsWith(".jar") || name.endsWith(".zip") || name.endsWith(".7z") || name.endsWith(".exe")) {
+      Some(NestedArchiveNoopValidator)
+    } else {
+      None
+    }
   }
 
   private def tryExtractClickteam(file: java.io.File, targetDir: os.Path, logger: Logger, clickteamVersion: String) = {
@@ -132,7 +136,7 @@ object Extractor {
           if (isDirectory(e)) {
             false
           } else {
-            val include = predicate(p)
+            val include = predicate(p).isDefined   // TODO use validator
             logger.extractingArchiveEntry(p, include)
             include
           }
@@ -324,14 +328,14 @@ object Extractor {
     os.SubPath(p.segments0.take(i).toIndexedSeq)
   }
 
-  type Predicate = os.SubPath => Boolean
+  type Predicate = os.SubPath => Option[Validator]
   type ExtractionValidationError = ChecksumError | NotADbpfFile
 
   sealed trait Validator {
     def validate(path: os.Path): Either[ExtractionValidationError, Unit]
   }
 
-  class ChecksumValidator(includeWithChecksum: JD.IncludeWithChecksum) {
+  class ChecksumValidator(includeWithChecksum: JD.IncludeWithChecksum) extends Validator {
     def validate(path: os.Path): Either[ExtractionValidationError, Unit] = {
       val sha256Actual = Downloader.computeChecksum(path.toIO)
       if (includeWithChecksum.sha256 == sha256Actual) Right(())
@@ -353,6 +357,11 @@ object Extractor {
         "Report this to the maintainers of the metadata.",
         path.toString))
     }
+  }
+
+  // Nested archives currently do not use checksums for validation. If desired, the outer archive should use a checksum instead.
+  object NestedArchiveNoopValidator extends Validator {
+    def validate(path: os.Path): Either[ExtractionValidationError, Unit] = Right(())
   }
 
 }
@@ -379,7 +388,7 @@ class Extractor(logger: Logger) {
         logger.debug(s"Searching for nested archives:")
         val jarFiles = wrappedArchive.extractByPredicate(jarsDir, Extractor.acceptNestedArchive, overwrite = false, flatten = true, logger)  // overwrite=false, as we want to extract any given jar only once per staging process
         // finally extract the jar files themselves (without recursively extracting jars contained inside)
-        for (jarFile <- jarFiles if Extractor.acceptNestedArchive(jarFile)) {
+        for (jarFile <- jarFiles if Extractor.acceptNestedArchive(jarFile).isDefined) {
           logger.debug(s"Extracting nested archive ${jarFile.last}")
           usedPatternsBuilder ++=
             extract(jarFile.toIO, fallbackFilename = None, destination, recipe, jarExtractionOpt = None, hints, stagingRoot = stagingRoot)

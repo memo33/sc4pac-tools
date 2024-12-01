@@ -197,21 +197,27 @@ object JsonData extends SharedData {
     }
   }
 
-  case class InstallRecipe(include: Seq[Pattern], exclude: Seq[Pattern]) {
+  class InstallRecipe(include: Seq[Pattern], exclude: Seq[Pattern], includeWithChecksum: Seq[(Pattern, IncludeWithChecksum)]) {
     def makeAcceptancePredicate(): (Builder[Pattern, Set[Pattern]], Extractor.Predicate) = {
       val usedPatternsBuilder = Set.newBuilder[Pattern] += InstallRecipe.defaultExcludePattern  // default exclude pattern is not required to match anything
 
       val accepts: Extractor.Predicate = { path =>
         val pathString = path.segments.mkString("/", "/", "")  // paths are checked with leading / and with / as separator
-        include.find(_.matcher(pathString).find()) match {
-          case None => false
-          case Some(matchedPattern) =>
+        includeWithChecksum.find(_._1.matcher(pathString).find()) match {
+          case Some(matchedPattern, checksum) =>
             usedPatternsBuilder += matchedPattern
-            exclude.find(_.matcher(pathString).find()) match {
-              case None => true
+            Some(Extractor.ChecksumValidator(checksum))  // as checksum is only valid for a single file, there is no need for evaluating exclude rules
+          case None =>
+            include.find(_.matcher(pathString).find()) match {
+              case None => None
               case Some(matchedPattern) =>
                 usedPatternsBuilder += matchedPattern
-                false
+                exclude.find(_.matcher(pathString).find()) match {
+                  case None => Some(Extractor.DbpfValidator)
+                  case Some(matchedPattern) =>
+                    usedPatternsBuilder += matchedPattern
+                    None
+                }
             }
         }
       }
@@ -220,7 +226,9 @@ object JsonData extends SharedData {
     }
 
     def usedPatternWarnings(usedPatterns: Set[Pattern]): Seq[Warning] = {
-      val unused: Seq[Pattern] = (include.iterator ++ exclude).filter(p => !usedPatterns.contains(p)).toSeq
+      val unused: Seq[Pattern] =
+        (include.iterator ++ exclude ++ includeWithChecksum.iterator.map(_._1))
+        .filter(p => !usedPatterns.contains(p)).toSeq
       if (unused.isEmpty) {
         Seq.empty
       } else {
@@ -247,9 +255,12 @@ object JsonData extends SharedData {
       }
       val include = data.include.flatMap(toRegex)
       val exclude = data.exclude.flatMap(toRegex)
+      val includeWithChecksum = data.withChecksum.flatMap(item => toRegex(item.include).map(_ -> item))
       (InstallRecipe(
         include = if (include.isEmpty) Seq(defaultIncludePattern) else include,
-        exclude = if (exclude.isEmpty) Seq(defaultExcludePattern) else exclude), warnings.result())
+        exclude = if (exclude.isEmpty) Seq(defaultExcludePattern) else exclude,
+        includeWithChecksum = includeWithChecksum,
+      ), warnings.result())
     }
   }
 
