@@ -225,7 +225,7 @@ object JsonData extends SharedData {
       (usedPatternsBuilder, accepts)
     }
 
-    def usedPatternWarnings(usedPatterns: Set[Pattern]): Seq[Warning] = {
+    def usedPatternWarnings(usedPatterns: Set[Pattern], asset: BareAsset): Seq[Warning] = {
       val unused: Seq[Pattern] =
         (include.iterator ++ exclude ++ includeWithChecksum.iterator.map(_._1))
         .filter(p => !usedPatterns.contains(p)).toSeq
@@ -235,7 +235,7 @@ object JsonData extends SharedData {
         Seq(
           "The package metadata seems to be out-of-date, so the package may not have been fully installed. " +
           "Please report this to the maintainers of the package metadata. " +
-          "These inclusion/exclusion patterns did not match any files in the asset: " + unused.mkString(" "))
+          s"These inclusion/exclusion patterns did not match any files in the asset ${asset.assetId.value}: " + unused.mkString(" "))
       }
     }
   }

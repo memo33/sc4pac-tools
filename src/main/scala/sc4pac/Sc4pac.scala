@@ -198,7 +198,7 @@ trait UpdateService { this: Sc4pac =>
               hints = depAsset.archiveType,
               stagingRoot)
           // TODO catch IOExceptions
-          regexWarnings ++ recipe.usedPatternWarnings(usedPatterns)
+          regexWarnings ++ recipe.usedPatternWarnings(usedPatterns, id)
       }
     }
 
