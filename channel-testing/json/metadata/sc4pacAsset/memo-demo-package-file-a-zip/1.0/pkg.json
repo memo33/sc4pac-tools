@@ -6,5 +6,8 @@
  "lastModified": "2023-07-29T21:33:56Z",
  "requiredBy": [
   "memo:demo-package"
- ]
+ ],
+ "checksum": {
+  "sha256": "3020ce725261efd11cbf8708f3fe1e655212116ce8e390845114a756af59246b"
+ }
 }

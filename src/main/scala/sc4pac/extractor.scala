@@ -145,7 +145,7 @@ object Extractor {
           if (isDirectory(entry)) {
             None
           } else {
-            val validatorOpt = predicate(path)  // TODO in case of WrappedNonarchive, validate against archive checksum instead of IncludeWithChecksum
+            val validatorOpt = predicate(path)
             logger.extractingArchiveEntry(path, validatorOpt.isDefined)
             validatorOpt.map((entry, path, _))
           }

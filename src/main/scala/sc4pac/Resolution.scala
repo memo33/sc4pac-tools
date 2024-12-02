@@ -2,6 +2,7 @@ package io.github.memo33
 package sc4pac
 
 import coursier.core as C
+import coursier.cache.ArtifactError
 import zio.{ZIO, RIO}
 import scala.collection.immutable.TreeSeqMap
 
@@ -62,6 +63,10 @@ object Resolution {
   /** An sc4pac asset dependency: a leaf in the dependency tree.
     * This class contains the functionally relevant internal data.
     * In contrast, `JD.Asset` is merely used for JSON-serialization.
+    *
+    * When any of the fields changes, this should trigger a redownload of the
+    * asset. (There might be a delay by Constants.channelContentsTtl until the
+    * channel is updated.)
     */
   final case class DepAsset(
     assetId: C.ModuleName,
@@ -165,19 +170,30 @@ class Resolution(reachableDeps: TreeSeqMap[BareDep, Seq[BareDep]], nonbareDeps: 
     */
   def fetchArtifactsOf(subset: Seq[Dep]): RIO[ResolutionContext, Seq[(DepAsset, Artifact, java.io.File)]] = {
     val assetsArtifacts = subset.collect{ case d: DepAsset =>
-      (d, Artifact(d.url, changing = d.lastModified.isEmpty, lastModified = d.lastModified))  // non-changing assets should have lastModified defined and vice versa
+      (d, Artifact(
+        d.url,
+        changing = d.lastModified.isEmpty,
+        lastModified = d.lastModified,  // non-changing assets should have lastModified defined and vice versa
+        checksum = d.checksum,
+        redownloadOnChecksumError = false,
+      ))
     }
     def fetchTask(context: ResolutionContext) =
       ZIO.foreachPar(assetsArtifacts) { (dep, art) =>
         context.cache.file(art).map(file => (dep, art, file))
       }
-      .catchSome { case e: (coursier.error.FetchError.DownloadingArtifacts
-                          | coursier.cache.ArtifactError.DownloadError
-                          | coursier.cache.ArtifactError.WrongLength
-                          | coursier.cache.ArtifactError.NotFound) =>
-        ZIO.fail(new error.DownloadFailed("Failed to download some assets. Try again later. " +
-          "You may have reached your daily download quota (Simtropolis: 20 files per day) or the file exchange server is currently unavailable.",
-          e.getMessage))
+      .catchSome {
+        case e: (coursier.error.FetchError.DownloadingArtifacts | ArtifactError.DownloadError | ArtifactError.WrongLength | ArtifactError.NotFound) =>
+          ZIO.fail(new error.DownloadFailed("Failed to download some assets. Try again later. " +
+            "You may have reached your daily download quota (Simtropolis: 20 files per day) or the file exchange server is currently unavailable.",
+            e.getMessage))
+        case e: (ArtifactError.WrongChecksum | ArtifactError.ChecksumFormatError | ArtifactError.ChecksumNotFound) =>
+          ZIO.fail(new error.ChecksumError(
+            f"Checksum verification failed for a downloaded asset.%n" +
+            f"- Either, this means the downloaded file is incomplete: Delete the file to try downloading it again.%n" +
+            "- Otherwise, this means the uploaded file was modified after the channel metadata was last updated, " +
+            "so the integrity of the file cannot be verified by sc4pac: Report this to the maintainers of the metadata.",
+            e.getMessage))
       }
 
     for {
