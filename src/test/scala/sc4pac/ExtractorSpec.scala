@@ -86,7 +86,7 @@ class ExtractorSpec extends AnyWordSpec with Matchers {
 
   val assetRef = JD.AssetReference("dummy", withChecksum = Seq(JD.IncludeWithChecksum("h.dll", JD.Checksum.stringToBytes("07a3036cfb4e1705969b4fa8ccf5e28eac0fa6df598b81e020592d6a6041a9fd"))))
 
-  def createPredicate() = {
+  def createPredicate(assetRef: JD.AssetReference = assetRef) = {
     val (recipe, warnings) = JD.InstallRecipe.fromAssetReference(assetRef)
     val (usedPatternsBuilder, predicate) = recipe.makeAcceptancePredicate()
     predicate
@@ -179,6 +179,32 @@ class ExtractorSpec extends AnyWordSpec with Matchers {
         .extract(archiveFile.toIO, fallbackFilename = None, out, recipe, Some(Extractor.JarExtraction(jarsDir)), hints = None, stagingRoot = out)
 
       os.exists(out).shouldBe(false)
+    }
+
+    "not extract DLL with checksum error" in withSampleFiles { (in, out, files) =>
+      val wrappedArchive = new WrappedFolder(in)
+      val assetRef2 = assetRef.copy(withChecksum = Seq(JD.IncludeWithChecksum("h.dll", JD.Checksum.stringToBytes("0000000000000000000000000000000000000000000000000000000000000000"))))
+      intercept[Exception](
+        wrappedArchive.extractByPredicate(out, createPredicate(assetRef2), overwrite = true, flatten = false, CliLogger())
+      ) shouldBe a[error.ChecksumError]
+    }
+
+    "not extract DLL without checksum" in withSampleFiles { (in, out, files) =>
+      val wrappedArchive = new WrappedFolder(in)
+      val assetRef2 = assetRef.copy(withChecksum = Seq.empty, include = Seq("h.dll"))
+      wrappedArchive.extractByPredicate(out, createPredicate(assetRef2), overwrite = true, flatten = false, CliLogger())
+      os.exists(out).shouldBe(false)  // nothing matched, so out is not created
+    }
+
+    "not extract non-DBPF files" in withSampleFiles { (in, out, files) =>
+      val wrappedArchive = new WrappedFolder(in)
+      val assetRef2 = assetRef.copy(withChecksum = Seq.empty, include = Seq("readme.txt"))
+      wrappedArchive.extractByPredicate(out, createPredicate(assetRef2), overwrite = true, flatten = false, CliLogger())
+      os.exists(out).shouldBe(false)  // nothing matched, so out is not created
+    }
+
+    "not extract archive with checksum error" ignore {
+      // this is a property of the FileCache/Downloader, not the Extractor, so needs to be tested elsewhere
     }
 
   }
