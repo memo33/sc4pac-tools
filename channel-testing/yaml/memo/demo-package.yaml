@@ -8,12 +8,17 @@ assets:
 - assetId: "memo-demo-package-file-a-zip"
 - assetId: "memo-demo-package-file-b-dat"
 - assetId: "memo-demo-package-file-b-dll"
+  withChecksum:
+  - include: package-bFile.dll
+    sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
 
 ---
 assetId: "memo-demo-package-file-a-zip"
 version: "1.0"
 lastModified: "2023-07-29T21:33:56Z"
 url: "http://localhost:8090/files/package-aFile3.zip"
+checksum:
+  sha256: 3020ce725261efd11cbf8708f3fe1e655212116ce8e390845114a756af59246b
 
 ---
 assetId: "memo-demo-package-file-b-dat"

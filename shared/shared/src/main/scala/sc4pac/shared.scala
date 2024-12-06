@@ -46,6 +46,9 @@ abstract class SharedData {
   implicit val checksumRw: ReadWriter[Checksum]
   protected def emptyChecksum: Checksum
 
+  type IncludeWithChecksum
+  implicit val includeWithChecksumRw: ReadWriter[IncludeWithChecksum]
+
   implicit val bareModuleRw: ReadWriter[BareModule]
 
   case class Dependency(group: String, name: String, version: String) derives ReadWriter
@@ -53,7 +56,8 @@ abstract class SharedData {
   case class AssetReference(
     assetId: String,
     include: Seq[String] = Seq.empty,
-    exclude: Seq[String] = Seq.empty
+    exclude: Seq[String] = Seq.empty,
+    withChecksum: Seq[IncludeWithChecksum] = Seq.empty,
   ) derives ReadWriter
 
   case class VariantData(
@@ -102,8 +106,8 @@ abstract class SharedData {
     url: String,
     lastModified: Instant = null.asInstanceOf[Instant],
     archiveType: Option[ArchiveType] = None,
-    requiredBy: Seq[BareModule] = Seq.empty  // optional and only informative (mangles all variants and versions, is limited to one channel,
-                                             // can easily become outdated since json files are cached indefinitely)
+    requiredBy: Seq[BareModule] = Seq.empty,  // optional and only informative (mangles all variants and versions)
+    checksum: Checksum = emptyChecksum,
   ) extends PackageAsset /*derives ReadWriter*/ {
     def attributes: Map[String, String] = {
       val m = Map(Asset.urlKey -> url)

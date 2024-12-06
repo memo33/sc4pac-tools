@@ -198,7 +198,7 @@ trait UpdateService { this: Sc4pac =>
               hints = depAsset.archiveType,
               stagingRoot)
           // TODO catch IOExceptions
-          regexWarnings ++ recipe.usedPatternWarnings(usedPatterns)
+          regexWarnings ++ recipe.usedPatternWarnings(usedPatterns, id)
       }
     }
 
@@ -439,7 +439,6 @@ trait UpdateService { this: Sc4pac =>
 
 
 object Sc4pac {
-  val assetTypes = Set(Constants.sc4pacAssetType)
 
   case class UpdatePlan(toInstall: Set[Dep], toReinstall: Set[Dep], toRemove: Set[Dep]) {
     def isUpToDate: Boolean = toRemove.isEmpty && toReinstall.isEmpty && toInstall.isEmpty
