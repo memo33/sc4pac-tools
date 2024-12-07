@@ -148,7 +148,7 @@ object ChannelPage {
       if (pkg.variants.length == 1 && pkg.variants.head.variant.isEmpty)
         "None"
       else
-        H.ul(
+        H.ul(H.cls := "unstyled-list")(
           pkg.variants.map { vd =>
             H.li(variantFrag(vd.variant, pkg.variantDescriptions))
           }
@@ -161,12 +161,12 @@ object ChannelPage {
       .distinct
     add("Dependencies",
       if (deps.isEmpty) "None"
-      else H.ul(deps.map(dep => H.li(pkgNameFrag(dep))))
+      else H.ul(H.cls := "unstyled-list")(deps.map(dep => H.li(pkgNameFrag(dep))))
     )
 
     add("Required By",
       if (pkg.info.requiredBy.isEmpty) "None"
-      else H.ul(pkg.info.requiredBy.map(dep => H.li(pkgNameFrag(dep))))
+      else H.ul(H.cls := "unstyled-list")(pkg.info.requiredBy.map(dep => H.li(pkgNameFrag(dep))))
     )
 
     H.div(

@@ -23,7 +23,7 @@ a.btn:hover {
   background-color: #707070;
   text-decoration: none;
 }
-#pkginfo ul {
+ul.unstyled-list {
   list-style: none;
   margin: 0;
   padding: 0;
