@@ -255,6 +255,7 @@ trait UpdateService { this: Sc4pac =>
     ZIO.foreachDiscard(files) { (sub: os.SubPath) =>  // this runs sequentially
       val path = pluginsRoot / sub
       ZIO.attemptBlocking {
+        require(path != pluginsRoot, "subpath must not be empty")  // sanity check to avoid accidental deletion of entire plugins folder
         if (isDll(path) && os.isLink(path)) {
           os.remove(path, checkExists = false)
         } else if (os.exists(path)) {
