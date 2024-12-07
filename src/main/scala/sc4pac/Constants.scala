@@ -29,8 +29,8 @@ object Constants {
   // 2: DLL support and single-file assets
   // 3: rar support
   // 4: Clickteam installer support
-  // …: channel stats
-  val channelSchemeVersions: Range = 1 to 4  // supported versions
+  // 5: channel stats, external packages, replacement of `contents`
+  val channelSchemeVersions: Range = 1 to 5  // supported versions
 
   val bufferSizeExtract = 64 * 1024  // 64 kiB, bounded by disk speed
   val bufferSizeDownload = 1024 * 1024  // 1 MiB, bounded by download speed

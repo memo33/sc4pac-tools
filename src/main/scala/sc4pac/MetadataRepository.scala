@@ -48,7 +48,7 @@ sealed abstract class MetadataRepository(val baseUri: java.net.URI) {
 
   def fetchExternalPackage(module: BareModule, fetch: MetadataRepository.Fetch): zio.Task[Option[JD.ExternalPackage]]
 
-  def iterateChannelContents: Iterator[JD.ChannelItem]
+  def iterateChannelPackages: Iterator[JD.ChannelItem]
 }
 
 object MetadataRepository {
@@ -171,7 +171,7 @@ private class JsonRepository(
     }
   }
 
-  def iterateChannelContents: Iterator[JD.ChannelItem] = channel.contents.iterator
+  def iterateChannelPackages: Iterator[JD.ChannelItem] = channel.packages.iterator
 }
 
 /** This repository is read from a single YAML file. All its data is held in memory.
@@ -203,7 +203,7 @@ private class YamlRepository(
     ZIO.succeed(externalPackages.get(module))
   }
 
-  def iterateChannelContents: Iterator[JD.ChannelItem] = channel.contents.iterator
+  def iterateChannelPackages: Iterator[JD.ChannelItem] = channel.packages.iterator
 }
 
 private class YamlChannelBuilder extends ChannelBuilder[Nothing] {

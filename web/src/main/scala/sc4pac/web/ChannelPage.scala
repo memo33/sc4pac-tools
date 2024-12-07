@@ -169,7 +169,7 @@ object ChannelPage {
   }
 
   def channelContentsFrag(channel: JsonData.Channel, displayCategory: Option[String]) = {
-    val items = channel.contents
+    val items = channel.packages
     val categories: Seq[JsonData.Channel.CategoryItem] = channel.stats.categories
     val displayCategory2 = displayCategory.filter(c => categories.exists(_.category == c))
 
@@ -180,7 +180,7 @@ object ChannelPage {
       H.h2("sc4pac Channel"),
       H.p("This is the default channel of ",
         H.a(H.href := sc4pacUrl)(H.code("sc4pac")),
-        s". Currently, there are ${items.count(!_.isSc4pacAsset)} packages you can install."
+        s". Currently, there are ${items.size} packages you can install."
       ),
       H.form(
         H.label(H.`for` := "category")("Category:"),

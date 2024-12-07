@@ -68,17 +68,17 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) extends Upda
     }
   }
 
-  val iterateAllChannelContents: Task[Iterator[JD.ChannelItem]] = ZIO.attempt { context.repositories.iterator.flatMap(_.iterateChannelContents) }
+  val iterateAllChannelPackages: Task[Iterator[JD.ChannelItem]] = ZIO.attempt { context.repositories.iterator.flatMap(_.iterateChannelPackages) }
 
   /** Fuzzy-search across all repositories.
     * The selection of results is ordered in descending order and includes the
     * module, the relevance ratio and the description.
     */
-  def search(query: String, threshold: Int): Task[Seq[(BareModule, Int, Option[String])]] = iterateAllChannelContents.map { itemsIter =>
+  def search(query: String, threshold: Int): Task[Seq[(BareModule, Int, Option[String])]] = iterateAllChannelPackages.map { itemsIter =>
     val results: Seq[(BareModule, Int, Option[String])] =
       itemsIter.flatMap { item =>
         if (item.isSc4pacAsset) {
-          None
+          assert(false, "iteration should not include any assets")  // None
         } else {
           // TODO reconsider choice of search algorithm
           val ratio = me.xdrop.fuzzywuzzy.FuzzySearch.tokenSetRatio(query, item.toSearchString)

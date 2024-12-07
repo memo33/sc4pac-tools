@@ -215,32 +215,43 @@ abstract class SharedData {
     scheme: Int,
     info: Channel.Info = Channel.Info.empty,
     stats: Channel.Stats = null,  // added between scheme 4 and 5 (backward compatible: recomputed for smaller schemes, so never actually null)
-    contents: Seq[ChannelItem],
+    packages: Seq[ChannelItem] = Seq.empty,  // since scheme 5
+    assets: Seq[ChannelItem] = Seq.empty,  // since scheme 5
     externalPackages: Seq[Channel.ExtPkg] = Seq.empty,  // default for backward compatibility
     externalAssets: Seq[Channel.ExtAsset] = Seq.empty,  // default for backward compatibility
+    @deprecated("use packages or assets instead", since = "0.5.0")
+    contents: Seq[ChannelItem] = Seq.empty,  // TODO remove after deprecation, scheme <= 4
   ) {
     lazy val versions: Map[BareDep, Seq[(String, Checksum)]] =
-      contents.iterator.map(item => item.toBareDep -> item.versions.map(v => v -> item.checksums.getOrElse(v, emptyChecksum))).toMap
+      (packages.iterator ++ assets).map(item => item.toBareDep -> item.versions.map(v => v -> item.checksums.getOrElse(v, emptyChecksum))).toMap
   }
   object Channel {
 
     private val channelRwDefault: ReadWriter[Channel] = macroRW
     implicit val channelRw: ReadWriter[Channel] =
-      channelRwDefault.bimap[Channel](identity, c => if (c.stats != null) c else createAddStats(c.scheme, c.info, c.contents, c.externalPackages, c.externalAssets))
+      channelRwDefault.bimap[Channel](identity, { c0 =>
+        var c = c0
+        if (c.contents.nonEmpty) {
+          val (assets, packages) = c.contents.iterator.partition(_.isSc4pacAsset)
+          c = c.copy(contents = Seq.empty, packages = packages.toSeq, assets = assets.toSeq)
+        }
+        if (c.stats != null) c else createAddStats(c.scheme, c.info, packages = c.packages, assets = c.assets, c.externalPackages, c.externalAssets)
+      })
 
     /* recomputes the channel stats */
     def createAddStats(
       scheme: Int,
       info: Channel.Info,
-      contents: Seq[ChannelItem],
+      packages: Seq[ChannelItem],
+      assets: Seq[ChannelItem],
       externalPackages: Seq[Channel.ExtPkg],
       externalAssets: Seq[Channel.ExtAsset],
     ): Channel = {
       val m = collection.mutable.Map.empty[String, Int]
-      for (item <- contents; cat <- item.category) {
+      for (item <- packages; cat <- item.category) {
         m(cat) = m.getOrElse(cat, 0) + 1
       }
-      Channel(scheme, info, Stats.fromMap(m), contents = contents, externalPackages, externalAssets)
+      Channel(scheme, info, Stats.fromMap(m), packages = packages, assets = assets, externalPackages, externalAssets)
     }
 
     val externalIdStex = "stex"
@@ -265,7 +276,7 @@ abstract class SharedData {
       externalPackages: Seq[Channel.ExtPkg],
       externalAssets: Seq[Channel.ExtAsset],
     ): Channel = {
-      createAddStats(scheme, info, contents = channelData.iterator.collect {
+      val (assets, packages) = channelData.iterator.collect {
         case (dep, versions) if versions.nonEmpty =>
           val (g, n) = dep match {
             case m: BareModule => (m.group.value, m.name.value)
@@ -282,7 +293,8 @@ abstract class SharedData {
             summary = summaryOpt.getOrElse(""),
             category = catOpt,
           )
-      }.toSeq, externalPackages, externalAssets)
+      }.partition(_.isSc4pacAsset)
+      createAddStats(scheme, info, packages = packages.toSeq, assets = assets.toSeq, externalPackages, externalAssets)
     }
 
     case class CategoryItem(category: String, count: Int) derives ReadWriter

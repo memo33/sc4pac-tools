@@ -8,6 +8,10 @@
 - A few channel stats have been added to channel JSON file, such as which categories contain how many packages.
 
 
+### Changed
+- The `contents` array of the channel JSON file has been split into new `packages` and `assets` fields.
+
+
 ## [0.4.5] - 2024-10-17
 ### Fixed
 - an extraction failure affecting Clickteam exe installers containing files in subfolders

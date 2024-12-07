@@ -239,7 +239,7 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
         for {
           pluginsData <- readPluginsOr409
           pac         <- Sc4pac.init(pluginsData.config)
-          itemsIter   <- pac.iterateAllChannelContents
+          itemsIter   <- pac.iterateAllChannelPackages
         } yield jsonResponse(itemsIter.flatMap(item => item.toBareDep match {
           case mod: BareModule => item.versions.map { version => ChannelContentsItem(mod, version = version, summary = item.summary, category = item.category) }
           case _: BareAsset => Nil

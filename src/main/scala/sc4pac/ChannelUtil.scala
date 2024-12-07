@@ -117,7 +117,7 @@ object ChannelUtil {
       }
 
       // create symlinks for latest versions
-      channel.contents.foreach { item =>
+      (channel.packages.iterator ++ channel.assets).foreach { item =>
         val latest = item.versions.map(coursier.core.Version(_)).max
         val link = tempJsonDir / MetadataRepository.latestSubPath(item.group, item.name)
         val linkTarget = os.rel / latest.repr
@@ -145,7 +145,7 @@ object ChannelUtil {
       // move the temp folder to its final destination.
       os.move.over(tempJsonDir / "metadata", outputDir / "metadata", createFolders = true)
       os.move.over(tempJsonDir / JsonRepoUtil.channelContentsFilename, outputDir / JsonRepoUtil.channelContentsFilename, createFolders = true)
-      System.err.println(s"Successfully wrote channel contents of ${channel.contents.size} packages and assets.")
+      System.err.println(s"Successfully wrote channel contents of ${channel.packages.size} packages and ${channel.assets.size} assets.")
     })
 
     val packagesTask: RIO[JD.Channel.Info, Seq[JD.PackageAsset]] =
@@ -253,7 +253,10 @@ trait ChannelBuilder[+E] {
         extPkgs.sortBy(i => (i.group, i.name)),
         extAssets.sortBy(i => i.assetId),
       )
-      channel.copy(contents = channel.contents.sortBy(item => (item.group, item.name)))
+      channel.copy(
+        packages = channel.packages.sortBy(item => (item.group, item.name)),
+        assets = channel.assets.sortBy(item => (item.group, item.name)),
+      )
     }
   }
 }

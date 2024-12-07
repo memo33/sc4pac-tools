@@ -77,12 +77,20 @@ url: dummy
       val repos = yamlFiles.map(path =>
         unsafeRun(MetadataRepository.create(path, path.toNIO.toUri())))
 
-      repos(0).channel.contents
+      repos(0).channel.contents should have length 0  // replaced by packages and assets
+
+      repos(0).channel.packages
         .map(_.toBareDep.orgName)
         .toSet
         .shouldBe(Set(
           "test:pkg1",
           "test:pkg2",
+        ))
+
+      repos(0).channel.assets
+        .map(_.toBareDep.orgName)
+        .toSet
+        .shouldBe(Set(
           s"${Constants.sc4pacAssetOrg.value}:asset1",
           s"${Constants.sc4pacAssetOrg.value}:asset2",
         ))
@@ -99,7 +107,7 @@ url: dummy
       repos(1).channel.externalAssets should have length 0
 
       val logger = CliLogger()
-      val cache = FileCache((tmpDir / "cache").toIO, logger, Sc4pac.createThreadPool())
+      val cache = FileCache((tmpDir / "cache").toIO, logger, coursier.cache.internal.ThreadUtil.fixedThreadPool(size = 2))  // TODO replace by Sc4pac.createThreadPool
       val context = new ResolutionContext(repos, cache, logger, tmpDir / "profile")
       val layer = zio.ZLayer.succeed(context)
       import JsonData.bareModuleRw
