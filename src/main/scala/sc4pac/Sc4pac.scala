@@ -68,7 +68,7 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) extends Upda
     }
   }
 
-  val iterateAllChannelContents: Task[Iterator[JD.ChannelItem]] = ZIO.attempt { context.repositories.iterator.flatMap(_.iterateChannelContents) }
+  val iterateAllChannelPackages: Task[Iterator[JD.ChannelItem]] = ZIO.attempt { context.repositories.iterator.flatMap(_.iterateChannelPackages) }
 
   /** Fuzzy-search across all repositories.
     * The selection of results is ordered in descending order and includes the
@@ -76,13 +76,13 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) extends Upda
     * If a STEX/SC4E URL is searched, packages with matching external ID are returned.
     * Api.searchPlugins implements a similar function and should use the same algorithm.
     */
-  def search(query: String, threshold: Int, category: Option[String]): Task[Seq[(BareModule, Int, Option[String])]] = iterateAllChannelContents.map { itemsIter =>
+  def search(query: String, threshold: Int, category: Option[String]): Task[Seq[(BareModule, Int, Option[String])]] = iterateAllChannelPackages.map { itemsIter =>
     val externalIdOpt: Option[(String, String)] = JD.Channel.findExternalId(url = query)
     val searchTokens = Sc4pac.fuzzySearchTokenize(query)
     val results: Seq[(BareModule, Int, Option[String])] =
       itemsIter.flatMap { item =>
         if (item.isSc4pacAsset) {
-          None
+          assert(false, "iteration should not include any assets")  // None
         } else if (category.isDefined && item.category != category) {
           None
         } else {
@@ -452,7 +452,7 @@ trait UpdateService { this: Sc4pac =>
     // TODO catch coursier.error.ResolutionError$CantDownloadModule (e.g. when json files have syntax issues)
     val updateTask = for {
       pluginsLockData1 <- JD.PluginsLock.readOrInit
-      pluginsLockData <- JD.PluginsLock.upgradeFromScheme1(pluginsLockData1, iterateAllChannelContents, logger, pluginsRoot)
+      pluginsLockData <- JD.PluginsLock.upgradeFromScheme1(pluginsLockData1, iterateAllChannelPackages, logger, pluginsRoot)
       (resolution, globalVariant) <- doPromptingForVariant(globalVariant0)(Resolution.resolve(modules, _))
       plan            =  UpdatePlan.fromResolution(resolution, installed = pluginsLockData.dependenciesWithAssets)
       continue        <- ZIO.serviceWithZIO[Prompter](_.confirmUpdatePlan(plan))

@@ -207,7 +207,7 @@ object JsonData extends SharedData {
   object PluginsLock {
 
     // called during update task, where PluginsLock file is written
-    private[sc4pac] def upgradeFromScheme1(data: PluginsLock, iterateAllChannelContents: Task[Iterator[ChannelItem]], logger: Logger, pluginsRoot: os.Path): Task[PluginsLock] = {
+    private[sc4pac] def upgradeFromScheme1(data: PluginsLock, iterateAllChannelPackages: Task[Iterator[ChannelItem]], logger: Logger, pluginsRoot: os.Path): Task[PluginsLock] = {
       if (data.scheme != 1) {
         ZIO.succeed(data)
       } else {
@@ -218,7 +218,7 @@ object JsonData extends SharedData {
             .map(path => java.time.Instant.ofEpochMilli(os.mtime(path)).truncatedTo(ChronoUnit.SECONDS))
         }
         for {
-          channelItems    <- iterateAllChannelContents
+          channelItems    <- iterateAllChannelPackages
           channelItemsMap =  channelItems.map(item => item.toBareDep -> item).toMap
           installed       <- ZIO.foreach(data.installed) { inst =>
                                channelItemsMap.get(inst.toBareModule) match {
