@@ -71,11 +71,12 @@ package object sc4pac {
   /** Directory containing all the profiles. */
   class ProfilesDir(val path: os.Path)
 
-  case class Artifact(
-    url: String,
-    changing: Boolean = false,  // if true, redownload local artifact after exceeding time-to-live (ttl)
-    lastModified: Option[java.time.Instant] = None,  // redownload local artifact if older than that
-    checksum: JsonData.Checksum = JsonData.Checksum.empty,  // redownload local artifact if remote checksum does not match anymore
+  class Artifact(
+    val url: String,
+    val changing: Boolean = false,  // if true, redownload local artifact after exceeding time-to-live (ttl)
+    val lastModified: Option[java.time.Instant] = None,  // redownload local artifact if older than that
+    val checksum: JsonData.Checksum = JsonData.Checksum.empty,  // redownload local artifact if remote checksum does not match anymore
+    val redownloadOnChecksumError: Boolean = true,  // otherwise fail
   )
 
 }

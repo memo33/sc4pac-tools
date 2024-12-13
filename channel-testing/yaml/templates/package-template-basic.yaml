@@ -12,6 +12,13 @@ lastModified: "2023-07-29T21:33:57Z"
 # The direct download link to the artifact (supports zip files, jar files, and jar, zip, 7z or NSIS exe files contained in zip files)
 url: "http://localhost:8090/files/package-d.zip"
 
+# Optional download URL for latest version, if `url` links to a specific fixed version
+# nonPersistentUrl: "…"
+
+# Optional checksum for file integrity check (e.g. for downloads without https)
+# checksum:
+#   sha256: ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+
 # Assets containing a Clickteam exe-installer need to include this `archiveType` section with the correct installer version number:
 # archiveType:
 #   format: Clickteam
@@ -39,28 +46,40 @@ assets:  # Optional list of assets from which to extract files (zero or more)
   # (starting with and separated by _forward_ slashes for platform independence).
   # Note that special characters need to be escaped: \.[]{}()<>*+-=!?^$| (see https://docs.oracle.com/javase/8/docs/api/java/util/regex/Pattern.html).
   # The matching is case-insensitive for file-system independence.
-  # By default, every plugin file is included (.dat/.sc4model/.sc4lot/.sc4desc/.sc4/.dll).
+  # By default, every plugin file is included (.dat/.sc4model/.sc4lot/.sc4desc/.sc4).
   include:
   - "/folder/file1.dat"
   - "/folder2/"
   - "/file3.*"
   - "^/full/path/to/file4\\.dat$"
   # Optional RegEx exclude patterns tested after includes.
-  # If absent or empty, then by default all file types other than .dat/.sc4model/.sc4lot/.sc4desc/.sc4/.dll are excluded.
+  # If absent or empty, then by default all file types other than .dat/.sc4model/.sc4lot/.sc4desc/.sc4 are excluded.
   exclude: []
+  # DLL files must define a matching checksum like this:
+  # withChecksum:
+  # - include: "/magic.dll"
+  #   sha256: ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
 
 # Additional descriptive information, entirely optional.
 info:
   summary: "One-line summary"
-  warning: >
+  warning: |
     Special instructions to display before installation, such as bulldozing requirements.
   conflicts: "Notes about incompatibilities"
-  description: >
+  description: |
     Longer text with some details.
 
     Yet more text…
 
-    Use syntax `pkg=group:name` to reference packages in description text.
+    Use the syntax `pkg=group:name` to reference packages in description text.
+
+    ### Markdown
+
+    Common **Markdown** syntaxes like *emphasis*, [URLs](https://memo33.github.io/sc4pac/)
+    or lists are supported:
+    - one
+    - two
+    - three
   author: ""  # original author of the content, if useful
   images: [ "img1.png", "img2.png" ]
   website: "example.org"

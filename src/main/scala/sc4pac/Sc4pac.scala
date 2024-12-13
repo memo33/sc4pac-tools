@@ -233,7 +233,7 @@ trait UpdateService { this: Sc4pac =>
                                 }
           } yield {
             // TODO catch IOExceptions
-            regexWarnings ++ recipe.usedPatternWarnings(usedPatterns)
+            regexWarnings ++ recipe.usedPatternWarnings(usedPatterns, id)
           }
       }
     }
@@ -291,6 +291,7 @@ trait UpdateService { this: Sc4pac =>
     ZIO.foreachDiscard(files) { (sub: os.SubPath) =>  // this runs sequentially
       val path = pluginsRoot / sub
       ZIO.attemptBlocking {
+        require(path != pluginsRoot, "subpath must not be empty")  // sanity check to avoid accidental deletion of entire plugins folder
         if (isDll(path) && os.isLink(path)) {
           os.remove(path, checkExists = false)
         } else if (os.exists(path)) {
@@ -478,7 +479,6 @@ trait UpdateService { this: Sc4pac =>
 
 
 object Sc4pac {
-  val assetTypes = Set(Constants.sc4pacAssetType)
 
   case class UpdatePlan(toInstall: Set[Dep], toReinstall: Set[Dep], toRemove: Set[Dep]) {
     def isUpToDate: Boolean = toRemove.isEmpty && toReinstall.isEmpty && toInstall.isEmpty

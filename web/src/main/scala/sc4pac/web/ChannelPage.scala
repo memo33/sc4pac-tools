@@ -26,6 +26,8 @@ object JsonData extends SharedData {
   protected def emptyChecksum = Map.empty
   opaque type Uri = String
   val uriRw = UP.readwriter[String]
+  opaque type IncludeWithChecksum = Map[String, String]
+  val includeWithChecksumRw = UP.readwriter[Map[String, String]]
 
   private val regexModule = """([^:\s]+):([^:\s]+)""".r
   def parseModule(pkgName: String): Either[String, BareModule] =
@@ -36,6 +38,26 @@ object JsonData extends SharedData {
 
   val bareModuleRw: UP.ReadWriter[BareModule] = UP.readwriter[String].bimap[BareModule](_.orgName,
     parseModule(_).left.map(e => throw new IllegalArgumentException(e)).merge)
+}
+
+@js.native
+@js.annotation.JSGlobal
+object DOMPurify extends js.Object {
+  def sanitize(text: String): String = js.native
+}
+
+@js.native
+@js.annotation.JSGlobal("marked")
+object Marked extends js.Object {
+  def parse(text: String): String = js.native
+  def use(extensions: js.Any*): Unit = js.native
+}
+
+@js.native
+trait TokensCodespan extends js.Object {  // see https://github.com/markedjs/marked/blob/7e4e3435eaca2b0f48f5aedb53d67a36170086f3/src/Tokens.ts#L57
+  val `type`: String  // "codespan"
+  val raw: String  // with quotes
+  val text: String  // without quotes
 }
 
 object ChannelPage {
@@ -89,20 +111,15 @@ object ChannelPage {
     else H.code(module.orgName)
 
   /** Highlights syntax `pkg=group:name` in metadata description text. */
-  def applyMarkdownPkg(line: String): H.Frag = {
-    val builder = Seq.newBuilder[H.Frag]
-    var idx = 0
-    for (m <- BareModule.pkgMarkdownRegex.findAllMatchIn(line)) {
-      if (idx < m.start) {
-        builder += line.substring(idx, m.start)
-      }
-      builder += pkgNameFrag(BareModule(Organization(m.group(1)), ModuleName(m.group(2))), link = true)
-      idx = m.end
-    }
-    if (idx < line.length) {
-      builder += line.substring(idx, line.length)
-    }
-    builder.result()
+  def renderCodespan(codespan: TokensCodespan): String = codespan.raw match
+    case BareModule.pkgMarkdownRegex(group, name) =>
+      val module = BareModule(Organization(group), ModuleName(name))
+      // a raw re-implementation of pkgNameFrag
+      s"""<code class="code-left">${module.group.value}:</code><a href="?pkg=${module.orgName}"><code class="code-right">${module.name.value}</code></a>"""
+    case _ => s"<code>${codespan.text}</code>"
+
+  def markdownFrag(text: String): H.Frag = {
+    H.raw(DOMPurify.sanitize(Marked.parse(text)))
   }
 
   def pkgInfoFrag(pkg: JsonData.Package) = {
@@ -110,17 +127,16 @@ object ChannelPage {
     val b = Seq.newBuilder[H.Frag]
     def add(label: String, child: H.Frag): Unit =
       b += H.tr(H.th(label), H.td(child))
-    def mkPar(text: String) = text.trim.linesIterator.map(line => H.p(applyMarkdownPkg(line))).toSeq
 
     // add("Name", pkg.name)
     // add("Group", pkg.group)
     add("Version", pkg.version)
-    add("Summary", if (pkg.info.summary.nonEmpty) applyMarkdownPkg(pkg.info.summary) else "-")
+    add("Summary", if (pkg.info.summary.nonEmpty) markdownFrag(pkg.info.summary) else "-")
     if (pkg.info.description.nonEmpty)
-      add("Description", mkPar(pkg.info.description))
+      add("Description", markdownFrag(pkg.info.description))
     if (pkg.info.warning.nonEmpty)
-      add("Warning", mkPar(pkg.info.warning))
-    add("Conflicts", if (pkg.info.conflicts.isEmpty) "None" else mkPar(pkg.info.conflicts))
+      add("Warning", markdownFrag(pkg.info.warning))
+    add("Conflicts", if (pkg.info.conflicts.isEmpty) "None" else markdownFrag(pkg.info.conflicts))
     if (pkg.info.author.nonEmpty)
       add("Author", pkg.info.author)
     if (pkg.info.website.nonEmpty) {
@@ -135,7 +151,7 @@ object ChannelPage {
       if (pkg.variants.length == 1 && pkg.variants.head.variant.isEmpty)
         "None"
       else
-        H.ul(
+        H.ul(H.cls := "unstyled-list")(
           pkg.variants.map { vd =>
             H.li(variantFrag(vd.variant, pkg.variantDescriptions))
           }
@@ -148,12 +164,12 @@ object ChannelPage {
       .distinct
     add("Dependencies",
       if (deps.isEmpty) "None"
-      else H.ul(deps.map(dep => H.li(pkgNameFrag(dep))))
+      else H.ul(H.cls := "unstyled-list")(deps.map(dep => H.li(pkgNameFrag(dep))))
     )
 
     add("Required By",
       if (pkg.info.requiredBy.isEmpty) "None"
-      else H.ul(pkg.info.requiredBy.map(dep => H.li(pkgNameFrag(dep))))
+      else H.ul(H.cls := "unstyled-list")(pkg.info.requiredBy.map(dep => H.li(pkgNameFrag(dep))))
     )
 
     H.div(
@@ -196,7 +212,7 @@ object ChannelPage {
       H.table(H.id := "channelcontents")(H.tbody(items.flatMap { item =>
         if (displayCategory2.isEmpty || item.category == displayCategory2) {  // either show all or filter by category
           item.toBareDep match
-            case mod: BareModule => Some(H.tr(H.td(pkgNameFrag(mod, link = true)), H.td(applyMarkdownPkg(item.summary))))
+            case mod: BareModule => Some(H.tr(H.td(pkgNameFrag(mod, link = true)), H.td(markdownFrag(item.summary))))
             case _: BareAsset => None
         } else {
           None
@@ -206,6 +222,7 @@ object ChannelPage {
   }
 
   def setupUI(): Unit = {
+    Marked.use(js.Dictionary("renderer" -> js.Dictionary("codespan" -> (renderCodespan: js.Function))))
     val urlParams = new dom.URLSearchParams(dom.window.location.search)
     val pkgName = urlParams.get("pkg")
     if (pkgName == null) {
