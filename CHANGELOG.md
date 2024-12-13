@@ -10,8 +10,10 @@
 - improved error message if channel-build fails randomly in case old files could not be removed (#6)
 - improved `sc4pac` bash script to allow symlinking into path on Linux/macOS
 - The progress spinner animation was switched to ASCII symbols for compatibility with non-Unicode fonts in some terminals.
-- The metadata text fields like `description` etc. are now rendered as Markdown.
+- The metadata text fields `description` etc. are now rendered as Markdown (#14, #15).
   For correct text wrapping, multiline text blocks should start with `|` instead of `>`, from now on.
+- Installing DLLs now requires a checksum (#13, #17). Only DBPF files can be installed without checksum.
+  New fields `withChecksum`, `checksum` and `nonPersistentUrl` have been added to the metadata.
 
 
 ## [0.4.5] - 2024-10-17
