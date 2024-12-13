@@ -43,7 +43,7 @@ class WebSocketLogger private (private[api] val queue: java.util.concurrent.Link
     sendMessageAsync(ProgressMessage.DownloadLength(url, length = len))
 
   override def downloadProgress(url: String, downloaded: Long): Unit =
-    sendMessageAsync(ProgressMessage.DownloadDownloaded(url, downloaded = downloaded))
+    sendMessageAsync(ProgressMessage.DownloadIntermediate(url, downloaded = downloaded))
 
   override def downloadedArtifact(url: String, success: Boolean): Unit =
     sendMessageAsync(ProgressMessage.DownloadFinished(url, success))

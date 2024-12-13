@@ -125,8 +125,8 @@ object ProgressMessage {
   @upickle.implicits.key("/progress/download/length")
   case class DownloadLength(url: String, length: Long) extends ProgressMessage derives UP.ReadWriter
 
-  @upickle.implicits.key("/progress/download/downloaded")
-  case class DownloadDownloaded(url: String, downloaded: Long) extends ProgressMessage derives UP.ReadWriter
+  @upickle.implicits.key("/progress/download/intermediate")
+  case class DownloadIntermediate(url: String, downloaded: Long) extends ProgressMessage derives UP.ReadWriter
 
   @upickle.implicits.key("/progress/download/finished")
   case class DownloadFinished(url: String, success: Boolean) extends ProgressMessage derives UP.ReadWriter

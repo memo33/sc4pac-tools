@@ -362,7 +362,7 @@ Messages sent:
 - for each download (in parallel):
   - `/progress/download/started` once
   - `/progress/download/length` at most once (if the file size is known)
-  - `/progress/download/downloaded` multiple times to inform about the download progress
+  - `/progress/download/intermediate` multiple times to inform about the download progress
   - `/progress/download/finished` once
 - `/progress/update/extraction` for each package installed
 - `/prompt/confirmation/update/warnings` once (if the warnings are empty, you can accept without user input)
@@ -428,7 +428,7 @@ The `responses` field contains the valid response message objects to send back t
 ```
 { "$type": "/progress/download/started", "url": string }
 { "$type": "/progress/download/length", "url": string, "length": "Long (or string if > 2^53)" }
-{ "$type": "/progress/download/downloaded", "url": string, "downloaded": "Long (or string if > 2^53)" }
+{ "$type": "/progress/download/intermediate", "url": string, "downloaded": "Long (or string if > 2^53)" }
 { "$type": "/progress/download/finished", "url": string, "success": boolean }
 ```
 
