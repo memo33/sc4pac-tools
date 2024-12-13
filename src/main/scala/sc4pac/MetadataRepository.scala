@@ -142,7 +142,7 @@ private class JsonRepository(
         // `requiredBy` can change, so we redownload them once the checksum stops matching.
         // (For local channels, there's no need to verify checksums as the local
         // channel files are always up-to-date and Downloader .checked files do not exist.)
-        val jsonArtifact = Artifact(remoteUrl, changing = false, checksum = checksum)
+        val jsonArtifact = Artifact(remoteUrl, changing = false, checksum = checksum, redownloadOnChecksumError = true)
 
         fetch(jsonArtifact)
           .flatMap((jsonStr: String) => JsonIo.read[A](jsonStr, errMsg = remoteUrl))

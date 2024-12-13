@@ -55,8 +55,10 @@ object ChannelUtil {
     url: String,
     lastModified: java.time.Instant = null,
     archiveType: JD.ArchiveType = null,
+    checksum: JD.Checksum = JD.Checksum.empty,
   ) derives ReadWriter {  // the difference to JD.Asset is that JD.Asset is part of a sealed trait requiring a `$type` field
-    def toAsset = JD.Asset(assetId = assetId, version = version, url = url, lastModified = lastModified, archiveType = Option(archiveType), requiredBy = Nil)
+    def toAsset = JD.Asset(assetId = assetId, version = version, url = url, lastModified = lastModified,
+      archiveType = Option(archiveType), requiredBy = Nil, checksum = checksum)
   }
 
   private def parseCirceJson[A : Reader](j: Json): IO[upickle.core.Abort | IllegalArgumentException, A] = {

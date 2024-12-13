@@ -56,25 +56,25 @@ class ExtractorSpec extends AnyWordSpec with Matchers {
 
   def createSampleFiles(in: os.Path): Seq[os.Path] = {
     val files = Seq(
-      in / "common" / "prefix" / "a.SC4Model",
-      in / "common" / "prefix" / "b" / "dollars$$ and spaces.SC4Lot",
-      in / "common" / "prefix" / "c" / "c" / "c.SC4Lot",
-      in / "common" / "prefix" / "c" / "d" / "d.SC4Lot",
-      in / "common" / "prefix" / "c" / "e.SC4Model",
-      in / "common" / "prefix" / "c" / "f.SC4Desc",
-      in / "common" / "prefix" / "c" / "g.dat",
-      in / "common" / "prefix" / "c" / "h.dll",
+      in / "common" / "prefix" / "a.SC4Model" -> "DBPF dummy",
+      in / "common" / "prefix" / "b" / "dollars$$ and spaces.SC4Lot" -> "DBPF dummy",
+      in / "common" / "prefix" / "c" / "c" / "c.SC4Lot" -> "DBPF dummy",
+      in / "common" / "prefix" / "c" / "d" / "d.SC4Lot" -> "DBPF dummy",
+      in / "common" / "prefix" / "c" / "e.SC4Model" -> "DBPF dummy",
+      in / "common" / "prefix" / "c" / "f.SC4Desc" -> "DBPF dummy",
+      in / "common" / "prefix" / "c" / "g.dat" -> "DBPF dummy",
+      in / "common" / "prefix" / "c" / "h.dll" -> "MZ dll dummy",
     )
     val ignoredFiles = Seq(
-      in / "readme.txt",
-      in / "common" / "readme.md",
-      in / "common" / "prefix" / "license",
+      in / "readme.txt" -> "dummy",
+      in / "common" / "readme.md" -> "dummy",
+      in / "common" / "prefix" / "license" -> "dummy",
     )
-    for (f <- (files ++ ignoredFiles)) {
+    for ((f, content) <- (files ++ ignoredFiles)) {
       os.makeDir.all(f / os.up)
-      os.write(f, "dummy")
+      os.write(f, content)
     }
-    files
+    files.map(_._1)
   }
 
   def withSampleFiles(testCode: (os.Path, os.Path, Seq[os.Path]) => Any): Any = withTempDir { (tmpDir) =>
@@ -84,8 +84,10 @@ class ExtractorSpec extends AnyWordSpec with Matchers {
     testCode(in, out, files)
   }
 
-  def createPredicate() = {
-    val (recipe, warnings) = JD.InstallRecipe.fromAssetReference(JD.AssetReference("dummy"))
+  val assetRef = JD.AssetReference("dummy", withChecksum = Seq(JD.IncludeWithChecksum("h.dll", JD.Checksum.stringToBytes("07a3036cfb4e1705969b4fa8ccf5e28eac0fa6df598b81e020592d6a6041a9fd"))))
+
+  def createPredicate(assetRef: JD.AssetReference = assetRef) = {
+    val (recipe, warnings) = JD.InstallRecipe.fromAssetReference(assetRef)
     val (usedPatternsBuilder, predicate) = recipe.makeAcceptancePredicate()
     predicate
   }
@@ -150,7 +152,7 @@ class ExtractorSpec extends AnyWordSpec with Matchers {
         val jarsDir = in / os.up / "jars"
         os.makeDir.all(jarsDir)
 
-        val recipe = JD.InstallRecipe.fromAssetReference(JD.AssetReference("dummy"))._1
+        val recipe = JD.InstallRecipe.fromAssetReference(assetRef)._1
         Extractor(CliLogger())
           .extract(archiveFile.toIO, fallbackFilename = None, out, recipe, Some(Extractor.JarExtraction(jarsDir)), hints = None, stagingRoot = out)
 
@@ -172,11 +174,37 @@ class ExtractorSpec extends AnyWordSpec with Matchers {
       val jarsDir = in / os.up / "jars"
       os.makeDir.all(jarsDir)
 
-      val recipe = JD.InstallRecipe.fromAssetReference(JD.AssetReference("dummy"))._1
+      val recipe = JD.InstallRecipe.fromAssetReference(assetRef)._1
       Extractor(CliLogger())
         .extract(archiveFile.toIO, fallbackFilename = None, out, recipe, Some(Extractor.JarExtraction(jarsDir)), hints = None, stagingRoot = out)
 
       os.exists(out).shouldBe(false)
+    }
+
+    "not extract DLL with checksum error" in withSampleFiles { (in, out, files) =>
+      val wrappedArchive = new WrappedFolder(in)
+      val assetRef2 = assetRef.copy(withChecksum = Seq(JD.IncludeWithChecksum("h.dll", JD.Checksum.stringToBytes("0000000000000000000000000000000000000000000000000000000000000000"))))
+      intercept[Exception](
+        wrappedArchive.extractByPredicate(out, createPredicate(assetRef2), overwrite = true, flatten = false, CliLogger())
+      ) shouldBe a[error.ChecksumError]
+    }
+
+    "not extract DLL without checksum" in withSampleFiles { (in, out, files) =>
+      val wrappedArchive = new WrappedFolder(in)
+      val assetRef2 = assetRef.copy(withChecksum = Seq.empty, include = Seq("h.dll"))
+      wrappedArchive.extractByPredicate(out, createPredicate(assetRef2), overwrite = true, flatten = false, CliLogger())
+      os.exists(out).shouldBe(false)  // nothing matched, so out is not created
+    }
+
+    "not extract non-DBPF files" in withSampleFiles { (in, out, files) =>
+      val wrappedArchive = new WrappedFolder(in)
+      val assetRef2 = assetRef.copy(withChecksum = Seq.empty, include = Seq("readme.txt"))
+      wrappedArchive.extractByPredicate(out, createPredicate(assetRef2), overwrite = true, flatten = false, CliLogger())
+      os.exists(out).shouldBe(false)  // nothing matched, so out is not created
+    }
+
+    "not extract archive with checksum error" ignore {
+      // this is a property of the FileCache/Downloader, not the Extractor, so needs to be tested elsewhere
     }
 
   }

@@ -72,17 +72,19 @@ class FileCache private (
     * - absent, or
     * - changing and outdated (according to ttl of cache), or
     * - non-changing and the remote lastModified timestamp is newer than the local file, or
-    * - expected checksum is given and does not match local file.
-    * Otherwise, return local file.
+    * - expected checksum is given and does not match local file and redownload allowed(json: yes, asset: no).
+    *
+    * Otherwise, return local file, potentially failing with a checksum error.
     */
   def file(artifact: Artifact): IO[CC.ArtifactError, java.io.File] = {
-    def task0: IO[CC.ArtifactError, java.io.File] = {
+    val task0: IO[CC.ArtifactError, java.io.File] = ZIO.succeed {
       val destFile = localFile(artifact.url)
+      lazy val destFileChecksumVerified = verifyChecksum(destFile, artifact)
       ZIO.ifZIO(ZIO.attemptBlockingIO(
           !destFile.exists()
           || artifact.changing && isStale(destFile)
           || artifact.lastModified.exists(remoteModificationDate => isOlderThan(destFile, remoteModificationDate))
-          || verifyChecksum(destFile, artifact).isLeft
+          || artifact.redownloadOnChecksumError && destFileChecksumVerified.isLeft
         ))(
         onTrue = new Downloader(artifact, cacheLocation = location, localFile = destFile, logger, pool).download
           .flatMap { newFile =>
@@ -94,7 +96,7 @@ class FileCache private (
             // Alternatively the sc4pac-channel-contents.json file can be manually deleted from cache.
             ZIO.fromEither(verifyChecksum(newFile, artifact).map(_ => newFile))  // TODO add special handling for local files?
           },
-        onFalse = ZIO.succeed(destFile)
+        onFalse = ZIO.fromEither(destFileChecksumVerified.map(_ => destFile))
       ).mapError {
         case e: CC.ArtifactError => e
         case e: java.io.IOException => new CC.ArtifactError.DownloadError(
@@ -102,7 +104,7 @@ class FileCache private (
           Some(e)
         )
       }
-    }
+    }.flatten
 
     // Since we did not implement `ifLocked` in Downloader, we use an in-memory
     // cache of concurrently running tasks in order to avoid concurrent download

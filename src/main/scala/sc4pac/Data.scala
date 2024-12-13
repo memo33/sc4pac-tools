@@ -167,7 +167,8 @@ object JsonData extends SharedData {
           version = dep.version,
           url = dep.url,
           lastModified = dep.lastModified.getOrElse(null),
-          archiveType = dep.archiveType
+          archiveType = dep.archiveType,
+          checksum = dep.checksum,
         ))
       )
     }
@@ -196,21 +197,32 @@ object JsonData extends SharedData {
     }
   }
 
-  case class InstallRecipe(include: Seq[Pattern], exclude: Seq[Pattern]) {
-    def makeAcceptancePredicate(): (Builder[Pattern, Set[Pattern]], os.SubPath => Boolean) = {
-      val usedPatternsBuilder = Set.newBuilder[Pattern] += InstallRecipe.defaultExcludePattern  // default exclude pattern is not required to match anything
+  class InstallRecipe(include: Seq[Pattern], exclude: Seq[Pattern], includeWithChecksum: Seq[(Pattern, IncludeWithChecksum)]) {
+    def makeAcceptancePredicate(): (Builder[Pattern, Set[Pattern]], Extractor.Predicate) = {
+      val usedPatternsBuilder = {
+        val b = Set.newBuilder[Pattern] += Constants.defaultExcludePattern  // default exclude pattern is not required to match anything
+        if (includeWithChecksum.nonEmpty)
+          b += Constants.defaultIncludePattern  // archives containing DLLs might come without additional DBPF files
+        b
+      }
 
-      val accepts: os.SubPath => Boolean = { path =>
+      val accepts: Extractor.Predicate = { path =>
         val pathString = path.segments.mkString("/", "/", "")  // paths are checked with leading / and with / as separator
-        include.find(_.matcher(pathString).find()) match {
-          case None => false
-          case Some(matchedPattern) =>
+        includeWithChecksum.find(_._1.matcher(pathString).find()) match {
+          case Some(matchedPattern, checksum) =>
             usedPatternsBuilder += matchedPattern
-            exclude.find(_.matcher(pathString).find()) match {
-              case None => true
+            Some(Extractor.ChecksumValidator(checksum))  // as checksum is only valid for a single file, there is no need for evaluating exclude rules
+          case None =>
+            include.find(_.matcher(pathString).find()) match {
+              case None => None
               case Some(matchedPattern) =>
                 usedPatternsBuilder += matchedPattern
-                false
+                exclude.find(_.matcher(pathString).find()) match {
+                  case None => Some(Extractor.DbpfValidator)
+                  case Some(matchedPattern) =>
+                    usedPatternsBuilder += matchedPattern
+                    None
+                }
             }
         }
       }
@@ -218,27 +230,25 @@ object JsonData extends SharedData {
       (usedPatternsBuilder, accepts)
     }
 
-    def usedPatternWarnings(usedPatterns: Set[Pattern]): Seq[Warning] = {
-      val unused: Seq[Pattern] = (include.iterator ++ exclude).filter(p => !usedPatterns.contains(p)).toSeq
+    def usedPatternWarnings(usedPatterns: Set[Pattern], asset: BareAsset): Seq[Warning] = {
+      val unused: Seq[Pattern] =
+        (include.iterator ++ exclude ++ includeWithChecksum.iterator.map(_._1))
+        .filter(p => !usedPatterns.contains(p)).toSeq
       if (unused.isEmpty) {
         Seq.empty
       } else {
         Seq(
           "The package metadata seems to be out-of-date, so the package may not have been fully installed. " +
           "Please report this to the maintainers of the package metadata. " +
-          "These inclusion/exclusion patterns did not match any files in the asset: " + unused.mkString(" "))
+          s"These inclusion/exclusion patterns did not match any files in the asset ${asset.assetId.value}: " + unused.mkString(" "))
       }
     }
   }
   object InstallRecipe {
-    private val mkPattern = Pattern.compile(_, Pattern.CASE_INSENSITIVE)
-    private val defaultIncludePattern = mkPattern(Constants.defaultInclude)
-    private val defaultExcludePattern = mkPattern(Constants.defaultExclude)
-
     def fromAssetReference(data: AssetReference): (InstallRecipe, Seq[Warning]) = {
       val warnings = Seq.newBuilder[Warning]
       def toRegex(s: String): Option[Pattern] = try {
-        Some(mkPattern(s))
+        Some(Pattern.compile(s, Pattern.CASE_INSENSITIVE))
       } catch {
         case e: java.util.regex.PatternSyntaxException =>
           warnings += s"The package metadata contains a malformed regex: $e"
@@ -246,9 +256,12 @@ object JsonData extends SharedData {
       }
       val include = data.include.flatMap(toRegex)
       val exclude = data.exclude.flatMap(toRegex)
+      val includeWithChecksum = data.withChecksum.flatMap(item => toRegex(item.include).map(_ -> item))
       (InstallRecipe(
-        include = if (include.isEmpty) Seq(defaultIncludePattern) else include,
-        exclude = if (exclude.isEmpty) Seq(defaultExcludePattern) else exclude), warnings.result())
+        include = if (include.isEmpty) Seq(Constants.defaultIncludePattern) else include,
+        exclude = if (exclude.isEmpty) Seq(Constants.defaultExcludePattern) else exclude,
+        includeWithChecksum = includeWithChecksum,
+      ), warnings.result())
     }
   }
 
@@ -273,5 +286,13 @@ object JsonData extends SharedData {
     )
 
   case class CheckFile(filename: Option[String], checksum: Checksum = Checksum.empty) derives ReadWriter
+
+  case class IncludeWithChecksum(include: String, sha256: ArraySeq[Byte])
+
+  implicit val includeWithChecksumRw: ReadWriter[IncludeWithChecksum] =
+    readwriter[Map[String, String]].bimap[IncludeWithChecksum](
+      (data: IncludeWithChecksum) => Map("include" -> data.include, "sha256" -> Checksum.bytesToString(data.sha256)),
+      (m: Map[String, String]) => IncludeWithChecksum(include = m("include"), sha256 = Checksum.stringToBytes(m("sha256"))),
+    )
 
 }
