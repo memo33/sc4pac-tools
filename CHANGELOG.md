@@ -1,6 +1,10 @@
 # Changelog
 
 ## [Unreleased]
+### Added
+- a few channel stats have been added to channel JSON file, such as which categories contain how many packages
+- The lock file includes some new fields such as `installedAt` and `updatedAt`.
+
 ### Fixed
 - an issue affecting some old terminals in which the escape sequences used for displaying progress bars were incorrectly printed to the console (#8)
 - an issue that could cause warning messages to mess up the prompt display (#5)

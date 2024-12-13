@@ -183,9 +183,10 @@ object ChannelPage {
     )
   }
 
-  def channelContentsFrag(items: Seq[JsonData.ChannelItem], displayCategory: Option[String]) = {
-    val categories: Seq[String] = items.flatMap(item => item.category).distinct.sorted
-    val displayCategory2 = displayCategory.filter(c => categories.contains(c))
+  def channelContentsFrag(channel: JsonData.Channel, displayCategory: Option[String]) = {
+    val items = channel.contents
+    val categories: Seq[JsonData.Channel.CategoryItem] = channel.stats.categories
+    val displayCategory2 = displayCategory.filter(c => categories.exists(_.category == c))
 
     def mkOption(cat: String, text: String, selected: Boolean) =
       if (selected) H.option(H.value := cat, H.selected)(text) else H.option(H.value := cat)(text)
@@ -202,7 +203,8 @@ object ChannelPage {
           H.name := "category",
           H.id := "category",
         )(
-          (mkOption("", "All", displayCategory2.isEmpty) +: categories.map(c => mkOption(c, c, displayCategory2.contains(c))))*
+          (mkOption("", s"All (${channel.stats.totalPackageCount})", displayCategory2.isEmpty) +:
+            categories.map(c => mkOption(c.category, s"${c.category} (${c.count})", displayCategory2.contains(c.category))))*
         ),
         H.input(H.`type` := "submit", H.value := "Submit")
       ),
@@ -230,7 +232,7 @@ object ChannelPage {
           document.body.appendChild(H.p("Failed to load channel contents.").render)
         case Some(channel) =>
           val displayCategory = Option(urlParams.get("category"))
-          output.replaceWith(channelContentsFrag(channel.contents, displayCategory).render)
+          output.replaceWith(channelContentsFrag(channel, displayCategory).render)
       }
     } else JsonData.parseModule(pkgName) match {
       case Left(err) =>
