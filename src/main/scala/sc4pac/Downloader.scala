@@ -41,10 +41,13 @@ class Downloader(
     }
   }
 
-  private def wrapDownloadError(e: Throwable, url: String): CC.ArtifactError = CC.ArtifactError.DownloadError(
-    s"Caught ${e.getClass().getName()}${Option(e.getMessage).fold("")(" (" + _ + ")")} while downloading $url",
-    Some(e)
-  )
+  private def wrapDownloadError(e: Throwable, url: String): CC.ArtifactError = e match {
+    case e: CC.ArtifactError.DownloadError => e
+    case _ => CC.ArtifactError.DownloadError(
+      s"Caught ${e.getClass().getName()}${Option(e.getMessage).fold("")(" (" + _ + ")")} while downloading $url",
+      Some(e)
+    )
+  }
 
   private def remote(file: java.io.File, url: String): IO[CC.ArtifactError, Unit] = {
     Downloader.attemptCancelableOnPool(pool, (isCanceled) => {

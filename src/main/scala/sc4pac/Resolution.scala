@@ -182,11 +182,8 @@ class Resolution(reachableDeps: TreeSeqMap[BareDep, Seq[BareDep]], nonbareDeps: 
       ZIO.foreachPar(assetsArtifacts) { (dep, art) =>
         context.cache.file(art).map(file => (dep, art, file))
       }
-      .catchSome {
-        case e: (coursier.error.FetchError.DownloadingArtifacts | ArtifactError.DownloadError | ArtifactError.WrongLength | ArtifactError.NotFound) =>
-          ZIO.fail(new error.DownloadFailed("Failed to download some assets. Try again later. " +
-            "You may have reached your daily download quota (Simtropolis: 20 files per day) or the file exchange server is currently unavailable.",
-            e.getMessage))
+      .catchAll {
+        // See also download-error handling in Find.
         case e: (ArtifactError.WrongChecksum | ArtifactError.ChecksumFormatError | ArtifactError.ChecksumNotFound) =>
           ZIO.fail(new error.ChecksumError(
             f"Checksum verification failed for a downloaded asset.%n" +
@@ -194,6 +191,13 @@ class Resolution(reachableDeps: TreeSeqMap[BareDep, Seq[BareDep]], nonbareDeps: 
             "- Otherwise, this means the uploaded file was modified after the channel metadata was last updated, " +
             "so the integrity of the file cannot be verified by sc4pac: Report this to the maintainers of the metadata.",
             e.getMessage))
+        case e: (ArtifactError.DownloadError | ArtifactError.WrongLength | ArtifactError.NotFound) =>
+          ZIO.fail(new error.DownloadFailed("Failed to download some assets. Try again later. " +
+            "You may have reached your daily download quota (Simtropolis: 20 files per day) or the file exchange server is currently unavailable.",
+            e.getMessage))
+        case e: ArtifactError =>
+          context.logger.debugPrintStackTrace(e)
+          ZIO.fail(new error.DownloadFailed("Unexpected download error.", e.getMessage))
       }
 
     for {
