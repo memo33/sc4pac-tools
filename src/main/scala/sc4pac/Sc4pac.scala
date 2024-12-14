@@ -518,7 +518,7 @@ object Sc4pac {
   }
 
 
-  private def fetchChannelData(repoUri: java.net.URI, cache: FileCache, channelContentsTtl: scala.concurrent.duration.Duration): ZIO[ProfileRoot, ErrStr, MetadataRepository] = {
+  private def fetchChannelData(repoUri: java.net.URI, cache: FileCache, channelContentsTtl: scala.concurrent.duration.Duration): ZIO[ProfileRoot, error.ChannelsNotAvailable, MetadataRepository] = {
     val contentsUrl = MetadataRepository.channelContentsUrl(repoUri).toString
     val artifact = Artifact(contentsUrl, changing = true)  // changing as the remote file is updated whenever any remote package is added or updated
     for {
@@ -526,17 +526,22 @@ object Sc4pac {
                               .withTtl(Some(channelContentsTtl))
                               .file(artifact)  // requires initialized logger
                               .provideSomeLayer(Downloader.emptyCookiesLayer)  // as we do not fetch channel file from Simtropolis, no need for cookies
-                              .mapError { case e @ (_: coursier.cache.ArtifactError | scala.util.control.NonFatal(_)) => e.getMessage }
+                              .mapError {
+                                case err: coursier.cache.ArtifactError =>
+                                  error.ChannelsNotAvailable(s"Channel not available. Check your internet connection and that the channel URL is correct: $repoUri", err.getMessage)
+                              }
       profileRoot         <- ZIO.service[ProfileRoot]
       repo                <- MetadataRepository.create(os.Path(channelContentsFile: java.io.File, profileRoot.path), repoUri)
+                              .mapError {
+                                case errStr: ErrStr => error.ChannelsNotAvailable(s"Failed to read channel data: $errStr", "")  // e.g. unsupported scheme
+                              }
     } yield repo
   }
 
   private[sc4pac] def initializeRepositories(repoUris: Seq[java.net.URI], cache: FileCache, channelContentsTtl: scala.concurrent.duration.Duration): RIO[ProfileRoot, Seq[MetadataRepository]] = {
-    ZIO.validatePar(repoUris) { url =>
+    ZIO.foreachPar(repoUris) { url =>
       fetchChannelData(url, cache, channelContentsTtl)
-        .mapError((err: ErrStr) => { System.err.println(s"Failed to read channel data: $err"); url })
-    }.mapError(badUrls => error.ChannelsNotAvailable("Channels not available. Check your internet connection and that the channel URLs are correct.", badUrls.mkString(f"%n")))
+    }
     // TODO for long running processes, we might need a way to refresh the channel
     // data occasionally (but for now this is good enough)
   }
