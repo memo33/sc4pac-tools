@@ -43,7 +43,7 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
     case abort: error.UnsatisfiableVariantConstraints => ErrorMessage.UnsatisfiableVariantConstraints(abort.title, abort.detail)
     case abort: error.DownloadFailed => ErrorMessage.DownloadFailed(abort.title, abort.detail)
     case abort: error.ChecksumError => ErrorMessage.DownloadFailed(abort.title, abort.detail)
-    case abort: error.NoChannelsAvailable => ErrorMessage.NoChannelsAvailable(abort.title, abort.detail)
+    case abort: error.ChannelsNotAvailable => ErrorMessage.ChannelsNotAvailable(abort.title, abort.detail)
     case abort: error.Sc4pacAbort => ErrorMessage.Aborted("Operation aborted.", "")
   }
 
@@ -54,7 +54,7 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
     case abort: error.UnsatisfiableVariantConstraints => Status.InternalServerError
     case abort: error.DownloadFailed => Status.BadGateway
     case abort: error.ChecksumError => Status.BadGateway
-    case abort: error.NoChannelsAvailable => Status.BadGateway
+    case abort: error.ChannelsNotAvailable => Status.BadGateway
     case abort: error.Sc4pacAbort => Status.Ok  // this is not really an error, but the expected control flow
   }
 

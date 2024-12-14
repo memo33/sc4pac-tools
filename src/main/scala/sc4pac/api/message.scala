@@ -97,7 +97,7 @@ object ErrorMessage {
   @upickle.implicits.key("/error/download-failed")
   case class DownloadFailed(title: String, detail: String) extends ErrorMessage derives UP.ReadWriter
   @upickle.implicits.key("/error/channels-not-available")
-  case class NoChannelsAvailable(title: String, detail: String) extends ErrorMessage derives UP.ReadWriter
+  case class ChannelsNotAvailable(title: String, detail: String) extends ErrorMessage derives UP.ReadWriter
   @upickle.implicits.key("/error/aborted")
   case class Aborted(title: String, detail: String) extends ErrorMessage derives UP.ReadWriter
   @upickle.implicits.key("/error/bad-request")

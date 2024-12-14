@@ -30,7 +30,7 @@ final class ChecksumError(val title: String, val detail: String) extends java.io
 
 final class NotADbpfFile(val title: String, val detail: String) extends java.io.IOException(s"$title $detail") with Sc4pacErr
 
-final class NoChannelsAvailable(val title: String, val detail: String) extends java.io.IOException(s"$title $detail") with Sc4pacErr
+final class ChannelsNotAvailable(val title: String, val detail: String) extends java.io.IOException(s"$title $detail") with Sc4pacErr
 
 final class SymlinkCreationFailed(msg: String) extends java.io.IOException(msg) with Sc4pacErr
 

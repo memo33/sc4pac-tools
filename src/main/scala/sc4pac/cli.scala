@@ -37,7 +37,7 @@ object Commands {
     Some(groups => groups.partition(_ == "Help") match { case (help, nonHelp) => nonHelp ++ help })
 
   // failures that are expected with both the CLI and the API
-  type ExpectedFailure = error.Sc4pacAbort | error.DownloadFailed | error.NoChannelsAvailable
+  type ExpectedFailure = error.Sc4pacAbort | error.DownloadFailed | error.ChannelsNotAvailable
     | error.Sc4pacVersionNotFound | error.Sc4pacAssetNotFound | error.ExtractionFailed
     | error.UnsatisfiableVariantConstraints | error.ChecksumError
 

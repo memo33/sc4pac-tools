@@ -533,10 +533,10 @@ object Sc4pac {
   }
 
   private[sc4pac] def initializeRepositories(repoUris: Seq[java.net.URI], cache: FileCache, channelContentsTtl: scala.concurrent.duration.Duration): RIO[ProfileRoot, Seq[MetadataRepository]] = {
-    ZIO.collectPar(repoUris) { url =>
+    ZIO.validatePar(repoUris) { url =>
       fetchChannelData(url, cache, channelContentsTtl)
-        .mapError((err: ErrStr) => { System.err.println(s"Failed to read channel data: $err"); None })
-    }.filterOrFail(_.nonEmpty)(error.NoChannelsAvailable("No channels available", repoUris.toString))
+        .mapError((err: ErrStr) => { System.err.println(s"Failed to read channel data: $err"); url })
+    }.mapError(badUrls => error.ChannelsNotAvailable("Channels not available. Check your internet connection and that the channel URLs are correct.", badUrls.mkString(f"%n")))
     // TODO for long running processes, we might need a way to refresh the channel
     // data occasionally (but for now this is good enough)
   }
