@@ -1,13 +1,17 @@
 # Changelog
 
 ## [Unreleased]
+
+
+## [0.5.0] - 2024-12-14
 ### Added
-- Added `--label` and `--metadata-source-url` options to `channel build` command. Use these particularly for publicly accessible channels.
-- Added "Channel" label, "Metadata" URL and "Required By" fields to `info` command output.
+- Added `--label` and `--metadata-source-url` options to the `channel build` command. Use these particularly for publicly accessible channels.
+- Added "Channel" label, "Metadata" URL and "Required By" fields to the `info` command output.
 - Channels now keep track of inter-channel dependencies. In particular, the "Required By" field includes packages from all channels.
-- A few channel stats have been added to channel JSON file, such as which categories contain how many packages.
+- A few channel stats have been added to the channel JSON file, such as which categories contain how many packages.
 - The lock file includes some new fields such as `installedAt` and `updatedAt`.
-- You can search for STEX or SC4E URLs now to find corresponding packages.
+- You can search by STEX and SC4E URLs now to find corresponding packages.
+- Several new `server` command options for use in combination with the GUI.
 
 ### Fixed
 - an issue affecting some old terminals in which the escape sequences used for displaying progress bars were incorrectly printed to the console (#8)
@@ -16,6 +20,7 @@
 - an issue in which an interrupted internet connection was not handled gracefully
 
 ### Changed
+- The variant `IRM.industrial-capacity` was renamed to `toroca:industry-quadrupler:capacity`.
 - improved error message if channel-build fails randomly in case old files could not be removed (#6)
 - improved `sc4pac` bash script to allow symlinking into path on Linux/macOS
 - The progress spinner animation was switched to ASCII symbols for compatibility with non-Unicode fonts in some terminals.
@@ -160,7 +165,8 @@
 ## [0.1.5] - 2023-09-26
 …
 
-[Unreleased]: https://github.com/memo33/sc4pac-tools/compare/0.4.5...HEAD
+[Unreleased]: https://github.com/memo33/sc4pac-tools/compare/0.5.0...HEAD
+[0.4.5]: https://github.com/memo33/sc4pac-tools/compare/0.4.5...0.5.0
 [0.4.4]: https://github.com/memo33/sc4pac-tools/compare/0.4.4...0.4.5
 [0.4.4]: https://github.com/memo33/sc4pac-tools/compare/0.4.3...0.4.4
 [0.4.3]: https://github.com/memo33/sc4pac-tools/compare/0.4.2...0.4.3
