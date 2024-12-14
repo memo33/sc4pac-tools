@@ -6,7 +6,8 @@ sc4pac
 This program handles the process of downloading and installing
 SimCity 4 plugins, including all their dependencies.
 
-Currently, this program only comes with a command-line interface (CLI).
+This program comes with a command-line interface (CLI).
+A GUI application ([sc4pac GUI](https://github.com/memo33/sc4pac-gui/releases)) is available as a separate download.
 
 
 <div style='display: none'>
@@ -161,10 +162,10 @@ and do not require any build step.
   - [x] authentication (ST), [partially implemented](https://github.com/memo33/sc4pac-tools/blob/main/src/scripts/sc4pac.bat#L13-L32)
   - [x] incomplete downloads (SC4E)
   - [ ] non-persistent URLs (Moddb)
-  - [ ] handling servers that have gone offline
+  - [ ] handling servers that have gone offline (e.g. version pinning)
 - [x] Collaborative central [metadata channel](https://github.com/memo33/sc4pac)
 - [x] [Website and online documentation](https://memo33.github.io/sc4pac/)
 - [x] Server API (backend): https://memo33.github.io/sc4pac/#/api or [api.md](api.md)
-- [ ] Graphical UI (frontend) aka Mod manager: [sc4pac GUI](https://github.com/memo33/sc4pac-gui)
+- [x] Graphical UI (frontend) aka Mod manager: [sc4pac GUI](https://github.com/memo33/sc4pac-gui)
 
 </div>
