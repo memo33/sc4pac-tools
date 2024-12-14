@@ -307,7 +307,7 @@ object JsonData extends SharedData {
         Seq.empty
       } else {
         Seq(
-          "The package metadata seems to be out-of-date, so the package may not have been fully installed. " +
+          "The package metadata seems to be out-of-date, so the installed plugin files might be incomplete. " +
           "Please report this to the maintainers of the package metadata. " +
           s"These inclusion/exclusion patterns did not match any files in the asset ${asset.assetId.value}: " + unused.mkString(" "))
       }

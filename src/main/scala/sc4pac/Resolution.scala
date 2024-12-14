@@ -192,9 +192,18 @@ class Resolution(reachableDeps: TreeSeqMap[BareDep, Seq[BareDep]], nonbareDeps: 
             "so the integrity of the file cannot be verified by sc4pac: Report this to the maintainers of the metadata.",
             e.getMessage))
         case e: (ArtifactError.DownloadError | ArtifactError.WrongLength | ArtifactError.NotFound) =>
-          ZIO.fail(new error.DownloadFailed("Failed to download some assets. Try again later. " +
-            "You may have reached your daily download quota (Simtropolis: 20 files per day) or the file exchange server is currently unavailable.",
-            e.getMessage))
+          ZIO.serviceWithZIO[Downloader.Cookies] { cookies =>
+            val msg = if (cookies.simtropolisCookie.isDefined) {
+              "Failed to download some assets. " +
+              "Maybe your authentication cookies have expired or the file exchange server is currently unavailable."
+            } else {
+              "Failed to download some assets. " +
+              "You may have reached your daily download quota (Simtropolis: 20 files per day for guests) " +
+              "or the file exchange server is currently unavailable. " +
+              "Set up Authentication or try again later."
+            }
+            ZIO.fail(new error.DownloadFailed(msg, e.getMessage))
+          }
         case e: ArtifactError =>
           context.logger.debugPrintStackTrace(e)
           ZIO.fail(new error.DownloadFailed("Unexpected download error.", e.getMessage))
