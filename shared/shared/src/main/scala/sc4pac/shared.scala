@@ -1,6 +1,7 @@
 package io.github.memo33
 package sc4pac
 
+import java.util.regex.Pattern
 import upickle.default.{ReadWriter, readwriter, macroRW}
 
 sealed trait BareDep {
@@ -12,6 +13,7 @@ final case class BareModule(group: Organization, name: ModuleName) extends BareD
 }
 object BareModule {
   val pkgMarkdownRegex = """`pkg=([^`:\s]+):([^`:\s]+)`""".r
+  given lexOrdering: Ordering[BareModule] = Ordering.by(module => (module.group.value, module.name.value))
 }
 final case class BareAsset(assetId: ModuleName) extends BareDep {
   def orgName = s"${JsonRepoUtil.sc4pacAssetOrg.value}:${assetId.value}"
@@ -25,6 +27,13 @@ object JsonRepoUtil {
       case a: BareAsset => (sc4pacAssetOrg.value, a.assetId.value)
     }
     s"metadata/${group}/${name}/${version}/pkg.json"
+  }
+
+  def extPackageSubPath(dep: BareDep): String = {
+    dep match {
+      case m: BareModule => s"metadata/_extpkg/${m.group.value}/${m.name.value}/latest/pkg.json"
+      case a: BareAsset => s"metadata/_extasset/${a.assetId.value}/latest/pkg.json"
+    }
   }
 
   val sc4pacAssetOrg = Organization("sc4pacAsset")
@@ -51,6 +60,9 @@ abstract class SharedData {
 
   implicit val bareModuleRw: ReadWriter[BareModule]
 
+  type Uri
+  implicit val uriRw: ReadWriter[Uri]
+
   case class Dependency(group: String, name: String, version: String) derives ReadWriter
 
   case class AssetReference(
@@ -65,9 +77,8 @@ abstract class SharedData {
     dependencies: Seq[Dependency] = Seq.empty,
     assets: Seq[AssetReference] = Seq.empty
   ) derives ReadWriter {
-    def bareDependencies: Seq[BareDep] =
-      dependencies.map(d => BareModule(Organization(d.group), ModuleName(d.name)))
-        ++ assets.map(a => BareAsset(ModuleName(a.assetId)))
+    def bareModules: Seq[BareModule] = dependencies.map(d => BareModule(Organization(d.group), ModuleName(d.name)))
+    def bareDependencies: Seq[BareDep] = bareModules ++ assets.map(a => BareAsset(ModuleName(a.assetId)))
   }
   object VariantData {
     private val variantPrefix = "variant."
@@ -141,7 +152,9 @@ abstract class SharedData {
     info: Info = Info.empty,
     variants: Seq[VariantData],  // should be non-empty, but can consist of a single empty variant
     variantDescriptions: Map[String, Map[String, String]] = Map.empty,  // variantKey -> variantValue -> description
-    metadataSource: Option[SubPath] = None  // path to yaml file
+    metadataSource: Option[SubPath] = None,  // path to yaml file
+    metadataSourceUrl: Option[Uri] = None,  // full URL to yaml file
+    channelLabel: Option[String] = None,
   ) extends PackageAsset {
 
     def toBareDep: BareModule = BareModule(Organization(group), ModuleName(name))
@@ -170,44 +183,111 @@ abstract class SharedData {
     val empty = Info()
   }
 
+  case class ExternalPackage(
+    group: String,
+    name: String,
+    // channel: Option[String],
+    requiredBy: Seq[BareModule],
+  ) derives ReadWriter {
+    def toBareDep: BareModule = BareModule(Organization(group), ModuleName(name))
+  }
+
+  case class ExternalAsset(
+    assetId: String,
+    // channel: Option[String],
+    requiredBy: Seq[BareModule],
+  ) derives ReadWriter {
+    def toBareDep: BareAsset = BareAsset(ModuleName(assetId))
+  }
+
   case class ChannelItem(
     group: String,
     name: String,
     versions: Seq[String],
     checksums: Map[String, Checksum] = Map.empty,  // version -> checksum (note that Map or Checksum itself could be empty)
+    externalIds: Map[String, Seq[String]] = Map.empty,  // stex or sc4e
     summary: String = "",
     category: Option[String] = None,
   ) derives ReadWriter {
     def isSc4pacAsset: Boolean = group == JsonRepoUtil.sc4pacAssetOrg.value
     def toBareDep: BareDep = if (isSc4pacAsset) BareAsset(ModuleName(name)) else BareModule(Organization(group), ModuleName(name))
-    private[sc4pac] def toSearchString: String = s"$group:$name $summary"
+    private[sc4pac] def toSearchString: String = s"$group:$name $summary".toLowerCase(java.util.Locale.ENGLISH)
   }
 
   case class Channel(
     scheme: Int,
+    info: Channel.Info = Channel.Info.empty,
     stats: Channel.Stats = null,  // added between scheme 4 and 5 (backward compatible: recomputed for smaller schemes, so never actually null)
-    contents: Seq[ChannelItem],
+    packages: Seq[ChannelItem] = Seq.empty,  // since scheme 5
+    assets: Seq[ChannelItem] = Seq.empty,  // since scheme 5
+    externalPackages: Seq[Channel.ExtPkg] = Seq.empty,  // default for backward compatibility
+    externalAssets: Seq[Channel.ExtAsset] = Seq.empty,  // default for backward compatibility
+    @deprecated("use packages or assets instead", since = "0.5.0")
+    contents: Seq[ChannelItem] = Seq.empty,  // TODO remove after deprecation, scheme <= 4
   ) {
     lazy val versions: Map[BareDep, Seq[(String, Checksum)]] =
-      contents.iterator.map(item => item.toBareDep -> item.versions.map(v => v -> item.checksums.getOrElse(v, emptyChecksum))).toMap
+      (packages.iterator ++ assets).map(item => item.toBareDep -> item.versions.map(v => v -> item.checksums.getOrElse(v, emptyChecksum))).toMap
   }
   object Channel {
 
     private val channelRwDefault: ReadWriter[Channel] = macroRW
     implicit val channelRw: ReadWriter[Channel] =
-      channelRwDefault.bimap[Channel](identity, c => if (c.stats != null) c else createAddStats(c.scheme, c.contents))
+      channelRwDefault.bimap[Channel](identity, { c0 =>
+        var c = c0
+        if (c.contents.nonEmpty) {
+          val (assets, packages) = c.contents.iterator.partition(_.isSc4pacAsset)
+          c = c.copy(contents = Seq.empty, packages = packages.toSeq, assets = assets.toSeq)
+        }
+        if (c.stats != null) c else createAddStats(c.scheme, c.info, packages = c.packages, assets = c.assets, c.externalPackages, c.externalAssets)
+      })
 
     /* recomputes the channel stats */
-    def createAddStats(scheme: Int, contents: Seq[ChannelItem]): Channel = {
+    def createAddStats(
+      scheme: Int,
+      info: Channel.Info,
+      packages: Seq[ChannelItem],
+      assets: Seq[ChannelItem],
+      externalPackages: Seq[Channel.ExtPkg],
+      externalAssets: Seq[Channel.ExtAsset],
+    ): Channel = {
       val m = collection.mutable.Map.empty[String, Int]
-      for (item <- contents; cat <- item.category) {
+      for (item <- packages; cat <- item.category) {
         m(cat) = m.getOrElse(cat, 0) + 1
       }
-      Channel(scheme, Stats.fromMap(m), contents = contents)
+      Channel(scheme, info, Stats.fromMap(m), packages = packages, assets = assets, externalPackages, externalAssets)
     }
 
-    def create(scheme: Int, channelData: Iterable[(BareDep, Iterable[(String, PackageAsset, Checksum)])]): Channel = {  // name -> (version, json, sha)
-      createAddStats(scheme, contents = channelData.iterator.collect {
+    val externalIdStex = "stex"
+    val externalIdSc4e = "sc4e"
+
+    private val urlIdPatterns = Seq(
+      externalIdStex -> Pattern.compile("""simtropolis\.com/files/file/(\d+)-.*?(?:$|[?&]r=(\d+).*$)"""),  // matches ID and optional subfile ID
+      externalIdSc4e -> Pattern.compile("""sc4evermore\.com/index.php/downloads/download/(?:\d+-[^/]*/)?(\d+)-.*"""),  // category component is optional
+    )
+
+    private def findExternalIds(pkg: Package): Map[String, Seq[String]] = {
+      findExternalId(url = pkg.info.website) match {
+        // TODO currently there is just one website, but there could be multiple in the future
+        case Some(exchangeKey -> externalId) => Map(exchangeKey -> Seq(externalId))
+        case None => Map.empty
+      }
+    }
+
+    def findExternalId(url: String): Option[(String, String)] = {  // stex/sc4e -> id
+      urlIdPatterns.flatMap { (exchangeKey, pattern) =>
+        val m = pattern.matcher(url)
+        if (m.find()) Some(exchangeKey -> m.group(1)) else None
+      }.headOption
+    }
+
+    def create(
+      scheme: Int,
+      info: Channel.Info,
+      channelData: Iterable[(BareDep, Iterable[(String, PackageAsset, Checksum)])],  // name -> (version, json, sha)
+      externalPackages: Seq[Channel.ExtPkg],
+      externalAssets: Seq[Channel.ExtAsset],
+    ): Channel = {
+      val (assets, packages) = channelData.iterator.collect {
         case (dep, versions) if versions.nonEmpty =>
           val (g, n) = dep match {
             case m: BareModule => (m.group.value, m.name.value)
@@ -220,10 +300,12 @@ abstract class SharedData {
             group = g, name = n,
             versions = versions.iterator.map(_._1).toSeq,
             checksums = versions.iterator.map(t => (t._1, t._3)).toMap,
+            externalIds = versions.iterator.collectFirst { case (_, pkg: Package, _) => findExternalIds(pkg) }.getOrElse(Map.empty),
             summary = summaryOpt.getOrElse(""),
             category = catOpt,
           )
-      }.toSeq)
+      }.partition(_.isSc4pacAsset)
+      createAddStats(scheme, info, packages = packages.toSeq, assets = assets.toSeq, externalPackages, externalAssets)
     }
 
     case class CategoryItem(category: String, count: Int) derives ReadWriter
@@ -246,6 +328,21 @@ abstract class SharedData {
         Stats.fromMap(m)
       }
     }
+
+    case class Info(
+      channelLabel: Option[String],
+      metadataSourceUrl: Option[Uri],
+    ) derives ReadWriter
+    object Info {
+      val empty = Info(None, None)
+    }
+
+    case class ExtPkg(group: String, name: String, checksum: Checksum) derives ReadWriter {
+      def toBareDep: BareModule = BareModule(Organization(group), ModuleName(name))
+    }
+
+    case class ExtAsset(assetId: String, checksum: Checksum) derives ReadWriter
+
   }
 
 }

@@ -68,20 +68,31 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) extends Upda
     }
   }
 
-  val iterateAllChannelContents: Task[Iterator[JD.ChannelItem]] = ZIO.attempt { context.repositories.iterator.flatMap(_.iterateChannelContents) }
+  val iterateAllChannelPackages: Task[Iterator[JD.ChannelItem]] = ZIO.attempt { context.repositories.iterator.flatMap(_.iterateChannelPackages) }
 
   /** Fuzzy-search across all repositories.
     * The selection of results is ordered in descending order and includes the
     * module, the relevance ratio and the description.
+    * If a STEX/SC4E URL is searched, packages with matching external ID are returned.
+    * Api.searchPlugins implements a similar function and should use the same algorithm.
     */
-  def search(query: String, threshold: Int): Task[Seq[(BareModule, Int, Option[String])]] = iterateAllChannelContents.map { itemsIter =>
+  def search(query: String, threshold: Int, category: Option[String]): Task[Seq[(BareModule, Int, Option[String])]] = iterateAllChannelPackages.map { itemsIter =>
+    val externalIdOpt: Option[(String, String)] = JD.Channel.findExternalId(url = query)
+    val searchTokens = Sc4pac.fuzzySearchTokenize(query)
     val results: Seq[(BareModule, Int, Option[String])] =
       itemsIter.flatMap { item =>
         if (item.isSc4pacAsset) {
+          assert(false, "iteration should not include any assets")  // None
+        } else if (category.isDefined && item.category != category) {
           None
         } else {
-          // TODO reconsider choice of search algorithm
-          val ratio = me.xdrop.fuzzywuzzy.FuzzySearch.tokenSetRatio(query, item.toSearchString)
+          val ratio = externalIdOpt match {
+            case None =>
+              if (searchTokens.isEmpty && category.isDefined) 100  // return the entire category
+              else Sc4pac.fuzzySearchRatio(searchTokens, item.toSearchString, threshold)
+            case Some(exchangeKey -> externalId) =>
+              if (item.externalIds.get(exchangeKey).exists(_.contains(externalId))) 100 else 0
+          }
           if (ratio >= threshold) {
             Some(BareModule(Organization(item.group), ModuleName(item.name)), ratio, Option(item.summary).filter(_.nonEmpty))
           } else None
@@ -92,11 +103,15 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) extends Upda
 
   def infoJson(module: BareModule): Task[Option[JD.Package]] = {
     val mod = Module(module.group, module.name, attributes = Map.empty)
-    (for {
-      version <- Find.concreteVersion(mod, Constants.versionLatestRelease)
-      pkgOpt  <- Find.packageData[JD.Package](mod, version)
-    } yield pkgOpt).provideSomeLayer(zio.ZLayer.succeed(context))
-  }
+    Find.concreteVersion(mod, Constants.versionLatestRelease)
+      .flatMap(Find.packageData[JD.Package](mod, _))
+      .zipWithPar(Find.requiredByExternal(module)) {  // In addition to existing intra-channel dependencies, add inter-channel dependency relations to `requiredBy` field.
+        case (Some(pkg), relations) =>
+          val requiredBy2 = (pkg.info.requiredBy.iterator ++ relations.iterator.flatMap(_._2)).toSeq.distinct.sorted
+          Some(pkg.copy(info = pkg.info.copy(requiredBy = requiredBy2)))
+        case (None, _) => None
+      }
+  }.provideSomeLayer(zio.ZLayer.succeed(context))
 
   /** Currenty this does not apply full markdown formatting, but just `pkg=…`
     * highlighting.
@@ -116,6 +131,8 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) extends Upda
         val b = Seq.newBuilder[(String, String)]
         b += "Name" -> s"${pkg.group}:${pkg.name}"
         b += "Version" -> pkg.version
+        if (pkg.channelLabel.nonEmpty)
+          b += "Channel" -> pkg.channelLabel.get
         b += "Subfolder" -> pkg.subfolder.toString
         b += "Summary" -> applyMarkdown(pkg.info.summary, cliLogger)
         if (pkg.info.description.nonEmpty)
@@ -128,21 +145,26 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) extends Upda
           b += "Author" -> pkg.info.author
         if (pkg.info.website.nonEmpty)
           b += "Website" -> pkg.info.website
+        if (pkg.metadataSourceUrl.nonEmpty)
+          b += "Metadata" -> pkg.metadataSourceUrl.get.toString
 
-        def mkDeps(vd: JD.VariantData) = {
-          val deps = vd.bareDependencies.collect{ case m: BareModule => m.formattedDisplayString(cliLogger.gray, identity) }
+        def mkDeps(packages: Seq[BareDep]) = {
+          val deps = packages.collect{ case m: BareModule => m.formattedDisplayString(cliLogger.gray, identity) }
           if (deps.isEmpty) "None" else deps.mkString(" ")
         }
 
         if (pkg.variants.length == 1 && pkg.variants.head.variant.isEmpty) {
           // no variant
-          b += "Dependencies" -> mkDeps(pkg.variants.head)
+          b += "Dependencies" -> mkDeps(pkg.variants.head.bareDependencies)
         } else {
           // multiple variants
           for (vd <- pkg.variants) {
             b += "Variant" -> JD.VariantData.variantString(vd.variant)
-            b += " Dependencies" -> mkDeps(vd)
+            b += " Dependencies" -> mkDeps(vd.bareDependencies)
           }
+        }
+        if (pkg.info.requiredBy.nonEmpty) {
+          b += "Required By" -> mkDeps(pkg.info.requiredBy)
         }
         // TODO variant descriptions
         // TODO channel URL
@@ -175,21 +197,21 @@ trait UpdateService { this: Sc4pac =>
     stagingRoot: os.Path,
     progress: Sc4pac.Progress
   ): RIO[ResolutionContext, StageResult.Item] = {
-    def extract(assetData: JD.AssetReference, pkgFolder: os.SubPath): Task[Seq[Warning]] = ZIO.attemptBlocking {
+    def extract(assetData: JD.AssetReference, pkgFolder: os.SubPath): Task[Seq[Warning]] = {
       // Given an AssetReference, we look up the corresponding artifact file
       // by ID. This relies on the 1-to-1-correspondence between sc4pacAssets
       // and artifact files.
       val id = BareAsset(ModuleName(assetData.assetId))
       artifactsById.get(id) match {
         case None =>
-          Seq(s"An asset is missing and has been skipped, so it needs to be installed manually: ${id.orgName}. " +
-             "Please report this to the maintainers of the package metadata.")
+          ZIO.succeed(Seq(s"An asset is missing and has been skipped, so it needs to be installed manually: ${id.orgName}. " +
+                           "Please report this to the maintainers of the package metadata."))
         case Some(art, archive, depAsset) =>
           val (recipe, regexWarnings) = JD.InstallRecipe.fromAssetReference(assetData)
           val extractor = new Extractor(logger)
-          val fallbackFilename = context.cache.getFallbackFilename(archive)
           val jarsRoot = stagingRoot / "jars"
-          val usedPatterns =
+
+          def doExtract(fallbackFilename: Option[String]) =
             extractor.extract(
               archive,
               fallbackFilename,
@@ -198,8 +220,21 @@ trait UpdateService { this: Sc4pac =>
               Some(Extractor.JarExtraction.fromUrl(art.url, jarsRoot = jarsRoot)),
               hints = depAsset.archiveType,
               stagingRoot)
-          // TODO catch IOExceptions
-          regexWarnings ++ recipe.usedPatternWarnings(usedPatterns, id)
+
+          for {
+            fallbackFilename <- ZIO.attemptBlockingIO(context.cache.getFallbackFilename(archive))
+            archiveSize      <- ZIO.attemptBlockingIO(archive.length())
+            usedPatterns     <- if (archiveSize >= Constants.largeArchiveSizeInterruptible) {
+                                  logger.debug(s"(Interruptible extraction of ${assetData.assetId})")
+                                  // comes at a performance cost, so we only make extraction interruptible for large files
+                                  ZIO.attemptBlockingInterrupt(doExtract(fallbackFilename))
+                                } else {
+                                  ZIO.attemptBlocking(doExtract(fallbackFilename))
+                                }
+          } yield {
+            // TODO catch IOExceptions
+            regexWarnings ++ recipe.usedPatternWarnings(usedPatterns, id)
+          }
       }
     }
 
@@ -269,7 +304,7 @@ trait UpdateService { this: Sc4pac =>
   }
 
   /** Update all installed packages from modules (the list of explicitly added packages). */
-  def update(modules: Seq[BareModule], globalVariant0: Variant, pluginsRoot: os.Path): RIO[ProfileRoot & Prompter, Boolean] = {
+  def update(modules: Seq[BareModule], globalVariant0: Variant, pluginsRoot: os.Path): RIO[ProfileRoot & Prompter & Downloader.Cookies, Boolean] = {
 
     // - before starting to remove anything, we download and extract everything
     //   to install into temp folders (staging)
@@ -355,7 +390,9 @@ trait UpdateService { this: Sc4pac =>
           _ <- movePackagesToPlugins(staged)
         } yield true  // TODO return result
       }
-      logger.publishing(removalOnly = plan.toInstall.isEmpty)(task)
+      // As this task alters the actual plugins, we make it uninterruptible to ensure completion in case the update is canceled.
+      // The task is reasonably fast, as it just removes/moves/copies files.
+      logger.publishing(removalOnly = plan.toInstall.isEmpty)(task.uninterruptible)
         .catchSome {  // TODO expose publish warnings to clients
           case e: Sc4pacPublishWarning => logger.warn(e.getMessage); ZIO.succeed(true)  // TODO return result
         }
@@ -416,7 +453,7 @@ trait UpdateService { this: Sc4pac =>
     // TODO catch coursier.error.ResolutionError$CantDownloadModule (e.g. when json files have syntax issues)
     val updateTask = for {
       pluginsLockData1 <- JD.PluginsLock.readOrInit
-      pluginsLockData <- JD.PluginsLock.upgradeFromScheme1(pluginsLockData1, iterateAllChannelContents, logger, pluginsRoot)
+      pluginsLockData <- JD.PluginsLock.upgradeFromScheme1(pluginsLockData1, iterateAllChannelPackages, logger, pluginsRoot)
       (resolution, globalVariant) <- doPromptingForVariant(globalVariant0)(Resolution.resolve(modules, _))
       plan            =  UpdatePlan.fromResolution(resolution, installed = pluginsLockData.dependenciesWithAssets)
       continue        <- ZIO.serviceWithZIO[Prompter](_.confirmUpdatePlan(plan))
@@ -488,33 +525,28 @@ object Sc4pac {
       channelContentsFile <- cache
                               .withTtl(Some(channelContentsTtl))
                               .file(artifact)  // requires initialized logger
+                              .provideSomeLayer(Downloader.emptyCookiesLayer)  // as we do not fetch channel file from Simtropolis, no need for cookies
                               .mapError { case e @ (_: coursier.cache.ArtifactError | scala.util.control.NonFatal(_)) => e.getMessage }
       profileRoot         <- ZIO.service[ProfileRoot]
       repo                <- MetadataRepository.create(os.Path(channelContentsFile: java.io.File, profileRoot.path), repoUri)
     } yield repo
   }
 
-  private def wrapService[R : zio.Tag, E, A](use: ZIO[Any, E, A] => ZIO[Any, E, A], task: ZIO[R, E, A]): ZIO[R, E, A] = {
-    for {
-      service <- ZIO.service[R]
-      task2   =  task.provideLayer(zio.ZLayer.succeed(service))
-      result  <- use(task2)
-    } yield result
-  }
-
   private[sc4pac] def initializeRepositories(repoUris: Seq[java.net.URI], cache: FileCache, channelContentsTtl: scala.concurrent.duration.Duration): RIO[ProfileRoot, Seq[MetadataRepository]] = {
-    val task: RIO[ProfileRoot, Seq[MetadataRepository]] = ZIO.collectPar(repoUris) { url =>
+    ZIO.validatePar(repoUris) { url =>
       fetchChannelData(url, cache, channelContentsTtl)
-        .mapError((err: ErrStr) => { System.err.println(s"Failed to read channel data: $err"); None })
-    }.filterOrFail(_.nonEmpty)(error.NoChannelsAvailable("No channels available", repoUris.toString))
+        .mapError((err: ErrStr) => { System.err.println(s"Failed to read channel data: $err"); url })
+    }.mapError(badUrls => error.ChannelsNotAvailable("Channels not available. Check your internet connection and that the channel URLs are correct.", badUrls.mkString(f"%n")))
     // TODO for long running processes, we might need a way to refresh the channel
     // data occasionally (but for now this is good enough)
-    wrapService(cache.logger.using(_), task)  // properly initializes logger (avoids Uninitialized TermDisplay)
   }
+
+  /** Limits parallel downloads to 2 (ST rejects too many connections). */
+  private[sc4pac] def createThreadPool() = coursier.cache.internal.ThreadUtil.fixedThreadPool(size = 2)
 
   def init(config: JD.Config): RIO[ProfileRoot & Logger, Sc4pac] = {
     // val refreshLogger = coursier.cache.loggers.RefreshLogger.create(System.err)  // TODO System.err seems to cause less collisions between refreshing progress and ordinary log messages
-    val coursierPool = coursier.cache.internal.ThreadUtil.fixedThreadPool(size = 2)  // limit parallel downloads to 2 (ST rejects too many connections)
+    val coursierPool = createThreadPool()
     for {
       cacheRoot <- config.cacheRootAbs
       logger    <- ZIO.service[Logger]
@@ -567,6 +599,35 @@ object Sc4pac {
 
       val allKeys = variants.flatMap(_.keysIterator).toSet
       try Right(helper(variants, allKeys)) catch { case e: NoCommonKeys => Left(e.msg) }
+    }
+  }
+
+  private[sc4pac] def fuzzySearchTokenize(searchString: String): IndexedSeq[String] = {
+    searchString.toLowerCase(java.util.Locale.ENGLISH).split(' ').toIndexedSeq
+  }
+
+  /** This search implementation tries to work around some deficiencies of the
+    * fuzzywuzzy library algorithms `tokenSetRatio` and `tokenSetPartialRatio`.
+    * (The former does not match partial strings, the latter finds lots of
+    * unsuitable matches for "vip terrain mod" for example.)
+    */
+  private[sc4pac] def fuzzySearchRatio(searchTokens: IndexedSeq[String], text: String, threshold: Int): Int = {
+    if (searchTokens.isEmpty) {
+      0
+    } else {
+      var acc = 0
+      for (token <- searchTokens) {
+        // There is a bug in the fuzzywuzzy library that causes
+        // partialRatio("wolf", "ulisse wolf hybrid-railway-subway-converter tunnel portals for hybrid railway (hrw)")
+        //                                              ^           ^             ^         ^
+        // to output 50 instead of 100, see https://github.com/xdrop/fuzzywuzzy/issues/106
+        // so as mitigation we first check containment.
+        val ratio = if (text.contains(token)) 100 else me.xdrop.fuzzywuzzy.FuzzySearch.partialRatio(token, text)
+        if (ratio >= threshold) {  // this eliminates poor matches for some tokens (however, this leads to inconsistent results for varying thresholds due to double truncation)
+          acc += ratio
+        }
+      }
+      math.round(acc.toFloat / searchTokens.length)
     }
   }
 

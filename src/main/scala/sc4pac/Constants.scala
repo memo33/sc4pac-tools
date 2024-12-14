@@ -26,18 +26,19 @@ object Constants {
   // 2: DLL support and single-file assets
   // 3: rar support
   // 4: Clickteam installer support
-  // …: channel stats
-  val channelSchemeVersions: Range = 1 to 4  // supported versions
+  // 5: channel stats, external packages, replacement of `contents`
+  val channelSchemeVersions: Range = 1 to 5  // supported versions
 
   val pluginsLockScheme = 2
   val bufferSizeExtract = 64 * 1024  // 64 kiB, bounded by disk speed
   val bufferSizeDownload = 1024 * 1024  // 1 MiB, bounded by download speed
   val bufferSizeDownloadOverlap = 4 * 1024  // for file validity check when resuming partial download
   val downloadProgressQuantization = 512 * 1024 // 0.5 MiB, controls average frequency of progress messages in API
+  val largeArchiveSizeInterruptible = 50L * 1024 * 1024  // 50 MiB, extraction of larger files can be interrupted
   val maxRedirectionsOpt = Some(20)
   val sslRetryCount = 3  // Coursier legacy
   val resumeIncompleteDownloadAttemps = 4
-  val fuzzySearchThreshold = 50  // 0..100
+  val fuzzySearchThreshold = 80  // 0..100
   val cacheTtl = 12.hours
   val channelContentsTtl = 30.minutes
   val channelContentsTtlShort = 60.seconds

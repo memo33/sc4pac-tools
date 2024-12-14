@@ -37,7 +37,7 @@ object Commands {
     Some(groups => groups.partition(_ == "Help") match { case (help, nonHelp) => nonHelp ++ help })
 
   // failures that are expected with both the CLI and the API
-  type ExpectedFailure = error.Sc4pacAbort | error.DownloadFailed | error.NoChannelsAvailable
+  type ExpectedFailure = error.Sc4pacAbort | error.DownloadFailed | error.ChannelsNotAvailable
     | error.Sc4pacVersionNotFound | error.Sc4pacAssetNotFound | error.ExtractionFailed
     | error.UnsatisfiableVariantConstraints | error.ChecksumError
 
@@ -55,6 +55,7 @@ object Commands {
         case abort: error.SymlinkCreationFailed => { System.err.println(s"Operation aborted. ${abort.getMessage}"); exit(1) }  // channel-build command
         case abort: error.FileOpsFailure => { System.err.println(s"Operation aborted. ${abort.getMessage}"); exit(1) }  // channel-build command
         case abort: error.YamlFormatIssue => { System.err.println(s"Operation aborted. ${abort.getMessage}"); exit(1) }  // channel-build command
+        case abort: error.PortOccupied => { System.err.println(abort.getMessage); exit(1) }  // server command
         case e => { e.printStackTrace(); exit(2) }
       },
       success = _ => exit(0)
@@ -116,6 +117,7 @@ object Commands {
         pac          <- Sc4pac.init(pluginsData.config)
         pluginsRoot  <- pluginsData.config.pluginsRootAbs
         flag         <- pac.update(pluginsData.explicit, globalVariant0 = pluginsData.config.variant, pluginsRoot = pluginsRoot)
+                          .provideSomeLayer(zio.ZLayer.succeed(Downloader.Cookies(Constants.simtropolisCookie)))
       } yield ()
       runMainExit(task.provideEnvironment(cliEnvironment.update((_: CliPrompter).withAutoYes(options.yes))), exit)
     }
@@ -174,11 +176,19 @@ object Commands {
     |  sc4pac search --threshold 20 "Pause border"    ${gray("# Decrease threshold for more results.")}
     |  ${gray(">>>")} ...
     |
+    |You can search for a URL of a STEX entry or SC4Evermore download page to find any corresponding packages:
+    |
+    |  sc4pac search "https://community.simtropolis.com/files/file/32812-save-warning/"
+    |  ${gray(">>>")} ...
+    |
+    |  sc4pac search "https://www.sc4evermore.com/index.php/downloads/download/26-gameplay-mods/26-bsc-no-maxis"
+    |  ${gray(">>>")} ...
+    |
     """.stripMargin.trim)
   final case class SearchOptions(
     @ValueDescription("number") @Group("Search") @Tag("Search")
     @HelpMessage(s"Fuziness (0..100, default=${Constants.fuzzySearchThreshold}): Smaller numbers lead to more results.")
-    threshold: Int = Constants.fuzzySearchThreshold  // 0..100, default 50
+    threshold: Int = Constants.fuzzySearchThreshold  // 0..100, default 80
   ) extends Sc4pacCommandOptions
 
   case object Search extends Command[SearchOptions] {
@@ -190,7 +200,7 @@ object Commands {
           pluginsData  <- JD.Plugins.readOrInit
           pac          <- Sc4pac.init(pluginsData.config)
           query        =  args.all.mkString(" ")
-          searchResult <- pac.search(query, options.threshold)
+          searchResult <- pac.search(query, options.threshold, category = None)
           installed    <- JD.PluginsLock.listInstalled.map(_.map(_.toBareDep).toSet)
           logger       <- ZIO.service[CliLogger]
         } yield {
@@ -436,7 +446,7 @@ object Commands {
   }
 
   @ArgsName("YAML-input-directories...")
-  @HelpMessage("""
+  @HelpMessage(s"""
     |Build a channel locally by converting YAML files to JSON.
     |
     |On Windows, this command may require special privileges to run.
@@ -444,10 +454,17 @@ object Commands {
     |
     |Examples:
     |  sc4pac channel build --output "channel/json/" "channel/yaml/"
+    |  sc4pac channel build --label Local --metadata-source-url https://github.com/memo33/sc4pac/blob/main/src/yaml/ -o channel/json channel/yaml
+    |
+    |Use the options ${emph("--label")} and ${emph("--metadata-source-url")} particularly for building publicly accessible channels.
     """.stripMargin.trim)
   final case class ChannelBuildOptions(
     @ExtraName("o") @ValueDescription("dir") @HelpMessage("Output directory for JSON files") @Group("Main") @Tag("Main")
-    output: String
+    output: String,
+    @ValueDescription("str") @HelpMessage("Optional short channel name for display in the UI") @Group("Main") @Tag("Main")
+    label: String = null,
+    @ValueDescription("url") @HelpMessage("Optional base URL linking to the online YAML source files (for Edit Metadata button)") @Group("Main") @Tag("Main")
+    metadataSourceUrl: String = null,
   ) extends Sc4pacCommandOptions
 
   /** For internal use, convert yaml files to json.
@@ -459,7 +476,19 @@ object Commands {
       args.all match {
         case Nil => error(caseapp.core.Error.Other("An argument is needed: YAML input directory"))
         case inputs =>
-          val task = ChannelUtil.convertYamlToJson(inputs.map(os.Path(_, os.pwd)), os.Path(options.output, os.pwd))
+          val info = JD.Channel.Info(
+            channelLabel = Option(options.label).filter(_.nonEmpty),
+            metadataSourceUrl =
+              Option(options.metadataSourceUrl).filter(_.nonEmpty)
+                .map(MetadataRepository.parseChannelUrl)
+                .map {
+                  case Left(err) => error(caseapp.core.Error.Other(s"Malformed metadata source URL: $err"))
+                  case Right(uri) => uri
+                },
+          )
+          val task =
+            ChannelUtil.convertYamlToJson(inputs.map(os.Path(_, os.pwd)), os.Path(options.output, os.pwd))
+              .provideSomeLayer(zio.ZLayer.succeed(info))
           runMainExit(task, exit)
       }
     }
@@ -468,8 +497,10 @@ object Commands {
   @HelpMessage(s"""
     |Start a local server to use the HTTP API.
     |
-    |Example:
-    |  sc4pac server --indent 2 --profile-root profiles/profile-1/
+    |Examples:
+    |  sc4pac server --profiles-dir profiles --indent 1
+    |  sc4pac server --profiles-dir profiles --web-app-dir build/web                ${gray("# used by GUI web")}
+    |  sc4pac server --profiles-dir profiles --auto-shutdown --startup-tag [READY]  ${gray("# used by GUI desktop")}
     """.stripMargin.trim)
   final case class ServerOptions(
     @ValueDescription("number") @Group("Server") @Tag("Server")
@@ -479,36 +510,85 @@ object Commands {
     @HelpMessage(s"indentation of JSON responses (default: -1, no indentation)")
     indent: Int = -1,
     @ValueDescription("path") @Group("Server") @Tag("Server")
-    @HelpMessage(s"root directory containing sc4pac-plugins.json (default: current working directory), newly created if necessary; "
-      + "can be used for managing multiple different plugins folders")
-    profileRoot: String = "",
+    @HelpMessage(s"directory containing the sc4pac-profiles.json file and profile sub-directories (default: current working directory), newly created if necessary")
+    profilesDir: String = "",
     @ValueDescription("path") @Group("Server") @Tag("Server")
-    @HelpMessage("deprecated (use --profile-root instead)")
-    scopeRoot: String = "",
+    @HelpMessage(s"optional directory containing statically served webapp files (default: no static files)")
+    webAppDir: String = "",
+    @ValueDescription("bool") @Group("Server") @Tag("Server")
+    @HelpMessage("automatically shut down the server when client closes connection to /server.connect (default: --auto-shutdown=false). This is used by the desktop GUI to ensure the port is cleared when the GUI exits.")
+    autoShutdown: Boolean = false,
+    @ValueDescription("string") @Group("Server") @Tag("Server")
+    @HelpMessage(s"optional tag to print once server has started and is listening")
+    startupTag: String = "",
   ) extends Sc4pacCommandOptions
 
   case object Server extends Command[ServerOptions] {
+
+    private def followRedirects = zio.http.ZClientAspect.followRedirects(Constants.maxRedirectionsOpt.get)(onRedirectError = { (resp, message) =>
+      ZIO.logInfo(message).as(resp)
+    })
+
     def run(options: ServerOptions, args: RemainingArgs): Unit = {
       if (options.indent < -1)
         error(caseapp.core.Error.Other(s"Indentation must be -1 or larger."))
-      val profileRoot: os.Path = {
-        val optProfileRoot = if (options.scopeRoot.nonEmpty) {
-          println("Option --scope-root is deprecated. Use --profile-root instead.")
-          options.scopeRoot
-        } else options.profileRoot
-        if (optProfileRoot.isEmpty) os.pwd else os.Path(java.nio.file.Paths.get(optProfileRoot), os.pwd)
+      val profilesDir: os.Path =
+        if (options.profilesDir.isEmpty) os.pwd else os.Path(java.nio.file.Paths.get(options.profilesDir), os.pwd)
+      if (!os.exists(profilesDir)) {
+        println(s"Creating sc4pac profiles directory: $profilesDir")
+        os.makeDir.all(profilesDir)
       }
-      if (!os.exists(profileRoot)) {
-        println(s"Creating sc4pac profile directory: $profileRoot")
-        os.makeDir.all(profileRoot)
-      }
+      val webAppDir: Option[os.Path] =
+        if (options.webAppDir.isEmpty) None else Some(os.Path(java.nio.file.Paths.get(options.webAppDir), os.pwd))
+      if (webAppDir.isDefined && !os.exists(webAppDir.get))
+        error(caseapp.core.Error.Other(s"Webapp directory does not exist: $webAppDir"))
       val task: Task[Unit] = {
-        val app = sc4pac.api.Api(options).routes.toHttpApp
-        println(s"Starting sc4pac server on port ${options.port}...")
-        zio.http.Server.serve(app).provide(zio.http.Server.defaultWithPort(options.port), zio.ZLayer.succeed(ProfileRoot(profileRoot)))
+        // Enabling CORS is important so that web browsers do not block the
+        // request response for lack of the following response header:
+        //     access-control-allow-origin: http://localhost:12345
+        // (e.g. when Flutter-web is hosted on port 12345)
+        val app = sc4pac.api.Api(options).routes(webAppDir) @@ zio.http.Middleware.cors
+        for {
+          promise  <- zio.Promise.make[Nothing, zio.Fiber[Throwable, Nothing]]
+          fiber    <- zio.http.Server.install(app)
+                        .zipRight(ZIO.succeed {
+                          if (options.startupTag.nonEmpty)
+                            println(options.startupTag)
+                          println(s"Sc4pac server is listening on port ${options.port}...")
+                          if (webAppDir.isDefined)
+                            println(f"%nTo start the sc4pac-gui web-app, open the following URL in your web browser:%n%n" +
+                              f"  http://localhost:${options.port}/webapp/%n")
+                        })
+                        .zipRight(ZIO.never)  // keep server running indefinitely unless interrupted
+                        .provide(
+                          zio.http.Server.defaultWithPort(options.port)
+                            .mapError { e =>  // usually: "bind(..) failed: Address already in use"
+                              sc4pac.error.PortOccupied(s"Failed to run sc4pac server on port ${options.port}. ${e.getMessage}")
+                            },
+                          zio.http.Client.default  // for /image.fetch
+                            .map(_.update[zio.http.Client](_.updateHeaders(_.addHeader("User-Agent", Constants.userAgent)) @@ followRedirects)),
+                          zio.ZLayer.succeed(ProfilesDir(profilesDir)),
+                          zio.ZLayer.succeed(ServerFiber(promise)),
+                        )
+                        .fork
+          _        <- promise.succeed(fiber)
+          exitVal  <- fiber.await
+          _        <- exitVal match {
+                        case zio.Exit.Failure(cause) =>
+                          if (cause.isInterruptedOnly) {
+                            ZIO.succeed(())  // interrupt is expected following autoShutdown after /server.connect
+                          } else cause.failureOrCause match {
+                            case Left(err) => ZIO.fail(err)  // converts PortOccupied failure cause to plain error
+                            case Right(cause2) => ZIO.refailCause(cause2)
+                          }
+                        case zio.Exit.Success[Nothing](nothing) => nothing
+                    }
+        } yield ()
       }
       runMainExit(task, exit)
     }
+
+    class ServerFiber(val promise: zio.Promise[Nothing, zio.Fiber[Throwable, Nothing]])
   }
 
 }

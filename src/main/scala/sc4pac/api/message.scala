@@ -5,7 +5,7 @@ package api
 import upickle.default as UP
 
 import sc4pac.JsonData as JD
-import JD.bareModuleRw
+import JD.{bareModuleRw, instantRw}
 
 sealed trait Message derives UP.ReadWriter
 
@@ -85,7 +85,7 @@ object ErrorMessage {
   @upickle.implicits.key("/error/server-error")
   case class ServerError(title: String, detail: String) extends ErrorMessage derives UP.ReadWriter
   @upickle.implicits.key("/error/profile-not-initialized")
-  case class ProfileNotInitialized(title: String, detail: String) extends ErrorMessage derives UP.ReadWriter
+  case class ProfileNotInitialized(title: String, detail: String, platformDefaults: Map[String, Seq[String]]) extends ErrorMessage derives UP.ReadWriter
   @upickle.implicits.key("/error/version-not-found")
   case class VersionNotFound(title: String, detail: String) extends ErrorMessage derives UP.ReadWriter
   @upickle.implicits.key("/error/asset-not-found")
@@ -97,7 +97,7 @@ object ErrorMessage {
   @upickle.implicits.key("/error/download-failed")
   case class DownloadFailed(title: String, detail: String) extends ErrorMessage derives UP.ReadWriter
   @upickle.implicits.key("/error/channels-not-available")
-  case class NoChannelsAvailable(title: String, detail: String) extends ErrorMessage derives UP.ReadWriter
+  case class ChannelsNotAvailable(title: String, detail: String) extends ErrorMessage derives UP.ReadWriter
   @upickle.implicits.key("/error/aborted")
   case class Aborted(title: String, detail: String) extends ErrorMessage derives UP.ReadWriter
   @upickle.implicits.key("/error/bad-request")
@@ -125,8 +125,8 @@ object ProgressMessage {
   @upickle.implicits.key("/progress/download/length")
   case class DownloadLength(url: String, length: Long) extends ProgressMessage derives UP.ReadWriter
 
-  @upickle.implicits.key("/progress/download/downloaded")
-  case class DownloadDownloaded(url: String, downloaded: Long) extends ProgressMessage derives UP.ReadWriter
+  @upickle.implicits.key("/progress/download/intermediate")
+  case class DownloadIntermediate(url: String, downloaded: Long) extends ProgressMessage derives UP.ReadWriter
 
   @upickle.implicits.key("/progress/download/finished")
   case class DownloadFinished(url: String, success: Boolean) extends ProgressMessage derives UP.ReadWriter
@@ -137,8 +137,30 @@ object InstalledPkg {
   given installedPkgRw: UP.ReadWriter[InstalledPkg] = UP.stringKeyRW(UP.macroRW)
 }
 
-case class SearchResultItem(`package`: BareModule, relevance: Int, summary: String) derives UP.ReadWriter
+// `installed` may be null
+case class InstalledStatus(explicit: Boolean, installed: InstalledStatus.Installed = null) derives UP.ReadWriter
+object InstalledStatus {
+  case class Installed(version: String, variant: Variant, installedAt: java.time.Instant, updatedAt: java.time.Instant)
+  given installedRw: UP.ReadWriter[Installed] = UP.stringKeyRW(UP.macroRW)
+}
+
+case class PluginsSearchResult(stats: JD.Channel.Stats, packages: Seq[PluginsSearchResultItem]) derives UP.ReadWriter
+
+// `status` is not null
+case class PluginsSearchResultItem(`package`: BareModule, relevance: Int, summary: String, status: InstalledStatus) derives UP.ReadWriter
+
+// `status` may be null
+case class PackageSearchResultItem(`package`: BareModule, relevance: Int, summary: String, status: InstalledStatus = null) derives UP.ReadWriter
+
+case class PackageInfo(local: PackageInfo.Local, remote: JD.Package) derives UP.ReadWriter
+object PackageInfo {
+  case class Local(statuses: Map[BareModule, InstalledStatus]) derives UP.ReadWriter
+}
 
 case class ChannelContentsItem(`package`: BareModule, version: String, summary: String, category: Option[String]) derives UP.ReadWriter
 
-case class InitArgs(plugins: String, cache: String) derives UP.ReadWriter
+case class InitArgs(plugins: String, cache: String, temp: String) derives UP.ReadWriter
+
+case class ServerStatus(sc4pacVersion: String) derives UP.ReadWriter
+
+case class ProfileName(name: String) derives UP.ReadWriter

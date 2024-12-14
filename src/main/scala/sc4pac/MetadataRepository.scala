@@ -4,12 +4,14 @@ package sc4pac
 import coursier.core.{Module, Versions, Version}
 import coursier.cache as CC
 import upickle.default.Reader
-import zio.{ZIO, IO}
+import zio.{ZIO, IO, UIO}
 
 import sc4pac.error.*
 import sc4pac.JsonData as JD
 
 sealed abstract class MetadataRepository(val baseUri: java.net.URI) {
+
+  def channel: JD.Channel
 
   /** Obtain the raw version strings of `dep` contained in this repository. */
   def getRawVersions(dep: BareDep): Seq[String]
@@ -44,7 +46,9 @@ sealed abstract class MetadataRepository(val baseUri: java.net.URI) {
     */
   def fetchModuleJson[A <: JD.PackageAsset : Reader](module: Module, version: String, fetch: MetadataRepository.Fetch): zio.Task[A]
 
-  def iterateChannelContents: Iterator[JD.ChannelItem]
+  def fetchExternalPackage(module: BareModule, fetch: MetadataRepository.Fetch): zio.Task[Option[JD.ExternalPackage]]
+
+  def iterateChannelPackages: Iterator[JD.ChannelItem]
 }
 
 object MetadataRepository {
@@ -72,13 +76,12 @@ object MetadataRepository {
 
   def create(channelContentsFile: os.Path, baseUri: java.net.URI): IO[ErrStr, MetadataRepository] = {
     if (baseUri.getPath.endsWith(".yaml")) {  // yaml repository
-      for {
-        contents <- ChannelUtil.readAndParsePkgData(channelContentsFile, root = None)
-      } yield {
-        val channelData: Map[BareDep, Map[String, JD.PackageAsset]] =
-          contents.groupMap(_.toBareDep)(data => data.version -> data).view.mapValues(_.toMap).toMap
-        new YamlRepository(baseUri, channelData)
-      }
+      (for {
+        packages <- ChannelUtil.readAndParsePkgData(channelContentsFile, root = None)
+        // Internally, this picks the latest scheme version as we do not have any other input to work with.
+        // If the scheme has been updated, then the yaml files have probably already failed to parse.
+        yamlRepo <- YamlChannelBuilder().resultToRepository(baseUri, packages)
+      } yield yamlRepo).provideSomeLayer(zio.ZLayer.succeed(JD.Channel.Info.empty))
     } else {  // json repository
       val contentsUrl = channelContentsUrl(baseUri).toString
       for {
@@ -107,17 +110,25 @@ object MetadataRepository {
   def latestSubPath(group: String, name: String): os.SubPath = {
     os.SubPath(s"metadata/$group/$name/latest")
   }
+
+  def extPkgJsonSubPath(dep: BareDep): os.SubPath = {
+    os.SubPath(JsonRepoUtil.extPackageSubPath(dep))
+  }
 }
 
 /** This repository operates on a hierarchy of JSON files. The JSON files are loaded on demand.
   */
 private class JsonRepository(
   baseUri: java.net.URI,
-  channelData: JD.Channel
+  val channel: JD.Channel,
 ) extends MetadataRepository(baseUri) {
 
+  /* the Map of references to external packages stored in the channel contents file */
+  private lazy val externalPackages: Map[BareModule, JD.Channel.ExtPkg] =
+    channel.externalPackages.view.map(item => item.toBareDep -> item).toMap
+
   /** Obtain the raw version strings of `dep` contained in this repository. */
-  def getRawVersions(dep: BareDep): Seq[String] = channelData.versions.getOrElse(dep, Seq.empty).map(_._1)
+  def getRawVersions(dep: BareDep): Seq[String] = channel.versions.getOrElse(dep, Seq.empty).map(_._1)
 
   // TODO Avoid fetching the same json file multiple times during a single
   // update command. This could lead to races during an update. (As the
@@ -129,7 +140,7 @@ private class JsonRepository(
     */
   def fetchModuleJson[A <: JD.PackageAsset : Reader](module: Module, version: String, fetch: MetadataRepository.Fetch): zio.Task[A] = {
     val dep = CoursierUtil.bareDepFromModule(module)
-    channelData.versions.get(dep).flatMap(_.find(_._1 == version)) match
+    channel.versions.get(dep).flatMap(_.find(_._1 == version)) match
       // This only works for concrete versions (so not for "latest.release").
       // The assumption is that all methods of MetadataRepository are only called with concrete versions.
       case None =>
@@ -148,14 +159,29 @@ private class JsonRepository(
           .flatMap((jsonStr: String) => JsonIo.read[A](jsonStr, errMsg = remoteUrl))
   }
 
-  def iterateChannelContents: Iterator[JD.ChannelItem] = channelData.contents.iterator
+  def fetchExternalPackage(module: BareModule, fetch: MetadataRepository.Fetch): zio.Task[Option[JD.ExternalPackage]] = {
+    externalPackages.get(module) match {
+      case None => ZIO.succeed(None)
+      case Some(extPkg) =>
+        val remoteUrl = baseUri.resolve(MetadataRepository.extPkgJsonSubPath(module).segments0.mkString("/")).toString
+        val jsonArtifact = Artifact(remoteUrl, changing = false, checksum = extPkg.checksum)
+        fetch(jsonArtifact)
+          .flatMap((jsonStr: String) => JsonIo.read[JD.ExternalPackage](jsonStr, errMsg = remoteUrl))
+          .map(Some(_))
+    }
+  }
+
+  def iterateChannelPackages: Iterator[JD.ChannelItem] = channel.packages.iterator
 }
 
 /** This repository is read from a single YAML file. All its data is held in memory.
   */
 private class YamlRepository(
   baseUri: java.net.URI,
-  channelData: Map[BareDep, Map[String, JD.PackageAsset]]  // name -> version -> json
+  val channel: JD.Channel,
+  channelData: collection.Map[BareDep, Map[String, JD.PackageAsset]],  // name -> version -> json
+  externalPackages: collection.Map[BareModule, JD.ExternalPackage],
+  externalAssets: collection.Map[BareAsset, JD.ExternalAsset],
 ) extends MetadataRepository(baseUri) {
 
   def getRawVersions(dep: BareDep): Seq[String] = {
@@ -173,12 +199,45 @@ private class YamlRepository(
     }
   }
 
-  // We pick the latest scheme version as we do not have any other input to work with.
-  // If the scheme has been updated, then the yaml files have probably already failed to parse.
-  lazy private val channel = JD.Channel.create(
-    scheme = Constants.channelSchemeVersions.max,
-    channelData.view.mapValues(_.view.map { case (version, pkgData) => (version, pkgData, JD.Checksum.empty) })
-  )
+  def fetchExternalPackage(module: BareModule, fetch: MetadataRepository.Fetch): zio.Task[Option[JD.ExternalPackage]] = {
+    ZIO.succeed(externalPackages.get(module))
+  }
 
-  def iterateChannelContents: Iterator[JD.ChannelItem] = channel.contents.iterator
+  def iterateChannelPackages: Iterator[JD.ChannelItem] = channel.packages.iterator
+}
+
+private class YamlChannelBuilder extends ChannelBuilder[Nothing] {
+  import scala.jdk.CollectionConverters.*
+  private val contents = (new java.util.concurrent.ConcurrentHashMap[BareDep, Map[String, JD.PackageAsset]]()).asScala  // name -> version -> json
+  private val extPkgs = (new java.util.concurrent.ConcurrentHashMap[BareModule, JD.ExternalPackage]()).asScala
+  private val extAssets = (new java.util.concurrent.ConcurrentHashMap[BareAsset, JD.ExternalAsset]()).asScala
+
+  def storePackage(data: JD.Package): UIO[JD.Checksum] = ZIO.succeed {
+    contents.updateWith(data.toBareDep) { versionsMapOpt => Some {
+      versionsMapOpt.getOrElse(Map.empty) + (data.version -> data)
+    }}
+    JD.Checksum.empty
+  }
+
+  def storeAsset(data: JD.Asset): UIO[JD.Checksum] = ZIO.succeed {
+    contents.updateWith(data.toBareDep) { versionsMapOpt => Some {
+      versionsMapOpt.getOrElse(Map.empty) + (data.version -> data)
+    }}
+    JD.Checksum.empty
+  }
+
+  def storeExtPackage(data: JD.ExternalPackage): UIO[JD.Checksum] = ZIO.succeed {
+    extPkgs += data.toBareDep -> data
+    JD.Checksum.empty
+  }
+
+  def storeExtAsset(data: JD.ExternalAsset): UIO[JD.Checksum] = ZIO.succeed {
+    extAssets += data.toBareDep -> data
+    JD.Checksum.empty
+  }
+
+  def resultToRepository(baseUri: java.net.URI, packages: Seq[JD.PackageAsset]): zio.URIO[JD.Channel.Info, YamlRepository] =
+    result(packages).map { channel =>
+      YamlRepository(baseUri, channel, contents, extPkgs, extAssets)
+    }
 }

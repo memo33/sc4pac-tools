@@ -3,7 +3,7 @@ package sc4pac
 
 import coursier.core.{Module, ModuleName, Organization}
 import coursier.core as C
-import upickle.default.{ReadWriter, readwriter}
+import upickle.default.{ReadWriter, readwriter, stringKeyRW}
 import java.nio.file.{Path as NioPath}
 import zio.{ZIO, IO, RIO, URIO, Task}
 import java.util.regex.Pattern
@@ -18,6 +18,7 @@ object JsonData extends SharedData {
 
   override type Instant = java.time.Instant
   override type SubPath = os.SubPath
+  override type Uri = java.net.URI
 
   // We use OffsetDateTime.parse instead of Instant.parse for compatibility with Java 8 to 11
   implicit val instantRw: ReadWriter[java.time.Instant] =
@@ -30,16 +31,18 @@ object JsonData extends SharedData {
   implicit val uriRw: ReadWriter[java.net.URI] = readwriter[String].bimap[java.net.URI](_.toString(),
     MetadataRepository.parseChannelUrl(_).left.map(new IllegalArgumentException(_)).toTry.get)
 
-  private def bareModuleRead(s: String) =
+  private[sc4pac] def bareModuleRead(s: String) =
     Sc4pac.parseModule(s) match {
       case Right(mod) => mod
       case Left(err) => throw new IllegalArgumentException(err)
     }
-  implicit val bareModuleRw: ReadWriter[BareModule] = readwriter[String].bimap[BareModule](_.orgName, bareModuleRead)
-  implicit val bareDepRw: ReadWriter[BareDep] = readwriter[String].bimap[BareDep](_.orgName, { (s: String) =>
+  // Wrapping with `stringKeyRW` is important for Api/packages.info, so that
+  // BareModule can be serialized as key of JSON dictionary (instead of serializing Maps as arrays of arrays).
+  implicit val bareModuleRw: ReadWriter[BareModule] = stringKeyRW(readwriter[String].bimap[BareModule](_.orgName, bareModuleRead))
+  implicit val bareDepRw: ReadWriter[BareDep] = stringKeyRW(readwriter[String].bimap[BareDep](_.orgName, { (s: String) =>
     val prefix = Constants.sc4pacAssetOrg.value + ":"
     if (s.startsWith(prefix)) BareAsset(assetId = C.ModuleName(s.substring(prefix.length))) else bareModuleRead(s)
-  })
+  }))
 
   case class Config(
     pluginsRoot: NioPath,
@@ -82,6 +85,8 @@ object JsonData extends SharedData {
       profileRoot.path / "cache"
     ))
 
+    val defaultTempRoot: os.FilePath = os.FilePath("temp")
+
     /** Prompt for pluginsRoot and cacheRoot. This has a `CliPrompter` constraint as we only want to prompt about this using the CLI. */
     val promptForPaths: RIO[ProfileRoot & CliPrompter, (os.Path, os.Path)] = {
       val task = for {
@@ -97,16 +102,17 @@ object JsonData extends SharedData {
         onFalse = ZIO.fail(new error.Sc4pacNotInteractive("Path to plugins folder cannot be configured non-interactively (yet).")))  // TODO fallback
     }
 
-    /** Init and write. */
-    def init(pluginsRoot: os.Path, cacheRoot: os.Path): RIO[ProfileRoot, Plugins] = {
+    /** Init and write. Here `tempRoot` may be absolute or relative (to profile
+      * root) to allow GUI to use a shared `../temp` folder for all profiles.
+      */
+    def init(pluginsRoot: os.Path, cacheRoot: os.Path, tempRoot: os.FilePath): RIO[ProfileRoot, Plugins] = {
       for {
         profileRoot  <- ZIO.service[ProfileRoot]
-        tempRoot     <- ZIO.succeed(profileRoot.path / "temp")  // customization not needed
         data         =  Plugins(
                           config = Config(
                             pluginsRoot = Config.subRelativize(pluginsRoot, profileRoot),
                             cacheRoot = Config.subRelativize(cacheRoot, profileRoot),
-                            tempRoot = Config.subRelativize(tempRoot, profileRoot),
+                            tempRoot = tempRoot.toNIO,  // may be relative or absolute
                             variant = Map.empty,
                             channels = Constants.defaultChannelUrls),
                           explicit = Seq.empty)
@@ -130,7 +136,7 @@ object JsonData extends SharedData {
         onTrue = JsonIo.read[Plugins](pluginsPath),
         onFalse = for {
           (pluginsRoot, cacheRoot) <- promptForPaths
-          data                     <- Plugins.init(pluginsRoot, cacheRoot)
+          data                     <- Plugins.init(pluginsRoot, cacheRoot, tempRoot = defaultTempRoot)
         } yield data
       )
     }
@@ -153,6 +159,8 @@ object JsonData extends SharedData {
     // def toDependency = DepVariant.fromDependency(C.Dependency(moduleWithAttributes, version))  // TODO remove?
     def toDepModule = DepModule(Organization(group), ModuleName(name), version = version, variant = variant)
     def toBareModule = BareModule(Organization(group), ModuleName(name))
+    private[sc4pac] def toSearchString: String = s"$group:$name $summary".toLowerCase(java.util.Locale.ENGLISH)  // copied from ChannelItem.toSearchString
+    def toApiInstalled = api.InstalledStatus.Installed(version = version, variant = variant, installedAt = installedAt, updatedAt = updatedAt)
   }
 
   case class PluginsLock(scheme: Int = 1, installed: Seq[InstalledData], assets: Seq[Asset]) derives ReadWriter {
@@ -200,7 +208,7 @@ object JsonData extends SharedData {
   object PluginsLock {
 
     // called during update task, where PluginsLock file is written
-    private[sc4pac] def upgradeFromScheme1(data: PluginsLock, iterateAllChannelContents: Task[Iterator[ChannelItem]], logger: Logger, pluginsRoot: os.Path): Task[PluginsLock] = {
+    private[sc4pac] def upgradeFromScheme1(data: PluginsLock, iterateAllChannelPackages: Task[Iterator[ChannelItem]], logger: Logger, pluginsRoot: os.Path): Task[PluginsLock] = {
       if (data.scheme != 1) {
         ZIO.succeed(data)
       } else {
@@ -211,7 +219,7 @@ object JsonData extends SharedData {
             .map(path => java.time.Instant.ofEpochMilli(os.mtime(path)).truncatedTo(ChronoUnit.SECONDS))
         }
         for {
-          channelItems    <- iterateAllChannelContents
+          channelItems    <- iterateAllChannelPackages
           channelItemsMap =  channelItems.map(item => item.toBareDep -> item).toMap
           installed       <- ZIO.foreach(data.installed) { inst =>
                                channelItemsMap.get(inst.toBareModule) match {
@@ -247,12 +255,15 @@ object JsonData extends SharedData {
     }
 
     // does *not* automatically upgrade from scheme 1 (this function is only used for reading, not writing)
-    val listInstalled: RIO[ProfileRoot, Seq[DepModule]] = PluginsLock.pathURIO.flatMap { pluginsLockPath =>
+    val listInstalled2: RIO[ProfileRoot, Seq[InstalledData]] = PluginsLock.pathURIO.flatMap { pluginsLockPath =>
       ZIO.ifZIO(ZIO.attemptBlocking(os.exists(pluginsLockPath)))(
-        onTrue = JsonIo.read[PluginsLock](pluginsLockPath).map(_.installed.map(_.toDepModule)),
+        onTrue = JsonIo.read[PluginsLock](pluginsLockPath).map(_.installed),
         onFalse = ZIO.succeed(Seq.empty)
       )
     }
+
+    val listInstalled: RIO[ProfileRoot, Seq[DepModule]] = listInstalled2.map(_.map(_.toDepModule))
+
   }
 
   class InstallRecipe(include: Seq[Pattern], exclude: Seq[Pattern], includeWithChecksum: Seq[(Pattern, IncludeWithChecksum)]) {
@@ -296,7 +307,7 @@ object JsonData extends SharedData {
         Seq.empty
       } else {
         Seq(
-          "The package metadata seems to be out-of-date, so the package may not have been fully installed. " +
+          "The package metadata seems to be out-of-date, so the installed plugin files might be incomplete. " +
           "Please report this to the maintainers of the package metadata. " +
           s"These inclusion/exclusion patterns did not match any files in the asset ${asset.assetId.value}: " + unused.mkString(" "))
       }
@@ -344,6 +355,36 @@ object JsonData extends SharedData {
     )
 
   case class CheckFile(filename: Option[String], checksum: Checksum = Checksum.empty) derives ReadWriter
+
+  case class Profile(id: ProfileId, name: String) derives ReadWriter
+
+  // or GuiConfig or GuiSettings
+  case class Profiles(profiles: Seq[Profile], currentProfileId: Option[ProfileId], settings: ujson.Value = ujson.Obj()) derives ReadWriter {
+
+    private def nextId: ProfileId = {
+      val existing = profiles.map(_.id).toSet
+      Iterator.from(1).map(_.toString).dropWhile(existing).next
+    }
+
+    def add(name: String): (Profiles, Profile) = {
+      val id = nextId
+      val profile = Profile(id = id, name = name)
+      (Profiles(profiles :+ profile, currentProfileId = Some(id)), profile)
+    }
+  }
+  object Profiles {
+    def path(profilesDir: os.Path): os.Path = profilesDir / "sc4pac-profiles.json"
+
+    def pathURIO: URIO[ProfilesDir, os.Path] = ZIO.service[ProfilesDir].map(profilesDir => Profiles.path(profilesDir.path))
+
+    /** Read Profiles from file if it exists, else create it and write it to file. */
+    val readOrInit: RIO[ProfilesDir, Profiles] = Profiles.pathURIO.flatMap { jsonPath =>
+      ZIO.ifZIO(ZIO.attemptBlocking(os.exists(jsonPath)))(
+        onTrue = JsonIo.read[Profiles](jsonPath),
+        onFalse = ZIO.succeed(Profiles(Seq.empty, None))
+      )
+    }
+  }
 
   case class IncludeWithChecksum(include: String, sha256: ArraySeq[Byte])
 

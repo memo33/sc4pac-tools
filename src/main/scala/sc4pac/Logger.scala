@@ -1,7 +1,7 @@
 package io.github.memo33
 package sc4pac
 
-import zio.{ZIO, Task}
+import zio.{ZIO, Task, RIO}
 import sc4pac.Resolution.DepModule
 import org.fusesource.jansi.Ansi
 
@@ -22,16 +22,6 @@ trait Logger {
   def gettingLength(url: String): Unit = {}
   def gettingLengthResult(url: String, length: Option[Long]): Unit = {}
 
-  final def using[A](task: Task[A]): Task[A] = {  // this has no effect anymore, since our custom loggers do not use `init` or `stop`
-    task
-    // for {
-    //   // _ <- ZIO.attempt(logger.init())
-    //   a <- task.either  // sync.attempt(task)
-    //   // _ <- ZIO.attempt(logger.stop())
-    //   t <- ZIO.fromEither(a)  // sync.fromAttempt(a)
-    // } yield t
-  }
-
   def concurrentCacheAccess(url: String): Unit = debug(s"concurrentCacheAccess $url")
 
   def extractingArchiveEntry(entry: os.SubPath, include: Boolean): Unit
@@ -40,7 +30,7 @@ trait Logger {
 
   def publishing[A](removalOnly: Boolean)(publishing: Task[A]): Task[A]
 
-  def fetchingAssets[A](fetching: Task[A]): Task[A]
+  def fetchingAssets[R, A](fetching: RIO[R, A]): RIO[R, A]
 
   def debugPrintStackTrace(exception: Throwable): Unit = debug({
     val sw = java.io.StringWriter()
@@ -110,7 +100,7 @@ class CliLogger private (out: java.io.PrintStream, useColor: Boolean, isInteract
   /** Print a message, followed by a spinning animation, while running a task.
     * The task should not print anything, unless sameLine is true.
     */
-  def withSpinner[A](msg: Option[String], sameLine: Boolean, cyan: Boolean = false, duration: java.time.Duration = java.time.Duration.ofMillis(100))(task: Task[A]): Task[A] = {
+  def withSpinner[R, A](msg: Option[String], sameLine: Boolean, cyan: Boolean = false, duration: java.time.Duration = java.time.Duration.ofMillis(100))(task: RIO[R, A]): RIO[R, A] = {
     if (msg.nonEmpty) {
       out.println(msg.get)
     }
@@ -150,7 +140,7 @@ class CliLogger private (out: java.io.PrintStream, useColor: Boolean, isInteract
     withSpinner(Some(msg), sameLine = false)(publishing)
   }
 
-  def fetchingAssets[A](fetching: Task[A]): Task[A] = {
+  def fetchingAssets[R, A](fetching: RIO[R, A]): RIO[R, A] = {
     withSpinner(None, sameLine = true, cyan = true, duration = java.time.Duration.ofMillis(160))(fetching)
   }
 }

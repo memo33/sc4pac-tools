@@ -77,9 +77,9 @@ assembly / assemblyMergeStrategy := {
 val coursierVersion = "2.1.2"
 libraryDependencies += "io.get-coursier" %% "coursier" % coursierVersion cross CrossVersion.for3Use2_13  // resolver, not yet available for scala 3
 
-libraryDependencies += "dev.zio" %% "zio-nio" % "2.0.1" exclude("org.scala-lang.modules", "scala-collection-compat_3")  // solves version conflict with coursier (compat package is empty in both 2.13 and 3 anyway)
+libraryDependencies += "dev.zio" %% "zio-nio" % "2.0.2" exclude("org.scala-lang.modules", "scala-collection-compat_3")  // solves version conflict with coursier (compat package is empty in both 2.13 and 3 anyway)
 
-libraryDependencies += "dev.zio" %% "zio" % "2.0.15"  // IO
+libraryDependencies += "dev.zio" %% "zio" % "2.1.12"  // IO
 
 libraryDependencies += "com.lihaoyi" %% "os-lib" % "0.11.1"  // file system utilities
 
@@ -109,7 +109,7 @@ libraryDependencies += "net.sf.sevenzipjbinding" % "sevenzipjbinding" % "16.02-2
 libraryDependencies += ("com.mucommander" % "sevenzipjbinding-all-platforms" % "16.02-2.01" // patched by muCommander for Apple M1 support
   from "https://www.mucommander.com/maven/com/mucommander/sevenzipjbinding-all-platforms/16.02-2.01/sevenzipjbinding-all-platforms-16.02-2.01.jar")
 
-libraryDependencies += "dev.zio" %% "zio-http" % "3.0.0-RC3" exclude("org.scala-lang.modules", "scala-collection-compat_3")  // server
+libraryDependencies += "dev.zio" %% "zio-http" % "3.0.1" exclude("org.scala-lang.modules", "scala-collection-compat_3")  // server
 
 libraryDependencies += "org.slf4j" % "slf4j-nop" % "2.0.7"  // ignore logging in zio-http/netty
 

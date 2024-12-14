@@ -46,9 +46,7 @@ class ResolutionContext(
           (repo.fetchVersions(module)).either.map(repo -> _.map(_._1))
         }
 
-      val t0 = cache.logger.using(t: zio.Task[Seq[(MetadataRepository, Either[ErrStr, coursier.core.Versions])]])
-
-      t0.map { results =>
+      t.map { results =>
         mergeVersions(results.flatMap(_._2.toSeq).toVector)  // repositories not containing module can be ignored
       }
     }

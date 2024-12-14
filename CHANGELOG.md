@@ -2,13 +2,18 @@
 
 ## [Unreleased]
 ### Added
-- a few channel stats have been added to channel JSON file, such as which categories contain how many packages
+- Added `--label` and `--metadata-source-url` options to `channel build` command. Use these particularly for publicly accessible channels.
+- Added "Channel" label, "Metadata" URL and "Required By" fields to `info` command output.
+- Channels now keep track of inter-channel dependencies. In particular, the "Required By" field includes packages from all channels.
+- A few channel stats have been added to channel JSON file, such as which categories contain how many packages.
 - The lock file includes some new fields such as `installedAt` and `updatedAt`.
+- You can search for STEX or SC4E URLs now to find corresponding packages.
 
 ### Fixed
 - an issue affecting some old terminals in which the escape sequences used for displaying progress bars were incorrectly printed to the console (#8)
 - an issue that could cause warning messages to mess up the prompt display (#5)
 - an issue that prevented selecting some variants if a prompt had 10+ variants (#12)
+- an issue in which an interrupted internet connection was not handled gracefully
 
 ### Changed
 - improved error message if channel-build fails randomly in case old files could not be removed (#6)
@@ -18,6 +23,14 @@
   For correct text wrapping, multiline text blocks should start with `|` instead of `>`, from now on.
 - Installing DLLs now requires a checksum (#13, #17). Only DBPF files can be installed without checksum.
   New fields `withChecksum`, `checksum` and `nonPersistentUrl` have been added to the metadata.
+- The fuzzy search algorithm was changed to improve results for partial matches.
+- The `contents` array of the channel JSON file has been split into new `packages` and `assets` fields.
+- The API was upgraded to version 2.0:
+  * many API endpoints now require a `profile` parameter
+  * initializing a profile now requires a `temp` folder parameter
+  * several new endpoints and backward incompatible changes
+  * the server can store settings for the client
+  * authentication cookie can now be set by the client
 
 
 ## [0.4.5] - 2024-10-17

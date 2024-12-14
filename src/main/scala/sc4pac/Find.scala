@@ -7,7 +7,7 @@ import zio.{ZIO, Task, RIO}
 import upickle.default.Reader
 
 import sc4pac.JsonData as JD
-import sc4pac.error.{Sc4pacVersionNotFound, Sc4pacMissingVariant}
+import sc4pac.error.{Sc4pacVersionNotFound, Sc4pacMissingVariant, Sc4pacAssetNotFound}
 
 object Find {
 
@@ -24,24 +24,30 @@ object Find {
     }
   }
 
+  // See also download-error handling in Resolution.
+  private def handleMetadataDownloadError(orgName: => String, context: ResolutionContext): PartialFunction[Throwable, Task[Option[Nothing]]] = {
+    case _: error.Sc4pacVersionNotFound => ZIO.succeed(None)  // repositories not containing module:version can be ignored
+    case e: (ArtifactError.WrongChecksum | ArtifactError.ChecksumFormatError | ArtifactError.ChecksumNotFound) =>
+      ZIO.fail(new error.ChecksumError(
+        s"Checksum verification failed for $orgName. Usually this should not happen and suggests a problem with the channel data.",
+        e.getMessage))
+    case e: (ArtifactError.DownloadError | ArtifactError.WrongLength | ArtifactError.NotFound) =>
+      ZIO.fail(new error.DownloadFailed("Failed to download some metadata files. Check your internet connection.",
+        e.getMessage))
+    case e: ArtifactError =>
+      context.logger.debugPrintStackTrace(e)
+      ZIO.fail(new error.DownloadFailed("Unexpected download error.", e.getMessage))
+  }
+
   /** Find the JD.Package or JD.Asset corresponding to module and version,
     * across all repositories. If not found at all, try a second time with the
     * repository channel contents updated. */
   def packageData[A <: JD.Package | JD.Asset : Reader](module: C.Module, version: String): RIO[ResolutionContext, Option[A]] = {
     def tryAllRepos(repos: Seq[MetadataRepository], context: ResolutionContext): Task[Option[A]] = ZIO.collectFirst(repos) { repo =>
-      val task: Task[Option[A]] = {
         repo.fetchModuleJson[A](module, version, context.cache.fetchText)
           .uninterruptible  // uninterruptile to avoid incomplete-download error messages when resolving is interrupted to prompt for a variant selection (downloading json should be fairly quick anyway)
           .map(Some(_))
-          .catchSome {
-            case _: error.Sc4pacVersionNotFound => ZIO.succeed(None)  // repositories not containing module:version can be ignored
-            case e: (ArtifactError.WrongChecksum | ArtifactError.ChecksumFormatError | ArtifactError.ChecksumNotFound) =>
-              ZIO.fail(new error.ChecksumError(
-                s"Checksum verification failed for ${module.orgName}. Usually this should not happen and suggests a problem with the channel data.",
-                e.getMessage))
-          }
-      }
-      context.cache.logger.using(task)  // properly initializes logger (avoids Uninitialized TermDisplay)
+          .catchSome(handleMetadataDownloadError(module.orgName, context))
     }
 
     ZIO.service[ResolutionContext].flatMap { context =>
@@ -85,6 +91,29 @@ object Find {
     concreteVersion(mod, version)
       .flatMap(packageData[JD.Package](mod, _))
       .flatMap(pickVariant)
+  }
+
+  /** Find all external packages that depend on this module. This searches
+    * across all repositories and returns the union of all inter-channel
+    * dependencies on this module.
+    * Intra-channel dependencies are not part of the result (since they are
+    * not listed as external packages, but are part of the regular JD.Package).
+    */
+  def requiredByExternal(module: BareModule): RIO[ResolutionContext, Iterable[(java.net.URI, Seq[BareModule])]] = {
+    for {
+      context      <- ZIO.service[ResolutionContext]
+      (errs, rels) <- ZIO.partitionPar(context.repositories) { repo =>
+                        repo.fetchExternalPackage(module, context.cache.fetchText)
+                          .catchSome(handleMetadataDownloadError(module.orgName, context))
+                          .map(extPkgOpt => repo.baseUri -> extPkgOpt.toSeq.flatMap(_.requiredBy))
+                      }
+      result       <- if (rels.nonEmpty) {  // some channels could be read successfully (so ignore errors for simplicity, even though result may be incomplete)
+                        ZIO.succeed(rels.filter(_._2.nonEmpty))
+                      } else {
+                        ZIO.fail(Sc4pacAssetNotFound(s"Could not find inter-channel reverse dependencies of package ${module.orgName}",
+                          s"Most likely you are offline or the channel metadata is not up-to-date: $errs"))
+                      }
+    } yield result
   }
 
 }

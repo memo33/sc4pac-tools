@@ -168,7 +168,7 @@ class Resolution(reachableDeps: TreeSeqMap[BareDep, Seq[BareDep]], nonbareDeps: 
   /** Download artifacts of a subset of the dependency set of the resolution, or
     * take files from cache in case they are still up-to-date.
     */
-  def fetchArtifactsOf(subset: Seq[Dep]): RIO[ResolutionContext, Seq[(DepAsset, Artifact, java.io.File)]] = {
+  def fetchArtifactsOf(subset: Seq[Dep]): RIO[ResolutionContext & Downloader.Cookies, Seq[(DepAsset, Artifact, java.io.File)]] = {
     val assetsArtifacts = subset.collect{ case d: DepAsset =>
       (d, Artifact(
         d.url,
@@ -182,11 +182,8 @@ class Resolution(reachableDeps: TreeSeqMap[BareDep, Seq[BareDep]], nonbareDeps: 
       ZIO.foreachPar(assetsArtifacts) { (dep, art) =>
         context.cache.file(art).map(file => (dep, art, file))
       }
-      .catchSome {
-        case e: (coursier.error.FetchError.DownloadingArtifacts | ArtifactError.DownloadError | ArtifactError.WrongLength | ArtifactError.NotFound) =>
-          ZIO.fail(new error.DownloadFailed("Failed to download some assets. Try again later. " +
-            "You may have reached your daily download quota (Simtropolis: 20 files per day) or the file exchange server is currently unavailable.",
-            e.getMessage))
+      .catchAll {
+        // See also download-error handling in Find.
         case e: (ArtifactError.WrongChecksum | ArtifactError.ChecksumFormatError | ArtifactError.ChecksumNotFound) =>
           ZIO.fail(new error.ChecksumError(
             f"Checksum verification failed for a downloaded asset.%n" +
@@ -194,11 +191,27 @@ class Resolution(reachableDeps: TreeSeqMap[BareDep, Seq[BareDep]], nonbareDeps: 
             "- Otherwise, this means the uploaded file was modified after the channel metadata was last updated, " +
             "so the integrity of the file cannot be verified by sc4pac: Report this to the maintainers of the metadata.",
             e.getMessage))
+        case e: (ArtifactError.DownloadError | ArtifactError.WrongLength | ArtifactError.NotFound) =>
+          ZIO.serviceWithZIO[Downloader.Cookies] { cookies =>
+            val msg = if (cookies.simtropolisCookie.isDefined) {
+              "Failed to download some assets. " +
+              "Maybe your authentication cookies have expired or the file exchange server is currently unavailable."
+            } else {
+              "Failed to download some assets. " +
+              "You may have reached your daily download quota (Simtropolis: 20 files per day for guests) " +
+              "or the file exchange server is currently unavailable. " +
+              "Set up Authentication or try again later."
+            }
+            ZIO.fail(new error.DownloadFailed(msg, e.getMessage))
+          }
+        case e: ArtifactError =>
+          context.logger.debugPrintStackTrace(e)
+          ZIO.fail(new error.DownloadFailed("Unexpected download error.", e.getMessage))
       }
 
     for {
       context <- ZIO.service[ResolutionContext]
-      result  <- context.logger.using(context.logger.fetchingAssets(fetchTask(context)))
+      result  <- context.logger.fetchingAssets(fetchTask(context))
     } yield result
   }
 }

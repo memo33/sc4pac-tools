@@ -24,6 +24,8 @@ object JsonData extends SharedData {
   opaque type Checksum = Map[String, String]
   val checksumRw = UP.readwriter[Map[String, String]]
   protected def emptyChecksum = Map.empty
+  opaque type Uri = String
+  val uriRw = UP.readwriter[String]
   opaque type IncludeWithChecksum = Map[String, String]
   val includeWithChecksumRw = UP.readwriter[Map[String, String]]
 
@@ -65,7 +67,6 @@ object ChannelPage {
   // val sc4pacUrl = "https://github.com/memo33/sc4pac-tools#sc4pac"
   val sc4pacUrl = "https://memo33.github.io/sc4pac/#/"
   val issueUrl = "https://github.com/memo33/sc4pac/issues"
-  val yamlUrl = "https://github.com/memo33/sc4pac/tree/main/src/yaml/"
 
   lazy val backend = sttp.client4.fetch.FetchBackend()
 
@@ -173,7 +174,7 @@ object ChannelPage {
 
     H.div(
       H.div(H.float := "right")(
-        pkg.metadataSource.toSeq.map(yamlSubPath => H.a(H.cls := "btn", H.href := s"$yamlUrl$yamlSubPath")("Edit metadata"))
+        pkg.metadataSourceUrl.toSeq.map(yamlUrl => H.a(H.cls := "btn", H.href := yamlUrl.toString)("Edit metadata"))
         :+ H.a(H.cls := "btn", H.href := issueUrl)("Report a problem")
       ),
       H.h2(H.clear := "right")(module.orgName),
@@ -184,7 +185,7 @@ object ChannelPage {
   }
 
   def channelContentsFrag(channel: JsonData.Channel, displayCategory: Option[String]) = {
-    val items = channel.contents
+    val items = channel.packages
     val categories: Seq[JsonData.Channel.CategoryItem] = channel.stats.categories
     val displayCategory2 = displayCategory.filter(c => categories.exists(_.category == c))
 
@@ -195,7 +196,7 @@ object ChannelPage {
       H.h2("sc4pac Channel"),
       H.p("This is the default channel of ",
         H.a(H.href := sc4pacUrl)(H.code("sc4pac")),
-        s". Currently, there are ${items.count(!_.isSc4pacAsset)} packages you can install."
+        s". Currently, there are ${items.size} packages you can install."
       ),
       H.form(
         H.label(H.`for` := "category")("Category:"),

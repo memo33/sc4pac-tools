@@ -76,8 +76,8 @@ class FileCache private (
     *
     * Otherwise, return local file, potentially failing with a checksum error.
     */
-  def file(artifact: Artifact): IO[CC.ArtifactError, java.io.File] = {
-    val task0: IO[CC.ArtifactError, java.io.File] = ZIO.succeed {
+  def file(artifact: Artifact): ZIO[Downloader.Cookies, CC.ArtifactError, java.io.File] = {
+    def task0(cookies: Downloader.Cookies): IO[CC.ArtifactError, java.io.File] = ZIO.succeed {
       val destFile = localFile(artifact.url)
       lazy val destFileChecksumVerified = verifyChecksum(destFile, artifact)
       ZIO.ifZIO(ZIO.attemptBlockingIO(
@@ -86,7 +86,7 @@ class FileCache private (
           || artifact.lastModified.exists(remoteModificationDate => isOlderThan(destFile, remoteModificationDate))
           || artifact.redownloadOnChecksumError && destFileChecksumVerified.isLeft
         ))(
-        onTrue = new Downloader(artifact, cacheLocation = location, localFile = destFile, logger, pool).download
+        onTrue = new Downloader(artifact, cacheLocation = location, localFile = destFile, logger, pool, cookies).download
           .flatMap { newFile =>
             // We enforce that checksums match (if present) to avoid redownloading same file repeatedly.
             //
@@ -124,7 +124,9 @@ class FileCache private (
                   if (p1 != null)  // key was present: there was already a running task for url
                     p1.await.zipLeft(ZIO.succeed(logger.concurrentCacheAccess(artifact.url)))
                   else
-                    p0.complete(task0).flatMap(_ => p0.await)  // Note that `complete` also handles failure of `task0`
+                    ZIO.serviceWithZIO[Downloader.Cookies] { cookies =>
+                      p0.complete(task0(cookies)).flatMap(_ => p0.await)  // Note that `complete` also handles failure of `task0`
+                    }
                 }
     } yield (result: java.io.File)
   }
@@ -141,6 +143,7 @@ class FileCache private (
         )
       }
     }
+    .provideSomeLayer(Downloader.emptyCookiesLayer)  // as we do not fetch text files from Simtropolis, no need for cookies
   }
 
   /** If artifact has an expected checksum, check that it matches the cached
