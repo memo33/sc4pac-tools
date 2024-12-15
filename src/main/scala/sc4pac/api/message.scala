@@ -77,6 +77,12 @@ object PromptMessage {
 @upickle.implicits.key("/prompt/response")
 case class ResponseMessage(token: String, body: String) extends Message derives UP.ReadWriter
 
+@upickle.implicits.key("/prompt/open/package")
+case class OpenPackageMessage(packages: Seq[OpenPackageMessage.Item]) extends Message derives UP.ReadWriter
+object OpenPackageMessage {
+  case class Item(`package`: BareModule, channelUrl: String) derives UP.ReadWriter
+}
+
 sealed trait ErrorMessage extends Message derives UP.ReadWriter {
   def title: String
   def detail: String
