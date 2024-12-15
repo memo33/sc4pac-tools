@@ -150,7 +150,7 @@ object ChannelPage {
         .send(backend)
         .onComplete {
           case scala.util.Success(response) if response.is200 =>
-            openButton.textContent = "Opened in App"
+            // openButton.textContent = "Opened in App"
             openButtonResult.textContent = ""
           case _ =>
             if (openButtonResult.textContent.isEmpty)
