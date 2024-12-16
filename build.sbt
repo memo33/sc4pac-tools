@@ -2,7 +2,7 @@ name := "sc4pac"
 
 ThisBuild / organization := "io.github.memo33"
 
-ThisBuild / version := "0.5.0"
+ThisBuild / version := "0.5.1-SNAPSHOT"
 
 // ThisBuild / versionScheme := Some("early-semver")
 
@@ -22,9 +22,9 @@ ThisBuild / scalacOptions ++= Seq(
   "-Wvalue-discard",
   "-source:future",
   "-encoding", "UTF-8",
-  "-release:8")
+  "-release:11")
 
-ThisBuild / javacOptions ++= Seq("--release", "8")
+ThisBuild / javacOptions ++= Seq("--release", "11")
 
 console / initialCommands := """
 import io.github.memo33.sc4pac.*
