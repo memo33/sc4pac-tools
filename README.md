@@ -17,7 +17,7 @@ Currently, this program only comes with a command-line interface (CLI).
 ## Usage
 
 - Prerequisites:
-  - Java 8+ (https://adoptium.net/installation/)
+  - Java 11+ (https://adoptium.net/installation/)
   - Enough disk space
   - On macOS and Linux (not needed on Windows):
     - Mono ([macOS](https://www.mono-project.com/docs/getting-started/install/)/[Linux](https://repology.org/project/mono/versions)):
