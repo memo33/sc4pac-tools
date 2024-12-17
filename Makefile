@@ -1,5 +1,7 @@
 dist:
 	sh ./src/scripts/dist.sh
+build-channel-page:
+	sh ./src/scripts/build-channel-page.sh
 
 channel-testing:
 	./sc4pac channel build --label Test-Local --output ./channel-testing/json ./channel-testing/yaml
