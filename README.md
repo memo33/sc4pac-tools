@@ -93,7 +93,7 @@ See [CLI](https://memo33.github.io/sc4pac/#/cli?id=command-line-interface) for d
 891-my-overrides       (your manually installed zzz-folders)
 900-overrides
 ```
-[(source)](https://github.com/memo33/sc4pac/blob/main/.github/sc4pac-yaml-schema.py#L10-L33)
+[(source)](https://github.com/memo33/sc4pac-actions/blob/main/src/lint.py#L16-L36)
 
 Packages are installed into even-numbered subfolders, as the order in which files are loaded by the game is important.
 Files you install manually should be put into odd-numbered subfolders
