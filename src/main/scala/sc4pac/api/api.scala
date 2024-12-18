@@ -4,12 +4,12 @@ package api
 
 import zio.http.*
 import zio.http.ChannelEvent.{Read, Unregistered, UserEvent, UserEventTriggered}
-import zio.{ZIO, IO, URIO}
+import zio.{ZIO, IO, URIO, Ref}
 import upickle.default as UP
 
 import sc4pac.JsonData as JD
 import JD.{bareModuleRw, uriRw}
-import sc4pac.cli.Commands.Server.ServerFiber
+import sc4pac.cli.Commands.Server.{ServerFiber, ServerConnection}
 
 
 class Api(options: sc4pac.cli.Commands.ServerOptions) {
@@ -314,7 +314,7 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
           pluginsData   <- readPluginsOr409
           pac           <- Sc4pac.init(pluginsData.config)
           remoteData    <- pac.infoJson(mod).someOrFail(  // TODO avoid decoding/encoding json
-                             jsonResponse(ErrorMessage.PackageNotFound("Package not found.", pkg)).status(Status.NotFound)
+                             jsonResponse(ErrorMessage.PackageNotFound("Package not found in any of your channels.", pkg)).status(Status.NotFound)
                            )
           explicit      =  pluginsData.explicit.toSet
           installed     <- JD.PluginsLock.listInstalled2
@@ -438,7 +438,7 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
 
   )
 
-  def routes(webAppDir: Option[os.Path]): Routes[ProfilesDir & ServerFiber & Client, Nothing] = {
+  def routes(webAppDir: Option[os.Path]): Routes[ProfilesDir & ServerFiber & Client & Ref[ServerConnection], Nothing] = {
     // Extract profile ID from URL query parameter and add it to environment.
     // 400 error if "profile" parameter is absent.
     val profileRoutes2 =
@@ -454,7 +454,7 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
       })
 
     // profile-independent routes
-    val genericRoutes = Routes[ProfilesDir & ServerFiber & Client, Throwable](
+    val genericRoutes = Routes[ProfilesDir & ServerFiber & Client & Ref[ServerConnection], Throwable](
 
       // 200
       Method.GET / "server.status" -> handler {
@@ -467,7 +467,7 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
       Method.GET / "server.connect" -> handler {
         val num = connectionCount.incrementAndGet()
         Handler.webSocket { wsChannel =>
-          for {
+          val wsTask = for {
             logger <- ZIO.service[Logger]
             _      <- ZIO.succeed(logger.log(s"Registered websocket connection $num."))
             _      <- wsChannel.receiveAll {
@@ -489,8 +489,27 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
                         _      <- fiber.interrupt.fork
                       } yield ()
           } yield ()
-        }.provideSomeLayer(httpLogger).toResponse: zio.URIO[ProfilesDir & ServerFiber, Response]
+
+          val serverConnection = ServerConnection(currentChannel = Some(wsChannel))
+          ZIO.acquireReleaseWith
+            (acquire = ZIO.serviceWithZIO[Ref[ServerConnection]](_.set(serverConnection)))
+            (release = (_) => ZIO.serviceWithZIO[Ref[ServerConnection]](_.updateSome { case s if s == serverConnection => ServerConnection(currentChannel = None) }))
+            (use = (_) => wsTask)
+        }.provideSomeLayer(httpLogger).toResponse
       },
+
+      // 200, 400, 503
+      Method.POST / "packages.open" -> handler((req: Request) => wrapHttpEndpoint {
+        for {
+          packages   <- parseOr400[Seq[OpenPackageMessage.Item]](req.body, ErrorMessage.BadRequest("Malformed package list.", "Pass an array of package items."))
+          wsChannel  <- ZIO.serviceWithZIO[Ref[ServerConnection]](_.get.map(_.currentChannel))
+                          .someOrFail(jsonResponse(ErrorMessage.ServerError(
+                            "The sc4pac GUI is not opened. Make sure the GUI is running correctly.",
+                            "Connection between API server and GUI client is not available."
+                          )).status(Status.ServiceUnavailable))
+          _          <- wsChannel.send(Read(jsonFrame(OpenPackageMessage(packages))))
+        } yield jsonOk
+      }),
 
       // 200
       Method.GET / "profiles.list" -> handler {

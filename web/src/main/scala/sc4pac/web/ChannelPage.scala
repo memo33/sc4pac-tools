@@ -14,7 +14,7 @@ import sttp.client4.{basicRequest, Request, UriContext, Response, ResponseExcept
 import sttp.client4.upicklejson.asJson
 
 import scalatags.JsDom.all as H  // html tags
-import scalatags.JsDom.all.{stringFrag, stringAttr, SeqFrag, intPixelStyle, stringStyle}
+import scalatags.JsDom.all.{stringFrag, stringAttr, SeqFrag, intPixelStyle, stringStyle, bindNode}
 
 object JsonData extends SharedData {
   opaque type Instant = String
@@ -64,8 +64,10 @@ object ChannelPage {
 
   // val channelUrl = "http://localhost:8090/channel/"
   val channelUrl = ""  // relative to current host
+  val channelUrlMain = "https://memo33.github.io/sc4pac/channel/"
   // val sc4pacUrl = "https://github.com/memo33/sc4pac-tools#sc4pac"
   val sc4pacUrl = "https://memo33.github.io/sc4pac/#/"
+  val sc4pacGuiUrl = "https://github.com/memo33/sc4pac-gui/releases"
   val issueUrl = "https://github.com/memo33/sc4pac/issues"
 
   lazy val backend = sttp.client4.fetch.FetchBackend()
@@ -128,6 +130,36 @@ object ChannelPage {
     def add(label: String, child: H.Frag): Unit =
       b += H.tr(H.th(label), H.td(child))
 
+    lazy val openButton =
+      H.button(H.cls := "btn open-app-btn",
+        {
+          import scalatags.JsDom.all.bindJsAnyLike
+          H.onclick := openInApp  // not sure how this implicit conversion works exactly
+        },
+      )("Open in App").render
+    lazy val openButtonResult = H.div(H.color := "#ff0077").render
+
+    def openInApp(e: dom.Event): Unit = {
+      val port: Int = 51515
+      val url = sttp.model.Uri(java.net.URI.create(s"http://localhost:$port/packages.open"))
+      val msg = Seq(Map("package" -> module.orgName, "channelUrl" -> channelUrlMain))
+      basicRequest
+        .body(UP.write(msg))
+        .contentType("application/json")
+        .post(url)
+        .send(backend)
+        .onComplete {
+          case scala.util.Success(response) if response.is200 =>
+            // openButton.textContent = "Opened in App"
+            openButtonResult.textContent = ""
+          case _ =>
+            if (openButtonResult.textContent.isEmpty)
+              openButtonResult.textContent = s"Hold on, mayor! First launch the app before pressing this button."
+            else
+              openButtonResult.textContent = s"Make sure the GUI is running (on port $port) before pressing this button. Requires at least version 0.2.1."
+        }
+    }
+
     // add("Name", pkg.name)
     // add("Group", pkg.group)
     add("Version", pkg.version)
@@ -179,8 +211,21 @@ object ChannelPage {
       ),
       H.h2(H.clear := "right")(module.orgName),
       H.table(H.id := "pkginfo")(H.tbody(b.result())),
-      H.p("Install this package with ", H.a(H.href := sc4pacUrl)(H.code("sc4pac")), ":"),
-      H.pre(H.cls := "codebox")(s"sc4pac add ${module.orgName}\nsc4pac update")
+      H.div(H.cls := "card")(
+        H.h3("Installing this package…"),
+        H.ul(
+          H.li(
+            H.p("with the ", H.a(H.href := sc4pacGuiUrl)("sc4pac GUI"), ":",
+              openButton,
+              openButtonResult,
+            ),
+          ),
+          H.li(
+            H.p("with the ", H.a(H.href := sc4pacUrl)("sc4pac CLI"), ":"),
+            H.pre(H.cls := "codebox")(s"sc4pac add ${module.orgName}\nsc4pac update")
+          ),
+        ),
+      ),
     )
   }
 
