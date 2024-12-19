@@ -25,6 +25,9 @@ object ChannelUtil {
     )
   }
 
+  private[sc4pac] def resolveMetadataSourceUrl(baseUri: java.net.URI, path: os.SubPath): java.net.URI =
+    baseUri.resolve(os.root.toNIO.toUri.relativize((os.root / path).toNIO.toUri))
+
   case class YamlPackageData(
     group: String,
     name: String,
@@ -50,7 +53,7 @@ object ChannelUtil {
             for {
               baseUri <- channelInfo.metadataSourceUrl
               path    <- metadataSource
-            } yield baseUri.resolve(path.segments0.mkString("/")),
+            } yield resolveMetadataSourceUrl(baseUri, path),
           channelLabel = channelInfo.channelLabel,
         )}
       }

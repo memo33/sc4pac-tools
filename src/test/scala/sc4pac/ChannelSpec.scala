@@ -124,6 +124,12 @@ url: dummy
       ).head._2
         .map(_.orgName).toSet.shouldBe(Set("test:pkg1", "test:pkg2"))
     }
+
+    "encode spaces in metadata source URL" in {
+      val baseUri = java.net.URI("https://github.com/memo33/sc4pac/blob/main/src/yaml/")
+      ChannelUtil.resolveMetadataSourceUrl(baseUri, os.SubPath("a b/c d.yaml"))
+        .toString.shouldBe(s"${baseUri}a%20b/c%20d.yaml")
+    }
   }
 
 }

@@ -1,6 +1,8 @@
 # Changelog
 
 ## [Unreleased]
+### Fixed
+- an issue where building a channel with file names containing spaces failed
 
 
 ## [0.5.0] - 2024-12-14
