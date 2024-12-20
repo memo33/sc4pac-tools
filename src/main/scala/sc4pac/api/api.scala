@@ -415,9 +415,16 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
       wrapHttpEndpoint {
         for {
           urls         <- parseOr400[Seq[java.net.URI]](req.body, ErrorMessage.BadRequest("Malformed channel URLs.", "Pass channels as an array of strings."))
+          urls2        <- ZIO.foreach(urls)(url => ZIO.fromEither(
+                            MetadataRepository.parseChannelUrl(url.toString)  // sanitization
+                              .left.map(err => jsonResponse(
+                                ErrorMessage.BadRequest("Malformed channel URL.", err)
+                              ).status(Status.BadRequest)
+                            )
+                          ))
           pluginsData  <- readPluginsOr409
           pluginsData2 =  pluginsData.copy(config = pluginsData.config.copy(channels =
-                            if (urls.nonEmpty) urls.distinct else Constants.defaultChannelUrls
+                            if (urls2.nonEmpty) urls2.distinct else Constants.defaultChannelUrls
                           ))
           path         <- JD.Plugins.pathURIO
           _            <- JsonIo.write(path, pluginsData2, None)(ZIO.succeed(()))
