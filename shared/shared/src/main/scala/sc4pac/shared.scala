@@ -154,6 +154,7 @@ abstract class SharedData {
     variantDescriptions: Map[String, Map[String, String]] = Map.empty,  // variantKey -> variantValue -> description
     metadataSource: Option[SubPath] = None,  // path to yaml file
     metadataSourceUrl: Option[Uri] = None,  // full URL to yaml file
+    metadataIssueUrl: Option[Uri] = None,  // URL to create new issue for this package
     channelLabel: Option[String] = None,
   ) extends PackageAsset {
 
@@ -332,9 +333,10 @@ abstract class SharedData {
     case class Info(
       channelLabel: Option[String],
       metadataSourceUrl: Option[Uri],
+      metadataIssueUrl: Option[Uri] = None,
     ) derives ReadWriter
     object Info {
-      val empty = Info(None, None)
+      val empty = Info(None, None, None)
     }
 
     case class ExtPkg(group: String, name: String, checksum: Checksum) derives ReadWriter {

@@ -476,15 +476,20 @@ object Commands {
       args.all match {
         case Nil => error(caseapp.core.Error.Other("An argument is needed: YAML input directory"))
         case inputs =>
+          val metadataSourceUrl = Option(options.metadataSourceUrl).filter(_.nonEmpty)
+            .map(MetadataRepository.parseChannelUrl)
+            .map {
+              case Left(err) => error(caseapp.core.Error.Other(s"Malformed metadata source URL: $err"))
+              case Right(uri) => uri
+            }
+          val ghUrl = "^https://github.com/([^/]+/[^/]+)/.*".r  // matches repo
           val info = JD.Channel.Info(
             channelLabel = Option(options.label).filter(_.nonEmpty),
-            metadataSourceUrl =
-              Option(options.metadataSourceUrl).filter(_.nonEmpty)
-                .map(MetadataRepository.parseChannelUrl)
-                .map {
-                  case Left(err) => error(caseapp.core.Error.Other(s"Malformed metadata source URL: $err"))
-                  case Right(uri) => uri
-                },
+            metadataSourceUrl = metadataSourceUrl,
+            metadataIssueUrl = metadataSourceUrl.flatMap(_.toString match {
+              case ghUrl(repo) => Some(java.net.URI.create(s"https://github.com/$repo/issues"))
+              case _ => None
+            }),
           )
           val task =
             ChannelUtil.convertYamlToJson(inputs.map(os.Path(_, os.pwd)), os.Path(options.output, os.pwd))

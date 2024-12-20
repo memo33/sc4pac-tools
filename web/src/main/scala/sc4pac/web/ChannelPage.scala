@@ -68,7 +68,6 @@ object ChannelPage {
   // val sc4pacUrl = "https://github.com/memo33/sc4pac-tools#sc4pac"
   val sc4pacUrl = "https://memo33.github.io/sc4pac/#/"
   val sc4pacGuiUrl = "https://github.com/memo33/sc4pac-gui/releases"
-  val issueUrl = "https://github.com/memo33/sc4pac/issues"
 
   lazy val backend = sttp.client4.fetch.FetchBackend()
 
@@ -206,8 +205,8 @@ object ChannelPage {
 
     H.div(
       H.div(H.float := "right")(
-        pkg.metadataSourceUrl.toSeq.map(yamlUrl => H.a(H.cls := "btn", H.href := yamlUrl.toString)("Edit metadata"))
-        :+ H.a(H.cls := "btn", H.href := issueUrl)("Report a problem")
+        pkg.metadataSourceUrl.toSeq.map(url => H.a(H.cls := "btn", H.href := url.toString)("Show metadata"))
+        ++ pkg.metadataIssueUrl.map(url => H.a(H.cls := "btn", H.href := url.toString)("Report a problem"))
       ),
       H.h2(H.clear := "right")(module.orgName),
       H.table(H.id := "pkginfo")(H.tbody(b.result())),

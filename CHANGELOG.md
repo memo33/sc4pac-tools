@@ -9,6 +9,7 @@
 - The auto-shutdown functionality of the server now handles multiple connections and page reloads of the web-app ([#10][gui10]).
 
 ### Changed
+- The channels now includes a URL for creating a new GH issue associated to a specific package (derived from `--metadata-source-url`).
 - API upgrade to 2.1:
   - `/update` accepts a new parameter `refreshChannels` to clear cached data ([#14][gui14]).
   - New `/packages.open` endpoint for externally instructing the GUI to open a specific package page (#21).
