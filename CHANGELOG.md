@@ -1,8 +1,14 @@
 # Changelog
 
 ## [Unreleased]
+### Added
+- Added `--launch-browser` option to the `server` command, which opens the web-app in the browser on start-up ([#3][gui3]).
+
 ### Fixed
 - an issue where building a channel with file names containing spaces failed
+
+
+[gui3]: https://github.com/memo33/sc4pac-gui/issues/3
 
 
 ## [0.5.0] - 2024-12-14

@@ -338,7 +338,7 @@ object Commands {
     |
     |Examples:
     |  sc4pac channel add "${Constants.defaultChannelUrls.head}"
-    |  sc4pac channel add "file:///C:/absolute/path/to/local/channel/"
+    |  sc4pac channel add "file:///C:/absolute/path/to/local/channel/json/"
     |
     |The URL in the examples above points to a directory structure consisting of JSON files created by the ${emph("sc4pac channel build")} command.
     |
@@ -499,8 +499,8 @@ object Commands {
     |
     |Examples:
     |  sc4pac server --profiles-dir profiles --indent 1
-    |  sc4pac server --profiles-dir profiles --web-app-dir build/web                ${gray("# used by GUI web")}
-    |  sc4pac server --profiles-dir profiles --auto-shutdown --startup-tag [READY]  ${gray("# used by GUI desktop")}
+    |  sc4pac server --profiles-dir profiles --web-app-dir build/web --launch-browser  ${gray("# used by GUI web")}
+    |  sc4pac server --profiles-dir profiles --auto-shutdown --startup-tag [READY]     ${gray("# used by GUI desktop")}
     """.stripMargin.trim)
   final case class ServerOptions(
     @ValueDescription("number") @Group("Server") @Tag("Server")
@@ -515,6 +515,9 @@ object Commands {
     @ValueDescription("path") @Group("Server") @Tag("Server")
     @HelpMessage(s"optional directory containing statically served webapp files (default: no static files)")
     webAppDir: String = "",
+    @ValueDescription("bool") @Group("Server") @Tag("Server")
+    @HelpMessage(s"automatically open the web browser when using the --web-app-dir option (default: --launch-browser=false)")
+    launchBrowser: Boolean = false,
     @ValueDescription("bool") @Group("Server") @Tag("Server")
     @HelpMessage("automatically shut down the server when client closes connection to /server.connect (default: --auto-shutdown=false). This is used by the desktop GUI to ensure the port is cleared when the GUI exits.")
     autoShutdown: Boolean = false,
@@ -555,10 +558,16 @@ object Commands {
                           if (options.startupTag.nonEmpty)
                             println(options.startupTag)
                           println(s"Sc4pac server is listening on port ${options.port}...")
-                          if (webAppDir.isDefined)
-                            println(f"%nTo start the sc4pac-gui web-app, open the following URL in your web browser:%n%n" +
-                              f"  http://localhost:${options.port}/webapp/%n")
                         })
+                        .zipRight(
+                          ZIO.whenDiscard(webAppDir.isDefined) {
+                            val url = java.net.URI.create(s"http://localhost:${options.port}/webapp/")
+                            println(f"%nTo start the sc4pac-gui web-app, open the following URL in your web browser if it does not launch automatically:%n%n  ${url}%n")
+                            ZIO.whenDiscard(options.launchBrowser) {
+                              DesktopOps.openUrl(url).catchAll(_ => ZIO.succeed(()))  // errors can be ignored
+                            }
+                          }
+                        )
                         .zipRight(ZIO.never)  // keep server running indefinitely unless interrupted
                         .provide(
                           zio.http.Server.defaultWithPort(options.port)
