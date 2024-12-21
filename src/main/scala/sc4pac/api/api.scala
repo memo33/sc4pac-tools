@@ -13,7 +13,7 @@ import sc4pac.cli.Commands.Server.{ServerFiber, ServerConnection}
 
 
 class Api(options: sc4pac.cli.Commands.ServerOptions) {
-  private val connectionCount = java.util.concurrent.atomic.AtomicInteger(0)
+  private val connectionsSinceLaunch = java.util.concurrent.atomic.AtomicInteger(0)
 
   private def jsonResponse[A : UP.Writer](obj: A): Response = Response.json(UP.write(obj, indent = options.indent))
   private def jsonFrame[A : UP.Writer](obj: A): WebSocketFrame = WebSocketFrame.Text(UP.write(obj, indent = options.indent))
@@ -465,7 +465,7 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
 
       // websocket allowing to monitor whether server is alive (supports no particular message exchange)
       Method.GET / "server.connect" -> handler {
-        val num = connectionCount.incrementAndGet()
+        val num = connectionsSinceLaunch.incrementAndGet()
         Handler.webSocket { wsChannel =>
           val wsTask = for {
             logger <- ZIO.service[Logger]
@@ -481,19 +481,30 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
                       }
             _      <- wsChannel.shutdown: zio.UIO[Unit]  // may be redundant
             _      <- ZIO.succeed(logger.log(s"Shut down websocket connection $num."))
-            server <- ZIO.service[ServerFiber]
-            _      <- if (!options.autoShutdown) ZIO.succeed(())
-                      else for {
-                        fiber  <- server.promise.await
-                        _      <- ZIO.succeed(logger.log(s"Connection from client to server was closed. Shutting down server."))
-                        _      <- fiber.interrupt.fork
-                      } yield ()
           } yield ()
 
-          val serverConnection = ServerConnection(currentChannel = Some(wsChannel))
+          // If this was the last remaining connection and no new connection was opened after a short delay, then shutdown the server
+          def maybeShutdownServer(remainingConnections: Int) =
+            ZIO.unlessDiscard(!options.autoShutdown || remainingConnections > 0)(for {
+              _      <- ZIO.sleep(Constants.serverShutdownDelay)  // defer shutdown to accept new connection in case of page refresh
+              count  <- ZIO.serviceWithZIO[Ref[ServerConnection]](_.get.map(_.numConnections))
+              _      <- ZIO.unlessDiscard(count > 0)(for {
+                          server <- ZIO.service[ServerFiber]
+                          fiber  <- server.promise.await
+                          _      <- ZIO.serviceWith[Logger](_.log(s"All connections from client to server are closed. Shutting down server."))
+                          _      <- fiber.interrupt.fork
+                        } yield ())
+            } yield ())
+
+          // keeps track of number of open connections
           ZIO.acquireReleaseWith
-            (acquire = ZIO.serviceWithZIO[Ref[ServerConnection]](_.set(serverConnection)))
-            (release = (_) => ZIO.serviceWithZIO[Ref[ServerConnection]](_.updateSome { case s if s == serverConnection => ServerConnection(currentChannel = None) }))
+            (acquire = ZIO.serviceWithZIO[Ref[ServerConnection]](_.update { s =>
+              ServerConnection(numConnections = s.numConnections + 1, currentChannel = Some(wsChannel))
+            }))
+            (release = (_) => ZIO.serviceWithZIO[Ref[ServerConnection]](_.modify { s =>
+              val remainingConnections = s.numConnections - 1
+              (remainingConnections, ServerConnection(numConnections = remainingConnections, currentChannel = s.currentChannel.filter(_ != wsChannel)))
+            }).flatMap(maybeShutdownServer))
             (use = (_) => wsTask)
         }.provideSomeLayer(httpLogger).toResponse
       },

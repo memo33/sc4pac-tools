@@ -6,6 +6,7 @@
 
 ### Fixed
 - an issue where building a channel with file names containing spaces failed
+- The auto-shutdown functionality of the server now handles multiple connections and page reloads of the web-app ([#10][gui10]).
 
 ### Changed
 - API upgrade to 2.1:
@@ -15,6 +16,7 @@
 
 
 [gui3]: https://github.com/memo33/sc4pac-gui/issues/3
+[gui10]: https://github.com/memo33/sc4pac-gui/issues/10
 [gui14]: https://github.com/memo33/sc4pac-gui/issues/14
 
 

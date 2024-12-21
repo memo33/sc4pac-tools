@@ -578,7 +578,7 @@ object Commands {
                             .map(_.update[zio.http.Client](_.updateHeaders(_.addHeader("User-Agent", Constants.userAgent)) @@ followRedirects)),
                           zio.ZLayer.succeed(ProfilesDir(profilesDir)),
                           zio.ZLayer.succeed(ServerFiber(promise)),
-                          zio.ZLayer(zio.Ref.make(ServerConnection(None))),
+                          zio.ZLayer(zio.Ref.make(ServerConnection(numConnections = 0, currentChannel = None))),
                         )
                         .fork
           _        <- promise.succeed(fiber)
@@ -599,7 +599,7 @@ object Commands {
     }
 
     class ServerFiber(val promise: zio.Promise[Nothing, zio.Fiber[Throwable, Nothing]])
-    class ServerConnection(val currentChannel: Option[zio.http.WebSocketChannel])
+    class ServerConnection(val numConnections: Int, val currentChannel: Option[zio.http.WebSocketChannel])
   }
 
 }

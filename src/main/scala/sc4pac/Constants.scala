@@ -46,6 +46,7 @@ object Constants {
   val interactivePromptTimeout = java.time.Duration.ofSeconds(240)
   val urlConnectTimeout = java.time.Duration.ofSeconds(60)
   val urlReadTimeout = java.time.Duration.ofSeconds(60)  // timeout in case of internet outage while downloading a file
+  val serverShutdownDelay = java.time.Duration.ofSeconds(2)  // defer shutdown to accept new connection in case of page refresh
   val defaultPort = 51515
 
   lazy val userAgent = {
