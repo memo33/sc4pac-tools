@@ -8,7 +8,7 @@ h2 {
   margin-bottom: 0.5em;
   border-bottom: 1px solid #888;
 }
-a.btn {
+.btn {
   margin-left: 0.5em;
   margin-bottom: 0.5em;
   background-color: #555;
@@ -19,10 +19,50 @@ a.btn {
   text-decoration: none;
   display: inline-block;
 }
-a.btn:hover {
+.btn:hover {
   background-color: #707070;
   text-decoration: none;
 }
+
+button.open-app-btn {
+  text-align: center;
+  /* text-transform: uppercase; */
+  cursor: pointer;
+  font-size: 1.0em;
+  letter-spacing: 3px;
+  position: relative;
+  background-color: #3469f0;
+  color: #fff;
+  padding: 12px 36px;
+  transition-duration: 0.4s;
+  overflow: hidden;
+  box-shadow: 0 4px 8px rgba(0,0,0,0.25);
+  border-radius: 5px;
+}
+button.open-app-btn:hover {
+  background-color: #6b90ef;
+  color: #fff;
+  box-shadow: 0 8px 16px 0 rgba(0,0,0,0.25);
+}
+button.open-app-btn:after {
+  content: "";
+  background: #1459d0;
+  display: block;
+  position: absolute;
+  padding-top: 300%;
+  padding-left: 350%;
+  margin-left: -36px !important;
+  margin-top: -120%;
+  opacity: 0;
+  transition: all 0.8s
+}
+button.open-app-btn:active:after {
+  padding: 0;
+  margin: 0;
+  opacity: 1;
+  transition: 0s
+}
+
 ul.unstyled-list {
   list-style: none;
   margin: 0;
@@ -84,6 +124,21 @@ code {
   background-color: #eef;
   padding: 0 3px;
   border-radius: 2px;
+}
+
+.card {
+  box-shadow: 0 4px 8px 0 rgba(0,0,0,0.2);
+  transition: 0.3s;
+  padding: 2px 16px;
+  border: 1px solid #ddd;
+  margin-top: 1.5em;
+  margin-bottom: 1.5em;
+}
+.card:hover {
+  box-shadow: 0 8px 16px 0 rgba(0,0,0,0.2);
+}
+.card > ul {
+  padding-left: 1.0em;
 }
 
 a {

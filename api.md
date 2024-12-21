@@ -11,6 +11,7 @@ POST /profile.init?profile=id        {plugins: "<path>", cache: "<path>", temp: 
 GET  /packages.list?profile=id
 GET  /packages.info?pkg=<pkg>&profile=id
 GET  /packages.search?q=<text>&profile=id
+POST /packages.open                  [{package: "<pkg>", channelUrl: "<url>"}]
 
 GET  /plugins.added.list?profile=id
 GET  /plugins.installed.list?profile=id
@@ -197,6 +198,22 @@ Returns:
 ```
 The `status` field contains the local installation status if the package has been explicitly added or actually installed.
 
+## packages.open
+
+Tell the server to tell the client to show a particular package, using the current profile.
+This endpoint is intended for external invocation, such as an "Open in app" button on a website.
+
+Synopsis: `POST /packages.open [{package: "<pkg>", channelUrl: "<url>"}]`
+
+Returns:
+- 200 `{"$type": "/result", "ok": true}`
+- 503 if GUI is not connected to API server
+
+Example:
+```sh
+curl -X POST -d '[{"package": "cyclone-boom:save-warning", "channelUrl": "https://memo33.github.io/sc4pac/channel/"}]' http://localhost:51515/packages.open
+```
+The client will be informed by the `/server.connect` websocket.
 
 ## plugins.added.list
 
@@ -454,8 +471,14 @@ Returns: `{"sc4pacVersion": "0.4.x"}`
 ## server.connect
 
 Monitor whether the server is still running by opening a websocket at this endpoint.
-No particular messages are exchanged, but if either client or server terminates,
+Usually, no particular messages are exchanged, but if either client or server terminates,
 the other side will be informed about it as the websocket closes.
+
+Triggered by an external `/packages.open` request,
+the server may send the following message to tell the client to show a particular package, using the current profile:
+```
+{ "$type": "/prompt/open/package", "packages": [{"package": "<pkg>", "channelUrl": "<url>"}] }
+```
 
 ## profiles.list
 

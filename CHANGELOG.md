@@ -10,6 +10,8 @@
 ### Changed
 - API upgrade to 2.1:
   - `/update` accepts a new parameter `refreshChannels` to clear cached data ([#14][gui14]).
+  - New `/packages.open` endpoint for externally instructing the GUI to open a specific package page (#21).
+    The main channel website now shows an "Open in App" button for each package.
 
 
 [gui3]: https://github.com/memo33/sc4pac-gui/issues/3

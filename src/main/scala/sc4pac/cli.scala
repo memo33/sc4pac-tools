@@ -242,7 +242,7 @@ object Commands {
           } yield {
             val (found, notFound) = infoResults.zip(mods).partition(_._1.isDefined)
             if (notFound.nonEmpty) {
-              error(caseapp.core.Error.Other("Package not found: " + notFound.map(_._2.orgName).mkString(" ")))
+              error(caseapp.core.Error.Other("Package not found in any of your channels: " + notFound.map(_._2.orgName).mkString(" ")))
             } else {
               for ((infoResultOpt, idx) <- found.zipWithIndex) {
                 if (idx > 0) logger.log("")
@@ -578,6 +578,7 @@ object Commands {
                             .map(_.update[zio.http.Client](_.updateHeaders(_.addHeader("User-Agent", Constants.userAgent)) @@ followRedirects)),
                           zio.ZLayer.succeed(ProfilesDir(profilesDir)),
                           zio.ZLayer.succeed(ServerFiber(promise)),
+                          zio.ZLayer(zio.Ref.make(ServerConnection(None))),
                         )
                         .fork
           _        <- promise.succeed(fiber)
@@ -598,6 +599,7 @@ object Commands {
     }
 
     class ServerFiber(val promise: zio.Promise[Nothing, zio.Fiber[Throwable, Nothing]])
+    class ServerConnection(val currentChannel: Option[zio.http.WebSocketChannel])
   }
 
 }
