@@ -7,8 +7,13 @@
 ### Fixed
 - an issue where building a channel with file names containing spaces failed
 
+### Changed
+- API upgrade to 2.1:
+  - `/update` accepts a new parameter `refreshChannels` to clear cached data ([#14][gui14]).
+
 
 [gui3]: https://github.com/memo33/sc4pac-gui/issues/3
+[gui14]: https://github.com/memo33/sc4pac-gui/issues/14
 
 
 ## [0.5.0] - 2024-12-14

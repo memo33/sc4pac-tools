@@ -224,7 +224,7 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
               val cookies = Downloader.Cookies(req.url.queryParams.getAll("simtropolisCookie").headOption.orElse(Constants.simtropolisCookie))
               val cookieDesc = cookies.simtropolisCookie.map(c => s"with cookie: ${c.length} bytes").getOrElse("without cookie")
               for {
-                pac          <- Sc4pac.init(pluginsData.config)
+                pac          <- Sc4pac.init(pluginsData.config, refreshChannels = req.url.queryParams.getAll("refreshChannels").nonEmpty)
                 pluginsRoot  <- pluginsData.config.pluginsRootAbs
                 wsLogger     <- ZIO.service[WebSocketLogger]
                 _            <- ZIO.succeed(wsLogger.log(s"Updating... ($cookieDesc)"))

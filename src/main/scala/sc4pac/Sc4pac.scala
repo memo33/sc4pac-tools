@@ -549,16 +549,17 @@ object Sc4pac {
   /** Limits parallel downloads to 2 (ST rejects too many connections). */
   private[sc4pac] def createThreadPool() = coursier.cache.internal.ThreadUtil.fixedThreadPool(size = 2)
 
-  def init(config: JD.Config): RIO[ProfileRoot & Logger, Sc4pac] = {
+  def init(config: JD.Config, refreshChannels: Boolean = false): RIO[ProfileRoot & Logger, Sc4pac] = {
     // val refreshLogger = coursier.cache.loggers.RefreshLogger.create(System.err)  // TODO System.err seems to cause less collisions between refreshing progress and ordinary log messages
     val coursierPool = createThreadPool()
+    val channelContentsTtl = if (refreshChannels) Constants.channelContentsTtlRefresh else Constants.channelContentsTtl  // 0 or 30 minutes
     for {
       cacheRoot <- config.cacheRootAbs
       logger    <- ZIO.service[Logger]
       cache     =  FileCache(location = (cacheRoot / "coursier").toIO, logger = logger, pool = coursierPool)
         .withTtl(Some(Constants.cacheTtl))  // 12 hours
         // .withCachePolicies(Seq(coursier.cache.CachePolicy.ForceDownload))  // TODO cache policy
-      repos     <- initializeRepositories(config.channels, cache, Constants.channelContentsTtl)  // 30 minutes
+      repos     <- initializeRepositories(config.channels, cache, channelContentsTtl)
       tempRoot  <- config.tempRootAbs
       profileRoot <- ZIO.service[ProfileRoot]
       context   = new ResolutionContext(repos, cache, logger, profileRoot.path)

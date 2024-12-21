@@ -1,4 +1,4 @@
-# API - version 2.0
+# API - version 2.1
 
 The API allows other programs to control *sc4pac* in a client-server fashion.
 
@@ -346,8 +346,10 @@ Opening a websocket at `/update` triggers the update process.
 This mirrors the interactive `sc4pac update` command of the CLI.
 The websocket sends a series of messages, some of which expect a specific response, such as a confirmation to continue.
 
-Pass the parameter `simtropolisCookie` to re-use an authenticated session.
-Otherwise, the environment variable will be used instead if available.
+Parameters:
+- `simtropolisCookie=<value>` to re-use an authenticated session.
+  Otherwise, the environment variable will be used instead if available.
+- `refreshChannels` to clear the cached channel contents files before updating.
 
 Example using Javascript in your web browser:
 ```javascript
