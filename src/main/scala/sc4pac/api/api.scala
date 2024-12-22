@@ -444,7 +444,12 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
           pluginsData   <- readPluginsOr409
           pac           <- Sc4pac.init(pluginsData.config)
           combinedStats =  JD.Channel.Stats.aggregate(pac.context.repositories.map(_.channel.stats))
-        } yield jsonResponse(combinedStats)
+          statsItems    =  pac.context.repositories.map(r => ChannelStatsItem(
+                             url = r.baseUri.toString,
+                             channelLabel = r.channel.info.channelLabel.orNull,
+                             r.channel.stats,
+                           ))
+        } yield jsonResponse(ChannelStatsAll(combinedStats, statsItems))
       }
     },
 

@@ -167,6 +167,10 @@ object PackageInfo {
 
 case class ChannelContentsItem(`package`: BareModule, version: String, summary: String, category: Option[String]) derives UP.ReadWriter
 
+// channelLabel may be null
+case class ChannelStatsItem(url: String, channelLabel: String, stats: JD.Channel.Stats) derives UP.ReadWriter
+case class ChannelStatsAll(combined: JD.Channel.Stats, channels: Seq[ChannelStatsItem]) derives UP.ReadWriter
+
 case class InitArgs(plugins: String, cache: String, temp: String) derives UP.ReadWriter
 
 case class ServerStatus(sc4pacVersion: String) derives UP.ReadWriter

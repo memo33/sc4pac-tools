@@ -357,7 +357,13 @@ Get the combined stats of all the channels.
 
 Synopsis: `GET /channels.stats?profile=id`
 
-Returns: `{"totalPackageCount": int, "categories": [{"category": "150-mods", "count": int}, …]}`
+Returns:
+```
+{
+  "combined": {"totalPackageCount": int, "categories": [{"category": "150-mods", "count": int}, …]},
+  "channels": {"url": string, "channelLabel": [string], "stats": …}
+}
+```
 
 ## update
 
