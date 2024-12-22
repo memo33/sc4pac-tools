@@ -5,7 +5,8 @@
 - Added `--launch-browser` option to the `server` command, which opens the web-app in the browser on start-up ([#3][gui3]).
 
 ### Fixed
-- an issue where building a channel with file names containing spaces failed
+- an issue where building a channel with file names containing spaces failed.
+- Handling of malformed profile JSON files has been improved ([#4][gui4]).
 - The auto-shutdown functionality of the server now handles multiple connections and page reloads of the web-app ([#10][gui10]).
 
 ### Changed
@@ -17,6 +18,7 @@
 
 
 [gui3]: https://github.com/memo33/sc4pac-gui/issues/3
+[gui4]: https://github.com/memo33/sc4pac-gui/issues/4
 [gui10]: https://github.com/memo33/sc4pac-gui/issues/10
 [gui14]: https://github.com/memo33/sc4pac-gui/issues/14
 

@@ -28,13 +28,16 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
       "temp" -> Seq(JD.Plugins.defaultTempRoot.toString),
     )
 
-  /** Sends a 409 ProfileNotInitialized if Plugins cannot be loaded. */
+  /** Sends a 409 ProfileNotInitialized or 500 ReadingProfileFailed if Plugins cannot be loaded. */
   private val readPluginsOr409: ZIO[ProfileRoot, Response, JD.Plugins] =
-    JD.Plugins.read.flatMapError { (err: ErrStr) =>
-      for {
-        defaults <- makePlatformDefaults
-      } yield jsonResponse(ErrorMessage.ProfileNotInitialized("Profile not initialized", err, platformDefaults = defaults)).status(Status.Conflict)
-    }
+    JD.Plugins.readMaybe
+      .mapError((e: error.ReadingProfileFailed) => jsonResponse(expectedFailureMessage(e)).status(expectedFailureStatus(e)))
+      .someOrElseZIO((  // Plugins file does not exist
+        for {
+          defaults <- makePlatformDefaults
+          msg      =  ErrorMessage.ProfileNotInitialized("Profile not initialized.", "Profile JSON file does not exist.", platformDefaults = defaults)
+        } yield jsonResponse(msg).status(Status.Conflict)
+      ).flip)
 
   private def expectedFailureMessage(err: cli.Commands.ExpectedFailure): ErrorMessage = err match {
     case abort: error.Sc4pacVersionNotFound => ErrorMessage.VersionNotFound(abort.title, abort.detail)
@@ -44,6 +47,7 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
     case abort: error.DownloadFailed => ErrorMessage.DownloadFailed(abort.title, abort.detail)
     case abort: error.ChecksumError => ErrorMessage.DownloadFailed(abort.title, abort.detail)
     case abort: error.ChannelsNotAvailable => ErrorMessage.ChannelsNotAvailable(abort.title, abort.detail)
+    case abort: error.ReadingProfileFailed => ErrorMessage.ReadingProfileFailed(abort.title, abort.detail)
     case abort: error.Sc4pacAbort => ErrorMessage.Aborted("Operation aborted.", "")
   }
 
@@ -55,6 +59,7 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
     case abort: error.DownloadFailed => Status.BadGateway
     case abort: error.ChecksumError => Status.BadGateway
     case abort: error.ChannelsNotAvailable => Status.BadGateway
+    case abort: error.ReadingProfileFailed => Status.InternalServerError
     case abort: error.Sc4pacAbort => Status.Ok  // this is not really an error, but the expected control flow
   }
 
@@ -145,7 +150,7 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
   /** Routes that require a `profile=id` query parameter as part of the URL. */
   def profileRoutes: Routes[ProfileRoot, Throwable] = Routes(
 
-    // 200, 409
+    // 200, 409, 500
     Method.GET / "profile.read" -> handler { (req: Request) =>
       wrapHttpEndpoint {
         for {
@@ -529,7 +534,7 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
         } yield jsonOk
       }),
 
-      // 200
+      // 200, 500
       Method.GET / "profiles.list" -> handler {
         wrapHttpEndpoint {
           JD.Profiles.readOrInit.map(profiles => jsonResponse(profiles.copy(settings = ujson.Obj())))

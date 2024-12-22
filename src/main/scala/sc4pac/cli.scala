@@ -39,7 +39,7 @@ object Commands {
   // failures that are expected with both the CLI and the API
   type ExpectedFailure = error.Sc4pacAbort | error.DownloadFailed | error.ChannelsNotAvailable
     | error.Sc4pacVersionNotFound | error.Sc4pacAssetNotFound | error.ExtractionFailed
-    | error.UnsatisfiableVariantConstraints | error.ChecksumError
+    | error.UnsatisfiableVariantConstraints | error.ChecksumError | error.ReadingProfileFailed
 
   private def handleExpectedFailures(abort: ExpectedFailure, exit: Int => Nothing): Nothing = abort match {
     case abort: error.Sc4pacAbort => { System.err.println("Operation aborted."); exit(1) }

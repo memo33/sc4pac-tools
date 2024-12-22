@@ -47,7 +47,8 @@ GET  /image.fetch?url=<url>
   - 400 (incorrect input)
   - 404 (non-existing packages, assets, etc.)
   - 409 `/error/profile-not-initialized` (when not initialized)
-  - 500 (unexpected unresolvable situations)
+  - 500 `/error/profile-read-error` (when one of the profile JSON files fails to parse)
+  - 500 (other unexpected unresolvable situations)
   - 502 (download failures)
 - Errors are of the form
   ```
@@ -70,6 +71,7 @@ Returns:
   The response contains
   `platformDefaults: {plugins: ["<path>", …], cache: ["<path>", …], temp: ["<path>", …]}`
   for recommended platform-specific locations to use for initialization.
+- 500 `/error/profile-read-error` when the profile JSON file exists, but does not have the expected format.
 
 ## profile.init
 
@@ -487,12 +489,14 @@ Get the list of all existing profiles, each corresponding to a Plugins folder.
 Synopsis: `GET /profiles.list`
 
 Returns:
-```
-{
-  profiles: [{id: "<id-1>", name: string}, …],
-  currentProfileId: ["<id-1>"]
-}
-```
+- 500 `/error/profile-read-error`
+- 200:
+  ```
+  {
+    profiles: [{id: "<id-1>", name: string}, …],
+    currentProfileId: ["<id-1>"]
+  }
+  ```
 
 ## profiles.add
 
