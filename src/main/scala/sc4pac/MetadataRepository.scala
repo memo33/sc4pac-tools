@@ -85,7 +85,7 @@ object MetadataRepository {
     } else {  // json repository
       val contentsUrl = channelContentsUrl(baseUri).toString
       for {
-        jsonVal <- ZIO.attemptBlockingIO(ujson.read(channelContentsFile.toNIO))
+        jsonVal <- ZIO.attemptBlocking(ujson.read(channelContentsFile.toNIO))
                      .mapError(e => s"Failed to read channel contents: $e")
         scheme  =  jsonVal.objOpt.flatMap(_.get("scheme")).map(_.num.toInt).getOrElse(0)
         _       <- ZIO.when(scheme < Constants.channelSchemeVersions.min)(ZIO.fail(
