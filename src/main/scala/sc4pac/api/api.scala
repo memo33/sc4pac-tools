@@ -119,6 +119,7 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
     * The selection of results is ordered in descending order and includes the
     * module, the relevance ratio and the description.
     * This does not support searching for STEX/SC4E URLs, as the external IDs are not stored in the local lock file.
+    * This does not support filtering by channel URL, as those are not stored in the local lock file.
     * Sc4pac.search implements a similar function and should use a similar algorithm.
     */
   def searchPlugins(query: String, threshold: Int, category: Option[String], items: Seq[JD.InstalledData]): (JD.Channel.Stats, Seq[(JD.InstalledData, Int)]) = {
@@ -126,7 +127,6 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
     val searchTokens = Sc4pac.fuzzySearchTokenize(query)
     val results: Seq[(JD.InstalledData, Int)] =
       items.flatMap { item =>
-        // TODO reconsider choice of search algorithm
         val ratio =
           if (searchTokens.isEmpty) 100  // return the entire category (or everything if there is no filter category)
           else Sc4pac.fuzzySearchRatio(searchTokens, item.toSearchString, threshold)
@@ -274,9 +274,10 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
         for {
           (searchText, threshold) <- searchParams(req)
           categoryOpt  =  req.url.queryParams.getAll("category").headOption
+          channelOpt   =  req.url.queryParams.getAll("channel").headOption
           pluginsData  <- readPluginsOr409
           pac          <- Sc4pac.init(pluginsData.config)
-          searchResult <- pac.search(searchText, threshold, category = categoryOpt)
+          searchResult <- pac.search(searchText, threshold, category = categoryOpt, channel = channelOpt)
           explicit     =  pluginsData.explicit.toSet
           installed    <- JD.PluginsLock.listInstalled2.map(mods => mods.iterator.map(m => m.toBareModule -> m).toMap)
         } yield jsonResponse(searchResult.map { case (pkg, ratio, summaryOpt) =>
@@ -375,7 +376,7 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
         for {
           pluginsData <- readPluginsOr409
           pac         <- Sc4pac.init(pluginsData.config)
-          itemsIter   <- pac.iterateAllChannelPackages
+          itemsIter   <- pac.iterateAllChannelPackages(channelUrl = None)
         } yield jsonResponse(itemsIter.flatMap(item => item.toBareDep match {
           case mod: BareModule => item.versions.map { version => ChannelContentsItem(mod, version = version, summary = item.summary, category = item.category) }
           case _: BareAsset => Nil

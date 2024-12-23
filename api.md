@@ -174,9 +174,11 @@ Search for a package in all channels.
 
 Synopsis: `GET /packages.search?q=<text>&profile=id`
 
-Optionally, bound the relevance by passing a `threshold` paramater ranging from 0 to 100
-or the category by passing a `category` parameter.
-If `category` is passed, but `q` is empty, then all packages of that category are returned.
+Optional parameters:
+- `threshold=<num>` to bound the relevance, ranging from 0 to 100.
+- `channel=<url>` to limit results to this channel.
+- `category=<cat>` to limit results to this category.
+  If `category` is passed, but `q` is empty, then all packages of that category are returned.
 
 Returns:
 ```

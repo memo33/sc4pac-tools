@@ -13,10 +13,13 @@
 - The channels now includes a URL for creating a new GH issue associated to a specific package (derived from `--metadata-source-url`).
 - API upgrade to 2.1:
   - `/update` accepts a new parameter `refreshChannels` to clear cached data ([#14][gui14]).
+  - `/packages.search` supports a new parameter `channel` to filter the results ([#1][gui1]).
+    Moreover the output format of `/channels.stats` has changed.
   - New `/packages.open` endpoint for externally instructing the GUI to open a specific package page (#21).
     The main channel website now shows an "Open in App" button for each package.
 
 
+[gui1]: https://github.com/memo33/sc4pac-gui/issues/1
 [gui3]: https://github.com/memo33/sc4pac-gui/issues/3
 [gui4]: https://github.com/memo33/sc4pac-gui/issues/4
 [gui10]: https://github.com/memo33/sc4pac-gui/issues/10
