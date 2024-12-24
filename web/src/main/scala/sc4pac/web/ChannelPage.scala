@@ -62,8 +62,8 @@ trait TokensCodespan extends js.Object {  // see https://github.com/markedjs/mar
 
 object ChannelPage {
 
-  // val channelUrl = "http://localhost:8090/channel/"
-  val channelUrl = ""  // relative to current host
+  // val channelUrlMainRelative = "http://localhost:8090/channel/"
+  val channelUrlMainRelative = ""  // relative to current host
   val channelUrlMain = "https://memo33.github.io/sc4pac/channel/"
   // val sc4pacUrl = "https://github.com/memo33/sc4pac-tools#sc4pac"
   val sc4pacUrl = "https://memo33.github.io/sc4pac/#/"
@@ -75,8 +75,8 @@ object ChannelPage {
     document.addEventListener("DOMContentLoaded", (e: dom.Event) => setupUI())
   }
 
-  def fetchPackage(module: BareModule): Future[Option[JsonData.Package]] = {
-    val url = sttp.model.Uri(java.net.URI.create(s"${channelUrl}${JsonRepoUtil.packageSubPath(module, version = "latest")}"))
+  def fetchPackage(module: BareModule, channelUrl: Option[String]): Future[Option[JsonData.Package]] = {
+    val url = sttp.model.Uri(java.net.URI.create(s"${channelUrl.getOrElse(channelUrlMainRelative)}${JsonRepoUtil.packageSubPath(module, version = "latest")}"))
     for {
       response <- basicRequest.get(url).response(asJson[JsonData.Package]).send(backend)
     } yield {
@@ -86,7 +86,7 @@ object ChannelPage {
   }
 
   def fetchChannel(): Future[Option[JsonData.Channel]] = {
-    val url = sttp.model.Uri(java.net.URI.create(s"${channelUrl}${JsonRepoUtil.channelContentsFilename}"))
+    val url = sttp.model.Uri(java.net.URI.create(s"${channelUrlMainRelative}${JsonRepoUtil.channelContentsFilename}"))
     for {
       response <- basicRequest.get(url).response(asJson[JsonData.Channel]).send(backend)
     } yield {
@@ -123,7 +123,7 @@ object ChannelPage {
     H.raw(DOMPurify.sanitize(Marked.parse(text)))
   }
 
-  def pkgInfoFrag(pkg: JsonData.Package) = {
+  def pkgInfoFrag(pkg: JsonData.Package, channelUrl: Option[String]) = {
     val module = pkg.toBareDep
     val b = Seq.newBuilder[H.Frag]
     def add(label: String, child: H.Frag): Unit =
@@ -141,7 +141,7 @@ object ChannelPage {
     def openInApp(e: dom.Event): Unit = {
       val port: Int = 51515
       val url = sttp.model.Uri(java.net.URI.create(s"http://localhost:$port/packages.open"))
-      val msg = Seq(Map("package" -> module.orgName, "channelUrl" -> channelUrlMain))
+      val msg = Seq(Map("package" -> module.orgName, "channelUrl" -> channelUrl.getOrElse(channelUrlMain)))
       basicRequest
         .body(UP.write(msg))
         .contentType("application/json")
@@ -161,6 +161,8 @@ object ChannelPage {
 
     // add("Name", pkg.name)
     // add("Group", pkg.group)
+    if (channelUrl.nonEmpty)
+      add("Channel", H.a(H.href := channelUrl.get)(channelUrl.get))
     add("Version", pkg.version)
     add("Summary", if (pkg.info.summary.nonEmpty) markdownFrag(pkg.info.summary) else "-")
     if (pkg.info.description.nonEmpty)
@@ -221,7 +223,9 @@ object ChannelPage {
           ),
           H.li(
             H.p("with the ", H.a(H.href := sc4pacUrl)("sc4pac CLI"), ":"),
-            H.pre(H.cls := "codebox")(s"sc4pac add ${module.orgName}\nsc4pac update")
+            H.pre(H.cls := "codebox")(
+              channelUrl.filter(_ != channelUrlMain).map(url => s"""sc4pac channel add "$url"\n""").getOrElse("")
+              + s"sc4pac add ${module.orgName}\nsc4pac update")
           ),
         ),
       ),
@@ -288,11 +292,16 @@ object ChannelPage {
         document.head.appendChild(metaDescription)
         val output = H.p("Loading package ", pkgNameFrag(module, link = false), "…").render
         document.body.appendChild(output)
-        fetchPackage(module) foreach {
+        val channelUrl = Option(urlParams.get("channel"))
+        fetchPackage(module, channelUrl) foreach {
           case None =>
-            document.body.appendChild(H.p("Package not found.").render)
+            val hintFrag = channelUrl match {
+              case None => H.p("Package not found")
+              case Some(url) => H.p("Package not found in channel ", H.a(H.href := channelUrl.get)(channelUrl.get), ".")
+            }
+            document.body.appendChild(hintFrag.render)
           case Some(pkg) =>
-            output.replaceWith(pkgInfoFrag(pkg).render)
+            output.replaceWith(pkgInfoFrag(pkg, channelUrl).render)
         }
     }
   }
