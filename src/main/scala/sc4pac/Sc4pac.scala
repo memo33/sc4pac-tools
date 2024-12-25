@@ -15,7 +15,7 @@ import sc4pac.Resolution.{Dep, DepModule, DepAsset}
 
 // TODO Use `Runtime#reportFatal` or `Runtime.setReportFatal` to log fatal errors like stack overflow
 
-class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) extends UpdateService {  // TODO defaults
+class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) {  // TODO defaults
 
   val logger = context.logger
 
@@ -172,11 +172,6 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) extends Upda
       }
     }
   }
-
-}
-
-
-trait UpdateService { this: Sc4pac =>
 
   private def packageFolderName(dependency: DepModule): String = {
     val variantTokens = dependency.variant.toSeq.sortBy(_._1).map(_._2)
