@@ -1,6 +1,9 @@
 # Changelog
 
 ## [Unreleased]
+
+
+## [0.5.1] - 2024-12-26
 ### Added
 - Added `--launch-browser` option to the `server` command, which opens the web-app in the browser on start-up ([#3][gui3]).
 
@@ -19,7 +22,6 @@
     Moreover the output format of `/channels.stats` has changed.
   - New `/packages.open` endpoint for externally instructing the GUI to open a specific package page (#21).
     The main channel website now shows an "Open in App" button for each package.
-
 
 [gui1]: https://github.com/memo33/sc4pac-gui/issues/1
 [gui3]: https://github.com/memo33/sc4pac-gui/issues/3
@@ -190,9 +192,10 @@
 ## [0.1.5] - 2023-09-26
 …
 
-[Unreleased]: https://github.com/memo33/sc4pac-tools/compare/0.5.0...HEAD
-[0.4.5]: https://github.com/memo33/sc4pac-tools/compare/0.4.5...0.5.0
-[0.4.4]: https://github.com/memo33/sc4pac-tools/compare/0.4.4...0.4.5
+[Unreleased]: https://github.com/memo33/sc4pac-tools/compare/0.5.1...HEAD
+[0.5.1]: https://github.com/memo33/sc4pac-tools/compare/0.5.0...0.5.1
+[0.5.0]: https://github.com/memo33/sc4pac-tools/compare/0.4.5...0.5.0
+[0.4.5]: https://github.com/memo33/sc4pac-tools/compare/0.4.4...0.4.5
 [0.4.4]: https://github.com/memo33/sc4pac-tools/compare/0.4.3...0.4.4
 [0.4.3]: https://github.com/memo33/sc4pac-tools/compare/0.4.2...0.4.3
 [0.4.2]: https://github.com/memo33/sc4pac-tools/compare/0.4.1...0.4.2
