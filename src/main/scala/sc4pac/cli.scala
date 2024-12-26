@@ -39,7 +39,7 @@ object Commands {
   // failures that are expected with both the CLI and the API
   type ExpectedFailure = error.Sc4pacAbort | error.DownloadFailed | error.ChannelsNotAvailable
     | error.Sc4pacVersionNotFound | error.Sc4pacAssetNotFound | error.ExtractionFailed
-    | error.UnsatisfiableVariantConstraints | error.ChecksumError
+    | error.UnsatisfiableVariantConstraints | error.ChecksumError | error.ReadingProfileFailed
 
   private def handleExpectedFailures(abort: ExpectedFailure, exit: Int => Nothing): Nothing = abort match {
     case abort: error.Sc4pacAbort => { System.err.println("Operation aborted."); exit(1) }
@@ -200,7 +200,7 @@ object Commands {
           pluginsData  <- JD.Plugins.readOrInit
           pac          <- Sc4pac.init(pluginsData.config)
           query        =  args.all.mkString(" ")
-          searchResult <- pac.search(query, options.threshold, category = None)
+          searchResult <- pac.search(query, options.threshold, category = None, channel = None)
           installed    <- JD.PluginsLock.listInstalled.map(_.map(_.toBareDep).toSet)
           logger       <- ZIO.service[CliLogger]
         } yield {
@@ -242,7 +242,7 @@ object Commands {
           } yield {
             val (found, notFound) = infoResults.zip(mods).partition(_._1.isDefined)
             if (notFound.nonEmpty) {
-              error(caseapp.core.Error.Other("Package not found: " + notFound.map(_._2.orgName).mkString(" ")))
+              error(caseapp.core.Error.Other("Package not found in any of your channels: " + notFound.map(_._2.orgName).mkString(" ")))
             } else {
               for ((infoResultOpt, idx) <- found.zipWithIndex) {
                 if (idx > 0) logger.log("")
@@ -338,7 +338,7 @@ object Commands {
     |
     |Examples:
     |  sc4pac channel add "${Constants.defaultChannelUrls.head}"
-    |  sc4pac channel add "file:///C:/absolute/path/to/local/channel/"
+    |  sc4pac channel add "file:///C:/absolute/path/to/local/channel/json/"
     |
     |The URL in the examples above points to a directory structure consisting of JSON files created by the ${emph("sc4pac channel build")} command.
     |
@@ -476,15 +476,20 @@ object Commands {
       args.all match {
         case Nil => error(caseapp.core.Error.Other("An argument is needed: YAML input directory"))
         case inputs =>
+          val metadataSourceUrl = Option(options.metadataSourceUrl).filter(_.nonEmpty)
+            .map(MetadataRepository.parseChannelUrl)
+            .map {
+              case Left(err) => error(caseapp.core.Error.Other(s"Malformed metadata source URL: $err"))
+              case Right(uri) => uri
+            }
+          val ghUrl = "^https://github.com/([^/]+/[^/]+)/.*".r  // matches repo
           val info = JD.Channel.Info(
             channelLabel = Option(options.label).filter(_.nonEmpty),
-            metadataSourceUrl =
-              Option(options.metadataSourceUrl).filter(_.nonEmpty)
-                .map(MetadataRepository.parseChannelUrl)
-                .map {
-                  case Left(err) => error(caseapp.core.Error.Other(s"Malformed metadata source URL: $err"))
-                  case Right(uri) => uri
-                },
+            metadataSourceUrl = metadataSourceUrl,
+            metadataIssueUrl = metadataSourceUrl.flatMap(_.toString match {
+              case ghUrl(repo) => Some(java.net.URI.create(s"https://github.com/$repo/issues"))
+              case _ => None
+            }),
           )
           val task =
             ChannelUtil.convertYamlToJson(inputs.map(os.Path(_, os.pwd)), os.Path(options.output, os.pwd))
@@ -499,8 +504,8 @@ object Commands {
     |
     |Examples:
     |  sc4pac server --profiles-dir profiles --indent 1
-    |  sc4pac server --profiles-dir profiles --web-app-dir build/web                ${gray("# used by GUI web")}
-    |  sc4pac server --profiles-dir profiles --auto-shutdown --startup-tag [READY]  ${gray("# used by GUI desktop")}
+    |  sc4pac server --profiles-dir profiles --web-app-dir build/web --launch-browser  ${gray("# used by GUI web")}
+    |  sc4pac server --profiles-dir profiles --auto-shutdown --startup-tag [READY]     ${gray("# used by GUI desktop")}
     """.stripMargin.trim)
   final case class ServerOptions(
     @ValueDescription("number") @Group("Server") @Tag("Server")
@@ -515,6 +520,9 @@ object Commands {
     @ValueDescription("path") @Group("Server") @Tag("Server")
     @HelpMessage(s"optional directory containing statically served webapp files (default: no static files)")
     webAppDir: String = "",
+    @ValueDescription("bool") @Group("Server") @Tag("Server")
+    @HelpMessage(s"automatically open the web browser when using the --web-app-dir option (default: --launch-browser=false)")
+    launchBrowser: Boolean = false,
     @ValueDescription("bool") @Group("Server") @Tag("Server")
     @HelpMessage("automatically shut down the server when client closes connection to /server.connect (default: --auto-shutdown=false). This is used by the desktop GUI to ensure the port is cleared when the GUI exits.")
     autoShutdown: Boolean = false,
@@ -555,10 +563,16 @@ object Commands {
                           if (options.startupTag.nonEmpty)
                             println(options.startupTag)
                           println(s"Sc4pac server is listening on port ${options.port}...")
-                          if (webAppDir.isDefined)
-                            println(f"%nTo start the sc4pac-gui web-app, open the following URL in your web browser:%n%n" +
-                              f"  http://localhost:${options.port}/webapp/%n")
                         })
+                        .zipRight(
+                          ZIO.whenDiscard(webAppDir.isDefined) {
+                            val url = java.net.URI.create(s"http://localhost:${options.port}/webapp/")
+                            println(f"%nTo start the sc4pac-gui web-app, open the following URL in your web browser if it does not launch automatically:%n%n  ${url}%n")
+                            ZIO.whenDiscard(options.launchBrowser) {
+                              DesktopOps.openUrl(url).catchAll(_ => ZIO.succeed(()))  // errors can be ignored
+                            }
+                          }
+                        )
                         .zipRight(ZIO.never)  // keep server running indefinitely unless interrupted
                         .provide(
                           zio.http.Server.defaultWithPort(options.port)
@@ -569,6 +583,7 @@ object Commands {
                             .map(_.update[zio.http.Client](_.updateHeaders(_.addHeader("User-Agent", Constants.userAgent)) @@ followRedirects)),
                           zio.ZLayer.succeed(ProfilesDir(profilesDir)),
                           zio.ZLayer.succeed(ServerFiber(promise)),
+                          zio.ZLayer(zio.Ref.make(ServerConnection(numConnections = 0, currentChannel = None))),
                         )
                         .fork
           _        <- promise.succeed(fiber)
@@ -589,6 +604,7 @@ object Commands {
     }
 
     class ServerFiber(val promise: zio.Promise[Nothing, zio.Fiber[Throwable, Nothing]])
+    class ServerConnection(val numConnections: Int, val currentChannel: Option[zio.http.WebSocketChannel])
   }
 
 }

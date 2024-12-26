@@ -246,7 +246,7 @@ class Downloader(
 object Downloader {
 
   class Cookies(val simtropolisCookie: Option[String])
-  private[sc4pac] val emptyCookiesLayer = zio.ZLayer.succeed(Cookies(simtropolisCookie = None))
+  val emptyCookiesLayer = zio.ZLayer.succeed(Cookies(simtropolisCookie = None))
 
   /** Returns true on success, false if data transfer was canceled. */
   private def readFullyTo(

@@ -41,10 +41,12 @@ object Constants {
   val fuzzySearchThreshold = 80  // 0..100
   val cacheTtl = 12.hours
   val channelContentsTtl = 30.minutes
+  val channelContentsTtlRefresh = 0.minutes
   val channelContentsTtlShort = 60.seconds
   val interactivePromptTimeout = java.time.Duration.ofSeconds(240)
   val urlConnectTimeout = java.time.Duration.ofSeconds(60)
   val urlReadTimeout = java.time.Duration.ofSeconds(60)  // timeout in case of internet outage while downloading a file
+  val serverShutdownDelay = java.time.Duration.ofSeconds(2)  // defer shutdown to accept new connection in case of page refresh
   val defaultPort = 51515
 
   lazy val userAgent = {

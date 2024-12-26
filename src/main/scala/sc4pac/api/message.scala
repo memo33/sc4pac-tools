@@ -77,6 +77,12 @@ object PromptMessage {
 @upickle.implicits.key("/prompt/response")
 case class ResponseMessage(token: String, body: String) extends Message derives UP.ReadWriter
 
+@upickle.implicits.key("/prompt/open/package")
+case class OpenPackageMessage(packages: Seq[OpenPackageMessage.Item]) extends Message derives UP.ReadWriter
+object OpenPackageMessage {
+  case class Item(`package`: BareModule, channelUrl: String) derives UP.ReadWriter
+}
+
 sealed trait ErrorMessage extends Message derives UP.ReadWriter {
   def title: String
   def detail: String
@@ -86,6 +92,8 @@ object ErrorMessage {
   case class ServerError(title: String, detail: String) extends ErrorMessage derives UP.ReadWriter
   @upickle.implicits.key("/error/profile-not-initialized")
   case class ProfileNotInitialized(title: String, detail: String, platformDefaults: Map[String, Seq[String]]) extends ErrorMessage derives UP.ReadWriter
+  @upickle.implicits.key("/error/profile-read-error")
+  case class ReadingProfileFailed(title: String, detail: String) extends ErrorMessage derives UP.ReadWriter
   @upickle.implicits.key("/error/version-not-found")
   case class VersionNotFound(title: String, detail: String) extends ErrorMessage derives UP.ReadWriter
   @upickle.implicits.key("/error/asset-not-found")
@@ -158,6 +166,10 @@ object PackageInfo {
 }
 
 case class ChannelContentsItem(`package`: BareModule, version: String, summary: String, category: Option[String]) derives UP.ReadWriter
+
+// channelLabel may be null
+case class ChannelStatsItem(url: String, channelLabel: String, stats: JD.Channel.Stats) derives UP.ReadWriter
+case class ChannelStatsAll(combined: JD.Channel.Stats, channels: Seq[ChannelStatsItem]) derives UP.ReadWriter
 
 case class InitArgs(plugins: String, cache: String, temp: String) derives UP.ReadWriter
 

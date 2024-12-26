@@ -14,7 +14,7 @@ import sttp.client4.{basicRequest, Request, UriContext, Response, ResponseExcept
 import sttp.client4.upicklejson.asJson
 
 import scalatags.JsDom.all as H  // html tags
-import scalatags.JsDom.all.{stringFrag, stringAttr, SeqFrag, intPixelStyle, stringStyle}
+import scalatags.JsDom.all.{stringFrag, stringAttr, SeqFrag, intPixelStyle, stringStyle, bindNode}
 
 object JsonData extends SharedData {
   opaque type Instant = String
@@ -62,11 +62,12 @@ trait TokensCodespan extends js.Object {  // see https://github.com/markedjs/mar
 
 object ChannelPage {
 
-  // val channelUrl = "http://localhost:8090/channel/"
-  val channelUrl = ""  // relative to current host
+  // val channelUrlMainRelative = "http://localhost:8090/channel/"
+  val channelUrlMainRelative = ""  // relative to current host
+  val channelUrlMain = "https://memo33.github.io/sc4pac/channel/"
   // val sc4pacUrl = "https://github.com/memo33/sc4pac-tools#sc4pac"
   val sc4pacUrl = "https://memo33.github.io/sc4pac/#/"
-  val issueUrl = "https://github.com/memo33/sc4pac/issues"
+  val sc4pacGuiUrl = "https://github.com/memo33/sc4pac-gui/releases"
 
   lazy val backend = sttp.client4.fetch.FetchBackend()
 
@@ -74,8 +75,8 @@ object ChannelPage {
     document.addEventListener("DOMContentLoaded", (e: dom.Event) => setupUI())
   }
 
-  def fetchPackage(module: BareModule): Future[Option[JsonData.Package]] = {
-    val url = sttp.model.Uri(java.net.URI.create(s"${channelUrl}${JsonRepoUtil.packageSubPath(module, version = "latest")}"))
+  def fetchPackage(module: BareModule, channelUrl: Option[String]): Future[Option[JsonData.Package]] = {
+    val url = sttp.model.Uri(java.net.URI.create(s"${channelUrl.getOrElse(channelUrlMainRelative)}${JsonRepoUtil.packageSubPath(module, version = "latest")}"))
     for {
       response <- basicRequest.get(url).response(asJson[JsonData.Package]).send(backend)
     } yield {
@@ -85,7 +86,7 @@ object ChannelPage {
   }
 
   def fetchChannel(): Future[Option[JsonData.Channel]] = {
-    val url = sttp.model.Uri(java.net.URI.create(s"${channelUrl}${JsonRepoUtil.channelContentsFilename}"))
+    val url = sttp.model.Uri(java.net.URI.create(s"${channelUrlMainRelative}${JsonRepoUtil.channelContentsFilename}"))
     for {
       response <- basicRequest.get(url).response(asJson[JsonData.Channel]).send(backend)
     } yield {
@@ -122,14 +123,46 @@ object ChannelPage {
     H.raw(DOMPurify.sanitize(Marked.parse(text)))
   }
 
-  def pkgInfoFrag(pkg: JsonData.Package) = {
+  def pkgInfoFrag(pkg: JsonData.Package, channelUrl: Option[String]) = {
     val module = pkg.toBareDep
     val b = Seq.newBuilder[H.Frag]
     def add(label: String, child: H.Frag): Unit =
       b += H.tr(H.th(label), H.td(child))
 
+    lazy val openButton =
+      H.button(H.cls := "btn open-app-btn",
+        {
+          import scalatags.JsDom.all.bindJsAnyLike
+          H.onclick := openInApp  // not sure how this implicit conversion works exactly
+        },
+      )("Open in App").render
+    lazy val openButtonResult = H.div(H.color := "#ff0077").render
+
+    def openInApp(e: dom.Event): Unit = {
+      val port: Int = 51515
+      val url = sttp.model.Uri(java.net.URI.create(s"http://localhost:$port/packages.open"))
+      val msg = Seq(Map("package" -> module.orgName, "channelUrl" -> channelUrl.getOrElse(channelUrlMain)))
+      basicRequest
+        .body(UP.write(msg))
+        .contentType("application/json")
+        .post(url)
+        .send(backend)
+        .onComplete {
+          case scala.util.Success(response) if response.is200 =>
+            // openButton.textContent = "Opened in App"
+            openButtonResult.textContent = ""
+          case _ =>
+            if (openButtonResult.textContent.isEmpty)
+              openButtonResult.textContent = s"Hold on, mayor! First launch the app before pressing this button."
+            else
+              openButtonResult.textContent = s"Make sure the GUI is running (on port $port) before pressing this button. Requires at least version 0.2.1."
+        }
+    }
+
     // add("Name", pkg.name)
     // add("Group", pkg.group)
+    if (channelUrl.nonEmpty)
+      add("Channel", H.a(H.href := channelUrl.get)(channelUrl.get))
     add("Version", pkg.version)
     add("Summary", if (pkg.info.summary.nonEmpty) markdownFrag(pkg.info.summary) else "-")
     if (pkg.info.description.nonEmpty)
@@ -139,11 +172,13 @@ object ChannelPage {
     add("Conflicts", if (pkg.info.conflicts.isEmpty) "None" else markdownFrag(pkg.info.conflicts))
     if (pkg.info.author.nonEmpty)
       add("Author", pkg.info.author)
-    if (pkg.info.website.nonEmpty) {
-      var url = uri"${pkg.info.website}"
-      if (url.scheme.isEmpty)
-        url = url.scheme("https")
-      add("Website", H.a(H.href := url.toString)(pkg.info.website))
+    if (pkg.info.websites.nonEmpty) {
+      add(
+        "Website",
+        H.ul(H.cls := "unstyled-list")(
+          pkg.info.websites.map { url => H.li(H.a(H.href := url)(url)) }
+        ),
+      )
     }
     add("Subfolder", H.code(pkg.subfolder.toString))
 
@@ -174,13 +209,28 @@ object ChannelPage {
 
     H.div(
       H.div(H.float := "right")(
-        pkg.metadataSourceUrl.toSeq.map(yamlUrl => H.a(H.cls := "btn", H.href := yamlUrl.toString)("Edit metadata"))
-        :+ H.a(H.cls := "btn", H.href := issueUrl)("Report a problem")
+        pkg.metadataSourceUrl.toSeq.map(url => H.a(H.cls := "btn", H.href := url.toString)("Show metadata"))
+        ++ pkg.metadataIssueUrl.map(url => H.a(H.cls := "btn", H.href := url.toString)("Report a problem"))
       ),
       H.h2(H.clear := "right")(module.orgName),
       H.table(H.id := "pkginfo")(H.tbody(b.result())),
-      H.p("Install this package with ", H.a(H.href := sc4pacUrl)(H.code("sc4pac")), ":"),
-      H.pre(H.cls := "codebox")(s"sc4pac add ${module.orgName}\nsc4pac update")
+      H.div(H.cls := "card")(
+        H.h3("Installing this package…"),
+        H.ul(
+          H.li(
+            H.p("with the ", H.a(H.href := sc4pacGuiUrl)("sc4pac GUI"), ":",
+              openButton,
+              openButtonResult,
+            ),
+          ),
+          H.li(
+            H.p("with the ", H.a(H.href := sc4pacUrl)("sc4pac CLI"), ":"),
+            H.pre(H.cls := "codebox")(
+              channelUrl.filter(_ != channelUrlMain).map(url => s"""sc4pac channel add "$url"\n""").getOrElse("")
+              + s"sc4pac add ${module.orgName}\nsc4pac update")
+          ),
+        ),
+      ),
     )
   }
 
@@ -244,11 +294,16 @@ object ChannelPage {
         document.head.appendChild(metaDescription)
         val output = H.p("Loading package ", pkgNameFrag(module, link = false), "…").render
         document.body.appendChild(output)
-        fetchPackage(module) foreach {
+        val channelUrl = Option(urlParams.get("channel"))
+        fetchPackage(module, channelUrl) foreach {
           case None =>
-            document.body.appendChild(H.p("Package not found.").render)
+            val hintFrag = channelUrl match {
+              case None => H.p("Package not found")
+              case Some(url) => H.p("Package not found in channel ", H.a(H.href := channelUrl.get)(channelUrl.get), ".")
+            }
+            document.body.appendChild(hintFrag.render)
           case Some(pkg) =>
-            output.replaceWith(pkgInfoFrag(pkg).render)
+            output.replaceWith(pkgInfoFrag(pkg, channelUrl).render)
         }
     }
   }

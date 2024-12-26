@@ -68,7 +68,13 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) {  // TODO d
     }
   }
 
-  val iterateAllChannelPackages: Task[Iterator[JD.ChannelItem]] = ZIO.attempt { context.repositories.iterator.flatMap(_.iterateChannelPackages) }
+  /** Lists all packages of all channels or, optionally, just one channel. */
+  def iterateAllChannelPackages(channelUrl: Option[String]): Task[Iterator[JD.ChannelItem]] = ZIO.attempt {
+    channelUrl match {
+      case None => context.repositories.iterator.flatMap(_.iterateChannelPackages)
+      case Some(url) => context.repositories.find(_.baseUri.toString == url).iterator.flatMap(_.iterateChannelPackages)
+    }
+  }
 
   /** Fuzzy-search across all repositories.
     * The selection of results is ordered in descending order and includes the
@@ -76,7 +82,12 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) {  // TODO d
     * If a STEX/SC4E URL is searched, packages with matching external ID are returned.
     * Api.searchPlugins implements a similar function and should use the same algorithm.
     */
-  def search(query: String, threshold: Int, category: Option[String]): Task[Seq[(BareModule, Int, Option[String])]] = iterateAllChannelPackages.map { itemsIter =>
+  def search(
+    query: String,
+    threshold: Int,
+    category: Option[String],
+    channel: Option[String],
+  ): Task[Seq[(BareModule, Int, Option[String])]] = iterateAllChannelPackages(channel).map { itemsIter =>
     val externalIdOpt: Option[(String, String)] = JD.Channel.findExternalId(url = query)
     val searchTokens = Sc4pac.fuzzySearchTokenize(query)
     val results: Seq[(BareModule, Int, Option[String])] =
@@ -143,8 +154,10 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) {  // TODO d
           b += "Conflicts" -> applyMarkdown(pkg.info.conflicts, cliLogger)
         if (pkg.info.author.nonEmpty)
           b += "Author" -> pkg.info.author
-        if (pkg.info.website.nonEmpty)
-          b += "Website" -> pkg.info.website
+        if (pkg.info.websites.nonEmpty) {
+          b += "Website" -> pkg.info.websites.head
+          pkg.info.websites.iterator.drop(1).foreach { url => b += "" -> url }
+        }
         if (pkg.metadataSourceUrl.nonEmpty)
           b += "Metadata" -> pkg.metadataSourceUrl.get.toString
 
@@ -448,7 +461,7 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) {  // TODO d
     // TODO catch coursier.error.ResolutionError$CantDownloadModule (e.g. when json files have syntax issues)
     val updateTask = for {
       pluginsLockData1 <- JD.PluginsLock.readOrInit
-      pluginsLockData <- JD.PluginsLock.upgradeFromScheme1(pluginsLockData1, iterateAllChannelPackages, logger, pluginsRoot)
+      pluginsLockData <- JD.PluginsLock.upgradeFromScheme1(pluginsLockData1, iterateAllChannelPackages(channelUrl = None), logger, pluginsRoot)
       (resolution, globalVariant) <- doPromptingForVariant(globalVariant0)(Resolution.resolve(modules, _))
       plan            =  UpdatePlan.fromResolution(resolution, installed = pluginsLockData.dependenciesWithAssets)
       continue        <- ZIO.serviceWithZIO[Prompter](_.confirmUpdatePlan(plan))
@@ -544,16 +557,17 @@ object Sc4pac {
   /** Limits parallel downloads to 2 (ST rejects too many connections). */
   private[sc4pac] def createThreadPool() = coursier.cache.internal.ThreadUtil.fixedThreadPool(size = 2)
 
-  def init(config: JD.Config): RIO[ProfileRoot & Logger, Sc4pac] = {
+  def init(config: JD.Config, refreshChannels: Boolean = false): RIO[ProfileRoot & Logger, Sc4pac] = {
     // val refreshLogger = coursier.cache.loggers.RefreshLogger.create(System.err)  // TODO System.err seems to cause less collisions between refreshing progress and ordinary log messages
     val coursierPool = createThreadPool()
+    val channelContentsTtl = if (refreshChannels) Constants.channelContentsTtlRefresh else Constants.channelContentsTtl  // 0 or 30 minutes
     for {
       cacheRoot <- config.cacheRootAbs
       logger    <- ZIO.service[Logger]
       cache     =  FileCache(location = (cacheRoot / "coursier").toIO, logger = logger, pool = coursierPool)
         .withTtl(Some(Constants.cacheTtl))  // 12 hours
         // .withCachePolicies(Seq(coursier.cache.CachePolicy.ForceDownload))  // TODO cache policy
-      repos     <- initializeRepositories(config.channels, cache, Constants.channelContentsTtl)  // 30 minutes
+      repos     <- initializeRepositories(config.channels, cache, channelContentsTtl)
       tempRoot  <- config.tempRootAbs
       profileRoot <- ZIO.service[ProfileRoot]
       context   = new ResolutionContext(repos, cache, logger, profileRoot.path)

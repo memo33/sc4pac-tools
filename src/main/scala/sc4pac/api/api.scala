@@ -4,16 +4,16 @@ package api
 
 import zio.http.*
 import zio.http.ChannelEvent.{Read, Unregistered, UserEvent, UserEventTriggered}
-import zio.{ZIO, IO, URIO}
+import zio.{ZIO, IO, URIO, Ref}
 import upickle.default as UP
 
 import sc4pac.JsonData as JD
 import JD.{bareModuleRw, uriRw}
-import sc4pac.cli.Commands.Server.ServerFiber
+import sc4pac.cli.Commands.Server.{ServerFiber, ServerConnection}
 
 
 class Api(options: sc4pac.cli.Commands.ServerOptions) {
-  private val connectionCount = java.util.concurrent.atomic.AtomicInteger(0)
+  private val connectionsSinceLaunch = java.util.concurrent.atomic.AtomicInteger(0)
 
   private def jsonResponse[A : UP.Writer](obj: A): Response = Response.json(UP.write(obj, indent = options.indent))
   private def jsonFrame[A : UP.Writer](obj: A): WebSocketFrame = WebSocketFrame.Text(UP.write(obj, indent = options.indent))
@@ -28,13 +28,16 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
       "temp" -> Seq(JD.Plugins.defaultTempRoot.toString),
     )
 
-  /** Sends a 409 ProfileNotInitialized if Plugins cannot be loaded. */
+  /** Sends a 409 ProfileNotInitialized or 500 ReadingProfileFailed if Plugins cannot be loaded. */
   private val readPluginsOr409: ZIO[ProfileRoot, Response, JD.Plugins] =
-    JD.Plugins.read.flatMapError { (err: ErrStr) =>
-      for {
-        defaults <- makePlatformDefaults
-      } yield jsonResponse(ErrorMessage.ProfileNotInitialized("Profile not initialized", err, platformDefaults = defaults)).status(Status.Conflict)
-    }
+    JD.Plugins.readMaybe
+      .mapError((e: error.ReadingProfileFailed) => jsonResponse(expectedFailureMessage(e)).status(expectedFailureStatus(e)))
+      .someOrElseZIO((  // Plugins file does not exist
+        for {
+          defaults <- makePlatformDefaults
+          msg      =  ErrorMessage.ProfileNotInitialized("Profile not initialized.", "Profile JSON file does not exist.", platformDefaults = defaults)
+        } yield jsonResponse(msg).status(Status.Conflict)
+      ).flip)
 
   private def expectedFailureMessage(err: cli.Commands.ExpectedFailure): ErrorMessage = err match {
     case abort: error.Sc4pacVersionNotFound => ErrorMessage.VersionNotFound(abort.title, abort.detail)
@@ -44,6 +47,7 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
     case abort: error.DownloadFailed => ErrorMessage.DownloadFailed(abort.title, abort.detail)
     case abort: error.ChecksumError => ErrorMessage.DownloadFailed(abort.title, abort.detail)
     case abort: error.ChannelsNotAvailable => ErrorMessage.ChannelsNotAvailable(abort.title, abort.detail)
+    case abort: error.ReadingProfileFailed => ErrorMessage.ReadingProfileFailed(abort.title, abort.detail)
     case abort: error.Sc4pacAbort => ErrorMessage.Aborted("Operation aborted.", "")
   }
 
@@ -55,6 +59,7 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
     case abort: error.DownloadFailed => Status.BadGateway
     case abort: error.ChecksumError => Status.BadGateway
     case abort: error.ChannelsNotAvailable => Status.BadGateway
+    case abort: error.ReadingProfileFailed => Status.InternalServerError
     case abort: error.Sc4pacAbort => Status.Ok  // this is not really an error, but the expected control flow
   }
 
@@ -114,6 +119,7 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
     * The selection of results is ordered in descending order and includes the
     * module, the relevance ratio and the description.
     * This does not support searching for STEX/SC4E URLs, as the external IDs are not stored in the local lock file.
+    * This does not support filtering by channel URL, as those are not stored in the local lock file.
     * Sc4pac.search implements a similar function and should use a similar algorithm.
     */
   def searchPlugins(query: String, threshold: Int, category: Option[String], items: Seq[JD.InstalledData]): (JD.Channel.Stats, Seq[(JD.InstalledData, Int)]) = {
@@ -121,7 +127,6 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
     val searchTokens = Sc4pac.fuzzySearchTokenize(query)
     val results: Seq[(JD.InstalledData, Int)] =
       items.flatMap { item =>
-        // TODO reconsider choice of search algorithm
         val ratio =
           if (searchTokens.isEmpty) 100  // return the entire category (or everything if there is no filter category)
           else Sc4pac.fuzzySearchRatio(searchTokens, item.toSearchString, threshold)
@@ -145,7 +150,7 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
   /** Routes that require a `profile=id` query parameter as part of the URL. */
   def profileRoutes: Routes[ProfileRoot, Throwable] = Routes(
 
-    // 200, 409
+    // 200, 409, 500
     Method.GET / "profile.read" -> handler { (req: Request) =>
       wrapHttpEndpoint {
         for {
@@ -224,7 +229,7 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
               val cookies = Downloader.Cookies(req.url.queryParams.getAll("simtropolisCookie").headOption.orElse(Constants.simtropolisCookie))
               val cookieDesc = cookies.simtropolisCookie.map(c => s"with cookie: ${c.length} bytes").getOrElse("without cookie")
               for {
-                pac          <- Sc4pac.init(pluginsData.config)
+                pac          <- Sc4pac.init(pluginsData.config, refreshChannels = req.url.queryParams.getAll("refreshChannels").nonEmpty)
                 pluginsRoot  <- pluginsData.config.pluginsRootAbs
                 wsLogger     <- ZIO.service[WebSocketLogger]
                 _            <- ZIO.succeed(wsLogger.log(s"Updating... ($cookieDesc)"))
@@ -269,9 +274,10 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
         for {
           (searchText, threshold) <- searchParams(req)
           categoryOpt  =  req.url.queryParams.getAll("category").headOption
+          channelOpt   =  req.url.queryParams.getAll("channel").headOption
           pluginsData  <- readPluginsOr409
           pac          <- Sc4pac.init(pluginsData.config)
-          searchResult <- pac.search(searchText, threshold, category = categoryOpt)
+          searchResult <- pac.search(searchText, threshold, category = categoryOpt, channel = channelOpt)
           explicit     =  pluginsData.explicit.toSet
           installed    <- JD.PluginsLock.listInstalled2.map(mods => mods.iterator.map(m => m.toBareModule -> m).toMap)
         } yield jsonResponse(searchResult.map { case (pkg, ratio, summaryOpt) =>
@@ -314,7 +320,7 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
           pluginsData   <- readPluginsOr409
           pac           <- Sc4pac.init(pluginsData.config)
           remoteData    <- pac.infoJson(mod).someOrFail(  // TODO avoid decoding/encoding json
-                             jsonResponse(ErrorMessage.PackageNotFound("Package not found.", pkg)).status(Status.NotFound)
+                             jsonResponse(ErrorMessage.PackageNotFound("Package not found in any of your channels.", pkg)).status(Status.NotFound)
                            )
           explicit      =  pluginsData.explicit.toSet
           installed     <- JD.PluginsLock.listInstalled2
@@ -370,7 +376,7 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
         for {
           pluginsData <- readPluginsOr409
           pac         <- Sc4pac.init(pluginsData.config)
-          itemsIter   <- pac.iterateAllChannelPackages
+          itemsIter   <- pac.iterateAllChannelPackages(channelUrl = None)
         } yield jsonResponse(itemsIter.flatMap(item => item.toBareDep match {
           case mod: BareModule => item.versions.map { version => ChannelContentsItem(mod, version = version, summary = item.summary, category = item.category) }
           case _: BareAsset => Nil
@@ -415,9 +421,16 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
       wrapHttpEndpoint {
         for {
           urls         <- parseOr400[Seq[java.net.URI]](req.body, ErrorMessage.BadRequest("Malformed channel URLs.", "Pass channels as an array of strings."))
+          urls2        <- ZIO.foreach(urls)(url => ZIO.fromEither(
+                            MetadataRepository.parseChannelUrl(url.toString)  // sanitization
+                              .left.map(err => jsonResponse(
+                                ErrorMessage.BadRequest("Malformed channel URL.", err)
+                              ).status(Status.BadRequest)
+                            )
+                          ))
           pluginsData  <- readPluginsOr409
           pluginsData2 =  pluginsData.copy(config = pluginsData.config.copy(channels =
-                            if (urls.nonEmpty) urls.distinct else Constants.defaultChannelUrls
+                            if (urls2.nonEmpty) urls2.distinct else Constants.defaultChannelUrls
                           ))
           path         <- JD.Plugins.pathURIO
           _            <- JsonIo.write(path, pluginsData2, None)(ZIO.succeed(()))
@@ -432,13 +445,18 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
           pluginsData   <- readPluginsOr409
           pac           <- Sc4pac.init(pluginsData.config)
           combinedStats =  JD.Channel.Stats.aggregate(pac.context.repositories.map(_.channel.stats))
-        } yield jsonResponse(combinedStats)
+          statsItems    =  pac.context.repositories.map(r => ChannelStatsItem(
+                             url = r.baseUri.toString,
+                             channelLabel = r.channel.info.channelLabel.orNull,
+                             r.channel.stats,
+                           ))
+        } yield jsonResponse(ChannelStatsAll(combinedStats, statsItems))
       }
     },
 
   )
 
-  def routes(webAppDir: Option[os.Path]): Routes[ProfilesDir & ServerFiber & Client, Nothing] = {
+  def routes(webAppDir: Option[os.Path]): Routes[ProfilesDir & ServerFiber & Client & Ref[ServerConnection], Nothing] = {
     // Extract profile ID from URL query parameter and add it to environment.
     // 400 error if "profile" parameter is absent.
     val profileRoutes2 =
@@ -454,7 +472,7 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
       })
 
     // profile-independent routes
-    val genericRoutes = Routes[ProfilesDir & ServerFiber & Client, Throwable](
+    val genericRoutes = Routes[ProfilesDir & ServerFiber & Client & Ref[ServerConnection], Throwable](
 
       // 200
       Method.GET / "server.status" -> handler {
@@ -465,9 +483,9 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
 
       // websocket allowing to monitor whether server is alive (supports no particular message exchange)
       Method.GET / "server.connect" -> handler {
-        val num = connectionCount.incrementAndGet()
+        val num = connectionsSinceLaunch.incrementAndGet()
         Handler.webSocket { wsChannel =>
-          for {
+          val wsTask = for {
             logger <- ZIO.service[Logger]
             _      <- ZIO.succeed(logger.log(s"Registered websocket connection $num."))
             _      <- wsChannel.receiveAll {
@@ -481,18 +499,48 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
                       }
             _      <- wsChannel.shutdown: zio.UIO[Unit]  // may be redundant
             _      <- ZIO.succeed(logger.log(s"Shut down websocket connection $num."))
-            server <- ZIO.service[ServerFiber]
-            _      <- if (!options.autoShutdown) ZIO.succeed(())
-                      else for {
-                        fiber  <- server.promise.await
-                        _      <- ZIO.succeed(logger.log(s"Connection from client to server was closed. Shutting down server."))
-                        _      <- fiber.interrupt.fork
-                      } yield ()
           } yield ()
-        }.provideSomeLayer(httpLogger).toResponse: zio.URIO[ProfilesDir & ServerFiber, Response]
+
+          // If this was the last remaining connection and no new connection was opened after a short delay, then shutdown the server
+          def maybeShutdownServer(remainingConnections: Int) =
+            ZIO.unlessDiscard(!options.autoShutdown || remainingConnections > 0)(for {
+              _      <- ZIO.sleep(Constants.serverShutdownDelay)  // defer shutdown to accept new connection in case of page refresh
+              count  <- ZIO.serviceWithZIO[Ref[ServerConnection]](_.get.map(_.numConnections))
+              _      <- ZIO.unlessDiscard(count > 0)(for {
+                          server <- ZIO.service[ServerFiber]
+                          fiber  <- server.promise.await
+                          _      <- ZIO.serviceWith[Logger](_.log(s"All connections from client to server are closed. Shutting down server."))
+                          _      <- fiber.interrupt.fork
+                        } yield ())
+            } yield ())
+
+          // keeps track of number of open connections
+          ZIO.acquireReleaseWith
+            (acquire = ZIO.serviceWithZIO[Ref[ServerConnection]](_.update { s =>
+              ServerConnection(numConnections = s.numConnections + 1, currentChannel = Some(wsChannel))
+            }))
+            (release = (_) => ZIO.serviceWithZIO[Ref[ServerConnection]](_.modify { s =>
+              val remainingConnections = s.numConnections - 1
+              (remainingConnections, ServerConnection(numConnections = remainingConnections, currentChannel = s.currentChannel.filter(_ != wsChannel)))
+            }).flatMap(maybeShutdownServer))
+            (use = (_) => wsTask)
+        }.provideSomeLayer(httpLogger).toResponse
       },
 
-      // 200
+      // 200, 400, 503
+      Method.POST / "packages.open" -> handler((req: Request) => wrapHttpEndpoint {
+        for {
+          packages   <- parseOr400[Seq[OpenPackageMessage.Item]](req.body, ErrorMessage.BadRequest("Malformed package list.", "Pass an array of package items."))
+          wsChannel  <- ZIO.serviceWithZIO[Ref[ServerConnection]](_.get.map(_.currentChannel))
+                          .someOrFail(jsonResponse(ErrorMessage.ServerError(
+                            "The sc4pac GUI is not opened. Make sure the GUI is running correctly.",
+                            "Connection between API server and GUI client is not available."
+                          )).status(Status.ServiceUnavailable))
+          _          <- wsChannel.send(Read(jsonFrame(OpenPackageMessage(packages))))
+        } yield jsonOk
+      }),
+
+      // 200, 500
       Method.GET / "profiles.list" -> handler {
         wrapHttpEndpoint {
           JD.Profiles.readOrInit.map(profiles => jsonResponse(profiles.copy(settings = ujson.Obj())))

@@ -1,8 +1,31 @@
 # Changelog
 
 ## [Unreleased]
+### Added
+- Added `--launch-browser` option to the `server` command, which opens the web-app in the browser on start-up ([#3][gui3]).
+
 ### Fixed
-- an issue where building a channel with file names containing spaces failed
+- an issue where building a channel with file names containing spaces failed.
+- Handling of malformed profile JSON files has been improved ([#4][gui4]).
+- The auto-shutdown functionality of the server now handles multiple connections and page reloads of the web-app ([#10][gui10]).
+
+### Changed
+- The channels now include a URL for creating a new GH issue associated to a specific package (derived from `--metadata-source-url`).
+- The metadata now supports a `websites` field for cases when there is more than one `website` (#22).
+  Only the new field is used in JSON files, while YAML files may continue to use `website` in place of `websites`, for backward compatibility.
+- API upgrade to 2.1:
+  - `/update` accepts a new parameter `refreshChannels` to clear cached data ([#14][gui14]).
+  - `/packages.search` supports a new parameter `channel` to filter the results ([#1][gui1]).
+    Moreover the output format of `/channels.stats` has changed.
+  - New `/packages.open` endpoint for externally instructing the GUI to open a specific package page (#21).
+    The main channel website now shows an "Open in App" button for each package.
+
+
+[gui1]: https://github.com/memo33/sc4pac-gui/issues/1
+[gui3]: https://github.com/memo33/sc4pac-gui/issues/3
+[gui4]: https://github.com/memo33/sc4pac-gui/issues/4
+[gui10]: https://github.com/memo33/sc4pac-gui/issues/10
+[gui14]: https://github.com/memo33/sc4pac-gui/issues/14
 
 
 ## [0.5.0] - 2024-12-14

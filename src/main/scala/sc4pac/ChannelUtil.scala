@@ -44,19 +44,35 @@ object ChannelUtil {
       // validate that variants form a DecisionTree
       Sc4pac.DecisionTree.fromVariants(variants2.map(_.variant)) match {
         case Left(errStr) => ZIO.fail(errStr)
-        case Right(_) => ZIO.serviceWith[JD.Channel.Info] { channelInfo => JD.Package(
-          group = group, name = name, version = version, subfolder = subfolder, info = info,
-          variants = variants2,
-          variantDescriptions = variantDescriptions,
-          metadataSource = metadataSource,  // kept for backward compatibility
-          metadataSourceUrl =
+        case Right(_) => ZIO.serviceWith[JD.Channel.Info] { channelInfo =>
+          val metadataSourceUrl =
             for {
               baseUri <- channelInfo.metadataSourceUrl
               path    <- metadataSource
-            } yield resolveMetadataSourceUrl(baseUri, path),
-          channelLabel = channelInfo.channelLabel,
-        )}
+            } yield resolveMetadataSourceUrl(baseUri, path)
+          JD.Package(
+            group = group, name = name, version = version, subfolder = subfolder, info = info.upgradeWebsites,
+            variants = variants2,
+            variantDescriptions = variantDescriptions,
+            metadataSource = metadataSource,  // kept for backward compatibility
+            metadataSourceUrl = metadataSourceUrl,
+            metadataIssueUrl = channelInfo.metadataIssueUrl.filter(_.getHost == "github.com").map(newIssueUrl(_, metadataSourceUrl)),
+            channelLabel = channelInfo.channelLabel,
+          )
+        }
       }
+    }
+
+    private def newIssueUrl(metadataIssueUrl: java.net.URI, metadataSourceUrl: Option[java.net.URI]): java.net.URI = {
+      val module = BareModule(Organization(group), ModuleName(name)).orgName
+      val link = metadataSourceUrl.map(u => s"[`$module`]($u)").getOrElse(s"`$module`")
+      val website: String = info.websites.headOption.getOrElse(info.website)
+      val websiteLink = if (website.nonEmpty) s" from ${website}" else ""
+      val q = zio.http.QueryParams(
+        "title" -> s"[$module] New bug report",
+        "body" -> s"Package: $link$websiteLink\n\nDescribe the problem here…",
+      ).encode(java.nio.charset.StandardCharsets.UTF_8)
+      metadataIssueUrl.resolve(s"issues/new$q")
     }
   }
 

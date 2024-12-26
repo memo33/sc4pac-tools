@@ -25,7 +25,8 @@ info:
   description: ""
   author: ""
   images: []
-  website: ""
+  # website: ""
+  websites: []
 
 ---
 assetId: "<unique-id>"

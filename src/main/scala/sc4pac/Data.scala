@@ -28,8 +28,7 @@ object JsonData extends SharedData {
 
   implicit val subPathRw: ReadWriter[os.SubPath] = readwriter[String].bimap[os.SubPath](_.toString(), os.SubPath(_))
 
-  implicit val uriRw: ReadWriter[java.net.URI] = readwriter[String].bimap[java.net.URI](_.toString(),
-    MetadataRepository.parseChannelUrl(_).left.map(new IllegalArgumentException(_)).toTry.get)
+  implicit val uriRw: ReadWriter[java.net.URI] = readwriter[String].bimap[java.net.URI](_.toString(), new java.net.URI(_))
 
   private[sc4pac] def bareModuleRead(s: String) =
     Sc4pac.parseModule(s) match {
@@ -121,13 +120,17 @@ object JsonData extends SharedData {
       } yield data
     }
 
-    val read: ZIO[ProfileRoot, ErrStr, Plugins] = Plugins.pathURIO.flatMap { pluginsPath =>
-      val task: IO[ErrStr | java.io.IOException, Plugins] =
+    /** Reads the Plugins JSON file if it exists, otherwise returns None */
+    val readMaybe: ZIO[ProfileRoot, error.ReadingProfileFailed, Option[Plugins]] = Plugins.pathURIO.flatMap { pluginsPath =>
+      val task: IO[ErrStr | java.io.IOException, Option[Plugins]] =
         ZIO.ifZIO(ZIO.attemptBlockingIO(os.exists(pluginsPath)))(
-          onFalse = ZIO.fail(s"Configuration file does not exist: $pluginsPath"),
-          onTrue = ZIO.attemptBlockingIO(JsonIo.readBlocking[Plugins](pluginsPath)).absolve
+          onFalse = ZIO.succeed(None),
+          onTrue = ZIO.attemptBlockingIO(JsonIo.readBlocking[Plugins](pluginsPath)).absolve.map(Some(_))
         )
-      task.mapError(_.toString)
+      task.mapError(e => error.ReadingProfileFailed(
+        s"Failed to read profile JSON file ${pluginsPath.last}.",
+        f"Make sure the file is correctly formatted: $pluginsPath.%n$e"),
+      )
     }
 
     /** Read Plugins from file if it exists, else create it and write it to file. */
@@ -138,6 +141,10 @@ object JsonData extends SharedData {
           (pluginsRoot, cacheRoot) <- promptForPaths
           data                     <- Plugins.init(pluginsRoot, cacheRoot, tempRoot = defaultTempRoot)
         } yield data
+      )
+      .mapError(e => error.ReadingProfileFailed(
+        s"Failed to read profile JSON file ${pluginsPath.last}.",
+        f"Make sure the file is correctly formatted: $pluginsPath.%n${e.getMessage}"),
       )
     }
   }
@@ -251,6 +258,10 @@ object JsonData extends SharedData {
           val data = PluginsLock(Constants.pluginsLockScheme, Seq.empty, Seq.empty)
           JsonIo.write(pluginsLockPath, data, None)(ZIO.succeed(data))
         }
+      )
+      .mapError(e => error.ReadingProfileFailed(
+        s"Failed to read profile lock file ${pluginsLockPath.last}.",
+        f"Make sure the file is correctly formatted: $pluginsLockPath.%n${e.getMessage}"),
       )
     }
 
@@ -382,6 +393,10 @@ object JsonData extends SharedData {
       ZIO.ifZIO(ZIO.attemptBlocking(os.exists(jsonPath)))(
         onTrue = JsonIo.read[Profiles](jsonPath),
         onFalse = ZIO.succeed(Profiles(Seq.empty, None))
+      )
+      .mapError(e => error.ReadingProfileFailed(
+        s"Failed to read profiles file ${jsonPath.last}.",
+        f"Make sure the file is correctly formatted: $jsonPath.%n${e.getMessage}"),
       )
     }
   }

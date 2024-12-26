@@ -1,4 +1,4 @@
-# API - version 2.0
+# API - version 2.1
 
 The API allows other programs to control *sc4pac* in a client-server fashion.
 
@@ -11,6 +11,7 @@ POST /profile.init?profile=id        {plugins: "<path>", cache: "<path>", temp: 
 GET  /packages.list?profile=id
 GET  /packages.info?pkg=<pkg>&profile=id
 GET  /packages.search?q=<text>&profile=id
+POST /packages.open                  [{package: "<pkg>", channelUrl: "<url>"}]
 
 GET  /plugins.added.list?profile=id
 GET  /plugins.installed.list?profile=id
@@ -46,7 +47,8 @@ GET  /image.fetch?url=<url>
   - 400 (incorrect input)
   - 404 (non-existing packages, assets, etc.)
   - 409 `/error/profile-not-initialized` (when not initialized)
-  - 500 (unexpected unresolvable situations)
+  - 500 `/error/profile-read-error` (when one of the profile JSON files fails to parse)
+  - 500 (other unexpected unresolvable situations)
   - 502 (download failures)
 - Errors are of the form
   ```
@@ -69,6 +71,7 @@ Returns:
   The response contains
   `platformDefaults: {plugins: ["<path>", …], cache: ["<path>", …], temp: ["<path>", …]}`
   for recommended platform-specific locations to use for initialization.
+- 500 `/error/profile-read-error` when the profile JSON file exists, but does not have the expected format.
 
 ## profile.init
 
@@ -171,9 +174,11 @@ Search for a package in all channels.
 
 Synopsis: `GET /packages.search?q=<text>&profile=id`
 
-Optionally, bound the relevance by passing a `threshold` paramater ranging from 0 to 100
-or the category by passing a `category` parameter.
-If `category` is passed, but `q` is empty, then all packages of that category are returned.
+Optional parameters:
+- `threshold=<num>` to bound the relevance, ranging from 0 to 100.
+- `channel=<url>` to limit results to this channel.
+- `category=<cat>` to limit results to this category.
+  If `category` is passed, but `q` is empty, then all packages of that category are returned.
 
 Returns:
 ```
@@ -197,6 +202,22 @@ Returns:
 ```
 The `status` field contains the local installation status if the package has been explicitly added or actually installed.
 
+## packages.open
+
+Tell the server to tell the client to show a particular package, using the current profile.
+This endpoint is intended for external invocation, such as an "Open in app" button on a website.
+
+Synopsis: `POST /packages.open [{package: "<pkg>", channelUrl: "<url>"}]`
+
+Returns:
+- 200 `{"$type": "/result", "ok": true}`
+- 503 if GUI is not connected to API server
+
+Example:
+```sh
+curl -X POST -d '[{"package": "cyclone-boom:save-warning", "channelUrl": "https://memo33.github.io/sc4pac/channel/"}]' http://localhost:51515/packages.open
+```
+The client will be informed by the `/server.connect` websocket.
 
 ## plugins.added.list
 
@@ -338,7 +359,13 @@ Get the combined stats of all the channels.
 
 Synopsis: `GET /channels.stats?profile=id`
 
-Returns: `{"totalPackageCount": int, "categories": [{"category": "150-mods", "count": int}, …]}`
+Returns:
+```
+{
+  "combined": {"totalPackageCount": int, "categories": [{"category": "150-mods", "count": int}, …]},
+  "channels": {"url": string, "channelLabel": [string], "stats": …}
+}
+```
 
 ## update
 
@@ -346,8 +373,10 @@ Opening a websocket at `/update` triggers the update process.
 This mirrors the interactive `sc4pac update` command of the CLI.
 The websocket sends a series of messages, some of which expect a specific response, such as a confirmation to continue.
 
-Pass the parameter `simtropolisCookie` to re-use an authenticated session.
-Otherwise, the environment variable will be used instead if available.
+Parameters:
+- `simtropolisCookie=<value>` to re-use an authenticated session.
+  Otherwise, the environment variable will be used instead if available.
+- `refreshChannels` to clear the cached channel contents files before updating.
 
 Example using Javascript in your web browser:
 ```javascript
@@ -452,8 +481,14 @@ Returns: `{"sc4pacVersion": "0.4.x"}`
 ## server.connect
 
 Monitor whether the server is still running by opening a websocket at this endpoint.
-No particular messages are exchanged, but if either client or server terminates,
+Usually, no particular messages are exchanged, but if either client or server terminates,
 the other side will be informed about it as the websocket closes.
+
+Triggered by an external `/packages.open` request,
+the server may send the following message to tell the client to show a particular package, using the current profile:
+```
+{ "$type": "/prompt/open/package", "packages": [{"package": "<pkg>", "channelUrl": "<url>"}] }
+```
 
 ## profiles.list
 
@@ -462,12 +497,14 @@ Get the list of all existing profiles, each corresponding to a Plugins folder.
 Synopsis: `GET /profiles.list`
 
 Returns:
-```
-{
-  profiles: [{id: "<id-1>", name: string}, …],
-  currentProfileId: ["<id-1>"]
-}
-```
+- 500 `/error/profile-read-error`
+- 200:
+  ```
+  {
+    profiles: [{id: "<id-1>", name: string}, …],
+    currentProfileId: ["<id-1>"]
+  }
+  ```
 
 ## profiles.add
 
