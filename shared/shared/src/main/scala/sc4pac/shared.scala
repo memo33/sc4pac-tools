@@ -177,9 +177,13 @@ abstract class SharedData {
     author: String = "",
     images: Seq[String] = Seq.empty,
     website: String = "",
+    websites: Seq[String] = Seq.empty,
     requiredBy: Seq[BareModule] = Seq.empty,  // optional and only informative (mangles all variants and versions, is limited to one channel,
                                               // can easily become outdated since json files are cached indefinitely)
-  ) derives ReadWriter
+  ) derives ReadWriter {
+    def upgradeWebsites: Info =
+      if (websites.isEmpty && website.nonEmpty) copy(website = "", websites = Seq(website)) else this
+  }
   object Info {
     val empty = Info()
   }
@@ -267,11 +271,7 @@ abstract class SharedData {
     )
 
     private def findExternalIds(pkg: Package): Map[String, Seq[String]] = {
-      findExternalId(url = pkg.info.website) match {
-        // TODO currently there is just one website, but there could be multiple in the future
-        case Some(exchangeKey -> externalId) => Map(exchangeKey -> Seq(externalId))
-        case None => Map.empty
-      }
+      pkg.info.websites.flatMap(findExternalId).groupMap(_._1)(_._2)
     }
 
     def findExternalId(url: String): Option[(String, String)] = {  // stex/sc4e -> id

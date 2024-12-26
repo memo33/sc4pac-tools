@@ -172,11 +172,13 @@ object ChannelPage {
     add("Conflicts", if (pkg.info.conflicts.isEmpty) "None" else markdownFrag(pkg.info.conflicts))
     if (pkg.info.author.nonEmpty)
       add("Author", pkg.info.author)
-    if (pkg.info.website.nonEmpty) {
-      var url = uri"${pkg.info.website}"
-      if (url.scheme.isEmpty)
-        url = url.scheme("https")
-      add("Website", H.a(H.href := url.toString)(pkg.info.website))
+    if (pkg.info.websites.nonEmpty) {
+      add(
+        "Website",
+        H.ul(H.cls := "unstyled-list")(
+          pkg.info.websites.map { url => H.li(H.a(H.href := url)(url)) }
+        ),
+      )
     }
     add("Subfolder", H.code(pkg.subfolder.toString))
 

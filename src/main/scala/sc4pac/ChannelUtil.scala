@@ -51,7 +51,7 @@ object ChannelUtil {
               path    <- metadataSource
             } yield resolveMetadataSourceUrl(baseUri, path)
           JD.Package(
-            group = group, name = name, version = version, subfolder = subfolder, info = info,
+            group = group, name = name, version = version, subfolder = subfolder, info = info.upgradeWebsites,
             variants = variants2,
             variantDescriptions = variantDescriptions,
             metadataSource = metadataSource,  // kept for backward compatibility
@@ -66,7 +66,8 @@ object ChannelUtil {
     private def newIssueUrl(metadataIssueUrl: java.net.URI, metadataSourceUrl: Option[java.net.URI]): java.net.URI = {
       val module = BareModule(Organization(group), ModuleName(name)).orgName
       val link = metadataSourceUrl.map(u => s"[`$module`]($u)").getOrElse(s"`$module`")
-      val websiteLink = if (info.website.nonEmpty) s" from ${info.website}" else ""
+      val website: String = info.websites.headOption.getOrElse(info.website)
+      val websiteLink = if (website.nonEmpty) s" from ${website}" else ""
       val q = zio.http.QueryParams(
         "title" -> s"[$module] New bug report",
         "body" -> s"Package: $link$websiteLink\n\nDescribe the problem here…",

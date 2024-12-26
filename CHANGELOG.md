@@ -10,7 +10,9 @@
 - The auto-shutdown functionality of the server now handles multiple connections and page reloads of the web-app ([#10][gui10]).
 
 ### Changed
-- The channels now includes a URL for creating a new GH issue associated to a specific package (derived from `--metadata-source-url`).
+- The channels now include a URL for creating a new GH issue associated to a specific package (derived from `--metadata-source-url`).
+- The metadata now supports a `websites` field for cases when there is more than one `website` (#22).
+  Only the new field is used in JSON files, while YAML files may continue to use `website` in place of `websites`, for backward compatibility.
 - API upgrade to 2.1:
   - `/update` accepts a new parameter `refreshChannels` to clear cached data ([#14][gui14]).
   - `/packages.search` supports a new parameter `channel` to filter the results ([#1][gui1]).

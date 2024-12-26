@@ -154,8 +154,10 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) extends Upda
           b += "Conflicts" -> applyMarkdown(pkg.info.conflicts, cliLogger)
         if (pkg.info.author.nonEmpty)
           b += "Author" -> pkg.info.author
-        if (pkg.info.website.nonEmpty)
-          b += "Website" -> pkg.info.website
+        if (pkg.info.websites.nonEmpty) {
+          b += "Website" -> pkg.info.websites.head
+          pkg.info.websites.iterator.drop(1).foreach { url => b += "" -> url }
+        }
         if (pkg.metadataSourceUrl.nonEmpty)
           b += "Metadata" -> pkg.metadataSourceUrl.get.toString
 
