@@ -1,7 +1,7 @@
 #!/bin/sh
 # Create a distributable zip file. Usage: sh ./src/scripts/dist.sh
 set -e
-sbt assembly
+sbt clean assembly
 mkdir -p target/dist
 VERSION=$(sed build.sbt -ne 's/^ThisBuild \/ version := .\(.*\)./\1/p')
 OUT="target/dist/sc4pac-${VERSION}.zip"
