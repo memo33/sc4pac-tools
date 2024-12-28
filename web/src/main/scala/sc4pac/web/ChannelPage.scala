@@ -154,8 +154,17 @@ object ChannelPage {
           case _ =>
             if (openButtonResult.textContent.isEmpty)
               openButtonResult.textContent = s"Hold on, mayor! First launch the app before pressing this button."
-            else
-              openButtonResult.textContent = s"Make sure the GUI is running (on port $port) before pressing this button. Requires at least version 0.2.1."
+            else if (openButtonResult.children.length < 1)
+              openButtonResult.appendChild(
+                H.frag(
+                  H.p(s"It just doesn't work. Make sure that…"),
+                  H.ul(
+                    H.li(H.p(s"the GUI is running before pressing this button (on the default port $port).")),
+                    H.li(H.p(s"the request is not blocked by an ad-blocker. If applicable, add an exception for this page (${dom.window.location.origin}).")),
+                  ),
+                ).render
+              )
+              ()
         }
     }
 
