@@ -34,4 +34,11 @@ REM SET "SC4PAC_SIMTROPOLIS_COOKIE=ips4_device_key=<value>; ips4_member_id=<valu
 
 IF "%SC4PAC_CICDEC_CMD%"=="" SET "SC4PAC_CICDEC_CMD=%SCRIPTDIR%\cicdec\cicdec.exe"
 
+REM Check if java is available or provide suitable exit code for the GUI.
+where java >nul 2>nul
+if %errorlevel%==1 (
+    @echo Java could not be found. Please install a Java Runtime Environment and make sure it is added to your PATH environment variable during the installation.
+    exit 55
+)
+
 java -jar "%SCRIPTDIR%\sc4pac-cli.jar" %*

@@ -1,6 +1,8 @@
 # Changelog
 
 ## [Unreleased]
+### Changed
+- The `sc4pac` launch scripts now include a check for whether Java is installed.
 
 
 ## [0.5.1] - 2024-12-26
