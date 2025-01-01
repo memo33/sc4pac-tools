@@ -46,6 +46,11 @@ object Commands {
     case abort => { System.err.println(s"Operation aborted. ${abort.getMessage}"); exit(1) }
   }
 
+  object ExitCodes {
+    val JavaNotFound = 55  // see `sc4pac` and `sc4pac.bat` scripts
+    val PortOccupied = 56
+  }
+
   private def runMainExit(task: Task[Unit], exit: Int => Nothing): Nothing = {
     unsafeRun(task.fold(
       failure = {
@@ -55,7 +60,7 @@ object Commands {
         case abort: error.SymlinkCreationFailed => { System.err.println(s"Operation aborted. ${abort.getMessage}"); exit(1) }  // channel-build command
         case abort: error.FileOpsFailure => { System.err.println(s"Operation aborted. ${abort.getMessage}"); exit(1) }  // channel-build command
         case abort: error.YamlFormatIssue => { System.err.println(s"Operation aborted. ${abort.getMessage}"); exit(1) }  // channel-build command
-        case abort: error.PortOccupied => { System.err.println(abort.getMessage); exit(1) }  // server command
+        case abort: error.PortOccupied => { System.err.println(abort.getMessage); exit(ExitCodes.PortOccupied) }  // server command
         case e => { e.printStackTrace(); exit(2) }
       },
       success = _ => exit(0)
@@ -559,6 +564,11 @@ object Commands {
         for {
           promise  <- zio.Promise.make[Nothing, zio.Fiber[Throwable, Nothing]]
           fiber    <- zio.http.Server.install(app)
+                        .catchSomeDefect {
+                          // usually: "bind(..) failed: Address already in use"
+                          case e: io.netty.channel.unix.Errors.NativeIoException if e.getMessage.contains("bind") =>
+                            ZIO.fail(sc4pac.error.PortOccupied(s"Failed to run sc4pac server on port ${options.port}. ${e.getMessage}"))
+                        }
                         .zipRight(ZIO.succeed {
                           if (options.startupTag.nonEmpty)
                             println(options.startupTag)
@@ -577,6 +587,9 @@ object Commands {
                         .provide(
                           zio.http.Server.defaultWithPort(options.port)
                             .mapError { e =>  // usually: "bind(..) failed: Address already in use"
+                              // This branch does not seem to usually catch the error anymore.
+                              // Instead it is caught in Server.install(app).catchSomeDefect(...) above.
+                              // We defensively keep these branch in case of future zio-http/netty changes.
                               sc4pac.error.PortOccupied(s"Failed to run sc4pac server on port ${options.port}. ${e.getMessage}")
                             },
                           zio.http.Client.default  // for /image.fetch
