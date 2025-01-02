@@ -501,19 +501,6 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
             _      <- ZIO.succeed(logger.log(s"Shut down websocket connection $num."))
           } yield ()
 
-          // If this was the last remaining connection and no new connection was opened after a short delay, then shutdown the server
-          def maybeShutdownServer(remainingConnections: Int) =
-            ZIO.unlessDiscard(!options.autoShutdown || remainingConnections > 0)(for {
-              _      <- ZIO.sleep(Constants.serverShutdownDelay)  // defer shutdown to accept new connection in case of page refresh
-              count  <- ZIO.serviceWithZIO[Ref[ServerConnection]](_.get.map(_.numConnections))
-              _      <- ZIO.unlessDiscard(count > 0)(for {
-                          server <- ZIO.service[ServerFiber]
-                          fiber  <- server.promise.await
-                          _      <- ZIO.serviceWith[Logger](_.log(s"All connections from client to server are closed. Shutting down server."))
-                          _      <- fiber.interrupt.fork
-                        } yield ())
-            } yield ())
-
           // keeps track of number of open connections
           ZIO.acquireReleaseWith
             (acquire = ZIO.serviceWithZIO[Ref[ServerConnection]](_.update { s =>
@@ -521,8 +508,8 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
             }))
             (release = (_) => ZIO.serviceWithZIO[Ref[ServerConnection]](_.modify { s =>
               val remainingConnections = s.numConnections - 1
-              (remainingConnections, ServerConnection(numConnections = remainingConnections, currentChannel = s.currentChannel.filter(_ != wsChannel)))
-            }).flatMap(maybeShutdownServer))
+              (Some(remainingConnections), ServerConnection(numConnections = remainingConnections, currentChannel = s.currentChannel.filter(_ != wsChannel)))
+            }).flatMap(shutdownServerIfNoConnections(_, reason = "All connections from client to server are closed.")))
             (use = (_) => wsTask)
         }.provideSomeLayer(httpLogger).toResponse
       },
@@ -626,5 +613,18 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
         staticFileHandler(webAppDir, path).contramap[(zio.http.Path, Request)](_._2)
       },
   ).sandbox  // @@ HandlerAspect.requestLogging()  // sandbox converts errors to suitable responses
+
+  // If the last remaining connection was closed and no new connection was opened after a short delay, then shutdown the server
+  def shutdownServerIfNoConnections(remainingConnections: Option[Int], reason: String): URIO[Ref[ServerConnection] & ServerFiber, Unit] =
+    ZIO.unlessDiscard(!options.autoShutdown || remainingConnections.exists(_ > 0))(for {
+      _      <- ZIO.sleep(Constants.serverShutdownDelay)  // defer shutdown to accept new connection in case of page refresh
+      count  <- ZIO.serviceWithZIO[Ref[ServerConnection]](_.get.map(_.numConnections))
+      _      <- ZIO.unlessDiscard(count > 0)(for {
+                  server <- ZIO.service[ServerFiber]
+                  fiber  <- server.promise.await
+                  _      <- ZIO.serviceWith[Logger](_.log(s"$reason Shutting down server."))
+                  _      <- fiber.interrupt.fork
+                } yield ())
+    } yield ()).provideSomeLayer(httpLogger)
 
 }
