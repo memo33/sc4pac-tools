@@ -542,11 +542,26 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
             ps          <- JD.Profiles.readOrInit
             (ps2, p)    = ps.add(profileName.name)
             jsonPath    <- JD.Profiles.pathURIO
-            _           <- ZIO.attemptBlockingIO { os.makeDir.all(jsonPath / os.up) }
+            _           <- ZIO.attemptBlockingIO { os.makeDir.all(jsonPath / os.up) }  // TODO handle potential lack of permissions for creating this folder
             _           <- JsonIo.write(jsonPath, ps2, None)(ZIO.succeed(()))
           } yield jsonResponse(p)
         }
       },
+
+      // 200, 400
+      Method.POST / "profiles.switch" -> handler((req: Request) => wrapHttpEndpoint {
+        for {
+          arg  <- parseOr400[ProfileIdObj](req.body, ErrorMessage.BadRequest("Missing profile ID.", "Pass the \"id\" for the profile to switch to."))
+          ps   <- JD.Profiles.readOrInit
+                    .filterOrFail(_.profiles.exists(_.id == arg.id))(jsonResponse(
+                      ErrorMessage.BadRequest(s"""Profile ID "${arg.id}" does not exist.""", "Make sure to only switch to existing profiles.")
+                    ).status(Status.BadRequest))
+          _    <- ZIO.unlessDiscard(ps.currentProfileId.contains(arg.id)) {
+                    val ps2 = ps.copy(currentProfileId = Some(arg.id))
+                    JD.Profiles.pathURIO.flatMap(JsonIo.write(_, ps2, origState = Some(ps))(ZIO.succeed(())))
+                  }
+        } yield jsonOk
+      }),
 
       // 200
       Method.GET / "settings.all.get" -> handler(wrapHttpEndpoint {

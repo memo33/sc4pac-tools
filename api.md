@@ -1,4 +1,4 @@
-# API - version 2.1
+# API - version 2.2
 
 The API allows other programs to control *sc4pac* in a client-server fashion.
 
@@ -32,6 +32,7 @@ GET  /server.connect                 (websocket)
 
 GET  /profiles.list
 POST /profiles.add                   {name: string}
+POST /profiles.switch                {id: "<id>"}
 
 GET  /settings.all.get
 POST /settings.all.set               <object>
@@ -513,6 +514,21 @@ Create a new profile and make it the currently active one. Make sure to call `/p
 Synopsis: `POST /profiles.add {name: string}`
 
 Returns: `{"id": "<id>", "name": string}`
+
+## profiles.switch
+
+Set a different existing profiles as the currently active one.
+
+Synopsis: `POST /profiles.switch {id: "<id>"}`
+
+Returns:
+- 200 `{"$type": "/result", "ok": true}`
+- 400 if profile does not exist
+
+Example:
+```sh
+curl -X POST -d '{"id": "2"}' http://localhost:51515/profiles.switch
+```
 
 ## settings.all.get
 

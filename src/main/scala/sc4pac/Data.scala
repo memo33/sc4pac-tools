@@ -380,7 +380,7 @@ object JsonData extends SharedData {
     def add(name: String): (Profiles, Profile) = {
       val id = nextId
       val profile = Profile(id = id, name = name)
-      (Profiles(profiles :+ profile, currentProfileId = Some(id)), profile)
+      (copy(profiles = profiles :+ profile, currentProfileId = Some(id)), profile)
     }
   }
   object Profiles {

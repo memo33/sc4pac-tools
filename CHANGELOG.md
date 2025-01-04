@@ -5,6 +5,8 @@
 - The `sc4pac` launch scripts now include a check for whether Java is installed.
 - When the auto-shutdown option is used, the server now also shuts down after launch if no initial connection is established within a timeout interval.
   For the web-app, this means you need to open the browser within 60 seconds.
+- API upgraded to 2.2:
+  - new `/profiles.switch` endpoint
 
 
 ## [0.5.1] - 2024-12-26

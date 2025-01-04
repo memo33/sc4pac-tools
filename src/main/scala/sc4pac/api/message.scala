@@ -176,3 +176,4 @@ case class InitArgs(plugins: String, cache: String, temp: String) derives UP.Rea
 case class ServerStatus(sc4pacVersion: String) derives UP.ReadWriter
 
 case class ProfileName(name: String) derives UP.ReadWriter
+case class ProfileIdObj(id: ProfileId) derives UP.ReadWriter
