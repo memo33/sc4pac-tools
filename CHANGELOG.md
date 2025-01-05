@@ -1,6 +1,9 @@
 # Changelog
 
 ## [Unreleased]
+### Fixed
+- an issue that could lead to concurrent API calls getting blocked by a locked cache if they requested downloading the same file simultaneously (typically the channel contents file).
+
 ### Changed
 - The `sc4pac` launch scripts now include a check for whether Java is installed.
 - When the auto-shutdown option is used, the server now also shuts down after launch if no initial connection is established within a timeout interval.

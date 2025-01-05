@@ -148,7 +148,7 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
   }
 
   /** Routes that require a `profile=id` query parameter as part of the URL. */
-  def profileRoutes: Routes[ProfileRoot, Throwable] = Routes(
+  def profileRoutes: Routes[ProfileRoot & Ref[Option[FileCache]], Throwable] = Routes(
 
     // 200, 409, 500
     Method.GET / "profile.read" -> handler { (req: Request) =>
@@ -225,7 +225,7 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
         failure = ZIO.succeed[Response](_),
         success = pluginsData =>
           Handler.webSocket { wsChannel =>
-            val updateTask: zio.RIO[ProfileRoot & WebSocketLogger, Message] =
+            val updateTask: zio.RIO[ProfileRoot & Ref[Option[FileCache]] & WebSocketLogger, Message] =
               val cookies = Downloader.Cookies(req.url.queryParams.getAll("simtropolisCookie").headOption.orElse(Constants.simtropolisCookie))
               val cookieDesc = cookies.simtropolisCookie.map(c => s"with cookie: ${c.length} bytes").getOrElse("without cookie")
               for {
@@ -240,7 +240,7 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
                                   )))
               } yield ResultMessage(ok = true)
 
-            val wsTask: zio.RIO[ProfileRoot, Unit] =
+            val wsTask: zio.RIO[ProfileRoot & Ref[Option[FileCache]], Unit] =
               WebSocketLogger.run(send = msg => wsChannel.send(Read(jsonFrame(msg)))) {
                 for {
                   finalMsg <- updateTask.catchSome { case err: cli.Commands.ExpectedFailure => ZIO.succeed(expectedFailureMessage(err)) }
@@ -262,9 +262,9 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
                 fiberLeft.interruptFork  // forking is important here to be able to interrupt a blocked fiber
                   .zipRight(ZIO.serviceWith[Logger](_.log("Update task was canceled.")))
                   .zipRight(result)
-            ).provideSomeLayer(httpLogger): zio.RIO[ProfileRoot, Unit]
+            ).provideSomeLayer(httpLogger): zio.RIO[ProfileRoot & Ref[Option[FileCache]], Unit]
 
-          }.toResponse: zio.URIO[ProfileRoot, Response]
+          }.toResponse: zio.URIO[ProfileRoot & Ref[Option[FileCache]], Response]
       )
     },
 
@@ -456,14 +456,17 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
 
   )
 
-  def routes(webAppDir: Option[os.Path]): Routes[ProfilesDir & ServerFiber & Client & Ref[ServerConnection], Nothing] = {
+  def routes(webAppDir: Option[os.Path]): Routes[ProfilesDir & ServerFiber & Client & Ref[ServerConnection] & Ref[Option[FileCache]], Nothing] = {
     // Extract profile ID from URL query parameter and add it to environment.
     // 400 error if "profile" parameter is absent.
     val profileRoutes2 =
       profileRoutes.transform((handler0) => handler { (req: Request) =>
         req.url.queryParams.getAll("profile").headOption match {
           case Some[ProfileId](id) =>
-            handler0(req).provideSomeLayer(zio.ZLayer.fromFunction((dir: ProfilesDir) => ProfileRoot(dir.path / id)))
+            handler0(req)
+              .provideSomeLayer[ProfilesDir & Ref[Option[FileCache]]](zio.ZLayer.fromFunction(
+                (dir: ProfilesDir) => ProfileRoot(dir.path / id)
+              ))
           case None =>
             ZIO.fail(jsonResponse(ErrorMessage.BadRequest(
               """URL query parameter "profile" is required.""", "Pass the profile ID as query."

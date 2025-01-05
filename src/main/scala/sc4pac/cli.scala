@@ -4,7 +4,7 @@ package cli
 
 import scala.collection.immutable as I
 import caseapp.{RemainingArgs, ArgsName, HelpMessage, ExtraName, ValueDescription, Group, Tag}
-import zio.{ZIO, Task}
+import zio.{ZIO, Task, Ref}
 
 import sc4pac.error.Sc4pacNotInteractive
 import sc4pac.JsonData as JD
@@ -28,6 +28,9 @@ object Commands {
     val logger = CliLogger()
     zio.ZEnvironment(ProfileRoot(os.pwd), logger, CliPrompter(logger, autoYes = false))
   }
+  val cliLayer =
+    zio.ZLayer(Ref.make(Option.empty[FileCache]))
+      .map(_.union(cliEnvironment))
 
   // TODO strip escape sequences if jansi failed with a link error
   private[sc4pac] def gray(msg: String): String = s"${27.toChar}[90m" + msg + Console.RESET  // aka bright black
@@ -98,7 +101,7 @@ object Commands {
         pac    <- Sc4pac.init(config)
         _      <- pac.add(mods)
       } yield ()
-      runMainExit(task.provideEnvironment(cliEnvironment), exit)
+      runMainExit(task.provideLayer(cliLayer), exit)
     }
   }
 
@@ -124,7 +127,7 @@ object Commands {
         flag         <- pac.update(pluginsData.explicit, globalVariant0 = pluginsData.config.variant, pluginsRoot = pluginsRoot)
                           .provideSomeLayer(zio.ZLayer.succeed(Downloader.Cookies(Constants.simtropolisCookie)))
       } yield ()
-      runMainExit(task.provideEnvironment(cliEnvironment.update((_: CliPrompter).withAutoYes(options.yes))), exit)
+      runMainExit(task.provideLayer(cliLayer.map(_.update((_: CliPrompter).withAutoYes(options.yes)))), exit)
     }
   }
 
@@ -162,7 +165,7 @@ object Commands {
                       pac.remove(mods)
                     }
         } yield ()
-        runMainExit(task.provideEnvironment(cliEnvironment), exit)
+        runMainExit(task.provideLayer(cliLayer), exit)
       }
     }
   }
@@ -217,7 +220,7 @@ object Commands {
             }
           }
         }
-        runMainExit(task.provideEnvironment(cliEnvironment), exit)
+        runMainExit(task.provideLayer(cliLayer), exit)
       }
     }
   }
@@ -255,7 +258,7 @@ object Commands {
               }
             }
           }
-          runMainExit(task.provideEnvironment(cliEnvironment), exit)
+          runMainExit(task.provideLayer(cliLayer), exit)
       }
     }
   }
@@ -272,7 +275,7 @@ object Commands {
       } yield {
         for ((mod, explicit) <- iter) logger.logInstalled(mod, explicit)
       }
-      runMainExit(task.provideEnvironment(cliEnvironment), exit)
+      runMainExit(task.provideLayer(cliLayer), exit)
     }
 
     def iterateInstalled(pluginsData: JD.Plugins): zio.RIO[ProfileRoot, Iterator[(DepModule, Boolean)]] = {
@@ -324,7 +327,7 @@ object Commands {
             select.flatMap(removeAndWrite(data, _))
           }
         }
-        runMainExit(task.provideEnvironment(cliEnvironment), exit)
+        runMainExit(task.provideLayer(cliLayer), exit)
       }
     }
 
@@ -373,7 +376,7 @@ object Commands {
                   count =  data2.config.channels.length - data.config.channels.length
                   _     <- ZIO.succeed{ println(if (count == 0) "Channel already exists." else s"Added 1 channel.") }
                 } yield ()
-                runMainExit(task.provideEnvironment(cliEnvironment), exit)
+                runMainExit(task.provideLayer(cliLayer), exit)
               }
           }
         case Nil => fullHelpAsked(commandName)
@@ -427,7 +430,7 @@ object Commands {
             } yield ()
           }
         }
-        runMainExit(task.provideEnvironment(cliEnvironment), exit)
+        runMainExit(task.provideLayer(cliLayer), exit)
       }
     }
   }
@@ -446,7 +449,7 @@ object Commands {
           println(url)
         }
       }
-      runMainExit(task.provideEnvironment(cliEnvironment), exit)
+      runMainExit(task.provideLayer(cliLayer), exit)
     }
   }
 
@@ -607,6 +610,7 @@ object Commands {
                           zio.ZLayer.succeed(ProfilesDir(profilesDir)),
                           zio.ZLayer.succeed(ServerFiber(promise)),
                           zio.ZLayer(zio.Ref.make(ServerConnection(numConnections = 0, currentChannel = None))),
+                          zio.ZLayer(zio.Ref.make(Option.empty[FileCache])),
                         )
                         .fork
           _        <- promise.succeed(fiber)
