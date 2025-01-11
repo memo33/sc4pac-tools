@@ -10,6 +10,7 @@
   For the web-app, this means you need to open the browser within 60 seconds.
 - API upgraded to 2.2:
   - new `/profiles.switch` endpoint
+  - new `/packages.search.id` endpoint
 
 
 ## [0.5.1] - 2024-12-26

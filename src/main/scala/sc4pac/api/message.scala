@@ -152,6 +152,8 @@ object InstalledStatus {
   given installedRw: UP.ReadWriter[Installed] = UP.stringKeyRW(UP.macroRW)
 }
 
+case class FindPackagesArgs(packages: Seq[BareModule]) derives UP.ReadWriter
+
 case class PluginsSearchResult(stats: JD.Channel.Stats, packages: Seq[PluginsSearchResultItem]) derives UP.ReadWriter
 
 // `status` is not null

@@ -112,6 +112,27 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) {  // TODO d
     results.sortBy((mod, ratio, desc) => (-ratio, mod.group.value, mod.name.value)).distinctBy(_._1)
   }
 
+  def searchById(packages: Seq[BareModule]): Task[Seq[(BareModule, Option[String])]] = {
+    // TODO avoid iterating all channel items, but look up packages directly instead (and parallelize) for better performance
+    iterateAllChannelPackages(channelUrl = None).map { itemsIter =>
+      val relevantItems = collection.mutable.Map.from[BareModule, Option[JD.ChannelItem]](packages.iterator.map(_ -> None))
+      itemsIter.foreach { item =>
+        item.toBareDep match {
+          case _: BareAsset =>  // don't care, shouldn't happen
+          case mod: BareModule =>
+            relevantItems.get(mod) match {
+              case Some(None) => relevantItems(mod) = Some(item)
+              case _ =>  // item is irrelevant or has already been found
+            }
+        }
+      }
+      packages.map { module =>
+        val summaryOpt = relevantItems(module).map(_.summary)
+        (module, summaryOpt)
+      }
+    }
+  }
+
   def infoJson(module: BareModule): Task[Option[JD.Package]] = {
     val mod = Module(module.group, module.name, attributes = Map.empty)
     Find.concreteVersion(mod, Constants.versionLatestRelease)

@@ -147,6 +147,20 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
     (JD.Channel.Stats.fromMap(categoryStats), results.sortBy((item, ratio) => (-ratio, item.group, item.name)))
   }
 
+  def installedStatusBuilder(pluginsData: JD.Plugins): zio.RIO[ProfileRoot, BareModule => InstalledStatus] = {
+    val explicit = pluginsData.explicit.toSet
+    for {
+      installed <- JD.PluginsLock.listInstalled2.map(mods => mods.iterator.map(m => m.toBareModule -> m).toMap)
+    } yield { (pkg: BareModule) =>
+      val status = InstalledStatus(
+        explicit = explicit.contains(pkg),
+        installed = installed.get(pkg).map(_.toApiInstalled).orNull,
+      )
+      val statusOrNull = if (status.explicit || status.installed != null) status else null
+      statusOrNull
+    }
+  }
+
   /** Routes that require a `profile=id` query parameter as part of the URL. */
   def profileRoutes: Routes[ProfileRoot & Ref[Option[FileCache]], Throwable] = Routes(
 
@@ -278,18 +292,26 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
           pluginsData  <- readPluginsOr409
           pac          <- Sc4pac.init(pluginsData.config)
           searchResult <- pac.search(searchText, threshold, category = categoryOpt, channel = channelOpt)
-          explicit     =  pluginsData.explicit.toSet
-          installed    <- JD.PluginsLock.listInstalled2.map(mods => mods.iterator.map(m => m.toBareModule -> m).toMap)
+          createStatus <- installedStatusBuilder(pluginsData)
         } yield jsonResponse(searchResult.map { case (pkg, ratio, summaryOpt) =>
-          val status = InstalledStatus(
-            explicit = explicit.contains(pkg),
-            installed = installed.get(pkg).map(_.toApiInstalled).orNull,
-          )
-          val statusOrNull = if (status.explicit || status.installed != null) status else null
+          val statusOrNull = createStatus(pkg)
           PackageSearchResultItem(pkg, relevance = ratio, summary = summaryOpt.getOrElse(""), status = statusOrNull)
         })
       }
     },
+
+    Method.POST / "packages.search.id" -> handler((req: Request) => wrapHttpEndpoint {
+      for {
+        args         <- parseOr400[FindPackagesArgs](req.body, ErrorMessage.BadRequest("Malformed package names", """Pass a "packages" array of strings of the form '<group>:<name>'."""))
+        pluginsData  <- readPluginsOr409
+        pac          <- Sc4pac.init(pluginsData.config)
+        searchResult <- pac.searchById(args.packages)
+        createStatus <- installedStatusBuilder(pluginsData)
+      } yield jsonResponse(searchResult.map { case (pkg, summaryOpt) =>
+        val statusOrNull = createStatus(pkg)
+        PackageSearchResultItem(pkg, relevance = 100, summary = summaryOpt.getOrElse(""), status = statusOrNull)
+      })
+    }),
 
     Method.GET / "plugins.search" -> handler((req: Request) => wrapHttpEndpoint {
       for {

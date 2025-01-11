@@ -11,6 +11,7 @@ POST /profile.init?profile=id        {plugins: "<path>", cache: "<path>", temp: 
 GET  /packages.list?profile=id
 GET  /packages.info?pkg=<pkg>&profile=id
 GET  /packages.search?q=<text>&profile=id
+POST /packages.search.id?profile=id  {packages: ["<pkg1>", "<pkg2>", …]}
 POST /packages.open                  [{package: "<pkg>", channelUrl: "<url>"}]
 
 GET  /plugins.added.list?profile=id
@@ -202,6 +203,29 @@ Returns:
 ]
 ```
 The `status` field contains the local installation status if the package has been explicitly added or actually installed.
+
+## packages.search.id
+
+Find a list of packages by identifier across all channels and lookup their summary and installation status.
+
+Synopsis: `POST /packages.search.id?profile=id {packages: ["<pkg1>", "<pkg2>", …]}`
+
+Returns:
+```
+[
+  {
+    package: "<pkg>",
+    summary: string,
+    status?: … // see packages.search
+  },
+  …
+]
+```
+
+Example:
+```sh
+curl -X POST -d '{"packages": ["cyclone-boom:save-warning", "memo:submenus-dll"]}' http://localhost:51515/packages.search.id?profile=1
+```
 
 ## packages.open
 
