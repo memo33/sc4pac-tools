@@ -43,15 +43,18 @@ object Commands {
   type ExpectedFailure = error.Sc4pacAbort | error.DownloadFailed | error.ChannelsNotAvailable
     | error.Sc4pacVersionNotFound | error.Sc4pacAssetNotFound | error.ExtractionFailed
     | error.UnsatisfiableVariantConstraints | error.ChecksumError | error.ReadingProfileFailed
+    | java.nio.file.AccessDeniedException
 
   private def handleExpectedFailures(abort: ExpectedFailure, exit: Int => Nothing): Nothing = abort match {
     case abort: error.Sc4pacAbort => { System.err.println("Operation aborted."); exit(1) }
+    case abort: java.nio.file.AccessDeniedException => { System.err.println(s"Operation.aborted. File access denied. Check your permissions to access the file or directory: ${abort.getMessage}"); exit(ExitCodes.AccessDenied) }  // any command that creates directories or files
     case abort => { System.err.println(s"Operation aborted. ${abort.getMessage}"); exit(1) }
   }
 
   object ExitCodes {
     val JavaNotFound = 55  // see `sc4pac` and `sc4pac.bat` scripts
     val PortOccupied = 56
+    val AccessDenied = 57
   }
 
   private def runMainExit(task: Task[Unit], exit: Int => Nothing): Nothing = {
@@ -519,9 +522,6 @@ object Commands {
     @ValueDescription("number") @Group("Server") @Tag("Server")
     @HelpMessage(s"(default: ${Constants.defaultPort})")
     port: Int = Constants.defaultPort,
-    @ValueDescription("number") @Group("Server") @Tag("Server")
-    @HelpMessage(s"indentation of JSON responses (default: -1, no indentation)")
-    indent: Int = -1,
     @ValueDescription("path") @Group("Server") @Tag("Server")
     @HelpMessage(s"directory containing the sc4pac-profiles.json file and profile sub-directories (default: current working directory), newly created if necessary")
     profilesDir: String = "",
@@ -537,6 +537,9 @@ object Commands {
     @ValueDescription("string") @Group("Server") @Tag("Server")
     @HelpMessage(s"optional tag to print once server has started and is listening")
     startupTag: String = "",
+    @ValueDescription("number") @Group("Server") @Tag("Server")
+    @HelpMessage(s"indentation of JSON responses (default: -1, no indentation)")
+    indent: Int = -1,
   ) extends Sc4pacCommandOptions
 
   case object Server extends Command[ServerOptions] {
@@ -550,22 +553,23 @@ object Commands {
         error(caseapp.core.Error.Other(s"Indentation must be -1 or larger."))
       val profilesDir: os.Path =
         if (options.profilesDir.isEmpty) os.pwd else os.Path(java.nio.file.Paths.get(options.profilesDir), os.pwd)
-      if (!os.exists(profilesDir)) {
-        println(s"Creating sc4pac profiles directory: $profilesDir")
-        os.makeDir.all(profilesDir)
-      }
       val webAppDir: Option[os.Path] =
         if (options.webAppDir.isEmpty) None else Some(os.Path(java.nio.file.Paths.get(options.webAppDir), os.pwd))
-      if (webAppDir.isDefined && !os.exists(webAppDir.get))
-        error(caseapp.core.Error.Other(s"Webapp directory does not exist: $webAppDir"))
       val task: Task[Unit] = {
-        // Enabling CORS is important so that web browsers do not block the
-        // request response for lack of the following response header:
-        //     access-control-allow-origin: http://localhost:12345
-        // (e.g. when Flutter-web is hosted on port 12345)
-        val api = sc4pac.api.Api(options)
-        val app = api.routes(webAppDir) @@ zio.http.Middleware.cors
         for {
+          _        <- ZIO.whenZIODiscard(ZIO.attemptBlockingIO(webAppDir.isDefined && !os.exists(webAppDir.get)))(
+                        error(caseapp.core.Error.Other(s"Webapp directory does not exist: ${webAppDir.get}"))
+                      )
+          _        <- ZIO.attemptBlockingIO(if (!os.exists(profilesDir)) {
+                        println(s"Creating sc4pac profiles directory: $profilesDir")
+                        os.makeDir.all(profilesDir)
+                      })
+          api      =  sc4pac.api.Api(options)
+          // Enabling CORS is important so that web browsers do not block the
+          // request response for lack of the following response header:
+          //     access-control-allow-origin: http://localhost:12345
+          // (e.g. when Flutter-web is hosted on port 12345)
+          app      =  api.routes(webAppDir) @@ zio.http.Middleware.cors
           promise  <- zio.Promise.make[Nothing, zio.Fiber[Throwable, Nothing]]
           fiber    <- zio.http.Server.install(app)
                         .catchSomeDefect {

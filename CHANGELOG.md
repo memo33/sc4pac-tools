@@ -3,6 +3,7 @@
 ## [Unreleased]
 ### Fixed
 - an issue that could lead to concurrent API calls getting blocked by a locked cache if they requested downloading the same file simultaneously (typically the channel contents file).
+- improved error handling in case of lack of permissions to access files or directories.
 
 ### Changed
 - The `sc4pac` launch scripts now include a check for whether Java is installed.

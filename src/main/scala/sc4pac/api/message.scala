@@ -117,6 +117,8 @@ object ErrorMessage {
   given badInitRw: UP.ReadWriter[BadInit] = UP.stringKeyRW(UP.macroRW)
   @upickle.implicits.key("/error/init/not-allowed")
   case class InitNotAllowed(title: String, detail: String) extends ErrorMessage derives UP.ReadWriter
+  @upickle.implicits.key("/error/file-access-denied")
+  case class FileAccessDenied(title: String, detail: String) extends ErrorMessage derives UP.ReadWriter
 }
 
 @upickle.implicits.key("/result")

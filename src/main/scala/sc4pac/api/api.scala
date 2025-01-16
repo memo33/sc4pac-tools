@@ -49,6 +49,8 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
     case abort: error.ChannelsNotAvailable => ErrorMessage.ChannelsNotAvailable(abort.title, abort.detail)
     case abort: error.ReadingProfileFailed => ErrorMessage.ReadingProfileFailed(abort.title, abort.detail)
     case abort: error.Sc4pacAbort => ErrorMessage.Aborted("Operation aborted.", "")
+    case abort: java.nio.file.AccessDeniedException => ErrorMessage.FileAccessDenied(
+      "File access denied. Check that you have permissions to access the file or directory.", abort.getMessage)
   }
 
   private def expectedFailureStatus(err: cli.Commands.ExpectedFailure): Status = err match {
@@ -61,6 +63,7 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
     case abort: error.ChannelsNotAvailable => Status.BadGateway
     case abort: error.ReadingProfileFailed => Status.InternalServerError
     case abort: error.Sc4pacAbort => Status.Ok  // this is not really an error, but the expected control flow
+    case abort: java.nio.file.AccessDeniedException => Status.InternalServerError
   }
 
   val jsonOk = jsonResponse(ResultMessage(ok = true))
@@ -567,7 +570,7 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
             ps          <- JD.Profiles.readOrInit
             (ps2, p)    = ps.add(profileName.name)
             jsonPath    <- JD.Profiles.pathURIO
-            _           <- ZIO.attemptBlockingIO { os.makeDir.all(jsonPath / os.up) }  // TODO handle potential lack of permissions for creating this folder
+            _           <- ZIO.attemptBlockingIO { os.makeDir.all(jsonPath / os.up) }
             _           <- JsonIo.write(jsonPath, ps2, None)(ZIO.succeed(()))
           } yield jsonResponse(p)
         }
