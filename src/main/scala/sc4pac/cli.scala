@@ -523,7 +523,7 @@ object Commands {
     @HelpMessage(s"(default: ${Constants.defaultPort})")
     port: Int = Constants.defaultPort,
     @ValueDescription("path") @Group("Server") @Tag("Server")
-    @HelpMessage(s"directory containing the sc4pac-profiles.json file and profile sub-directories (default: current working directory), newly created if necessary")
+    @HelpMessage(s"""directory containing the sc4pac-profiles.json file and profile sub-directories (platform-dependent default: "${JD.Profiles.defaultProfilesRoot}"), newly created if necessary""")
     profilesDir: String = "",
     @ValueDescription("path") @Group("Server") @Tag("Server")
     @HelpMessage(s"optional directory containing statically served webapp files (default: no static files)")
@@ -552,7 +552,7 @@ object Commands {
       if (options.indent < -1)
         error(caseapp.core.Error.Other(s"Indentation must be -1 or larger."))
       val profilesDir: os.Path =
-        if (options.profilesDir.isEmpty) os.pwd else os.Path(java.nio.file.Paths.get(options.profilesDir), os.pwd)
+        if (options.profilesDir.isEmpty) JD.Profiles.defaultProfilesRoot else os.Path(java.nio.file.Paths.get(options.profilesDir), os.pwd)
       val webAppDir: Option[os.Path] =
         if (options.webAppDir.isEmpty) None else Some(os.Path(java.nio.file.Paths.get(options.webAppDir), os.pwd))
       val task: Task[Unit] = {

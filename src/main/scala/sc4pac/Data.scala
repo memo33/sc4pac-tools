@@ -72,7 +72,7 @@ object JsonData extends SharedData {
 
     def pathURIO: URIO[ProfileRoot, os.Path] = ZIO.service[ProfileRoot].map(profileRoot => Plugins.path(profileRoot.path))
 
-    private val projDirs = dev.dirs.ProjectDirectories.from("", cli.BuildInfo.organization, cli.BuildInfo.name)  // qualifier, organization, application
+    private[sc4pac] val projDirs = dev.dirs.ProjectDirectories.from("", cli.BuildInfo.organization, cli.BuildInfo.name)  // qualifier, organization, application
 
     val defaultPluginsRoot: URIO[ProfileRoot, Seq[os.Path]] = ZIO.serviceWith[ProfileRoot](profileRoot => Seq(
       os.home / "Documents" / "SimCity 4" / "Plugins",
@@ -384,6 +384,8 @@ object JsonData extends SharedData {
     }
   }
   object Profiles {
+    val defaultProfilesRoot: os.Path = os.Path(java.nio.file.Paths.get(Plugins.projDirs.configDir)) / "profiles"
+
     def path(profilesDir: os.Path): os.Path = profilesDir / "sc4pac-profiles.json"
 
     def pathURIO: URIO[ProfilesDir, os.Path] = ZIO.service[ProfilesDir].map(profilesDir => Profiles.path(profilesDir.path))
