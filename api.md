@@ -527,7 +527,8 @@ Returns:
   ```
   {
     profiles: [{id: "<id-1>", name: string}, …],
-    currentProfileId: ["<id-1>"]
+    currentProfileId: ["<id-1>"],
+    profilesDir: "<platform-dependent-path>"
   }
   ```
 

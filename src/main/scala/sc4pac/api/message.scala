@@ -5,7 +5,7 @@ package api
 import upickle.default as UP
 
 import sc4pac.JsonData as JD
-import JD.{bareModuleRw, instantRw}
+import JD.{bareModuleRw, instantRw, pathRw}
 
 sealed trait Message derives UP.ReadWriter
 
@@ -181,3 +181,4 @@ case class ServerStatus(sc4pacVersion: String) derives UP.ReadWriter
 
 case class ProfileName(name: String) derives UP.ReadWriter
 case class ProfileIdObj(id: ProfileId) derives UP.ReadWriter
+case class ProfilesList(profiles: Seq[JD.Profile], currentProfileId: Option[ProfileId], profilesDir: java.nio.file.Path) derives UP.ReadWriter

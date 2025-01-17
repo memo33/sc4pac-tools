@@ -558,7 +558,14 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
       // 200, 500
       Method.GET / "profiles.list" -> handler {
         wrapHttpEndpoint {
-          JD.Profiles.readOrInit.map(profiles => jsonResponse(profiles.copy(settings = ujson.Obj())))
+          for {
+            profilesDir <- ZIO.service[ProfilesDir]
+            profiles <- JD.Profiles.readOrInit
+          } yield jsonResponse(ProfilesList(
+            profiles = profiles.profiles,
+            currentProfileId = profiles.currentProfileId,
+            profilesDir = profilesDir.path.toNIO,
+          ))
         }
       },
 
