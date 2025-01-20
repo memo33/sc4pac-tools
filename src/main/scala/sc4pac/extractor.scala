@@ -18,9 +18,10 @@ object Extractor {
   class InstallRecipe(
     include: Seq[Pattern],
     exclude: Seq[Pattern],
+    excludeNested: Seq[Pattern],
     includeWithChecksum: Seq[(Pattern, JD.IncludeWithChecksum)],
   ) {
-    def makeAcceptancePredicate(): (Builder[Pattern, Set[Pattern]], Predicate) = {
+    def makeAcceptancePredicates(): (Builder[Pattern, Set[Pattern]], Predicate, Predicate) = {
       val usedPatternsBuilder = {
         val b = Set.newBuilder[Pattern] += Constants.defaultExcludePattern  // default exclude pattern is not required to match anything
         if (includeWithChecksum.nonEmpty)
@@ -49,7 +50,22 @@ object Extractor {
         }
       }
 
-      (usedPatternsBuilder, accepts)
+      val acceptsNested: Predicate = { path =>
+        val lname = path.last.toLowerCase(java.util.Locale.ENGLISH)
+        if (lname.endsWith(".jar") || lname.endsWith(".zip") || lname.endsWith(".7z") || lname.endsWith(".exe")) {
+          val pathString = path.segments.mkString("/", "/", "")  // paths are checked with leading / and with / as separator
+          excludeNested.find(_.matcher(pathString).find()) match {
+            case None => Some(NestedArchiveNoopValidator)
+            case Some(matchedPattern) =>
+              usedPatternsBuilder += matchedPattern
+              None
+          }
+        } else {
+          None
+        }
+      }
+
+      (usedPatternsBuilder, accepts, acceptsNested)
     }
 
     def usedPatternWarnings(usedPatterns: Set[Pattern], asset: BareAsset): Seq[Warning] = {
@@ -82,17 +98,9 @@ object Extractor {
       (InstallRecipe(
         include = if (include.isEmpty) Seq(Constants.defaultIncludePattern) else include,
         exclude = if (exclude.isEmpty) Seq(Constants.defaultExcludePattern) else exclude,
+        excludeNested = exclude,  // we re-use the exclude patterns, but use a different default
         includeWithChecksum = includeWithChecksum,
       ), warnings.result())
-    }
-  }
-
-  def acceptNestedArchive(p: os.BasePath): Option[Validator] = {
-    val name = p.last.toLowerCase(java.util.Locale.ENGLISH)
-    if (name.endsWith(".jar") || name.endsWith(".zip") || name.endsWith(".7z") || name.endsWith(".exe")) {
-      Some(NestedArchiveNoopValidator)
-    } else {
-      None
     }
   }
 
@@ -468,16 +476,16 @@ class Extractor(logger: Logger) {
     hints: Option[JD.ArchiveType],
     stagingRoot: os.Path,
   ): Set[Pattern] = try {
-    val (usedPatternsBuilder, predicate) = recipe.makeAcceptancePredicate()  // tracks used patterns to warn about unused patterns
+    val (usedPatternsBuilder, predicate, predicateNested) = recipe.makeAcceptancePredicates()  // tracks used patterns to warn about unused patterns
     scala.util.Using.resource(Extractor.WrappedArchive(archive, fallbackFilename, stagingRoot, logger, hints)) { wrappedArchive =>
       // first extract just the main files
       wrappedArchive.extractByPredicate(destination, predicate, overwrite = true, flatten = false, logger)
       // additionally, extract jar files/nested archives contained in the zip file to a temporary location
       for (Extractor.JarExtraction(jarsDir) <- jarExtractionOpt) {
         logger.debug(s"Searching for nested archives:")
-        val jarFiles = wrappedArchive.extractByPredicate(jarsDir, Extractor.acceptNestedArchive, overwrite = false, flatten = true, logger)  // overwrite=false, as we want to extract any given jar only once per staging process
+        val jarFiles = wrappedArchive.extractByPredicate(jarsDir, predicateNested, overwrite = false, flatten = true, logger)  // overwrite=false, as we want to extract any given jar only once per staging process
         // finally extract the jar files themselves (without recursively extracting jars contained inside)
-        for (jarFile <- jarFiles if Extractor.acceptNestedArchive(jarFile).isDefined) {
+        for (jarFile <- jarFiles) {
           logger.debug(s"Extracting nested archive ${jarFile.last}")
           usedPatternsBuilder ++=
             extract(jarFile.toIO, fallbackFilename = None, destination, recipe, jarExtractionOpt = None, hints, stagingRoot = stagingRoot)

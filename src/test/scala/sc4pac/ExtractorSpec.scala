@@ -88,7 +88,7 @@ class ExtractorSpec extends AnyWordSpec with Matchers {
 
   def createPredicate(assetRef: JD.AssetReference = assetRef) = {
     val (recipe, warnings) = Extractor.InstallRecipe.fromAssetReference(assetRef)
-    val (usedPatternsBuilder, predicate) = recipe.makeAcceptancePredicate()
+    val (usedPatternsBuilder, predicate, predicateNested) = recipe.makeAcceptancePredicates()
     predicate
   }
 

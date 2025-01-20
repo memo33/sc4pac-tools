@@ -11,6 +11,7 @@
   For the web-app, this means you need to open the browser within 60 seconds.
 - For the `sc4pac server` command, the default `--profiles-dir` path has changed to a platform-dependent config directory instead of the current working directory.
   This means that multiple independent installations of sc4pac or sc4pac-gui would use the same `profiles` directory by default.
+- The `exclude` patterns are now also matched against nested archives, like .jar or .exe files, to avoid nested extraction if needed.
 - API upgraded to 2.2:
   - new `/profiles.switch` endpoint
   - new `/packages.search.id` endpoint
