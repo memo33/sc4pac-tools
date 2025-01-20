@@ -6,8 +6,6 @@ import coursier.core as C
 import upickle.default.{ReadWriter, readwriter, stringKeyRW}
 import java.nio.file.{Path as NioPath}
 import zio.{ZIO, IO, RIO, URIO, Task}
-import java.util.regex.Pattern
-import scala.collection.mutable.Builder
 import scala.collection.immutable.ArraySeq
 import java.time.temporal.ChronoUnit
 
@@ -275,74 +273,6 @@ object JsonData extends SharedData {
 
     val listInstalled: RIO[ProfileRoot, Seq[DepModule]] = listInstalled2.map(_.map(_.toDepModule))
 
-  }
-
-  class InstallRecipe(include: Seq[Pattern], exclude: Seq[Pattern], includeWithChecksum: Seq[(Pattern, IncludeWithChecksum)]) {
-    def makeAcceptancePredicate(): (Builder[Pattern, Set[Pattern]], Extractor.Predicate) = {
-      val usedPatternsBuilder = {
-        val b = Set.newBuilder[Pattern] += Constants.defaultExcludePattern  // default exclude pattern is not required to match anything
-        if (includeWithChecksum.nonEmpty)
-          b += Constants.defaultIncludePattern  // archives containing DLLs might come without additional DBPF files
-        b
-      }
-
-      val accepts: Extractor.Predicate = { path =>
-        val pathString = path.segments.mkString("/", "/", "")  // paths are checked with leading / and with / as separator
-        includeWithChecksum.find(_._1.matcher(pathString).find()) match {
-          case Some(matchedPattern, checksum) =>
-            usedPatternsBuilder += matchedPattern
-            Some(Extractor.ChecksumValidator(checksum))  // as checksum is only valid for a single file, there is no need for evaluating exclude rules
-          case None =>
-            include.find(_.matcher(pathString).find()) match {
-              case None => None
-              case Some(matchedPattern) =>
-                usedPatternsBuilder += matchedPattern
-                exclude.find(_.matcher(pathString).find()) match {
-                  case None => Some(Extractor.DbpfValidator)
-                  case Some(matchedPattern) =>
-                    usedPatternsBuilder += matchedPattern
-                    None
-                }
-            }
-        }
-      }
-
-      (usedPatternsBuilder, accepts)
-    }
-
-    def usedPatternWarnings(usedPatterns: Set[Pattern], asset: BareAsset): Seq[Warning] = {
-      val unused: Seq[Pattern] =
-        (include.iterator ++ exclude ++ includeWithChecksum.iterator.map(_._1))
-        .filter(p => !usedPatterns.contains(p)).toSeq
-      if (unused.isEmpty) {
-        Seq.empty
-      } else {
-        Seq(
-          "The package metadata seems to be out-of-date, so the installed plugin files might be incomplete. " +
-          "Please report this to the maintainers of the package metadata. " +
-          s"These inclusion/exclusion patterns did not match any files in the asset ${asset.assetId.value}: " + unused.mkString(" "))
-      }
-    }
-  }
-  object InstallRecipe {
-    def fromAssetReference(data: AssetReference): (InstallRecipe, Seq[Warning]) = {
-      val warnings = Seq.newBuilder[Warning]
-      def toRegex(s: String): Option[Pattern] = try {
-        Some(Pattern.compile(s, Pattern.CASE_INSENSITIVE))
-      } catch {
-        case e: java.util.regex.PatternSyntaxException =>
-          warnings += s"The package metadata contains a malformed regex: $e"
-          None
-      }
-      val include = data.include.flatMap(toRegex)
-      val exclude = data.exclude.flatMap(toRegex)
-      val includeWithChecksum = data.withChecksum.flatMap(item => toRegex(item.include).map(_ -> item))
-      (InstallRecipe(
-        include = if (include.isEmpty) Seq(Constants.defaultIncludePattern) else include,
-        exclude = if (exclude.isEmpty) Seq(Constants.defaultExcludePattern) else exclude,
-        includeWithChecksum = includeWithChecksum,
-      ), warnings.result())
-    }
   }
 
   case class Checksum(sha256: Option[ArraySeq[Byte]])

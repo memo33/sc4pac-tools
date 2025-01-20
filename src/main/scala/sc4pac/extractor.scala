@@ -6,11 +6,86 @@ import org.apache.commons.compress.archivers.sevenz.{SevenZFile, SevenZArchiveEn
 import org.apache.commons.compress.utils.IOUtils
 import java.nio.file.StandardOpenOption
 import java.util.regex.Pattern
+import scala.collection.mutable.Builder
 
 import sc4pac.JsonData as JD
 import sc4pac.error.{ExtractionFailed, ChecksumError, NotADbpfFile}
 
 object Extractor {
+
+  type Predicate = os.SubPath => Option[Validator]
+
+  class InstallRecipe(
+    include: Seq[Pattern],
+    exclude: Seq[Pattern],
+    includeWithChecksum: Seq[(Pattern, JD.IncludeWithChecksum)],
+  ) {
+    def makeAcceptancePredicate(): (Builder[Pattern, Set[Pattern]], Predicate) = {
+      val usedPatternsBuilder = {
+        val b = Set.newBuilder[Pattern] += Constants.defaultExcludePattern  // default exclude pattern is not required to match anything
+        if (includeWithChecksum.nonEmpty)
+          b += Constants.defaultIncludePattern  // archives containing DLLs might come without additional DBPF files
+        b
+      }
+
+      val accepts: Predicate = { path =>
+        val pathString = path.segments.mkString("/", "/", "")  // paths are checked with leading / and with / as separator
+        includeWithChecksum.find(_._1.matcher(pathString).find()) match {
+          case Some(matchedPattern, checksum) =>
+            usedPatternsBuilder += matchedPattern
+            Some(ChecksumValidator(checksum))  // as checksum is only valid for a single file, there is no need for evaluating exclude rules
+          case None =>
+            include.find(_.matcher(pathString).find()) match {
+              case None => None
+              case Some(matchedPattern) =>
+                usedPatternsBuilder += matchedPattern
+                exclude.find(_.matcher(pathString).find()) match {
+                  case None => Some(DbpfValidator)
+                  case Some(matchedPattern) =>
+                    usedPatternsBuilder += matchedPattern
+                    None
+                }
+            }
+        }
+      }
+
+      (usedPatternsBuilder, accepts)
+    }
+
+    def usedPatternWarnings(usedPatterns: Set[Pattern], asset: BareAsset): Seq[Warning] = {
+      val unused: Seq[Pattern] =
+        (include.iterator ++ exclude ++ includeWithChecksum.iterator.map(_._1))
+        .filter(p => !usedPatterns.contains(p)).toSeq
+      if (unused.isEmpty) {
+        Seq.empty
+      } else {
+        Seq(
+          "The package metadata seems to be out-of-date, so the installed plugin files might be incomplete. " +
+          "Please report this to the maintainers of the package metadata. " +
+          s"These inclusion/exclusion patterns did not match any files in the asset ${asset.assetId.value}: " + unused.mkString(" "))
+      }
+    }
+  }
+  object InstallRecipe {
+    def fromAssetReference(data: JD.AssetReference): (InstallRecipe, Seq[Warning]) = {
+      val warnings = Seq.newBuilder[Warning]
+      def toRegex(s: String): Option[Pattern] = try {
+        Some(Pattern.compile(s, Pattern.CASE_INSENSITIVE))
+      } catch {
+        case e: java.util.regex.PatternSyntaxException =>
+          warnings += s"The package metadata contains a malformed regex: $e"
+          None
+      }
+      val include = data.include.flatMap(toRegex)
+      val exclude = data.exclude.flatMap(toRegex)
+      val includeWithChecksum = data.withChecksum.flatMap(item => toRegex(item.include).map(_ -> item))
+      (InstallRecipe(
+        include = if (include.isEmpty) Seq(Constants.defaultIncludePattern) else include,
+        exclude = if (exclude.isEmpty) Seq(Constants.defaultExcludePattern) else exclude,
+        includeWithChecksum = includeWithChecksum,
+      ), warnings.result())
+    }
+  }
 
   def acceptNestedArchive(p: os.BasePath): Option[Validator] = {
     val name = p.last.toLowerCase(java.util.Locale.ENGLISH)
@@ -339,8 +414,6 @@ object Extractor {
     os.SubPath(p.segments0.take(i).toIndexedSeq)
   }
 
-  type Predicate = os.SubPath => Option[Validator]
-
   sealed trait Validator {
     def validate(path: os.Path): Unit
   }
@@ -390,7 +463,7 @@ class Extractor(logger: Logger) {
     archive: java.io.File,
     fallbackFilename: Option[String],
     destination: os.Path,
-    recipe: JD.InstallRecipe,
+    recipe: Extractor.InstallRecipe,
     jarExtractionOpt: Option[Extractor.JarExtraction],
     hints: Option[JD.ArchiveType],
     stagingRoot: os.Path,

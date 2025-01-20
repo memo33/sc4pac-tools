@@ -87,7 +87,7 @@ class ExtractorSpec extends AnyWordSpec with Matchers {
   val assetRef = JD.AssetReference("dummy", withChecksum = Seq(JD.IncludeWithChecksum("h.dll", JD.Checksum.stringToBytes("07a3036cfb4e1705969b4fa8ccf5e28eac0fa6df598b81e020592d6a6041a9fd"))))
 
   def createPredicate(assetRef: JD.AssetReference = assetRef) = {
-    val (recipe, warnings) = JD.InstallRecipe.fromAssetReference(assetRef)
+    val (recipe, warnings) = Extractor.InstallRecipe.fromAssetReference(assetRef)
     val (usedPatternsBuilder, predicate) = recipe.makeAcceptancePredicate()
     predicate
   }
@@ -152,7 +152,7 @@ class ExtractorSpec extends AnyWordSpec with Matchers {
         val jarsDir = in / os.up / "jars"
         os.makeDir.all(jarsDir)
 
-        val recipe = JD.InstallRecipe.fromAssetReference(assetRef)._1
+        val recipe = Extractor.InstallRecipe.fromAssetReference(assetRef)._1
         Extractor(CliLogger())
           .extract(archiveFile.toIO, fallbackFilename = None, out, recipe, Some(Extractor.JarExtraction(jarsDir)), hints = None, stagingRoot = out)
 
@@ -174,7 +174,7 @@ class ExtractorSpec extends AnyWordSpec with Matchers {
       val jarsDir = in / os.up / "jars"
       os.makeDir.all(jarsDir)
 
-      val recipe = JD.InstallRecipe.fromAssetReference(assetRef)._1
+      val recipe = Extractor.InstallRecipe.fromAssetReference(assetRef)._1
       Extractor(CliLogger())
         .extract(archiveFile.toIO, fallbackFilename = None, out, recipe, Some(Extractor.JarExtraction(jarsDir)), hints = None, stagingRoot = out)
 

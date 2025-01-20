@@ -236,7 +236,7 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) {  // TODO d
           ZIO.succeed(Seq(s"An asset is missing and has been skipped, so it needs to be installed manually: ${id.orgName}. " +
                            "Please report this to the maintainers of the package metadata."))
         case Some(art, archive, depAsset) =>
-          val (recipe, regexWarnings) = JD.InstallRecipe.fromAssetReference(assetData)
+          val (recipe, regexWarnings) = Extractor.InstallRecipe.fromAssetReference(assetData)
           val extractor = new Extractor(logger)
           val jarsRoot = stagingRoot / "jars"
 
