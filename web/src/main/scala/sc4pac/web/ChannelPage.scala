@@ -129,18 +129,24 @@ object ChannelPage {
     def add(label: String, child: H.Frag): Unit =
       b += H.tr(H.th(label), H.td(child))
 
-    lazy val openButton =
-      H.button(H.cls := "btn open-app-btn",
+    val openButtonDesktop =
+      H.a(H.cls := "btn open-app-btn", H.href := {
+        val path = uri"/package?pkg=${module.orgName}&channel=${channelUrl.getOrElse(channelUrlMain)}"
+        s"sc4pac://$path"
+      })("Open in Desktop-App")
+
+    lazy val openButtonWeb =
+      H.button(H.cls := "btn open-app-btn open-app-btn-outlined",
         {
           import scalatags.JsDom.all.bindJsAnyLike
-          H.onclick := openInApp  // not sure how this implicit conversion works exactly
+          H.onclick := openInWebApp  // not sure how this implicit conversion works exactly
         },
-      )("Open in App").render
+      )("Open in Web-App").render
     lazy val openButtonResult = H.div(H.color := "#ff0077").render
 
-    def openInApp(e: dom.Event): Unit = {
+    def openInWebApp(e: dom.Event): Unit = {
       val port: Int = 51515
-      val url = sttp.model.Uri(java.net.URI.create(s"http://localhost:$port/packages.open"))
+      val url = uri"http://localhost:$port/packages.open"
       val msg = Seq(Map("package" -> module.orgName, "channelUrl" -> channelUrl.getOrElse(channelUrlMain)))
       basicRequest
         .body(UP.write(msg))
@@ -149,7 +155,7 @@ object ChannelPage {
         .send(backend)
         .onComplete {
           case scala.util.Success(response) if response.is200 =>
-            // openButton.textContent = "Opened in App"
+            // openButtonWeb.textContent = "Opened in App"
             openButtonResult.textContent = ""
           case _ =>
             if (openButtonResult.textContent.isEmpty)
@@ -160,8 +166,9 @@ object ChannelPage {
                   H.p(s"It just doesn't work. Make sure that…"),
                   H.ul(
                     H.li(H.p(s"the GUI is running before pressing this button (on the default port $port).")),
-                    H.li(H.p(s"the request is not blocked by an ad-blocker. If applicable, add an exception for this page (${dom.window.location.origin}).")),
+                    H.li(H.p(s"the request is not blocked by your browser. If applicable, add an exception for this page (${dom.window.location.origin}).")),
                   ),
+                  H.p(s"Otherwise, try to use the Desktop-App instead."),
                 ).render
               )
               ()
@@ -228,7 +235,8 @@ object ChannelPage {
         H.ul(
           H.li(
             H.p("with the ", H.a(H.href := sc4pacGuiUrl)("sc4pac GUI"), ":",
-              openButton,
+              openButtonDesktop,
+              openButtonWeb,
               openButtonResult,
             ),
           ),
