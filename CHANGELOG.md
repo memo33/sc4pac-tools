@@ -1,6 +1,9 @@
 # Changelog
 
 ## [Unreleased]
+
+
+## [0.5.2] - 2025-01-23
 ### Fixed
 - an issue that could lead to concurrent API calls getting blocked by a locked cache if they requested downloading the same file simultaneously (typically the channel contents file).
 - improved error handling in case of lack of permissions to access files or directories.
@@ -11,7 +14,7 @@
   For the web-app, this means you need to open the browser within 60 seconds.
 - For the `sc4pac server` command, the default `--profiles-dir` path has changed to a platform-dependent config directory instead of the current working directory.
   This means that multiple independent installations of sc4pac or sc4pac-gui would use the same `profiles` directory by default.
-- The `exclude` patterns are now also matched against nested archives, like .jar or .exe files, to avoid nested extraction if needed.
+- The `exclude` patterns are now also matched against nested archives, like .jar or .exe files, to allow circumventing nested extraction if needed.
 - API upgraded to 2.2:
   - new `/profiles.switch` endpoint
   - new `/packages.search.id` endpoint
@@ -206,7 +209,8 @@
 ## [0.1.5] - 2023-09-26
 …
 
-[Unreleased]: https://github.com/memo33/sc4pac-tools/compare/0.5.1...HEAD
+[Unreleased]: https://github.com/memo33/sc4pac-tools/compare/0.5.2...HEAD
+[0.5.2]: https://github.com/memo33/sc4pac-tools/compare/0.5.1...0.5.2
 [0.5.1]: https://github.com/memo33/sc4pac-tools/compare/0.5.0...0.5.1
 [0.5.0]: https://github.com/memo33/sc4pac-tools/compare/0.4.5...0.5.0
 [0.4.5]: https://github.com/memo33/sc4pac-tools/compare/0.4.4...0.4.5
