@@ -224,9 +224,14 @@ sc4pac server --profiles-dir profiles --auto-shutdown --startup-tag [READY]     
 
 **Options:**
 - `--port <number>`         (default: 51515)
-- `--profiles-dir <path>`   directory containing the `sc4pac-profiles.json` file and profile sub-directories (platform-dependent default), newly created if necessary
+- `--profiles-dir <path>`   directory containing the `sc4pac-profiles.json` file and profile sub-directories (platform-dependent default, see below), newly created if necessary
 - `--web-app-dir <path>`    optional directory containing statically served webapp files (default: no static files)
 - `--launch-browser`        automatically open the web browser when using the `--web-app-dir` option (default: `--launch-browser=false`)
 - `--auto-shutdown`         automatically shut down the server when client closes connection to `/server.connect` (default: `--auto-shutdown=false`). This is used by the desktop GUI to ensure the port is cleared when the GUI exits.
 - `--startup-tag <string>`  optional tag to print once server has started and is listening
 - `--indent <number>`       indentation of JSON responses (default: -1, no indentation)
+
+The `--profiles-dir` path defaults to
+- `%AppData%\sc4pac\config\profiles` on Windows,
+- `$XDG_CONFIG_HOME/sc4pac/profiles` or `$HOME/.config/sc4pac/profiles` on Linux,
+- `$HOME/Library/Application Support/sc4pac/profiles` on macOS.
