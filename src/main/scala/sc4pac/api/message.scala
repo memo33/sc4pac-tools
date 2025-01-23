@@ -5,7 +5,7 @@ package api
 import upickle.default as UP
 
 import sc4pac.JsonData as JD
-import JD.{bareModuleRw, instantRw}
+import JD.{bareModuleRw, instantRw, pathRw}
 
 sealed trait Message derives UP.ReadWriter
 
@@ -117,6 +117,8 @@ object ErrorMessage {
   given badInitRw: UP.ReadWriter[BadInit] = UP.stringKeyRW(UP.macroRW)
   @upickle.implicits.key("/error/init/not-allowed")
   case class InitNotAllowed(title: String, detail: String) extends ErrorMessage derives UP.ReadWriter
+  @upickle.implicits.key("/error/file-access-denied")
+  case class FileAccessDenied(title: String, detail: String) extends ErrorMessage derives UP.ReadWriter
 }
 
 @upickle.implicits.key("/result")
@@ -152,6 +154,8 @@ object InstalledStatus {
   given installedRw: UP.ReadWriter[Installed] = UP.stringKeyRW(UP.macroRW)
 }
 
+case class FindPackagesArgs(packages: Seq[BareModule]) derives UP.ReadWriter
+
 case class PluginsSearchResult(stats: JD.Channel.Stats, packages: Seq[PluginsSearchResultItem]) derives UP.ReadWriter
 
 // `status` is not null
@@ -176,3 +180,5 @@ case class InitArgs(plugins: String, cache: String, temp: String) derives UP.Rea
 case class ServerStatus(sc4pacVersion: String) derives UP.ReadWriter
 
 case class ProfileName(name: String) derives UP.ReadWriter
+case class ProfileIdObj(id: ProfileId) derives UP.ReadWriter
+case class ProfilesList(profiles: Seq[JD.Profile], currentProfileId: Option[ProfileId], profilesDir: java.nio.file.Path) derives UP.ReadWriter

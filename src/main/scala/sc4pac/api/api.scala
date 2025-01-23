@@ -49,6 +49,8 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
     case abort: error.ChannelsNotAvailable => ErrorMessage.ChannelsNotAvailable(abort.title, abort.detail)
     case abort: error.ReadingProfileFailed => ErrorMessage.ReadingProfileFailed(abort.title, abort.detail)
     case abort: error.Sc4pacAbort => ErrorMessage.Aborted("Operation aborted.", "")
+    case abort: java.nio.file.AccessDeniedException => ErrorMessage.FileAccessDenied(
+      "File access denied. Check that you have permissions to access the file or directory.", abort.getMessage)
   }
 
   private def expectedFailureStatus(err: cli.Commands.ExpectedFailure): Status = err match {
@@ -61,6 +63,7 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
     case abort: error.ChannelsNotAvailable => Status.BadGateway
     case abort: error.ReadingProfileFailed => Status.InternalServerError
     case abort: error.Sc4pacAbort => Status.Ok  // this is not really an error, but the expected control flow
+    case abort: java.nio.file.AccessDeniedException => Status.InternalServerError
   }
 
   val jsonOk = jsonResponse(ResultMessage(ok = true))
@@ -147,8 +150,22 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
     (JD.Channel.Stats.fromMap(categoryStats), results.sortBy((item, ratio) => (-ratio, item.group, item.name)))
   }
 
+  def installedStatusBuilder(pluginsData: JD.Plugins): zio.RIO[ProfileRoot, BareModule => InstalledStatus] = {
+    val explicit = pluginsData.explicit.toSet
+    for {
+      installed <- JD.PluginsLock.listInstalled2.map(mods => mods.iterator.map(m => m.toBareModule -> m).toMap)
+    } yield { (pkg: BareModule) =>
+      val status = InstalledStatus(
+        explicit = explicit.contains(pkg),
+        installed = installed.get(pkg).map(_.toApiInstalled).orNull,
+      )
+      val statusOrNull = if (status.explicit || status.installed != null) status else null
+      statusOrNull
+    }
+  }
+
   /** Routes that require a `profile=id` query parameter as part of the URL. */
-  def profileRoutes: Routes[ProfileRoot, Throwable] = Routes(
+  def profileRoutes: Routes[ProfileRoot & Ref[Option[FileCache]], Throwable] = Routes(
 
     // 200, 409, 500
     Method.GET / "profile.read" -> handler { (req: Request) =>
@@ -225,7 +242,7 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
         failure = ZIO.succeed[Response](_),
         success = pluginsData =>
           Handler.webSocket { wsChannel =>
-            val updateTask: zio.RIO[ProfileRoot & WebSocketLogger, Message] =
+            val updateTask: zio.RIO[ProfileRoot & Ref[Option[FileCache]] & WebSocketLogger, Message] =
               val cookies = Downloader.Cookies(req.url.queryParams.getAll("simtropolisCookie").headOption.orElse(Constants.simtropolisCookie))
               val cookieDesc = cookies.simtropolisCookie.map(c => s"with cookie: ${c.length} bytes").getOrElse("without cookie")
               for {
@@ -240,7 +257,7 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
                                   )))
               } yield ResultMessage(ok = true)
 
-            val wsTask: zio.RIO[ProfileRoot, Unit] =
+            val wsTask: zio.RIO[ProfileRoot & Ref[Option[FileCache]], Unit] =
               WebSocketLogger.run(send = msg => wsChannel.send(Read(jsonFrame(msg)))) {
                 for {
                   finalMsg <- updateTask.catchSome { case err: cli.Commands.ExpectedFailure => ZIO.succeed(expectedFailureMessage(err)) }
@@ -262,9 +279,9 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
                 fiberLeft.interruptFork  // forking is important here to be able to interrupt a blocked fiber
                   .zipRight(ZIO.serviceWith[Logger](_.log("Update task was canceled.")))
                   .zipRight(result)
-            ).provideSomeLayer(httpLogger): zio.RIO[ProfileRoot, Unit]
+            ).provideSomeLayer(httpLogger): zio.RIO[ProfileRoot & Ref[Option[FileCache]], Unit]
 
-          }.toResponse: zio.URIO[ProfileRoot, Response]
+          }.toResponse: zio.URIO[ProfileRoot & Ref[Option[FileCache]], Response]
       )
     },
 
@@ -278,18 +295,26 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
           pluginsData  <- readPluginsOr409
           pac          <- Sc4pac.init(pluginsData.config)
           searchResult <- pac.search(searchText, threshold, category = categoryOpt, channel = channelOpt)
-          explicit     =  pluginsData.explicit.toSet
-          installed    <- JD.PluginsLock.listInstalled2.map(mods => mods.iterator.map(m => m.toBareModule -> m).toMap)
+          createStatus <- installedStatusBuilder(pluginsData)
         } yield jsonResponse(searchResult.map { case (pkg, ratio, summaryOpt) =>
-          val status = InstalledStatus(
-            explicit = explicit.contains(pkg),
-            installed = installed.get(pkg).map(_.toApiInstalled).orNull,
-          )
-          val statusOrNull = if (status.explicit || status.installed != null) status else null
+          val statusOrNull = createStatus(pkg)
           PackageSearchResultItem(pkg, relevance = ratio, summary = summaryOpt.getOrElse(""), status = statusOrNull)
         })
       }
     },
+
+    Method.POST / "packages.search.id" -> handler((req: Request) => wrapHttpEndpoint {
+      for {
+        args         <- parseOr400[FindPackagesArgs](req.body, ErrorMessage.BadRequest("Malformed package names", """Pass a "packages" array of strings of the form '<group>:<name>'."""))
+        pluginsData  <- readPluginsOr409
+        pac          <- Sc4pac.init(pluginsData.config)
+        searchResult <- pac.searchById(args.packages)
+        createStatus <- installedStatusBuilder(pluginsData)
+      } yield jsonResponse(searchResult.map { case (pkg, summaryOpt) =>
+        val statusOrNull = createStatus(pkg)
+        PackageSearchResultItem(pkg, relevance = 100, summary = summaryOpt.getOrElse(""), status = statusOrNull)
+      })
+    }),
 
     Method.GET / "plugins.search" -> handler((req: Request) => wrapHttpEndpoint {
       for {
@@ -456,14 +481,17 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
 
   )
 
-  def routes(webAppDir: Option[os.Path]): Routes[ProfilesDir & ServerFiber & Client & Ref[ServerConnection], Nothing] = {
+  def routes(webAppDir: Option[os.Path]): Routes[ProfilesDir & ServerFiber & Client & Ref[ServerConnection] & Ref[Option[FileCache]], Nothing] = {
     // Extract profile ID from URL query parameter and add it to environment.
     // 400 error if "profile" parameter is absent.
     val profileRoutes2 =
       profileRoutes.transform((handler0) => handler { (req: Request) =>
         req.url.queryParams.getAll("profile").headOption match {
           case Some[ProfileId](id) =>
-            handler0(req).provideSomeLayer(zio.ZLayer.fromFunction((dir: ProfilesDir) => ProfileRoot(dir.path / id)))
+            handler0(req)
+              .provideSomeLayer[ProfilesDir & Ref[Option[FileCache]]](zio.ZLayer.fromFunction(
+                (dir: ProfilesDir) => ProfileRoot(dir.path / id)
+              ))
           case None =>
             ZIO.fail(jsonResponse(ErrorMessage.BadRequest(
               """URL query parameter "profile" is required.""", "Pass the profile ID as query."
@@ -501,19 +529,6 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
             _      <- ZIO.succeed(logger.log(s"Shut down websocket connection $num."))
           } yield ()
 
-          // If this was the last remaining connection and no new connection was opened after a short delay, then shutdown the server
-          def maybeShutdownServer(remainingConnections: Int) =
-            ZIO.unlessDiscard(!options.autoShutdown || remainingConnections > 0)(for {
-              _      <- ZIO.sleep(Constants.serverShutdownDelay)  // defer shutdown to accept new connection in case of page refresh
-              count  <- ZIO.serviceWithZIO[Ref[ServerConnection]](_.get.map(_.numConnections))
-              _      <- ZIO.unlessDiscard(count > 0)(for {
-                          server <- ZIO.service[ServerFiber]
-                          fiber  <- server.promise.await
-                          _      <- ZIO.serviceWith[Logger](_.log(s"All connections from client to server are closed. Shutting down server."))
-                          _      <- fiber.interrupt.fork
-                        } yield ())
-            } yield ())
-
           // keeps track of number of open connections
           ZIO.acquireReleaseWith
             (acquire = ZIO.serviceWithZIO[Ref[ServerConnection]](_.update { s =>
@@ -521,8 +536,8 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
             }))
             (release = (_) => ZIO.serviceWithZIO[Ref[ServerConnection]](_.modify { s =>
               val remainingConnections = s.numConnections - 1
-              (remainingConnections, ServerConnection(numConnections = remainingConnections, currentChannel = s.currentChannel.filter(_ != wsChannel)))
-            }).flatMap(maybeShutdownServer))
+              (Some(remainingConnections), ServerConnection(numConnections = remainingConnections, currentChannel = s.currentChannel.filter(_ != wsChannel)))
+            }).flatMap(shutdownServerIfNoConnections(_, reason = "All connections from client to server are closed.")))
             (use = (_) => wsTask)
         }.provideSomeLayer(httpLogger).toResponse
       },
@@ -543,7 +558,14 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
       // 200, 500
       Method.GET / "profiles.list" -> handler {
         wrapHttpEndpoint {
-          JD.Profiles.readOrInit.map(profiles => jsonResponse(profiles.copy(settings = ujson.Obj())))
+          for {
+            profilesDir <- ZIO.service[ProfilesDir]
+            profiles <- JD.Profiles.readOrInit
+          } yield jsonResponse(ProfilesList(
+            profiles = profiles.profiles,
+            currentProfileId = profiles.currentProfileId,
+            profilesDir = profilesDir.path.toNIO,
+          ))
         }
       },
 
@@ -560,6 +582,21 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
           } yield jsonResponse(p)
         }
       },
+
+      // 200, 400
+      Method.POST / "profiles.switch" -> handler((req: Request) => wrapHttpEndpoint {
+        for {
+          arg  <- parseOr400[ProfileIdObj](req.body, ErrorMessage.BadRequest("Missing profile ID.", "Pass the \"id\" for the profile to switch to."))
+          ps   <- JD.Profiles.readOrInit
+                    .filterOrFail(_.profiles.exists(_.id == arg.id))(jsonResponse(
+                      ErrorMessage.BadRequest(s"""Profile ID "${arg.id}" does not exist.""", "Make sure to only switch to existing profiles.")
+                    ).status(Status.BadRequest))
+          _    <- ZIO.unlessDiscard(ps.currentProfileId.contains(arg.id)) {
+                    val ps2 = ps.copy(currentProfileId = Some(arg.id))
+                    JD.Profiles.pathURIO.flatMap(JsonIo.write(_, ps2, origState = Some(ps))(ZIO.succeed(())))
+                  }
+        } yield jsonOk
+      }),
 
       // 200
       Method.GET / "settings.all.get" -> handler(wrapHttpEndpoint {
@@ -626,5 +663,18 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
         staticFileHandler(webAppDir, path).contramap[(zio.http.Path, Request)](_._2)
       },
   ).sandbox  // @@ HandlerAspect.requestLogging()  // sandbox converts errors to suitable responses
+
+  // If the last remaining connection was closed and no new connection was opened after a short delay, then shutdown the server
+  def shutdownServerIfNoConnections(remainingConnections: Option[Int], reason: String): URIO[Ref[ServerConnection] & ServerFiber, Unit] =
+    ZIO.unlessDiscard(!options.autoShutdown || remainingConnections.exists(_ > 0))(for {
+      _      <- ZIO.sleep(Constants.serverShutdownDelay)  // defer shutdown to accept new connection in case of page refresh
+      count  <- ZIO.serviceWithZIO[Ref[ServerConnection]](_.get.map(_.numConnections))
+      _      <- ZIO.unlessDiscard(count > 0)(for {
+                  server <- ZIO.service[ServerFiber]
+                  fiber  <- server.promise.await
+                  _      <- ZIO.serviceWith[Logger](_.log(s"$reason Shutting down server."))
+                  _      <- fiber.interrupt.fork
+                } yield ())
+    } yield ()).provideSomeLayer(httpLogger)
 
 }

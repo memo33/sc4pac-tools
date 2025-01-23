@@ -76,7 +76,7 @@ object WebSocketLogger {
     * The messages are buffered in a queue and are sent asynchronously from
     * another thread.
     */
-  def run[R : zio.Tag, A](send: Message => Task[Unit])(task: zio.RIO[R & WebSocketLogger, A]): ZIO[R, Throwable, A] = {
+  def run[R : izumi.reflect.Tag, A](send: Message => Task[Unit])(task: zio.RIO[R & WebSocketLogger, A]): ZIO[R, Throwable, A] = {
     val queue = new java.util.concurrent.LinkedBlockingQueue[Event]
     val logger = WebSocketLogger(queue)
     val consume: Task[Boolean] =

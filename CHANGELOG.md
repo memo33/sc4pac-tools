@@ -1,6 +1,19 @@
 # Changelog
 
 ## [Unreleased]
+### Fixed
+- an issue that could lead to concurrent API calls getting blocked by a locked cache if they requested downloading the same file simultaneously (typically the channel contents file).
+- improved error handling in case of lack of permissions to access files or directories.
+
+### Changed
+- The `sc4pac` launch scripts now include a check for whether Java is installed.
+- When the auto-shutdown option is used, the server now also shuts down after launch if no initial connection is established within a timeout interval.
+  For the web-app, this means you need to open the browser within 60 seconds.
+- For the `sc4pac server` command, the default `--profiles-dir` path has changed to a platform-dependent config directory instead of the current working directory.
+  This means that multiple independent installations of sc4pac or sc4pac-gui would use the same `profiles` directory by default.
+- API upgraded to 2.2:
+  - new `/profiles.switch` endpoint
+  - new `/packages.search.id` endpoint
 
 
 ## [0.5.1] - 2024-12-26

@@ -4,7 +4,7 @@ package cli
 
 import scala.collection.immutable as I
 import caseapp.{RemainingArgs, ArgsName, HelpMessage, ExtraName, ValueDescription, Group, Tag}
-import zio.{ZIO, Task}
+import zio.{ZIO, Task, Ref}
 
 import sc4pac.error.Sc4pacNotInteractive
 import sc4pac.JsonData as JD
@@ -28,6 +28,9 @@ object Commands {
     val logger = CliLogger()
     zio.ZEnvironment(ProfileRoot(os.pwd), logger, CliPrompter(logger, autoYes = false))
   }
+  val cliLayer =
+    zio.ZLayer(Ref.make(Option.empty[FileCache]))
+      .map(_.union(cliEnvironment))
 
   // TODO strip escape sequences if jansi failed with a link error
   private[sc4pac] def gray(msg: String): String = s"${27.toChar}[90m" + msg + Console.RESET  // aka bright black
@@ -40,10 +43,18 @@ object Commands {
   type ExpectedFailure = error.Sc4pacAbort | error.DownloadFailed | error.ChannelsNotAvailable
     | error.Sc4pacVersionNotFound | error.Sc4pacAssetNotFound | error.ExtractionFailed
     | error.UnsatisfiableVariantConstraints | error.ChecksumError | error.ReadingProfileFailed
+    | java.nio.file.AccessDeniedException
 
   private def handleExpectedFailures(abort: ExpectedFailure, exit: Int => Nothing): Nothing = abort match {
     case abort: error.Sc4pacAbort => { System.err.println("Operation aborted."); exit(1) }
+    case abort: java.nio.file.AccessDeniedException => { System.err.println(s"Operation.aborted. File access denied. Check your permissions to access the file or directory: ${abort.getMessage}"); exit(ExitCodes.AccessDenied) }  // any command that creates directories or files
     case abort => { System.err.println(s"Operation aborted. ${abort.getMessage}"); exit(1) }
+  }
+
+  object ExitCodes {
+    val JavaNotFound = 55  // see `sc4pac` and `sc4pac.bat` scripts
+    val PortOccupied = 56
+    val AccessDenied = 57
   }
 
   private def runMainExit(task: Task[Unit], exit: Int => Nothing): Nothing = {
@@ -55,7 +66,7 @@ object Commands {
         case abort: error.SymlinkCreationFailed => { System.err.println(s"Operation aborted. ${abort.getMessage}"); exit(1) }  // channel-build command
         case abort: error.FileOpsFailure => { System.err.println(s"Operation aborted. ${abort.getMessage}"); exit(1) }  // channel-build command
         case abort: error.YamlFormatIssue => { System.err.println(s"Operation aborted. ${abort.getMessage}"); exit(1) }  // channel-build command
-        case abort: error.PortOccupied => { System.err.println(abort.getMessage); exit(1) }  // server command
+        case abort: error.PortOccupied => { System.err.println(abort.getMessage); exit(ExitCodes.PortOccupied) }  // server command
         case e => { e.printStackTrace(); exit(2) }
       },
       success = _ => exit(0)
@@ -93,7 +104,7 @@ object Commands {
         pac    <- Sc4pac.init(config)
         _      <- pac.add(mods)
       } yield ()
-      runMainExit(task.provideEnvironment(cliEnvironment), exit)
+      runMainExit(task.provideLayer(cliLayer), exit)
     }
   }
 
@@ -119,7 +130,7 @@ object Commands {
         flag         <- pac.update(pluginsData.explicit, globalVariant0 = pluginsData.config.variant, pluginsRoot = pluginsRoot)
                           .provideSomeLayer(zio.ZLayer.succeed(Downloader.Cookies(Constants.simtropolisCookie)))
       } yield ()
-      runMainExit(task.provideEnvironment(cliEnvironment.update((_: CliPrompter).withAutoYes(options.yes))), exit)
+      runMainExit(task.provideLayer(cliLayer.map(_.update((_: CliPrompter).withAutoYes(options.yes)))), exit)
     }
   }
 
@@ -157,7 +168,7 @@ object Commands {
                       pac.remove(mods)
                     }
         } yield ()
-        runMainExit(task.provideEnvironment(cliEnvironment), exit)
+        runMainExit(task.provideLayer(cliLayer), exit)
       }
     }
   }
@@ -212,7 +223,7 @@ object Commands {
             }
           }
         }
-        runMainExit(task.provideEnvironment(cliEnvironment), exit)
+        runMainExit(task.provideLayer(cliLayer), exit)
       }
     }
   }
@@ -250,7 +261,7 @@ object Commands {
               }
             }
           }
-          runMainExit(task.provideEnvironment(cliEnvironment), exit)
+          runMainExit(task.provideLayer(cliLayer), exit)
       }
     }
   }
@@ -267,7 +278,7 @@ object Commands {
       } yield {
         for ((mod, explicit) <- iter) logger.logInstalled(mod, explicit)
       }
-      runMainExit(task.provideEnvironment(cliEnvironment), exit)
+      runMainExit(task.provideLayer(cliLayer), exit)
     }
 
     def iterateInstalled(pluginsData: JD.Plugins): zio.RIO[ProfileRoot, Iterator[(DepModule, Boolean)]] = {
@@ -319,7 +330,7 @@ object Commands {
             select.flatMap(removeAndWrite(data, _))
           }
         }
-        runMainExit(task.provideEnvironment(cliEnvironment), exit)
+        runMainExit(task.provideLayer(cliLayer), exit)
       }
     }
 
@@ -368,7 +379,7 @@ object Commands {
                   count =  data2.config.channels.length - data.config.channels.length
                   _     <- ZIO.succeed{ println(if (count == 0) "Channel already exists." else s"Added 1 channel.") }
                 } yield ()
-                runMainExit(task.provideEnvironment(cliEnvironment), exit)
+                runMainExit(task.provideLayer(cliLayer), exit)
               }
           }
         case Nil => fullHelpAsked(commandName)
@@ -422,7 +433,7 @@ object Commands {
             } yield ()
           }
         }
-        runMainExit(task.provideEnvironment(cliEnvironment), exit)
+        runMainExit(task.provideLayer(cliLayer), exit)
       }
     }
   }
@@ -441,7 +452,7 @@ object Commands {
           println(url)
         }
       }
-      runMainExit(task.provideEnvironment(cliEnvironment), exit)
+      runMainExit(task.provideLayer(cliLayer), exit)
     }
   }
 
@@ -511,11 +522,8 @@ object Commands {
     @ValueDescription("number") @Group("Server") @Tag("Server")
     @HelpMessage(s"(default: ${Constants.defaultPort})")
     port: Int = Constants.defaultPort,
-    @ValueDescription("number") @Group("Server") @Tag("Server")
-    @HelpMessage(s"indentation of JSON responses (default: -1, no indentation)")
-    indent: Int = -1,
     @ValueDescription("path") @Group("Server") @Tag("Server")
-    @HelpMessage(s"directory containing the sc4pac-profiles.json file and profile sub-directories (default: current working directory), newly created if necessary")
+    @HelpMessage(s"""directory containing the sc4pac-profiles.json file and profile sub-directories (platform-dependent default: "${JD.Profiles.defaultProfilesRoot}"), newly created if necessary""")
     profilesDir: String = "",
     @ValueDescription("path") @Group("Server") @Tag("Server")
     @HelpMessage(s"optional directory containing statically served webapp files (default: no static files)")
@@ -529,6 +537,9 @@ object Commands {
     @ValueDescription("string") @Group("Server") @Tag("Server")
     @HelpMessage(s"optional tag to print once server has started and is listening")
     startupTag: String = "",
+    @ValueDescription("number") @Group("Server") @Tag("Server")
+    @HelpMessage(s"indentation of JSON responses (default: -1, no indentation)")
+    indent: Int = -1,
   ) extends Sc4pacCommandOptions
 
   case object Server extends Command[ServerOptions] {
@@ -541,24 +552,31 @@ object Commands {
       if (options.indent < -1)
         error(caseapp.core.Error.Other(s"Indentation must be -1 or larger."))
       val profilesDir: os.Path =
-        if (options.profilesDir.isEmpty) os.pwd else os.Path(java.nio.file.Paths.get(options.profilesDir), os.pwd)
-      if (!os.exists(profilesDir)) {
-        println(s"Creating sc4pac profiles directory: $profilesDir")
-        os.makeDir.all(profilesDir)
-      }
+        if (options.profilesDir.isEmpty) JD.Profiles.defaultProfilesRoot else os.Path(java.nio.file.Paths.get(options.profilesDir), os.pwd)
       val webAppDir: Option[os.Path] =
         if (options.webAppDir.isEmpty) None else Some(os.Path(java.nio.file.Paths.get(options.webAppDir), os.pwd))
-      if (webAppDir.isDefined && !os.exists(webAppDir.get))
-        error(caseapp.core.Error.Other(s"Webapp directory does not exist: $webAppDir"))
       val task: Task[Unit] = {
-        // Enabling CORS is important so that web browsers do not block the
-        // request response for lack of the following response header:
-        //     access-control-allow-origin: http://localhost:12345
-        // (e.g. when Flutter-web is hosted on port 12345)
-        val app = sc4pac.api.Api(options).routes(webAppDir) @@ zio.http.Middleware.cors
         for {
+          _        <- ZIO.whenZIODiscard(ZIO.attemptBlockingIO(webAppDir.isDefined && !os.exists(webAppDir.get)))(
+                        error(caseapp.core.Error.Other(s"Webapp directory does not exist: ${webAppDir.get}"))
+                      )
+          _        <- ZIO.attemptBlockingIO(if (!os.exists(profilesDir)) {
+                        println(s"Creating sc4pac profiles directory: $profilesDir")
+                        os.makeDir.all(profilesDir)
+                      })
+          api      =  sc4pac.api.Api(options)
+          // Enabling CORS is important so that web browsers do not block the
+          // request response for lack of the following response header:
+          //     access-control-allow-origin: http://localhost:12345
+          // (e.g. when Flutter-web is hosted on port 12345)
+          app      =  api.routes(webAppDir) @@ zio.http.Middleware.cors
           promise  <- zio.Promise.make[Nothing, zio.Fiber[Throwable, Nothing]]
           fiber    <- zio.http.Server.install(app)
+                        .catchSomeDefect {
+                          // usually: "bind(..) failed: Address already in use"
+                          case e: io.netty.channel.unix.Errors.NativeIoException if e.getMessage.contains("bind") =>
+                            ZIO.fail(sc4pac.error.PortOccupied(s"Failed to run sc4pac server on port ${options.port}. ${e.getMessage}"))
+                        }
                         .zipRight(ZIO.succeed {
                           if (options.startupTag.nonEmpty)
                             println(options.startupTag)
@@ -573,10 +591,22 @@ object Commands {
                             }
                           }
                         )
+                        .zipRight(
+                          // shut down server if nothing connected after a timeout interval
+                          // (to prevent detached old background processes blocking the port)
+                          ZIO.sleep(zio.Duration.fromSeconds(if (webAppDir.isDefined) 60 else 20))
+                          .zipRight(api.shutdownServerIfNoConnections(
+                            remainingConnections = None,  // irrelevant for timeout
+                            reason = "Timeout: No connection to server has been established.",
+                          ))
+                        )
                         .zipRight(ZIO.never)  // keep server running indefinitely unless interrupted
                         .provide(
                           zio.http.Server.defaultWithPort(options.port)
                             .mapError { e =>  // usually: "bind(..) failed: Address already in use"
+                              // This branch does not seem to usually catch the error anymore.
+                              // Instead it is caught in Server.install(app).catchSomeDefect(...) above.
+                              // We defensively keep these branch in case of future zio-http/netty changes.
                               sc4pac.error.PortOccupied(s"Failed to run sc4pac server on port ${options.port}. ${e.getMessage}")
                             },
                           zio.http.Client.default  // for /image.fetch
@@ -584,6 +614,7 @@ object Commands {
                           zio.ZLayer.succeed(ProfilesDir(profilesDir)),
                           zio.ZLayer.succeed(ServerFiber(promise)),
                           zio.ZLayer(zio.Ref.make(ServerConnection(numConnections = 0, currentChannel = None))),
+                          zio.ZLayer(zio.Ref.make(Option.empty[FileCache])),
                         )
                         .fork
           _        <- promise.succeed(fiber)

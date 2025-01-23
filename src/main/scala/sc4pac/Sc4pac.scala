@@ -4,7 +4,7 @@ package sc4pac
 import scala.collection.immutable.{Set, Seq}
 import coursier.Type
 import coursier.core.{Module, Organization, ModuleName}
-import zio.{IO, ZIO, Task, Scope, RIO}
+import zio.{IO, ZIO, Task, Scope, RIO, Ref}
 import upickle.default as UP
 
 import sc4pac.error.*
@@ -110,6 +110,27 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) {  // TODO d
         }
       }.toSeq
     results.sortBy((mod, ratio, desc) => (-ratio, mod.group.value, mod.name.value)).distinctBy(_._1)
+  }
+
+  def searchById(packages: Seq[BareModule]): Task[Seq[(BareModule, Option[String])]] = {
+    // TODO avoid iterating all channel items, but look up packages directly instead (and parallelize) for better performance
+    iterateAllChannelPackages(channelUrl = None).map { itemsIter =>
+      val relevantItems = collection.mutable.Map.from[BareModule, Option[JD.ChannelItem]](packages.iterator.map(_ -> None))
+      itemsIter.foreach { item =>
+        item.toBareDep match {
+          case _: BareAsset =>  // don't care, shouldn't happen
+          case mod: BareModule =>
+            relevantItems.get(mod) match {
+              case Some(None) => relevantItems(mod) = Some(item)
+              case _ =>  // item is irrelevant or has already been found
+            }
+        }
+      }
+      packages.map { module =>
+        val summaryOpt = relevantItems(module).map(_.summary)
+        (module, summaryOpt)
+      }
+    }
   }
 
   def infoJson(module: BareModule): Task[Option[JD.Package]] = {
@@ -557,16 +578,25 @@ object Sc4pac {
   /** Limits parallel downloads to 2 (ST rejects too many connections). */
   private[sc4pac] def createThreadPool() = coursier.cache.internal.ThreadUtil.fixedThreadPool(size = 2)
 
-  def init(config: JD.Config, refreshChannels: Boolean = false): RIO[ProfileRoot & Logger, Sc4pac] = {
+  def init(config: JD.Config, refreshChannels: Boolean = false): RIO[ProfileRoot & Logger & Ref[Option[FileCache]], Sc4pac] = {
     // val refreshLogger = coursier.cache.loggers.RefreshLogger.create(System.err)  // TODO System.err seems to cause less collisions between refreshing progress and ordinary log messages
-    val coursierPool = createThreadPool()
     val channelContentsTtl = if (refreshChannels) Constants.channelContentsTtlRefresh else Constants.channelContentsTtl  // 0 or 30 minutes
     for {
       cacheRoot <- config.cacheRootAbs
+      location  =  (cacheRoot / "coursier").toIO
       logger    <- ZIO.service[Logger]
-      cache     =  FileCache(location = (cacheRoot / "coursier").toIO, logger = logger, pool = coursierPool)
-        .withTtl(Some(Constants.cacheTtl))  // 12 hours
-        // .withCachePolicies(Seq(coursier.cache.CachePolicy.ForceDownload))  // TODO cache policy
+      cache     <- ZIO.serviceWithZIO[Ref[Option[FileCache]]](_.modify[FileCache] {
+                     // Re-use existing cache or initialize it. This is important so that
+                     // concurrent access to the API does not hit a locked cache.
+                     // We don't expect concurrent API access for different cache locations,
+                     // so it's fine to store just a reference to the most recent cache.
+                     case opt @ Some(cache) if cache.location == location => (cache, opt)
+                     case _ =>
+                       val coursierPool = createThreadPool()
+                       val cache = FileCache(location = location, logger = logger, pool = coursierPool)
+                                     .withTtl(Some(Constants.cacheTtl))  // 12 hours
+                       (cache, Some(cache))
+                   })
       repos     <- initializeRepositories(config.channels, cache, channelContentsTtl)
       tempRoot  <- config.tempRootAbs
       profileRoot <- ZIO.service[ProfileRoot]

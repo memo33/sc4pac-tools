@@ -1,4 +1,4 @@
-# API - version 2.1
+# API - version 2.2
 
 The API allows other programs to control *sc4pac* in a client-server fashion.
 
@@ -11,6 +11,7 @@ POST /profile.init?profile=id        {plugins: "<path>", cache: "<path>", temp: 
 GET  /packages.list?profile=id
 GET  /packages.info?pkg=<pkg>&profile=id
 GET  /packages.search?q=<text>&profile=id
+POST /packages.search.id?profile=id  {packages: ["<pkg1>", "<pkg2>", …]}
 POST /packages.open                  [{package: "<pkg>", channelUrl: "<url>"}]
 
 GET  /plugins.added.list?profile=id
@@ -32,6 +33,7 @@ GET  /server.connect                 (websocket)
 
 GET  /profiles.list
 POST /profiles.add                   {name: string}
+POST /profiles.switch                {id: "<id>"}
 
 GET  /settings.all.get
 POST /settings.all.set               <object>
@@ -201,6 +203,29 @@ Returns:
 ]
 ```
 The `status` field contains the local installation status if the package has been explicitly added or actually installed.
+
+## packages.search.id
+
+Find a list of packages by identifier across all channels and lookup their summary and installation status.
+
+Synopsis: `POST /packages.search.id?profile=id {packages: ["<pkg1>", "<pkg2>", …]}`
+
+Returns:
+```
+[
+  {
+    package: "<pkg>",
+    summary: string,
+    status?: … // see packages.search
+  },
+  …
+]
+```
+
+Example:
+```sh
+curl -X POST -d '{"packages": ["cyclone-boom:save-warning", "memo:submenus-dll"]}' http://localhost:51515/packages.search.id?profile=1
+```
 
 ## packages.open
 
@@ -502,7 +527,8 @@ Returns:
   ```
   {
     profiles: [{id: "<id-1>", name: string}, …],
-    currentProfileId: ["<id-1>"]
+    currentProfileId: ["<id-1>"],
+    profilesDir: "<platform-dependent-path>"
   }
   ```
 
@@ -513,6 +539,21 @@ Create a new profile and make it the currently active one. Make sure to call `/p
 Synopsis: `POST /profiles.add {name: string}`
 
 Returns: `{"id": "<id>", "name": string}`
+
+## profiles.switch
+
+Set a different existing profiles as the currently active one.
+
+Synopsis: `POST /profiles.switch {id: "<id>"}`
+
+Returns:
+- 200 `{"$type": "/result", "ok": true}`
+- 400 if profile does not exist
+
+Example:
+```sh
+curl -X POST -d '{"id": "2"}' http://localhost:51515/profiles.switch
+```
 
 ## settings.all.get
 

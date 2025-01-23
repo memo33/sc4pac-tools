@@ -27,4 +27,11 @@ SCRIPTDIR="$( cd -P "$( dirname "$(readlink -f "${BASH_SOURCE[0]}")" )" >/dev/nu
 export SC4PAC_MONO_CMD="${SC4PAC_MONO_CMD-"mono"}"
 export SC4PAC_CICDEC_CMD="${SC4PAC_CICDEC_CMD-"${SCRIPTDIR}/cicdec/cicdec.exe"}"
 
+# Check if java is available or provide suitable exit code for the GUI.
+if ! command -v java 2>&1 >/dev/null
+then
+    echo "Java could not be found. Please install a Java Runtime Environment and make sure it is added to your PATH environment variable during the installation."
+    exit 55
+fi
+
 java -jar "${SCRIPTDIR}/target/scala-3.4.2/sc4pac-cli.jar" "$@"
