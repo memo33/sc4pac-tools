@@ -208,6 +208,7 @@ class Resolution(reachableDeps: TreeSeqMap[BareDep, Seq[BareDep]], nonbareDeps: 
           context.logger.debugPrintStackTrace(e)
           ZIO.fail(new error.DownloadFailed("Unexpected download error.", e.getMessage))
       }
+      .provideSomeLayer(zio.ZLayer.succeed(context.logger))
 
     for {
       context <- ZIO.service[ResolutionContext]

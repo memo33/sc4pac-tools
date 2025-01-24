@@ -1,6 +1,10 @@
 # Changelog
 
 ## [Unreleased]
+### Fixed
+- an issue that lead to downloading progress not being displayed in the GUI ([#19][gui19]).
+
+[gui19]: https://github.com/memo33/sc4pac-gui/issues/19
 
 
 ## [0.5.2] - 2025-01-23

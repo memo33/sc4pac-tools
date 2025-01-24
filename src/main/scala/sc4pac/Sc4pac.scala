@@ -251,7 +251,7 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) {  // TODO d
               stagingRoot)
 
           for {
-            fallbackFilename <- ZIO.attemptBlockingIO(context.cache.getFallbackFilename(archive))
+            fallbackFilename <- ZIO.attemptBlockingIO(context.cache.getFallbackFilename(archive, logger))
             archiveSize      <- ZIO.attemptBlockingIO(archive.length())
             usedPatterns     <- if (archiveSize >= Constants.largeArchiveSizeInterruptible) {
                                   logger.debug(s"(Interruptible extraction of ${assetData.assetId})")
@@ -547,7 +547,7 @@ object Sc4pac {
   }
 
 
-  private def fetchChannelData(repoUri: java.net.URI, cache: FileCache, channelContentsTtl: scala.concurrent.duration.Duration): ZIO[ProfileRoot, error.ChannelsNotAvailable, MetadataRepository] = {
+  private def fetchChannelData(repoUri: java.net.URI, cache: FileCache, channelContentsTtl: scala.concurrent.duration.Duration): ZIO[ProfileRoot & Logger, error.ChannelsNotAvailable, MetadataRepository] = {
     val contentsUrl = MetadataRepository.channelContentsUrl(repoUri).toString
     val artifact = Artifact(contentsUrl, changing = true)  // changing as the remote file is updated whenever any remote package is added or updated
     for {
@@ -567,7 +567,7 @@ object Sc4pac {
     } yield repo
   }
 
-  private[sc4pac] def initializeRepositories(repoUris: Seq[java.net.URI], cache: FileCache, channelContentsTtl: scala.concurrent.duration.Duration): RIO[ProfileRoot, Seq[MetadataRepository]] = {
+  private[sc4pac] def initializeRepositories(repoUris: Seq[java.net.URI], cache: FileCache, channelContentsTtl: scala.concurrent.duration.Duration): RIO[ProfileRoot & Logger, Seq[MetadataRepository]] = {
     ZIO.foreachPar(repoUris) { url =>
       fetchChannelData(url, cache, channelContentsTtl)
     }
@@ -593,7 +593,7 @@ object Sc4pac {
                      case opt @ Some(cache) if cache.location == location => (cache, opt)
                      case _ =>
                        val coursierPool = createThreadPool()
-                       val cache = FileCache(location = location, logger = logger, pool = coursierPool)
+                       val cache = FileCache(location = location, pool = coursierPool)
                                      .withTtl(Some(Constants.cacheTtl))  // 12 hours
                        (cache, Some(cache))
                    })

@@ -44,7 +44,7 @@ object Find {
     * repository channel contents updated. */
   def packageData[A <: JD.Package | JD.Asset : Reader](module: C.Module, version: String): RIO[ResolutionContext, Option[A]] = {
     def tryAllRepos(repos: Seq[MetadataRepository], context: ResolutionContext): Task[Option[A]] = ZIO.collectFirst(repos) { repo =>
-        repo.fetchModuleJson[A](module, version, context.cache.fetchText)
+        repo.fetchModuleJson[A](module, version, context.cache.fetchText(context.logger))
           .uninterruptible  // uninterruptile to avoid incomplete-download error messages when resolving is interrupted to prompt for a variant selection (downloading json should be fairly quick anyway)
           .map(Some(_))
           .catchSome(handleMetadataDownloadError(module.orgName, context))
@@ -66,7 +66,8 @@ object Find {
             context.logger.log(s"Could not find metadata of ${module}. Trying to update channel contents.")
             for {
               repos   <- Sc4pac.initializeRepositories(repoUris, context.cache, Constants.channelContentsTtlShort)  // 60 seconds
-                          .provideLayer(zio.ZLayer.succeed(ProfileRoot(context.profileRoot)))
+                          .provideSomeLayer(zio.ZLayer.succeed(ProfileRoot(context.profileRoot)))
+                          .provideSomeLayer(zio.ZLayer.succeed(context.logger))
               result  <- tryAllRepos(repos, context)  // 2nd try
             } yield result
         }
@@ -103,7 +104,7 @@ object Find {
     for {
       context      <- ZIO.service[ResolutionContext]
       (errs, rels) <- ZIO.partitionPar(context.repositories) { repo =>
-                        repo.fetchExternalPackage(module, context.cache.fetchText)
+                        repo.fetchExternalPackage(module, context.cache.fetchText(context.logger))
                           .catchSome(handleMetadataDownloadError(module.orgName, context))
                           .map(extPkgOpt => repo.baseUri -> extPkgOpt.toSeq.flatMap(_.requiredBy))
                       }

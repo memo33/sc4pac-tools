@@ -107,7 +107,7 @@ url: dummy
       repos(1).channel.externalAssets should have length 0
 
       val logger = CliLogger()
-      val cache = FileCache((tmpDir / "cache").toIO, logger, coursier.cache.internal.ThreadUtil.fixedThreadPool(size = 2))  // TODO replace by Sc4pac.createThreadPool
+      val cache = FileCache((tmpDir / "cache").toIO, coursier.cache.internal.ThreadUtil.fixedThreadPool(size = 2))  // TODO replace by Sc4pac.createThreadPool
       val context = new ResolutionContext(repos, cache, logger, tmpDir / "profile")
       val layer = zio.ZLayer.succeed(context)
       import JsonData.bareModuleRw

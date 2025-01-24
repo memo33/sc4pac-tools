@@ -12,7 +12,6 @@ import sc4pac.JsonData as JD
   */
 class FileCache private (
   csCache: CC.FileCache[Task],
-  val logger: Logger,
   runningTasks: ConcurrentHashMap[String, Promise[CC.ArtifactError, java.io.File]]
 ) {
 
@@ -26,7 +25,7 @@ class FileCache private (
     * (only if they are `changing`).
     */
   def withTtl(ttl: Option[scala.concurrent.duration.Duration]): FileCache =
-    new FileCache(csCache.withTtl(ttl), logger, runningTasks)
+    new FileCache(csCache.withTtl(ttl), runningTasks)
 
   def ttl: Option[scala.concurrent.duration.Duration] = csCache.ttl
 
@@ -76,10 +75,10 @@ class FileCache private (
     *
     * Otherwise, return local file, potentially failing with a checksum error.
     */
-  def file(artifact: Artifact): ZIO[Downloader.Cookies, CC.ArtifactError, java.io.File] = {
-    def task0(cookies: Downloader.Cookies): IO[CC.ArtifactError, java.io.File] = ZIO.succeed {
+  def file(artifact: Artifact): ZIO[Downloader.Cookies & Logger, CC.ArtifactError, java.io.File] = {
+    def task0(cookies: Downloader.Cookies, logger: Logger): IO[CC.ArtifactError, java.io.File] = ZIO.succeed {
       val destFile = localFile(artifact.url)
-      lazy val destFileChecksumVerified = verifyChecksum(destFile, artifact)
+      lazy val destFileChecksumVerified = verifyChecksum(destFile, artifact, logger)
       ZIO.ifZIO(ZIO.attemptBlockingIO(
           !destFile.exists()
           || artifact.changing && isStale(destFile)
@@ -94,7 +93,7 @@ class FileCache private (
             // that checksums become out of sync when a pkg.json is updated remotely and the channel contents file
             // is already cached locally. This will fix itself after 30 minutes.
             // Alternatively the sc4pac-channel-contents.json file can be manually deleted from cache.
-            ZIO.fromEither(verifyChecksum(newFile, artifact).map(_ => newFile))  // TODO add special handling for local files?
+            ZIO.fromEither(verifyChecksum(newFile, artifact, logger).map(_ => newFile))  // TODO add special handling for local files?
           },
         onFalse = ZIO.fromEither(destFileChecksumVerified.map(_ => destFile))
       ).mapError {
@@ -122,17 +121,19 @@ class FileCache private (
                   release = _ => ZIO.succeed(runningTasks.remove(artifact.url, p0))  // remove only if equal to our p0
                 ){ p1 =>
                   if (p1 != null)  // key was present: there was already a running task for url
-                    p1.await.zipLeft(ZIO.succeed(logger.concurrentCacheAccess(artifact.url)))
+                    p1.await.zipLeft(ZIO.serviceWith[Logger](_.concurrentCacheAccess(artifact.url)))
                   else
                     ZIO.serviceWithZIO[Downloader.Cookies] { cookies =>
-                      p0.complete(task0(cookies)).flatMap(_ => p0.await)  // Note that `complete` also handles failure of `task0`
+                      ZIO.serviceWithZIO[Logger] { logger =>
+                        p0.complete(task0(cookies, logger)).flatMap(_ => p0.await)  // Note that `complete` also handles failure of `task0`
+                      }
                     }
                 }
     } yield (result: java.io.File)
   }
 
   /** Retrieve the file contents as String from the cache or download if necessary. */
-  def fetchText: Artifact => IO[CC.ArtifactError, String] = { artifact =>
+  def fetchText(logger: Logger): Artifact => IO[CC.ArtifactError, String] = { artifact =>
     file(artifact).flatMap { (f: java.io.File) =>
       zio.ZIO.attemptBlockingIO {
         new String(java.nio.file.Files.readAllBytes(f.toPath), java.nio.charset.StandardCharsets.UTF_8)
@@ -144,12 +145,13 @@ class FileCache private (
       }
     }
     .provideSomeLayer(Downloader.emptyCookiesLayer)  // as we do not fetch text files from Simtropolis, no need for cookies
+    .provideSomeLayer(zio.ZLayer.succeed(logger))
   }
 
   /** If artifact has an expected checksum, check that it matches the cached
     * file. This is merely used for checking whether certain cached files are
     * out-of-date, not for ensuring overall data integrity. */
-  def verifyChecksum(file: java.io.File, artifact: Artifact): Either[CC.ArtifactError, Unit] = {
+  def verifyChecksum(file: java.io.File, artifact: Artifact, logger: Logger): Either[CC.ArtifactError, Unit] = {
     if (!isManagedByCache(artifact.url, file))
       // For local channels, there's no need to verify checksums as the local
       // channel files are always up-to-date and Downloader .checked files do not exist.
@@ -177,7 +179,7 @@ class FileCache private (
             }
   }
 
-  def getFallbackFilename(file: java.io.File): Option[String] = {
+  def getFallbackFilename(file: java.io.File, logger: Logger): Option[String] = {
     val checkedFile = FileCache.ttlFile(file)
     if (!checkedFile.exists() || checkedFile.length() == 0)
       None
@@ -195,14 +197,13 @@ class FileCache private (
 }
 
 object FileCache {
-  def apply(location: java.io.File, logger: Logger, pool: java.util.concurrent.ExecutorService): FileCache = {
+  def apply(location: java.io.File, pool: java.util.concurrent.ExecutorService): FileCache = {
     import sc4pac.CoursierZio.*  // implicit coursier-zio interop
     val csCache = CC.FileCache[Task]()
       .withLocation(location)
-      // .withLogger(logger)  // TODO verify that this logger really is not needed
       .withPool(pool)
       .withLocalArtifactsShouldBeCached(false)  // not caching local files allows live-editing
-    new FileCache(csCache, logger, runningTasks = new ConcurrentHashMap())
+    new FileCache(csCache, runningTasks = new ConcurrentHashMap())
   }
 
   // Copied from coursier internals:
