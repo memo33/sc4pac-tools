@@ -4,7 +4,7 @@ package cli
 
 import scala.collection.immutable as I
 import caseapp.{RemainingArgs, ArgsName, HelpMessage, ExtraName, ValueDescription, Group, Tag}
-import zio.{ZIO, Task, Ref}
+import zio.{ZIO, Task, Ref, RIO}
 
 import sc4pac.error.Sc4pacNotInteractive
 import sc4pac.JsonData as JD
@@ -548,6 +548,70 @@ object Commands {
       ZIO.logInfo(message).as(resp)
     })
 
+    def serve(options: ServerOptions, profilesDir: os.Path, webAppDir: Option[os.Path]): Task[zio.Fiber[Throwable, Nothing]] = {
+      val api = sc4pac.api.Api(options)
+      // Enabling CORS is important so that web browsers do not block the
+      // request response for lack of the following response header:
+      //     access-control-allow-origin: http://localhost:12345
+      // (e.g. when Flutter-web is hosted on port 12345)
+      val app = api.routes(webAppDir) @@ zio.http.Middleware.cors
+
+      val serverTask: RIO[ServerFiber, Nothing] =
+        zio.http.Server.install(app)
+          .catchSomeDefect {
+            // usually: "bind(..) failed: Address already in use"
+            case e: io.netty.channel.unix.Errors.NativeIoException if e.getMessage.contains("bind") =>
+              ZIO.fail(sc4pac.error.PortOccupied(s"Failed to run sc4pac server on port ${options.port}. ${e.getMessage}"))
+          }
+          .zipRight(ZIO.succeed {
+            if (options.startupTag.nonEmpty)
+              println(options.startupTag)
+            println(s"Sc4pac server is listening on port ${options.port}...")
+          })
+          .zipRight(
+            ZIO.whenDiscard(webAppDir.isDefined) {
+              val url = java.net.URI.create(s"http://localhost:${options.port}/webapp/")
+              println(f"%nTo start the sc4pac-gui web-app, open the following URL in your web browser if it does not launch automatically:%n%n  ${url}%n")
+              ZIO.whenDiscard(options.launchBrowser) {
+                DesktopOps.openUrl(url).catchAll(_ => ZIO.succeed(()))  // errors can be ignored
+              }
+            }
+          )
+          .zipRight(
+            // shut down server if nothing connected after a timeout interval
+            // (to prevent detached old background processes blocking the port)
+            ZIO.sleep(zio.Duration.fromSeconds(if (webAppDir.isDefined) 60 else 20))
+            .zipRight(api.shutdownServerIfNoConnections(
+              remainingConnections = None,  // irrelevant for timeout
+              reason = "Timeout: No connection to server has been established.",
+            ))
+          )
+          .zipRight(ZIO.never)  // keep server running indefinitely unless interrupted
+          .provideSome[ServerFiber](
+            zio.http.Server.defaultWithPort(options.port)
+              .mapError { e =>  // usually: "bind(..) failed: Address already in use"
+                // This branch does not seem to usually catch the error anymore.
+                // Instead it is caught in Server.install(app).catchSomeDefect(...) above.
+                // We defensively keep this branch in case of future zio-http/netty changes.
+                sc4pac.error.PortOccupied(s"Failed to run sc4pac server on port ${options.port}. ${e.getMessage}")
+              },
+            zio.http.Client.default  // for /image.fetch
+              .map(_.update[zio.http.Client](_.updateHeaders(_.addHeader("User-Agent", Constants.userAgent)) @@ followRedirects)),
+            zio.ZLayer.succeed(ProfilesDir(profilesDir)),
+            zio.ZLayer(zio.Ref.make(ServerConnection(numConnections = 0, currentChannel = None))),
+            zio.ZLayer(zio.Ref.make(Option.empty[FileCache])),
+          )
+
+      // forking the fiber of the server to facilitate shutting down
+      for {
+        promise  <- zio.Promise.make[Nothing, zio.Fiber[Throwable, Nothing]]
+        fiber    <- serverTask
+                      .provide(zio.ZLayer.succeed(ServerFiber(promise)))
+                      .fork
+        _        <- promise.succeed(fiber)
+      } yield fiber
+    }
+
     def run(options: ServerOptions, args: RemainingArgs): Unit = {
       if (options.indent < -1)
         error(caseapp.core.Error.Other(s"Indentation must be -1 or larger."))
@@ -564,60 +628,7 @@ object Commands {
                         println(s"Creating sc4pac profiles directory: $profilesDir")
                         os.makeDir.all(profilesDir)
                       })
-          api      =  sc4pac.api.Api(options)
-          // Enabling CORS is important so that web browsers do not block the
-          // request response for lack of the following response header:
-          //     access-control-allow-origin: http://localhost:12345
-          // (e.g. when Flutter-web is hosted on port 12345)
-          app      =  api.routes(webAppDir) @@ zio.http.Middleware.cors
-          promise  <- zio.Promise.make[Nothing, zio.Fiber[Throwable, Nothing]]
-          fiber    <- zio.http.Server.install(app)
-                        .catchSomeDefect {
-                          // usually: "bind(..) failed: Address already in use"
-                          case e: io.netty.channel.unix.Errors.NativeIoException if e.getMessage.contains("bind") =>
-                            ZIO.fail(sc4pac.error.PortOccupied(s"Failed to run sc4pac server on port ${options.port}. ${e.getMessage}"))
-                        }
-                        .zipRight(ZIO.succeed {
-                          if (options.startupTag.nonEmpty)
-                            println(options.startupTag)
-                          println(s"Sc4pac server is listening on port ${options.port}...")
-                        })
-                        .zipRight(
-                          ZIO.whenDiscard(webAppDir.isDefined) {
-                            val url = java.net.URI.create(s"http://localhost:${options.port}/webapp/")
-                            println(f"%nTo start the sc4pac-gui web-app, open the following URL in your web browser if it does not launch automatically:%n%n  ${url}%n")
-                            ZIO.whenDiscard(options.launchBrowser) {
-                              DesktopOps.openUrl(url).catchAll(_ => ZIO.succeed(()))  // errors can be ignored
-                            }
-                          }
-                        )
-                        .zipRight(
-                          // shut down server if nothing connected after a timeout interval
-                          // (to prevent detached old background processes blocking the port)
-                          ZIO.sleep(zio.Duration.fromSeconds(if (webAppDir.isDefined) 60 else 20))
-                          .zipRight(api.shutdownServerIfNoConnections(
-                            remainingConnections = None,  // irrelevant for timeout
-                            reason = "Timeout: No connection to server has been established.",
-                          ))
-                        )
-                        .zipRight(ZIO.never)  // keep server running indefinitely unless interrupted
-                        .provide(
-                          zio.http.Server.defaultWithPort(options.port)
-                            .mapError { e =>  // usually: "bind(..) failed: Address already in use"
-                              // This branch does not seem to usually catch the error anymore.
-                              // Instead it is caught in Server.install(app).catchSomeDefect(...) above.
-                              // We defensively keep these branch in case of future zio-http/netty changes.
-                              sc4pac.error.PortOccupied(s"Failed to run sc4pac server on port ${options.port}. ${e.getMessage}")
-                            },
-                          zio.http.Client.default  // for /image.fetch
-                            .map(_.update[zio.http.Client](_.updateHeaders(_.addHeader("User-Agent", Constants.userAgent)) @@ followRedirects)),
-                          zio.ZLayer.succeed(ProfilesDir(profilesDir)),
-                          zio.ZLayer.succeed(ServerFiber(promise)),
-                          zio.ZLayer(zio.Ref.make(ServerConnection(numConnections = 0, currentChannel = None))),
-                          zio.ZLayer(zio.Ref.make(Option.empty[FileCache])),
-                        )
-                        .fork
-          _        <- promise.succeed(fiber)
+          fiber    <- serve(options, profilesDir = profilesDir, webAppDir = webAppDir)
           exitVal  <- fiber.await
           _        <- exitVal match {
                         case zio.Exit.Failure(cause) =>
