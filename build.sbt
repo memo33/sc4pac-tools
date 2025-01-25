@@ -117,6 +117,12 @@ libraryDependencies += "org.slf4j" % "slf4j-nop" % "2.0.7"  // ignore logging in
 
 libraryDependencies += "org.scalatest" %% "scalatest" % "3.2.17" % Test exclude("org.scala-lang.modules", "scala-xml_3")
 
+libraryDependencies ++= Seq(
+  "dev.zio" %% "zio-test"          % "2.1.14" % Test,
+  "dev.zio" %% "zio-test-sbt"      % "2.1.14" % Test,
+  "dev.zio" %% "zio-test-magnolia" % "2.1.14" % Test,
+)
+
 
 lazy val shared = (crossProject(JSPlatform, JVMPlatform) in file("shared"))
   .settings(
