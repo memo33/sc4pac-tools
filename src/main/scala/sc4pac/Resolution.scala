@@ -180,7 +180,7 @@ class Resolution(reachableDeps: TreeSeqMap[BareDep, Seq[BareDep]], nonbareDeps: 
     }
     def fetchTask(context: ResolutionContext) =
       ZIO.foreachPar(assetsArtifacts) { (dep, art) =>
-        context.cache.file(art).map(file => (dep, art, file))
+        context.cache.fetchFile(art).map(file => (dep, art, file))
       }
       .catchAll {
         // See also download-error handling in Find.

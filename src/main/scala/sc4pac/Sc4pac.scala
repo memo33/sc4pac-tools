@@ -251,7 +251,7 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) {  // TODO d
               stagingRoot)
 
           for {
-            fallbackFilename <- ZIO.attemptBlockingIO(context.cache.getFallbackFilename(archive, logger))
+            fallbackFilename <- context.cache.getFallbackFilename(archive).provideSomeLayer(zio.ZLayer.succeed(logger))
             archiveSize      <- ZIO.attemptBlockingIO(archive.length())
             usedPatterns     <- if (archiveSize >= Constants.largeArchiveSizeInterruptible) {
                                   logger.debug(s"(Interruptible extraction of ${assetData.assetId})")
@@ -553,7 +553,7 @@ object Sc4pac {
     for {
       channelContentsFile <- cache
                               .withTtl(Some(channelContentsTtl))
-                              .file(artifact)  // requires initialized logger
+                              .fetchFile(artifact)  // requires initialized logger
                               .provideSomeLayer(Downloader.emptyCookiesLayer)  // as we do not fetch channel file from Simtropolis, no need for cookies
                               .mapError {
                                 case err: coursier.cache.ArtifactError =>
