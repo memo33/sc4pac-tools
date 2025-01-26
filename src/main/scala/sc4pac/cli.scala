@@ -548,7 +548,7 @@ object Commands {
       ZIO.logInfo(message).as(resp)
     })
 
-    def serve(options: ServerOptions, profilesDir: os.Path, webAppDir: Option[os.Path]): RIO[ServerFiber, Nothing] = {
+    def serve(options: ServerOptions, profilesDir: os.Path, webAppDir: Option[os.Path]): RIO[zio.Scope, zio.Fiber[Throwable, Nothing]] = {
       val api = sc4pac.api.Api(options)
       // Enabling CORS is important so that web browsers do not block the
       // request response for lack of the following response header:
@@ -604,7 +604,16 @@ object Commands {
             zio.ZLayer(zio.Ref.make(Option.empty[FileCache])),
           )
 
-      serverTask
+      for {
+        promise  <- zio.Promise.make[Nothing, zio.Fiber[Throwable, Nothing]]
+        fiber    <- serverTask
+                      .provide(zio.ZLayer.succeed(ServerFiber(promise)))
+                      .forkScoped
+                      // Forking is used to allow interrupting the server to shut it down;
+                      // forkScoped (instead of fork or acquireRelease) is mainly needed for tests (to avoid uninterruptible hanging),
+                      // see https://stackoverflow.com/questions/77631198/how-to-properly-interrupt-a-fiber-in-zio-test
+        _        <- promise.succeed(fiber)
+      } yield fiber
     }
 
     def run(options: ServerOptions, args: RemainingArgs): Unit = {
@@ -616,29 +625,29 @@ object Commands {
         if (options.webAppDir.isEmpty) None else Some(os.Path(java.nio.file.Paths.get(options.webAppDir), os.pwd))
       val task: Task[Unit] = {
         for {
-          _        <- ZIO.whenZIODiscard(ZIO.attemptBlockingIO(webAppDir.isDefined && !os.exists(webAppDir.get)))(
-                        error(caseapp.core.Error.Other(s"Webapp directory does not exist: ${webAppDir.get}"))
-                      )
-          _        <- ZIO.attemptBlockingIO(if (!os.exists(profilesDir)) {
-                        println(s"Creating sc4pac profiles directory: $profilesDir")
-                        os.makeDir.all(profilesDir)
-                      })
-          promise  <- zio.Promise.make[Nothing, zio.Fiber[Throwable, Nothing]]
-          fiber    <- serve(options, profilesDir = profilesDir, webAppDir = webAppDir)
-                        .provide(zio.ZLayer.succeed(ServerFiber(promise)))
-                        .fork
-          _        <- promise.succeed(fiber)
-          exitVal  <- fiber.await
-          _        <- exitVal match {
-                        case zio.Exit.Failure(cause) =>
-                          if (cause.isInterruptedOnly) {
-                            ZIO.succeed(())  // interrupt is expected following autoShutdown after /server.connect
-                          } else cause.failureOrCause match {
-                            case Left(err) => ZIO.fail(err)  // converts PortOccupied failure cause to plain error
-                            case Right(cause2) => ZIO.refailCause(cause2)
-                          }
-                        case zio.Exit.Success[Nothing](nothing) => nothing
-                    }
+          _  <- ZIO.whenZIODiscard(ZIO.attemptBlockingIO(webAppDir.isDefined && !os.exists(webAppDir.get)))(
+                  error(caseapp.core.Error.Other(s"Webapp directory does not exist: ${webAppDir.get}"))
+                )
+          _  <- ZIO.attemptBlockingIO(if (!os.exists(profilesDir)) {
+                  println(s"Creating sc4pac profiles directory: $profilesDir")
+                  os.makeDir.all(profilesDir)
+                })
+          _  <- ZIO.scoped {
+                  for {
+                    fiber    <- serve(options, profilesDir = profilesDir, webAppDir = webAppDir)
+                    exitVal  <- fiber.await
+                    _        <- exitVal match {
+                                  case zio.Exit.Failure(cause) =>
+                                    if (cause.isInterruptedOnly) {
+                                      ZIO.succeed(())  // interrupt is expected following autoShutdown after /server.connect
+                                    } else cause.failureOrCause match {
+                                      case Left(err) => ZIO.fail(err)  // converts PortOccupied failure cause to plain error
+                                      case Right(cause2) => ZIO.refailCause(cause2)
+                                    }
+                                  case zio.Exit.Success[Nothing](nothing) => nothing
+                              }
+                  } yield ()
+                }
         } yield ()
       }
       runMainExit(task, exit)
