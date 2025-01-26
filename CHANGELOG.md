@@ -1,6 +1,9 @@
 # Changelog
 
 ## [Unreleased]
+
+
+## [0.5.3] - 2025-01-26
 ### Fixed
 - an issue that lead to downloading progress not being displayed in the GUI ([#19][gui19]).
 
@@ -213,7 +216,8 @@
 ## [0.1.5] - 2023-09-26
 …
 
-[Unreleased]: https://github.com/memo33/sc4pac-tools/compare/0.5.2...HEAD
+[Unreleased]: https://github.com/memo33/sc4pac-tools/compare/0.5.3...HEAD
+[0.5.2]: https://github.com/memo33/sc4pac-tools/compare/0.5.2...0.5.3
 [0.5.2]: https://github.com/memo33/sc4pac-tools/compare/0.5.1...0.5.2
 [0.5.1]: https://github.com/memo33/sc4pac-tools/compare/0.5.0...0.5.1
 [0.5.0]: https://github.com/memo33/sc4pac-tools/compare/0.4.5...0.5.0
