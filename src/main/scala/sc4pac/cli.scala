@@ -548,7 +548,7 @@ object Commands {
       ZIO.logInfo(message).as(resp)
     })
 
-    def serve(options: ServerOptions, profilesDir: os.Path, webAppDir: Option[os.Path]): Task[zio.Fiber[Throwable, Nothing]] = {
+    def serve(options: ServerOptions, profilesDir: os.Path, webAppDir: Option[os.Path]): RIO[ServerFiber, Nothing] = {
       val api = sc4pac.api.Api(options)
       // Enabling CORS is important so that web browsers do not block the
       // request response for lack of the following response header:
@@ -578,13 +578,15 @@ object Commands {
             }
           )
           .zipRight(
-            // shut down server if nothing connected after a timeout interval
-            // (to prevent detached old background processes blocking the port)
-            ZIO.sleep(zio.Duration.fromSeconds(if (webAppDir.isDefined) 60 else 20))
-            .zipRight(api.shutdownServerIfNoConnections(
-              remainingConnections = None,  // irrelevant for timeout
-              reason = "Timeout: No connection to server has been established.",
-            ))
+            ZIO.whenDiscard(options.autoShutdown) {
+              // shut down server if nothing connected after a timeout interval
+              // (to prevent detached old background processes blocking the port)
+              ZIO.sleep(zio.Duration.fromSeconds(if (webAppDir.isDefined) 60 else 20))
+              .zipRight(api.shutdownServerIfNoConnections(
+                remainingConnections = None,  // irrelevant for timeout
+                reason = "Timeout: No connection to server has been established.",
+              ))
+            }
           )
           .zipRight(ZIO.never)  // keep server running indefinitely unless interrupted
           .provideSome[ServerFiber](
@@ -602,14 +604,7 @@ object Commands {
             zio.ZLayer(zio.Ref.make(Option.empty[FileCache])),
           )
 
-      // forking the fiber of the server to facilitate shutting down
-      for {
-        promise  <- zio.Promise.make[Nothing, zio.Fiber[Throwable, Nothing]]
-        fiber    <- serverTask
-                      .provide(zio.ZLayer.succeed(ServerFiber(promise)))
-                      .fork
-        _        <- promise.succeed(fiber)
-      } yield fiber
+      serverTask
     }
 
     def run(options: ServerOptions, args: RemainingArgs): Unit = {
@@ -628,7 +623,11 @@ object Commands {
                         println(s"Creating sc4pac profiles directory: $profilesDir")
                         os.makeDir.all(profilesDir)
                       })
+          promise  <- zio.Promise.make[Nothing, zio.Fiber[Throwable, Nothing]]
           fiber    <- serve(options, profilesDir = profilesDir, webAppDir = webAppDir)
+                        .provide(zio.ZLayer.succeed(ServerFiber(promise)))
+                        .fork
+          _        <- promise.succeed(fiber)
           exitVal  <- fiber.await
           _        <- exitVal match {
                         case zio.Exit.Failure(cause) =>
