@@ -18,11 +18,15 @@ A GUI application ([sc4pac GUI](https://github.com/memo33/sc4pac-gui/releases)) 
 ## Usage
 
 - Prerequisites:
-  - Java 11+ (https://adoptium.net/installation/)
+  - Java 11+ ([Windows]/[macOS]/[Linux], see [Adoptium] for details)
+  - Mono ([macOS](https://www.mono-project.com/docs/getting-started/install/)/[Linux](https://repology.org/project/mono/versions), not needed on Windows)
   - Enough disk space
-  - On macOS and Linux (not needed on Windows):
-    - Mono ([macOS](https://www.mono-project.com/docs/getting-started/install/)/[Linux](https://repology.org/project/mono/versions)):
-      This is optional and only needed for a few packages that originally use an installer.
+
+  [Adoptium]: https://adoptium.net/installation/
+  [Windows]: https://adoptium.net/temurin/releases/?os=windows&package=jre
+  [macOS]: https://adoptium.net/temurin/releases/?os=mac&package=jre
+  [Linux]: https://repology.org/project/openjdk/versions
+
 - [Download the latest release](https://github.com/memo33/sc4pac-tools/releases/latest)
   and extract the contents to any location in your user directory (for example, your Desktop).
 - Open a shell in the new directory (e.g. on Windows, open the folder and type `cmd` in the address bar of the explorer window)
