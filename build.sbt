@@ -111,6 +111,8 @@ libraryDependencies += ("com.mucommander" % "sevenzipjbinding-all-platforms" % "
 
 libraryDependencies += "dev.zio" %% "zio-http" % "3.0.1" exclude("org.scala-lang.modules", "scala-collection-compat_3")  // server
 
+libraryDependencies += "dev.zio" %% "izumi-reflect" % "3.0.1"  // includes fix for deterministic compilation
+
 libraryDependencies += "org.slf4j" % "slf4j-nop" % "2.0.7"  // ignore logging in zio-http/netty
 
 libraryDependencies += "org.scalatest" %% "scalatest" % "3.2.17" % Test exclude("org.scala-lang.modules", "scala-xml_3")
