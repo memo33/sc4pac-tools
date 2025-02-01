@@ -23,13 +23,13 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) {  // TODO d
 
   private def modifyExplicitModules[R](modify: Seq[BareModule] => ZIO[R, Throwable, Seq[BareModule]]): ZIO[R, Throwable, Seq[BareModule]] = {
     for {
-      pluginsData  <- JsonIo.read[JD.Plugins](JD.Plugins.path(context.profileRoot))  // at this point, file should already exist
-      modsOrig     =  pluginsData.explicit
+      pluginsSpec  <- JsonIo.read[JD.PluginsSpec](JD.PluginsSpec.path(context.profileRoot))  // at this point, file should already exist
+      modsOrig     =  pluginsSpec.explicit
       modsNext     <- modify(modsOrig)
       _            <- ZIO.unless(modsNext == modsOrig) {
-                        val pluginsDataNext = pluginsData.copy(explicit = modsNext)
+                        val pluginsDataNext = pluginsSpec.copy(explicit = modsNext)
                         // we do not check whether file was modified as this entire operation is synchronous and fast, in most cases
-                        JsonIo.write(JD.Plugins.path(context.profileRoot), pluginsDataNext, None)(ZIO.succeed(()))
+                        JsonIo.write(JD.PluginsSpec.path(context.profileRoot), pluginsDataNext, None)(ZIO.succeed(()))
                       }
     } yield modsNext
   }
@@ -475,8 +475,8 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) {  // TODO d
     }
 
     def storeGlobalVariant(globalVariant: Variant): Task[Unit] = for {
-      pluginsData <- JsonIo.read[JD.Plugins](JD.Plugins.path(context.profileRoot))  // json file should exist already
-      _           <- JsonIo.write(JD.Plugins.path(context.profileRoot), pluginsData.copy(config = pluginsData.config.copy(variant = globalVariant)), None)(ZIO.succeed(()))
+      pluginsSpec <- JsonIo.read[JD.PluginsSpec](JD.PluginsSpec.path(context.profileRoot))  // json file should exist already
+      _           <- JsonIo.write(JD.PluginsSpec.path(context.profileRoot), pluginsSpec.copy(config = pluginsSpec.config.copy(variant = globalVariant)), None)(ZIO.succeed(()))
     } yield ()
 
     // TODO catch coursier.error.ResolutionError$CantDownloadModule (e.g. when json files have syntax issues)

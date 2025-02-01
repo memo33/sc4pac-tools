@@ -64,11 +64,11 @@ object JsonData extends SharedData {
     }
   }
 
-  case class Plugins(config: Config, explicit: Seq[BareModule]) derives ReadWriter
-  object Plugins {
+  case class PluginsSpec(config: Config, explicit: Seq[BareModule]) derives ReadWriter
+  object PluginsSpec {
     def path(profileRoot: os.Path): os.Path = profileRoot / "sc4pac-plugins.json"
 
-    def pathURIO: URIO[ProfileRoot, os.Path] = ZIO.service[ProfileRoot].map(profileRoot => Plugins.path(profileRoot.path))
+    def pathURIO: URIO[ProfileRoot, os.Path] = ZIO.service[ProfileRoot].map(profileRoot => PluginsSpec.path(profileRoot.path))
 
     private[sc4pac] val projDirs = dev.dirs.ProjectDirectories.from("", cli.BuildInfo.organization, cli.BuildInfo.name)  // qualifier, organization, application
 
@@ -102,10 +102,10 @@ object JsonData extends SharedData {
     /** Init and write. Here `tempRoot` may be absolute or relative (to profile
       * root) to allow GUI to use a shared `../temp` folder for all profiles.
       */
-    def init(pluginsRoot: os.Path, cacheRoot: os.Path, tempRoot: os.FilePath): RIO[ProfileRoot, Plugins] = {
+    def init(pluginsRoot: os.Path, cacheRoot: os.Path, tempRoot: os.FilePath): RIO[ProfileRoot, PluginsSpec] = {
       for {
         profileRoot  <- ZIO.service[ProfileRoot]
-        data         =  Plugins(
+        spec         =  PluginsSpec(
                           config = Config(
                             pluginsRoot = Config.subRelativize(pluginsRoot, profileRoot),
                             cacheRoot = Config.subRelativize(cacheRoot, profileRoot),
@@ -113,17 +113,17 @@ object JsonData extends SharedData {
                             variant = Map.empty,
                             channels = Constants.defaultChannelUrls),
                           explicit = Seq.empty)
-        pluginsPath  <- Plugins.pathURIO
-        _            <- JsonIo.write(pluginsPath, data, None)(ZIO.succeed(()))
-      } yield data
+        pluginsPath  <- PluginsSpec.pathURIO
+        _            <- JsonIo.write(pluginsPath, spec, None)(ZIO.succeed(()))
+      } yield spec
     }
 
-    /** Reads the Plugins JSON file if it exists, otherwise returns None */
-    val readMaybe: ZIO[ProfileRoot, error.ReadingProfileFailed, Option[Plugins]] = Plugins.pathURIO.flatMap { pluginsPath =>
-      val task: IO[ErrStr | java.io.IOException, Option[Plugins]] =
+    /** Reads the PluginsSpec JSON file if it exists, otherwise returns None */
+    val readMaybe: ZIO[ProfileRoot, error.ReadingProfileFailed, Option[PluginsSpec]] = PluginsSpec.pathURIO.flatMap { pluginsPath =>
+      val task: IO[ErrStr | java.io.IOException, Option[PluginsSpec]] =
         ZIO.ifZIO(ZIO.attemptBlockingIO(os.exists(pluginsPath)))(
           onFalse = ZIO.succeed(None),
-          onTrue = ZIO.attemptBlockingIO(JsonIo.readBlocking[Plugins](pluginsPath)).absolve.map(Some(_))
+          onTrue = ZIO.attemptBlockingIO(JsonIo.readBlocking[PluginsSpec](pluginsPath)).absolve.map(Some(_))
         )
       task.mapError(e => error.ReadingProfileFailed(
         s"Failed to read profile JSON file ${pluginsPath.last}.",
@@ -131,14 +131,14 @@ object JsonData extends SharedData {
       )
     }
 
-    /** Read Plugins from file if it exists, else create it and write it to file. */
-    val readOrInit: RIO[ProfileRoot & CliPrompter, Plugins] = Plugins.pathURIO.flatMap { pluginsPath =>
+    /** Read PluginsSpec from file if it exists, else create it and write it to file. */
+    val readOrInit: RIO[ProfileRoot & CliPrompter, PluginsSpec] = PluginsSpec.pathURIO.flatMap { pluginsPath =>
       ZIO.ifZIO(ZIO.attemptBlocking(os.exists(pluginsPath)))(
-        onTrue = JsonIo.read[Plugins](pluginsPath),
+        onTrue = JsonIo.read[PluginsSpec](pluginsPath),
         onFalse = for {
           (pluginsRoot, cacheRoot) <- promptForPaths
-          data                     <- Plugins.init(pluginsRoot, cacheRoot, tempRoot = defaultTempRoot)
-        } yield data
+          spec                     <- PluginsSpec.init(pluginsRoot, cacheRoot, tempRoot = defaultTempRoot)
+        } yield spec
       )
       .mapError(e => error.ReadingProfileFailed(
         s"Failed to read profile JSON file ${pluginsPath.last}.",
@@ -314,7 +314,7 @@ object JsonData extends SharedData {
     }
   }
   object Profiles {
-    val defaultProfilesRoot: os.Path = os.Path(java.nio.file.Paths.get(Plugins.projDirs.configDir)) / "profiles"
+    val defaultProfilesRoot: os.Path = os.Path(java.nio.file.Paths.get(PluginsSpec.projDirs.configDir)) / "profiles"
 
     def path(profilesDir: os.Path): os.Path = profilesDir / "sc4pac-profiles.json"
 

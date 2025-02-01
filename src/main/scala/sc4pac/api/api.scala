@@ -20,19 +20,19 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
 
   private val makePlatformDefaults: URIO[ProfileRoot, Map[String, Seq[String]]] =
     for {
-      defPlugins  <- JD.Plugins.defaultPluginsRoot
-      defCache    <- JD.Plugins.defaultCacheRoot
+      defPlugins  <- JD.PluginsSpec.defaultPluginsRoot
+      defCache    <- JD.PluginsSpec.defaultCacheRoot
     } yield Map(
       "plugins" -> defPlugins.map(_.toString),
       "cache" -> defCache.map(_.toString),
-      "temp" -> Seq(JD.Plugins.defaultTempRoot.toString),
+      "temp" -> Seq(JD.PluginsSpec.defaultTempRoot.toString),
     )
 
-  /** Sends a 409 ProfileNotInitialized or 500 ReadingProfileFailed if Plugins cannot be loaded. */
-  private val readPluginsOr409: ZIO[ProfileRoot, Response, JD.Plugins] =
-    JD.Plugins.readMaybe
+  /** Sends a 409 ProfileNotInitialized or 500 ReadingProfileFailed if PluginsSpec cannot be loaded. */
+  private val readPluginsSpecOr409: ZIO[ProfileRoot, Response, JD.PluginsSpec] =
+    JD.PluginsSpec.readMaybe
       .mapError((e: error.ReadingProfileFailed) => jsonResponse(expectedFailureMessage(e)).status(expectedFailureStatus(e)))
-      .someOrElseZIO((  // Plugins file does not exist
+      .someOrElseZIO((  // PluginsSpec file does not exist
         for {
           defaults <- makePlatformDefaults
           msg      =  ErrorMessage.ProfileNotInitialized("Profile not initialized.", "Profile JSON file does not exist.", platformDefaults = defaults)
@@ -150,8 +150,8 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
     (JD.Channel.Stats.fromMap(categoryStats), results.sortBy((item, ratio) => (-ratio, item.group, item.name)))
   }
 
-  def installedStatusBuilder(pluginsData: JD.Plugins): zio.RIO[ProfileRoot, BareModule => InstalledStatus] = {
-    val explicit = pluginsData.explicit.toSet
+  def installedStatusBuilder(pluginsSpec: JD.PluginsSpec): zio.RIO[ProfileRoot, BareModule => InstalledStatus] = {
+    val explicit = pluginsSpec.explicit.toSet
     for {
       installed <- JD.PluginsLock.listInstalled2.map(mods => mods.iterator.map(m => m.toBareModule -> m).toMap)
     } yield { (pkg: BareModule) =>
@@ -171,8 +171,8 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
     Method.GET / "profile.read" -> handler { (req: Request) =>
       wrapHttpEndpoint {
         for {
-          pluginsData <- readPluginsOr409
-        } yield jsonResponse(pluginsData.config)
+          pluginsSpec <- readPluginsSpecOr409
+        } yield jsonResponse(pluginsSpec.config)
       }
     },
 
@@ -181,7 +181,7 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
       wrapHttpEndpoint {
         for {
           profileRoot <- ZIO.serviceWith[ProfileRoot](_.path)
-          _           <- ZIO.attemptBlockingIO(os.exists(JD.Plugins.path(profileRoot)) || os.exists(JD.PluginsLock.path(profileRoot)))
+          _           <- ZIO.attemptBlockingIO(os.exists(JD.PluginsSpec.path(profileRoot)) || os.exists(JD.PluginsLock.path(profileRoot)))
                            .filterOrFail(_ == false)(jsonResponse(
                              ErrorMessage.InitNotAllowed("Profile already initialized.",
                                "Manually delete the corresponding .json files if you are sure you want to initialize a new profile.")
@@ -200,8 +200,8 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
                            os.makeDir.all(pluginsRoot)  // TODO ask for confirmation?
                            os.makeDir.all(cacheRoot)
                          }
-          pluginsData <- JD.Plugins.init(pluginsRoot = pluginsRoot, cacheRoot = cacheRoot, tempRoot = tempRoot)
-        } yield jsonResponse(pluginsData.config)
+          pluginsSpec <- JD.PluginsSpec.init(pluginsRoot = pluginsRoot, cacheRoot = cacheRoot, tempRoot = tempRoot)
+        } yield jsonResponse(pluginsSpec.config)
       }
     },
 
@@ -210,8 +210,8 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
       wrapHttpEndpoint {
         for {
           mods        <- parseModulesOr400(req.body)
-          pluginsData <- readPluginsOr409
-          pac         <- Sc4pac.init(pluginsData.config)
+          pluginsSpec <- readPluginsSpecOr409
+          pac         <- Sc4pac.init(pluginsSpec.config)
           _           <- pac.add(mods)
         } yield jsonOk
       }
@@ -222,13 +222,13 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
       wrapHttpEndpoint {
         for {
           mods        <- parseModulesOr400(req.body)
-          pluginsData <- readPluginsOr409
-          added       =  pluginsData.explicit.toSet
+          pluginsSpec <- readPluginsSpecOr409
+          added       =  pluginsSpec.explicit.toSet
           _           <- validateOr400(mods)(added.contains(_))(failedMods => ErrorMessage.BadRequest(
                            s"Package is not among explicitly added plugins: ${failedMods.map(_.orgName).mkString(", ")}",
                            "Get /plugins.added.list for the removable packages."
                          ))
-          pac         <- Sc4pac.init(pluginsData.config)
+          pac         <- Sc4pac.init(pluginsSpec.config)
           _           <- pac.remove(mods)
         } yield jsonOk
       }
@@ -238,19 +238,19 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
     //     let ws = new WebSocket('ws://localhost:51515/update'); ws.onmessage = function(e) { console.log(e) };
     //     ws.send(JSON.stringify({}))
     Method.GET / "update" -> handler { (req: Request) =>
-      readPluginsOr409.foldZIO(
+      readPluginsSpecOr409.foldZIO(
         failure = ZIO.succeed[Response](_),
-        success = pluginsData =>
+        success = pluginsSpec =>
           Handler.webSocket { wsChannel =>
             val updateTask: zio.RIO[ProfileRoot & Ref[Option[FileCache]] & WebSocketLogger, Message] =
               val cookies = Downloader.Cookies(req.url.queryParams.getAll("simtropolisCookie").headOption.orElse(Constants.simtropolisCookie))
               val cookieDesc = cookies.simtropolisCookie.map(c => s"with cookie: ${c.length} bytes").getOrElse("without cookie")
               for {
-                pac          <- Sc4pac.init(pluginsData.config, refreshChannels = req.url.queryParams.getAll("refreshChannels").nonEmpty)
-                pluginsRoot  <- pluginsData.config.pluginsRootAbs
+                pac          <- Sc4pac.init(pluginsSpec.config, refreshChannels = req.url.queryParams.getAll("refreshChannels").nonEmpty)
+                pluginsRoot  <- pluginsSpec.config.pluginsRootAbs
                 wsLogger     <- ZIO.service[WebSocketLogger]
                 _            <- ZIO.succeed(wsLogger.log(s"Updating... ($cookieDesc)"))
-                flag         <- pac.update(pluginsData.explicit, globalVariant0 = pluginsData.config.variant, pluginsRoot = pluginsRoot)
+                flag         <- pac.update(pluginsSpec.explicit, globalVariant0 = pluginsSpec.config.variant, pluginsRoot = pluginsRoot)
                                   .provideSomeLayer(zio.ZLayer.succeedEnvironment(zio.ZEnvironment(
                                     WebSocketPrompter(wsChannel, wsLogger),
                                     cookies,
@@ -292,10 +292,10 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
           (searchText, threshold) <- searchParams(req)
           categoryOpt  =  req.url.queryParams.getAll("category").headOption
           channelOpt   =  req.url.queryParams.getAll("channel").headOption
-          pluginsData  <- readPluginsOr409
-          pac          <- Sc4pac.init(pluginsData.config)
+          pluginsSpec  <- readPluginsSpecOr409
+          pac          <- Sc4pac.init(pluginsSpec.config)
           searchResult <- pac.search(searchText, threshold, category = categoryOpt, channel = channelOpt)
-          createStatus <- installedStatusBuilder(pluginsData)
+          createStatus <- installedStatusBuilder(pluginsSpec)
         } yield jsonResponse(searchResult.map { case (pkg, ratio, summaryOpt) =>
           val statusOrNull = createStatus(pkg)
           PackageSearchResultItem(pkg, relevance = ratio, summary = summaryOpt.getOrElse(""), status = statusOrNull)
@@ -306,10 +306,10 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
     Method.POST / "packages.search.id" -> handler((req: Request) => wrapHttpEndpoint {
       for {
         args         <- parseOr400[FindPackagesArgs](req.body, ErrorMessage.BadRequest("Malformed package names", """Pass a "packages" array of strings of the form '<group>:<name>'."""))
-        pluginsData  <- readPluginsOr409
-        pac          <- Sc4pac.init(pluginsData.config)
+        pluginsSpec  <- readPluginsSpecOr409
+        pac          <- Sc4pac.init(pluginsSpec.config)
         searchResult <- pac.searchById(args.packages)
-        createStatus <- installedStatusBuilder(pluginsData)
+        createStatus <- installedStatusBuilder(pluginsSpec)
       } yield jsonResponse(searchResult.map { case (pkg, summaryOpt) =>
         val statusOrNull = createStatus(pkg)
         PackageSearchResultItem(pkg, relevance = 100, summary = summaryOpt.getOrElse(""), status = statusOrNull)
@@ -320,10 +320,10 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
       for {
         (searchText, threshold) <- searchParams(req)
         categoryOpt  =  req.url.queryParams.getAll("category").headOption
-        pluginsData  <- readPluginsOr409
+        pluginsSpec  <- readPluginsSpecOr409
         installed    <- JD.PluginsLock.listInstalled2
         (stats, searchResult) =  searchPlugins(searchText, threshold, categoryOpt, installed)
-        explicit     =  pluginsData.explicit.toSet
+        explicit     =  pluginsSpec.explicit.toSet
       } yield {
         val items = searchResult.map { case (item, ratio) =>
           val mod = item.toBareModule
@@ -342,12 +342,12 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
                             """Query parameter "pkg" is required.""", "Pass the package identifier as query."
                           )).status(Status.BadRequest))
           mod           <- parseModuleOr400(pkg)
-          pluginsData   <- readPluginsOr409
-          pac           <- Sc4pac.init(pluginsData.config)
+          pluginsSpec   <- readPluginsSpecOr409
+          pac           <- Sc4pac.init(pluginsSpec.config)
           remoteData    <- pac.infoJson(mod).someOrFail(  // TODO avoid decoding/encoding json
                              jsonResponse(ErrorMessage.PackageNotFound("Package not found in any of your channels.", pkg)).status(Status.NotFound)
                            )
-          explicit      =  pluginsData.explicit.toSet
+          explicit      =  pluginsSpec.explicit.toSet
           installed     <- JD.PluginsLock.listInstalled2
         } yield {
           val targetPkgs = collection.mutable.Set[BareModule](mod)  // original package and direct dependencies
@@ -376,8 +376,8 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
     Method.GET / "plugins.added.list" -> handler {
       wrapHttpEndpoint {
         for {
-          pluginsData <- readPluginsOr409
-        } yield jsonResponse(pluginsData.explicit)
+          pluginsSpec <- readPluginsSpecOr409
+        } yield jsonResponse(pluginsSpec.explicit)
       }
     },
 
@@ -385,8 +385,8 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
     Method.GET / "plugins.installed.list" -> handler {
       wrapHttpEndpoint {
         for {
-          pluginsData   <- readPluginsOr409
-          installedIter <- cli.Commands.List.iterateInstalled(pluginsData)
+          pluginsSpec   <- readPluginsSpecOr409
+          installedIter <- cli.Commands.List.iterateInstalled(pluginsSpec)
         } yield {
           jsonResponse(installedIter.map { case (mod, explicit) =>
             InstalledPkg(mod.toBareDep, variant = mod.variant, version = mod.version, explicit = explicit)
@@ -399,8 +399,8 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
     Method.GET / "packages.list" -> handler {
       wrapHttpEndpoint {
         for {
-          pluginsData <- readPluginsOr409
-          pac         <- Sc4pac.init(pluginsData.config)
+          pluginsSpec <- readPluginsSpecOr409
+          pac         <- Sc4pac.init(pluginsSpec.config)
           itemsIter   <- pac.iterateAllChannelPackages(channelUrl = None)
         } yield jsonResponse(itemsIter.flatMap(item => item.toBareDep match {
           case mod: BareModule => item.versions.map { version => ChannelContentsItem(mod, version = version, summary = item.summary, category = item.category) }
@@ -413,8 +413,8 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
     Method.GET / "variants.list" -> handler {
       wrapHttpEndpoint {
         for {
-          pluginsData <- readPluginsOr409
-        } yield jsonResponse(pluginsData.config.variant)(using UP.stringKeyW(implicitly[UP.Writer[Variant]]))
+          pluginsSpec <- readPluginsSpecOr409
+        } yield jsonResponse(pluginsSpec.config.variant)(using UP.stringKeyW(implicitly[UP.Writer[Variant]]))
       }
     },
 
@@ -423,11 +423,11 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
       wrapHttpEndpoint {
         for {
           labels      <- parseOr400[Seq[String]](req.body, ErrorMessage.BadRequest("Malformed variant labels.", "Pass variants as an array of strings."))
-          pluginsData <- readPluginsOr409
-          _           <- validateOr400(labels)(pluginsData.config.variant.contains(_))(failedLabels => ErrorMessage.BadRequest(
+          pluginsSpec <- readPluginsSpecOr409
+          _           <- validateOr400(labels)(pluginsSpec.config.variant.contains(_))(failedLabels => ErrorMessage.BadRequest(
                            s"Variant does not exist: ${failedLabels.mkString(", ")}", "Get /variants.list for the currently configured variants."
                          ))
-          _           <- cli.Commands.VariantReset.removeAndWrite(pluginsData, labels)
+          _           <- cli.Commands.VariantReset.removeAndWrite(pluginsSpec, labels)
         } yield jsonOk
       }
     },
@@ -436,8 +436,8 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
     Method.GET / "channels.list" -> handler {
       wrapHttpEndpoint {
         for {
-          pluginsData <- readPluginsOr409
-        } yield jsonResponse(pluginsData.config.channels)
+          pluginsSpec <- readPluginsSpecOr409
+        } yield jsonResponse(pluginsSpec.config.channels)
       }
     },
 
@@ -453,12 +453,12 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
                               ).status(Status.BadRequest)
                             )
                           ))
-          pluginsData  <- readPluginsOr409
-          pluginsData2 =  pluginsData.copy(config = pluginsData.config.copy(channels =
+          pluginsSpec  <- readPluginsSpecOr409
+          pluginsSpec2 =  pluginsSpec.copy(config = pluginsSpec.config.copy(channels =
                             if (urls2.nonEmpty) urls2.distinct else Constants.defaultChannelUrls
                           ))
-          path         <- JD.Plugins.pathURIO
-          _            <- JsonIo.write(path, pluginsData2, None)(ZIO.succeed(()))
+          path         <- JD.PluginsSpec.pathURIO
+          _            <- JsonIo.write(path, pluginsSpec2, None)(ZIO.succeed(()))
         } yield jsonOk
       }
     },
@@ -467,8 +467,8 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
     Method.GET / "channels.stats" -> handler {
       wrapHttpEndpoint {
         for {
-          pluginsData   <- readPluginsOr409
-          pac           <- Sc4pac.init(pluginsData.config)
+          pluginsSpec   <- readPluginsSpecOr409
+          pac           <- Sc4pac.init(pluginsSpec.config)
           combinedStats =  JD.Channel.Stats.aggregate(pac.context.repositories.map(_.channel.stats))
           statsItems    =  pac.context.repositories.map(r => ChannelStatsItem(
                              url = r.baseUri.toString,
