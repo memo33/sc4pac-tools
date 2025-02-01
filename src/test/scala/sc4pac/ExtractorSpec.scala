@@ -123,14 +123,16 @@ class ExtractorSpec extends AnyWordSpec with Matchers {
       }
     }
 
-    "support mixed levels of subfolders (zip)" in withSampleFiles { (in, out, files) =>
-      val archiveFile = in / os.up / "in.zip"
-      os.zip(archiveFile, Seq(in))  // using SZ would fail inexplicably
-      val wrappedArchive = new WrappedZip(new org.apache.commons.compress.archivers.zip.ZipFile(archiveFile.toIO))
-      wrappedArchive.extractByPredicate(out, createPredicate(), overwrite = true, flatten = false, CliLogger())
-      os.exists(out).shouldBe(true)
-      os.walk(out).filter(os.isFile(_)).map(_.subRelativeTo(out)).sorted
-        .shouldBe(files.map(_.subRelativeTo(in / "common" / "prefix")).sorted)
+    for (suffix <- Seq("zip", "jar", "rar")) {
+      s"support mixed levels of subfolders ($suffix)" in withSampleFiles { (in, out, files) =>
+        val archiveFile = in / os.up / s"in.$suffix"
+        os.zip(archiveFile, Seq(in))  // using SZ would fail inexplicably (fake test for .rar files)
+        val wrappedArchive = new WrappedZip(new org.apache.commons.compress.archivers.zip.ZipFile(archiveFile.toIO))
+        wrappedArchive.extractByPredicate(out, createPredicate(), overwrite = true, flatten = false, CliLogger())
+        os.exists(out).shouldBe(true)
+        os.walk(out).filter(os.isFile(_)).map(_.subRelativeTo(out)).sorted
+          .shouldBe(files.map(_.subRelativeTo(in / "common" / "prefix")).sorted)
+      }
     }
 
     "support plain files" in withSampleFiles { (in, out, files) =>
@@ -143,10 +145,15 @@ class ExtractorSpec extends AnyWordSpec with Matchers {
         .shouldBe(files.map(f => f.subRelativeTo(f / os.up)).sorted)
     }
 
-    for (suffix <- Seq("jar", "ZIP")) {
+    for (suffix <- Seq("jar", "ZIP", "7z", "rar", "exe")) {
       s"support nested archives ($suffix)" in withSampleFiles { (in, out, files) =>
         val nestedFile = in / os.up / s"in.$suffix"
-        os.zip(nestedFile, Seq(in))
+        if (suffix == "7z") {
+          createArchive(in, nestedFile, SZ.ArchiveFormat.SEVEN_ZIP)
+        } else {
+          // rar and NSIS exe files are extracted with generic 7z-native: we fake this test by passing a zip file
+          os.zip(nestedFile, Seq(in))
+        }
         val archiveFile = in / os.up / s"in.$suffix.zip"
         os.zip(archiveFile, Seq(nestedFile))
         val jarsDir = in / os.up / "jars"

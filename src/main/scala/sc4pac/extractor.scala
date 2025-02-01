@@ -52,7 +52,7 @@ object Extractor {
 
       val acceptsNested: Predicate = { path =>
         val lname = path.last.toLowerCase(java.util.Locale.ENGLISH)
-        if (lname.endsWith(".jar") || lname.endsWith(".zip") || lname.endsWith(".7z") || lname.endsWith(".exe")) {
+        if (lname.endsWith(".jar") || lname.endsWith(".zip") || lname.endsWith(".7z") || lname.endsWith(".rar") || lname.endsWith(".exe")) {
           val pathString = path.segments.mkString("/", "/", "")  // paths are checked with leading / and with / as separator
           excludeNested.find(_.matcher(pathString).find()) match {
             case None => Some(NestedArchiveNoopValidator)

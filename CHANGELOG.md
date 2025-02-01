@@ -1,6 +1,8 @@
 # Changelog
 
 ## [Unreleased]
+### Fixed
+- added support for extracting nested .rar files (#27).
 
 
 ## [0.5.3] - 2025-01-26
