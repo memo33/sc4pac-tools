@@ -44,10 +44,11 @@ object Find {
     * repository channel contents updated. */
   def packageData[A <: JD.Package | JD.Asset : Reader](module: C.Module, version: String): RIO[ResolutionContext, Option[A]] = {
     def tryAllRepos(repos: Seq[MetadataRepository], context: ResolutionContext): Task[Option[A]] = ZIO.collectFirst(repos) { repo =>
-        repo.fetchModuleJson[A](module, version, context.cache.fetchText(context.logger))
+        repo.fetchModuleJson[Logger, A](module, version, context.cache.fetchText)
           .uninterruptible  // uninterruptile to avoid incomplete-download error messages when resolving is interrupted to prompt for a variant selection (downloading json should be fairly quick anyway)
           .map(Some(_))
           .catchSome(handleMetadataDownloadError(module.orgName, context))
+          .provideSomeLayer(zio.ZLayer.succeed(context.logger))
     }
 
     ZIO.service[ResolutionContext].flatMap { context =>
@@ -104,10 +105,11 @@ object Find {
     for {
       context      <- ZIO.service[ResolutionContext]
       (errs, rels) <- ZIO.partitionPar(context.repositories) { repo =>
-                        repo.fetchExternalPackage(module, context.cache.fetchText(context.logger))
+                        repo.fetchExternalPackage(module, context.cache.fetchText)
                           .catchSome(handleMetadataDownloadError(module.orgName, context))
                           .map(extPkgOpt => repo.baseUri -> extPkgOpt.toSeq.flatMap(_.requiredBy))
                       }
+                      .provideSomeLayer(zio.ZLayer.succeed(context.logger))
       result       <- if (rels.nonEmpty) {  // some channels could be read successfully (so ignore errors for simplicity, even though result may be incomplete)
                         ZIO.succeed(rels.filter(_._2.nonEmpty))
                       } else {

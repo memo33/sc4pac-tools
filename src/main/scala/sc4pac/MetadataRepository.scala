@@ -4,7 +4,7 @@ package sc4pac
 import coursier.core.{Module, Versions, Version}
 import coursier.cache as CC
 import upickle.default.Reader
-import zio.{ZIO, IO, UIO}
+import zio.{ZIO, IO, UIO, RIO}
 
 import sc4pac.error.*
 import sc4pac.JsonData as JD
@@ -44,16 +44,16 @@ sealed abstract class MetadataRepository(val baseUri: java.net.URI) {
   /** For a module (no asset, no variant) of a given version, fetch the
     * corresponding `JD.Package` contained in its json file.
     */
-  def fetchModuleJson[A <: JD.PackageAsset : Reader](module: Module, version: String, fetch: MetadataRepository.Fetch): zio.Task[A]
+  def fetchModuleJson[R, A <: JD.PackageAsset : Reader](module: Module, version: String, fetch: MetadataRepository.Fetch[R]): RIO[R, A]
 
-  def fetchExternalPackage(module: BareModule, fetch: MetadataRepository.Fetch): zio.Task[Option[JD.ExternalPackage]]
+  def fetchExternalPackage[R](module: BareModule, fetch: MetadataRepository.Fetch[R]): RIO[R, Option[JD.ExternalPackage]]
 
   def iterateChannelPackages: Iterator[JD.ChannelItem]
 }
 
 object MetadataRepository {
 
-  type Fetch = Artifact => IO[CC.ArtifactError, String]
+  type Fetch[R] = Artifact => ZIO[R, CC.ArtifactError, String]
 
   def channelContentsUrl(baseUri: java.net.URI): java.net.URI =
     if (baseUri.getPath.endsWith(".yaml")) baseUri else baseUri.resolve(JsonRepoUtil.channelContentsFilename)
@@ -138,7 +138,7 @@ private class JsonRepository(
   /** For a module (no asset, no variant) of a given version, fetch the
     * corresponding `JD.Package` contained in its json file.
     */
-  def fetchModuleJson[A <: JD.PackageAsset : Reader](module: Module, version: String, fetch: MetadataRepository.Fetch): zio.Task[A] = {
+  def fetchModuleJson[R, A <: JD.PackageAsset : Reader](module: Module, version: String, fetch: MetadataRepository.Fetch[R]): RIO[R, A] = {
     val dep = CoursierUtil.bareDepFromModule(module)
     channel.versions.get(dep).flatMap(_.find(_._1 == version)) match
       // This only works for concrete versions (so not for "latest.release").
@@ -159,7 +159,7 @@ private class JsonRepository(
           .flatMap((jsonStr: String) => JsonIo.read[A](jsonStr, errMsg = remoteUrl))
   }
 
-  def fetchExternalPackage(module: BareModule, fetch: MetadataRepository.Fetch): zio.Task[Option[JD.ExternalPackage]] = {
+  def fetchExternalPackage[R](module: BareModule, fetch: MetadataRepository.Fetch[R]): RIO[R, Option[JD.ExternalPackage]] = {
     externalPackages.get(module) match {
       case None => ZIO.succeed(None)
       case Some(extPkg) =>
@@ -188,7 +188,7 @@ private class YamlRepository(
     channelData.get(dep).map(_.keys.toSeq).getOrElse(Seq.empty)
   }
 
-  def fetchModuleJson[A <: JD.PackageAsset : Reader](module: Module, version: String, fetch: MetadataRepository.Fetch): zio.Task[A] = {
+  def fetchModuleJson[R, A <: JD.PackageAsset : Reader](module: Module, version: String, fetch: MetadataRepository.Fetch[R]): RIO[R, A] = {
     val dep = CoursierUtil.bareDepFromModule(module)
     channelData.get(dep).flatMap(_.get(version)) match {
       case None =>
@@ -199,7 +199,7 @@ private class YamlRepository(
     }
   }
 
-  def fetchExternalPackage(module: BareModule, fetch: MetadataRepository.Fetch): zio.Task[Option[JD.ExternalPackage]] = {
+  def fetchExternalPackage[R](module: BareModule, fetch: MetadataRepository.Fetch[R]): RIO[R, Option[JD.ExternalPackage]] = {
     ZIO.succeed(externalPackages.get(module))
   }
 

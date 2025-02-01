@@ -65,6 +65,9 @@ package object sc4pac {
   def unsafeRun[E, A](effect: zio.IO[E, A]): A = zio.Unsafe.unsafe { implicit unsafe =>
     zio.Runtime.default.unsafe.run(effect).getOrThrowFiberFailure()
   }
+  def unsafeRunNoWrap[E <: Throwable, A](effect: zio.IO[E, A]): A = zio.Unsafe.unsafe { implicit unsafe =>
+    zio.Runtime.default.unsafe.run(effect).getOrThrow()
+  }
 
   /** Root directory of an individual profile. */
   class ProfileRoot(val path: os.Path)

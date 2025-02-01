@@ -30,7 +30,7 @@ class DownloaderSpec extends AnyWordSpec with Matchers {
       // After 10 ticks (of 20), `manyDownloads` will be interrupted.
       // By then, only 2 (of 6) downloads launched on the pool, so we expect
       // `count` to be about 2 * 10.
-      unsafeRun(
+      unsafeRunNoWrap(
         manyDownloads.race(zio.ZIO.sleep(zio.Duration.fromMillis(deltaMs * 10 + deltaMs/2)))
       )
 

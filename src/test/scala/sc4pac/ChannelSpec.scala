@@ -112,13 +112,13 @@ url: dummy
       val layer = zio.ZLayer.succeed(context)
       import JsonData.bareModuleRw
 
-      unsafeRun(
+      unsafeRunNoWrap(
         Find.requiredByExternal(JD.bareModuleRead("ext:pkg101"))
           .provideSomeLayer(layer)
       ).head._2
         .map(_.orgName).toSet.shouldBe(Set("test:pkg1"))
 
-      unsafeRun(
+      unsafeRunNoWrap(
         Find.requiredByExternal(JD.bareModuleRead("ext:pkg102"))
           .provideSomeLayer(layer)
       ).head._2
