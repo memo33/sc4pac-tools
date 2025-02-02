@@ -7,14 +7,8 @@ import zio.{ZIO, RIO}
 import scala.collection.immutable.TreeSeqMap
 
 import sc4pac.JsonData as JD
-import sc4pac.Constants.isSc4pacAsset
 import sc4pac.error.Sc4pacAssetNotFound
 import Resolution.{Dep, DepAsset}
-
-object CoursierUtil {
-  def bareDepFromModule(module: C.Module): BareDep =
-    if (isSc4pacAsset(module)) BareAsset(module.name) else BareModule(module.organization, module.name)
-}
 
 /** Wrapper around Coursier's resolution mechanism with more stringent types for
   * our purposes.
@@ -41,20 +35,18 @@ object Resolution {
       * attributes.
       */
     private[Resolution] def fromBareDependency(dependency: BareDep, globalVariant: Variant): RIO[ResolutionContext, Dep] = dependency match {
-      case BareAsset(assetId) =>
+      case bareAsset: BareAsset =>
         // assets do not have variants
-        val mod = C.Module(Constants.sc4pacAssetOrg, assetId, attributes = Map.empty)
-        Find.concreteVersion(mod, Constants.versionLatestRelease)
-          .flatMap(Find.packageData[JD.Asset](mod, _))
+        Find.concreteVersion(bareAsset, Constants.versionLatestRelease)
+          .flatMap(Find.packageData[JD.Asset](bareAsset, _))
           .flatMap {
-            case None => ZIO.fail(new Sc4pacAssetNotFound(s"Could not find metadata of asset ${assetId.value}.",
+            case None => ZIO.fail(new Sc4pacAssetNotFound(s"Could not find metadata of asset ${bareAsset.assetId.value}.",
               "Most likely this is due to incorrect or incomplete metadata in the corresponding channel."))
             case Some(data) => ZIO.succeed(DepAsset.fromAsset(data))
           }
       case bareMod @ BareModule(group, name) =>
-        val mod = C.Module(group, name, attributes = Map.empty)
         for {
-          concreteVersion  <- Find.concreteVersion(mod, Constants.versionLatestRelease)
+          concreteVersion  <- Find.concreteVersion(bareMod, Constants.versionLatestRelease)
           (_, variantData) <- Find.matchingVariant(bareMod, concreteVersion, globalVariant)
         } yield DepModule(group = group, name = name, version = concreteVersion, variant = variantData.variant)
     }

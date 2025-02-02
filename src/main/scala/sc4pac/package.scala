@@ -59,9 +59,6 @@ package object sc4pac {
     }
   }
 
-  // TODO find better place
-  private[sc4pac] def isSubMap[A, B](small: Map[A, B], large: Map[A, B]): Boolean = small.keysIterator.forall(a => small.get(a) == large.get(a))
-
   def unsafeRun[E, A](effect: zio.IO[E, A]): A = zio.Unsafe.unsafe { implicit unsafe =>
     zio.Runtime.default.unsafe.run(effect).getOrThrowFiberFailure()
   }

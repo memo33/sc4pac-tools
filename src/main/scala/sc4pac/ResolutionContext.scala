@@ -1,8 +1,6 @@
 package io.github.memo33
 package sc4pac
 
-import coursier.core as C
-
 class ResolutionContext(
   val repositories: Seq[MetadataRepository],
   val cache: FileCache,
@@ -39,11 +37,11 @@ class ResolutionContext(
     }
 
     // gather available versions of module across all repositories (in parallel)
-    def versionsOf(module: C.Module): zio.Task[coursier.core.Versions] = {
+    def versionsOf(dep: BareDep): zio.Task[coursier.core.Versions] = {
 
       val t: zio.UIO[Seq[(MetadataRepository, Either[ErrStr, coursier.core.Versions])]] =
         zio.ZIO.foreachPar(repositories) { repo =>
-          (repo.fetchVersions(module)).either.map(repo -> _.map(_._1))
+          (repo.fetchVersions(dep)).either.map(repo -> _.map(_._1))
         }
 
       t.map { results =>

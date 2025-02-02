@@ -2,8 +2,7 @@ package io.github.memo33
 package sc4pac
 
 import scala.collection.immutable.{Set, Seq}
-import coursier.Type
-import coursier.core.{Module, Organization, ModuleName}
+import coursier.core.{Organization, ModuleName}
 import zio.{IO, ZIO, Task, Scope, RIO, Ref}
 import upickle.default as UP
 
@@ -23,13 +22,13 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) {  // TODO d
 
   private def modifyExplicitModules[R](modify: Seq[BareModule] => ZIO[R, Throwable, Seq[BareModule]]): ZIO[R, Throwable, Seq[BareModule]] = {
     for {
-      pluginsData  <- JsonIo.read[JD.Plugins](JD.Plugins.path(context.profileRoot))  // at this point, file should already exist
-      modsOrig     =  pluginsData.explicit
+      pluginsSpec  <- JsonIo.read[JD.PluginsSpec](JD.PluginsSpec.path(context.profileRoot))  // at this point, file should already exist
+      modsOrig     =  pluginsSpec.explicit
       modsNext     <- modify(modsOrig)
       _            <- ZIO.unless(modsNext == modsOrig) {
-                        val pluginsDataNext = pluginsData.copy(explicit = modsNext)
+                        val pluginsDataNext = pluginsSpec.copy(explicit = modsNext)
                         // we do not check whether file was modified as this entire operation is synchronous and fast, in most cases
-                        JsonIo.write(JD.Plugins.path(context.profileRoot), pluginsDataNext, None)(ZIO.succeed(()))
+                        JsonIo.write(JD.PluginsSpec.path(context.profileRoot), pluginsDataNext, None)(ZIO.succeed(()))
                       }
     } yield modsNext
   }
@@ -134,9 +133,8 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) {  // TODO d
   }
 
   def infoJson(module: BareModule): Task[Option[JD.Package]] = {
-    val mod = Module(module.group, module.name, attributes = Map.empty)
-    Find.concreteVersion(mod, Constants.versionLatestRelease)
-      .flatMap(Find.packageData[JD.Package](mod, _))
+    Find.concreteVersion(module, Constants.versionLatestRelease)
+      .flatMap(Find.packageData[JD.Package](module, _))
       .zipWithPar(Find.requiredByExternal(module)) {  // In addition to existing intra-channel dependencies, add inter-channel dependency relations to `requiredBy` field.
         case (Some(pkg), relations) =>
           val requiredBy2 = (pkg.info.requiredBy.iterator ++ relations.iterator.flatMap(_._2)).toSeq.distinct.sorted
@@ -475,8 +473,8 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) {  // TODO d
     }
 
     def storeGlobalVariant(globalVariant: Variant): Task[Unit] = for {
-      pluginsData <- JsonIo.read[JD.Plugins](JD.Plugins.path(context.profileRoot))  // json file should exist already
-      _           <- JsonIo.write(JD.Plugins.path(context.profileRoot), pluginsData.copy(config = pluginsData.config.copy(variant = globalVariant)), None)(ZIO.succeed(()))
+      pluginsSpec <- JsonIo.read[JD.PluginsSpec](JD.PluginsSpec.path(context.profileRoot))  // json file should exist already
+      _           <- JsonIo.write(JD.PluginsSpec.path(context.profileRoot), pluginsSpec.copy(config = pluginsSpec.config.copy(variant = globalVariant)), None)(ZIO.succeed(()))
     } yield ()
 
     // TODO catch coursier.error.ResolutionError$CantDownloadModule (e.g. when json files have syntax issues)

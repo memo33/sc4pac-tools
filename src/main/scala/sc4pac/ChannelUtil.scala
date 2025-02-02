@@ -4,7 +4,6 @@ package sc4pac
 import io.circe.{ParsingFailure, Json}
 import upickle.default.{Reader, ReadWriter, writeTo}
 import zio.{ZIO, IO, Task, RIO}
-import coursier.core as C
 
 import sc4pac.JsonData as JD
 import sc4pac.JsonData.{subPathRw, instantRw, bareModuleRw}

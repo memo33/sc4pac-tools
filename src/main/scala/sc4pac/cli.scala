@@ -100,7 +100,7 @@ object Commands {
         mods   <- ZIO.fromEither(Sc4pac.parseModules(args.all)).catchAll { (err: ErrStr) =>
                     error(caseapp.core.Error.Other(s"Package format is <group>:<package-name> ($err)"))
                   }
-        config <- JD.Plugins.readOrInit.map(_.config)
+        config <- JD.PluginsSpec.readOrInit.map(_.config)
         pac    <- Sc4pac.init(config)
         _      <- pac.add(mods)
       } yield ()
@@ -124,10 +124,10 @@ object Commands {
   case object Update extends Command[UpdateOptions] {
     def run(options: UpdateOptions, args: RemainingArgs): Unit = {
       val task = for {
-        pluginsData  <- JD.Plugins.readOrInit
-        pac          <- Sc4pac.init(pluginsData.config)
-        pluginsRoot  <- pluginsData.config.pluginsRootAbs
-        flag         <- pac.update(pluginsData.explicit, globalVariant0 = pluginsData.config.variant, pluginsRoot = pluginsRoot)
+        pluginsSpec  <- JD.PluginsSpec.readOrInit
+        pac          <- Sc4pac.init(pluginsSpec.config)
+        pluginsRoot  <- pluginsSpec.config.pluginsRootAbs
+        flag         <- pac.update(pluginsSpec.explicit, globalVariant0 = pluginsSpec.config.variant, pluginsRoot = pluginsRoot)
                           .provideSomeLayer(zio.ZLayer.succeed(Downloader.Cookies(Constants.simtropolisCookie)))
       } yield ()
       runMainExit(task.provideLayer(cliLayer.map(_.update((_: CliPrompter).withAutoYes(options.yes)))), exit)
@@ -158,7 +158,7 @@ object Commands {
           mods   <- ZIO.fromEither(Sc4pac.parseModules(args.all)).catchAll { (err: ErrStr) =>
                       error(caseapp.core.Error.Other(s"Package format is <group>:<package-name> ($err)"))
                     }
-          config <- JD.Plugins.readOrInit.map(_.config)
+          config <- JD.PluginsSpec.readOrInit.map(_.config)
           pac    <- Sc4pac.init(config)
           _      <- if (options.interactive) {
                       Prompt.ifInteractive(
@@ -208,8 +208,8 @@ object Commands {
         fullHelpAsked(commandName)
       } else {
         val task = for {
-          pluginsData  <- JD.Plugins.readOrInit
-          pac          <- Sc4pac.init(pluginsData.config)
+          pluginsSpec  <- JD.PluginsSpec.readOrInit
+          pac          <- Sc4pac.init(pluginsSpec.config)
           query        =  args.all.mkString(" ")
           searchResult <- pac.search(query, options.threshold, category = None, channel = None)
           installed    <- JD.PluginsLock.listInstalled.map(_.map(_.toBareDep).toSet)
@@ -246,8 +246,8 @@ object Commands {
             mods         <- ZIO.fromEither(Sc4pac.parseModules(pkgNames)).catchAll { (err: ErrStr) =>
                               error(caseapp.core.Error.Other(s"Package format is <group>:<package-name> ($err)"))
                             }
-            pluginsData  <- JD.Plugins.readOrInit
-            pac          <- Sc4pac.init(pluginsData.config)
+            pluginsSpec  <- JD.PluginsSpec.readOrInit
+            pac          <- Sc4pac.init(pluginsSpec.config)
             infoResults  <- ZIO.foreachPar(mods)(pac.info)
             logger       <- ZIO.service[CliLogger]
           } yield {
@@ -272,8 +272,8 @@ object Commands {
   case object List extends Command[ListOptions] {
     def run(options: ListOptions, args: RemainingArgs): Unit = {
       val task = for {
-        pluginsData  <- JD.Plugins.readOrInit
-        iter         <- iterateInstalled(pluginsData)
+        pluginsSpec  <- JD.PluginsSpec.readOrInit
+        iter         <- iterateInstalled(pluginsSpec)
         logger       <- ZIO.service[CliLogger]
       } yield {
         for ((mod, explicit) <- iter) logger.logInstalled(mod, explicit)
@@ -281,10 +281,10 @@ object Commands {
       runMainExit(task.provideLayer(cliLayer), exit)
     }
 
-    def iterateInstalled(pluginsData: JD.Plugins): zio.RIO[ProfileRoot, Iterator[(DepModule, Boolean)]] = {
+    def iterateInstalled(pluginsSpec: JD.PluginsSpec): zio.RIO[ProfileRoot, Iterator[(DepModule, Boolean)]] = {
       for (installed <- JD.PluginsLock.listInstalled) yield {
         val sorted = installed.sortBy(mod => (mod.group.value, mod.name.value))
-        val explicit: Set[BareModule] = pluginsData.explicit.toSet
+        val explicit: Set[BareModule] = pluginsSpec.explicit.toSet
         sorted.iterator.map(mod => (mod, explicit(mod.toBareDep)))
       }
     }
@@ -313,7 +313,7 @@ object Commands {
       if (!options.interactive && args.all.isEmpty) {
         fullHelpAsked(commandName)
       } else {
-        val task = JD.Plugins.readOrInit.flatMap { data =>
+        val task = JD.PluginsSpec.readOrInit.flatMap { data =>
           if (data.config.variant.isEmpty) {
             ZIO.succeed(println("The list of configured variants is empty. The next time you install a package that comes in variants, you can choose again."))
           } else {
@@ -334,10 +334,10 @@ object Commands {
       }
     }
 
-    def removeAndWrite(data: JD.Plugins, selected: Seq[String]): zio.RIO[ProfileRoot, Unit] = {
+    def removeAndWrite(data: JD.PluginsSpec, selected: Seq[String]): zio.RIO[ProfileRoot, Unit] = {
       val data2 = data.copy(config = data.config.copy(variant = data.config.variant -- selected))
       for {
-        path <- JD.Plugins.pathURIO
+        path <- JD.PluginsSpec.pathURIO
         _    <- JsonIo.write(path, data2, None)(ZIO.succeed(()))
       } yield ()
     }
@@ -372,9 +372,9 @@ object Commands {
                 error(caseapp.core.Error.Other(s"Local channel file does not exist: $uri"))
               } else {
                 val task = for {
-                  data  <- JD.Plugins.readOrInit
+                  data  <- JD.PluginsSpec.readOrInit
                   data2 =  data.copy(config = data.config.copy(channels = (data.config.channels :+ uri).distinct))
-                  path  <- JD.Plugins.pathURIO
+                  path  <- JD.PluginsSpec.pathURIO
                   _     <- JsonIo.write(path, data2, None)(ZIO.succeed(()))
                   count =  data2.config.channels.length - data.config.channels.length
                   _     <- ZIO.succeed{ println(if (count == 0) "Channel already exists." else s"Added 1 channel.") }
@@ -407,7 +407,7 @@ object Commands {
       if (!options.interactive && args.all.isEmpty) {
         fullHelpAsked(commandName)
       } else {
-        val task = JD.Plugins.readOrInit.flatMap { data =>
+        val task = JD.PluginsSpec.readOrInit.flatMap { data =>
           if (data.config.channels.isEmpty) {
             ZIO.succeed(println("The list of channel URLs is already empty."))
           } else {
@@ -428,7 +428,7 @@ object Commands {
                                   println("No matching channel found, so none of the channels have been removed.")
                               }
               data2        =  data.copy(config = data.config.copy(channels = keep))
-              path         <- JD.Plugins.pathURIO
+              path         <- JD.PluginsSpec.pathURIO
               _            <- JsonIo.write(path, data2, None)(ZIO.succeed(()))
             } yield ()
           }
@@ -446,9 +446,9 @@ object Commands {
     override def names = I.List(I.List("channel", "list"))
     def run(options: ChannelListOptions, args: RemainingArgs): Unit = {
       val task = for {
-        pluginsData <- JD.Plugins.readOrInit
+        pluginsSpec <- JD.PluginsSpec.readOrInit
       } yield {
-        for (url <- pluginsData.config.channels) {
+        for (url <- pluginsSpec.config.channels) {
           println(url)
         }
       }

@@ -81,17 +81,6 @@ abstract class SharedData {
     def bareDependencies: Seq[BareDep] = bareModules ++ assets.map(a => BareAsset(ModuleName(a.assetId)))
   }
   object VariantData {
-    private val variantPrefix = "variant."
-
-    def variantToAttributes(variant: Variant): Map[String, String] = {
-      require(variant.keysIterator.forall(k => !k.startsWith(variantPrefix)))
-      variant.map((k, v) => (s"${variantPrefix}$k", v))
-    }
-
-    def variantFromAttributes(attributes: Map[String, String]): Variant = attributes.collect {
-      case (k, v) if k.startsWith(variantPrefix) => (k.substring(variantPrefix.length), v)
-    }
-
     def variantString(variant: Variant): String = variant.toSeq.sorted.map((k, v) => s"$k=$v").mkString(", ")
   }
 
@@ -120,14 +109,6 @@ abstract class SharedData {
     requiredBy: Seq[BareModule] = Seq.empty,  // optional and only informative (mangles all variants and versions)
     checksum: Checksum = emptyChecksum,
   ) extends PackageAsset /*derives ReadWriter*/ {
-    def attributes: Map[String, String] = {
-      val m = Map(Asset.urlKey -> url)
-      if (lastModified != null) {
-        m + (Asset.lastModifiedKey -> lastModified.toString)
-      } else {
-        m
-      }
-    }
 
     def toBareDep: BareAsset = BareAsset(assetId = ModuleName(assetId))
 

@@ -28,7 +28,7 @@ ThisBuild / javacOptions ++= Seq("--release", "11")
 
 console / initialCommands := """
 import io.github.memo33.sc4pac.*
-lazy val pacman = unsafeRun(JsonData.Plugins.readOrInit.flatMap(data => Sc4pac.init(data.config)).provideLayer(cli.Commands.cliLayer))
+lazy val pacman = unsafeRun(JsonData.PluginsSpec.readOrInit.flatMap(data => Sc4pac.init(data.config)).provideLayer(cli.Commands.cliLayer))
 import zio.{ZIO, IO, Task}
 """
 
@@ -75,7 +75,7 @@ assembly / assemblyMergeStrategy := {
 
 
 val coursierVersion = "2.1.2"
-libraryDependencies += "io.get-coursier" %% "coursier" % coursierVersion cross CrossVersion.for3Use2_13  // resolver, not yet available for scala 3
+libraryDependencies += "io.get-coursier" %% "coursier-cache" % coursierVersion cross CrossVersion.for3Use2_13  // resolver, not yet available for scala 3
 
 libraryDependencies += "dev.zio" %% "zio-nio" % "2.0.2" exclude("org.scala-lang.modules", "scala-collection-compat_3")  // solves version conflict with coursier (compat package is empty in both 2.13 and 3 anyway)
 
