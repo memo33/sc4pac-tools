@@ -1,7 +1,6 @@
 package io.github.memo33
 package sc4pac
 
-import coursier.core.{Configuration, Organization, Type, Module}
 import java.util.regex.Pattern
 import scala.concurrent.duration.DurationInt
 
@@ -81,8 +80,6 @@ object Constants {
   lazy val monoCommand: Option[String] = Option(System.getenv("SC4PAC_MONO_CMD")).filter(_.nonEmpty)
   lazy val cicdecCommand: Seq[String] =
     monoCommand.toSeq ++ Seq(Option(System.getenv("SC4PAC_CICDEC_CMD")).filter(_.nonEmpty).getOrElse("cicdec"))
-
-  def isSc4pacAsset(module: Module): Boolean = module.organization == Constants.sc4pacAssetOrg
 
   lazy val isInteractive: Boolean = try {
     import org.fusesource.jansi.{AnsiConsole, AnsiType}

@@ -2,8 +2,7 @@ package io.github.memo33
 package sc4pac
 
 import scala.collection.immutable.{Set, Seq}
-import coursier.Type
-import coursier.core.{Module, Organization, ModuleName}
+import coursier.core.{Organization, ModuleName}
 import zio.{IO, ZIO, Task, Scope, RIO, Ref}
 import upickle.default as UP
 
@@ -134,9 +133,8 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) {  // TODO d
   }
 
   def infoJson(module: BareModule): Task[Option[JD.Package]] = {
-    val mod = Module(module.group, module.name, attributes = Map.empty)
-    Find.concreteVersion(mod, Constants.versionLatestRelease)
-      .flatMap(Find.packageData[JD.Package](mod, _))
+    Find.concreteVersion(module, Constants.versionLatestRelease)
+      .flatMap(Find.packageData[JD.Package](module, _))
       .zipWithPar(Find.requiredByExternal(module)) {  // In addition to existing intra-channel dependencies, add inter-channel dependency relations to `requiredBy` field.
         case (Some(pkg), relations) =>
           val requiredBy2 = (pkg.info.requiredBy.iterator ++ relations.iterator.flatMap(_._2)).toSeq.distinct.sorted

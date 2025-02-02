@@ -1,7 +1,7 @@
 package io.github.memo33
 package sc4pac
 
-import coursier.core.{Module, ModuleName, Organization}
+import coursier.core.{ModuleName, Organization}
 import coursier.core as C
 import upickle.default.{ReadWriter, readwriter, stringKeyRW}
 import java.nio.file.{Path as NioPath}
@@ -159,9 +159,6 @@ object JsonData extends SharedData {
     installedAt: Instant = installedAtDummy,  // since scheme 2
     updatedAt: Instant = installedAtDummy,  // since scheme 2
   ) derives ReadWriter {
-    def moduleWithoutAttributes = Module(Organization(group), ModuleName(name), attributes=Map.empty)
-    def moduleWithAttributes = Module(Organization(group), ModuleName(name), attributes=VariantData.variantToAttributes(variant))
-    // def toDependency = DepVariant.fromDependency(C.Dependency(moduleWithAttributes, version))  // TODO remove?
     def toDepModule = DepModule(Organization(group), ModuleName(name), version = version, variant = variant)
     def toBareModule = BareModule(Organization(group), ModuleName(name))
     private[sc4pac] def toSearchString: String = s"$group:$name $summary".toLowerCase(java.util.Locale.ENGLISH)  // copied from ChannelItem.toSearchString

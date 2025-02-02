@@ -1,7 +1,6 @@
 package io.github.memo33
 package sc4pac
 
-import coursier.core as C
 import coursier.cache.ArtifactError
 import zio.{ZIO, Task, RIO}
 import upickle.default.Reader
@@ -12,14 +11,14 @@ import sc4pac.error.{Sc4pacVersionNotFound, Sc4pacMissingVariant, Sc4pacAssetNot
 object Find {
 
   /** If version is latest.release, this picks the latest version across all repositories. */
-  def concreteVersion(module: C.Module, version: String): RIO[ResolutionContext, String] = {
+  def concreteVersion(dep: BareDep, version: String): RIO[ResolutionContext, String] = {
     // TODO bulk-query MetadataRepository for versions of all modules for efficiency
     if (coursier.core.Latest(version).isEmpty) {
       ZIO.succeed(version)  // version is already concrete
     } else {  // pick latest version
       for {
         context <- ZIO.service[ResolutionContext]
-        version <- context.coursierApi.versionsOf(module).map(_.latest)
+        version <- context.coursierApi.versionsOf(dep).map(_.latest)
       } yield version
     }
   }
@@ -42,12 +41,12 @@ object Find {
   /** Find the JD.Package or JD.Asset corresponding to module and version,
     * across all repositories. If not found at all, try a second time with the
     * repository channel contents updated. */
-  def packageData[A <: JD.Package | JD.Asset : Reader](module: C.Module, version: String): RIO[ResolutionContext, Option[A]] = {
+  def packageData[A <: JD.Package | JD.Asset : Reader](dep: BareDep, version: String): RIO[ResolutionContext, Option[A]] = {
     def tryAllRepos(repos: Seq[MetadataRepository], context: ResolutionContext): Task[Option[A]] = ZIO.collectFirst(repos) { repo =>
-        repo.fetchModuleJson[Logger, A](module, version, context.cache.fetchText)
+        repo.fetchModuleJson[Logger, A](dep, version, context.cache.fetchText)
           .uninterruptible  // uninterruptile to avoid incomplete-download error messages when resolving is interrupted to prompt for a variant selection (downloading json should be fairly quick anyway)
           .map(Some(_))
-          .catchSome(handleMetadataDownloadError(module.orgName, context))
+          .catchSome(handleMetadataDownloadError(dep.orgName, context))
           .provideSomeLayer(zio.ZLayer.succeed(context.logger))
     }
 
@@ -64,7 +63,7 @@ object Find {
             // For simplicity, we do not store the new repositories -- this should
             // only affect few packages that have been updated, anyway.
             val repoUris = context.repositories.map(_.baseUri)
-            context.logger.log(s"Could not find metadata of ${module}. Trying to update channel contents.")
+            context.logger.log(s"Could not find metadata of ${dep.orgName}. Trying to update channel contents.")
             for {
               repos   <- Sc4pac.initializeRepositories(repoUris, context.cache, Constants.channelContentsTtlShort)  // 60 seconds
                           .provideSomeLayer(zio.ZLayer.succeed(ProfileRoot(context.profileRoot)))
@@ -74,6 +73,8 @@ object Find {
         }
     }
   }
+
+  private[sc4pac] def isSubMap[A, B](small: Map[A, B], large: Map[A, B]): Boolean = small.keysIterator.forall(a => small.get(a) == large.get(a))
 
   /** Given a module without specific variant, find a variant that matches globalVariant. */
   def matchingVariant(module: BareModule, version: String, globalVariant: Variant): RIO[ResolutionContext, (JD.Package, JD.VariantData)] = {
@@ -89,9 +90,8 @@ object Find {
         }
     }
 
-    val mod = C.Module(module.group, module.name, attributes = Map.empty)
-    concreteVersion(mod, version)
-      .flatMap(packageData[JD.Package](mod, _))
+    concreteVersion(module, version)
+      .flatMap(packageData[JD.Package](module, _))
       .flatMap(pickVariant)
   }
 

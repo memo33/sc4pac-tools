@@ -1,7 +1,7 @@
 package io.github.memo33
 package sc4pac
 
-import coursier.core.{Module, Versions, Version}
+import coursier.core.{Versions, Version}
 import coursier.cache as CC
 import upickle.default.Reader
 import zio.{ZIO, IO, UIO, RIO}
@@ -19,9 +19,9 @@ sealed abstract class MetadataRepository(val baseUri: java.net.URI) {
   /** Reads the repository's channel contents to obtain all available versions
     * of modules.
     */
-  def fetchVersions(module: Module): IO[ErrStr, (Versions, String)] = {
+  def fetchVersions(dep: BareDep): IO[ErrStr, (Versions, String)] = {
     ZIO.fromEither {
-      val rawVersions = getRawVersions(CoursierUtil.bareDepFromModule(module))
+      val rawVersions = getRawVersions(dep)
       if (rawVersions.nonEmpty) {
         val parsedVersions = rawVersions.map(Version(_))
         val latest = parsedVersions.max
@@ -36,15 +36,15 @@ sealed abstract class MetadataRepository(val baseUri: java.net.URI) {
         Right((Versions(latest.repr, release.repr, available = parsedVersions.map(_.repr).toList, lastUpdated = None),  // TODO lastUpdated = lastModified?
                MetadataRepository.channelContentsUrl(baseUri).toString))
       } else {
-        Left(s"no versions of $module found in repository $baseUri")
+        Left(s"no versions of ${dep.orgName} found in repository $baseUri")
       }
     }
   }
 
-  /** For a module (no asset, no variant) of a given version, fetch the
-    * corresponding `JD.Package` contained in its json file.
+  /** For a package or asset (no variant) of a given version, fetch the
+    * corresponding `JD.Package` or `JD.Asset` contained in its json file.
     */
-  def fetchModuleJson[R, A <: JD.PackageAsset : Reader](module: Module, version: String, fetch: MetadataRepository.Fetch[R]): RIO[R, A]
+  def fetchModuleJson[R, A <: JD.PackageAsset : Reader](dep: BareDep, version: String, fetch: MetadataRepository.Fetch[R]): RIO[R, A]
 
   def fetchExternalPackage[R](module: BareModule, fetch: MetadataRepository.Fetch[R]): RIO[R, Option[JD.ExternalPackage]]
 
@@ -138,13 +138,12 @@ private class JsonRepository(
   /** For a module (no asset, no variant) of a given version, fetch the
     * corresponding `JD.Package` contained in its json file.
     */
-  def fetchModuleJson[R, A <: JD.PackageAsset : Reader](module: Module, version: String, fetch: MetadataRepository.Fetch[R]): RIO[R, A] = {
-    val dep = CoursierUtil.bareDepFromModule(module)
+  def fetchModuleJson[R, A <: JD.PackageAsset : Reader](dep: BareDep, version: String, fetch: MetadataRepository.Fetch[R]): RIO[R, A] = {
     channel.versions.get(dep).flatMap(_.find(_._1 == version)) match
       // This only works for concrete versions (so not for "latest.release").
       // The assumption is that all methods of MetadataRepository are only called with concrete versions.
       case None =>
-        ZIO.fail(new Sc4pacVersionNotFound(s"No versions of ${module.orgName} found in repository $baseUri.",
+        ZIO.fail(new Sc4pacVersionNotFound(s"No versions of ${dep.orgName} found in repository $baseUri.",
           "Either the package name is spelled incorrectly or the metadata stored in the corresponding channel is incorrect or incomplete."))
       case Some((_, checksum)) =>
         val remoteUrl = baseUri.resolve(MetadataRepository.jsonSubPath(dep, version).segments0.mkString("/")).toString
@@ -188,11 +187,10 @@ private class YamlRepository(
     channelData.get(dep).map(_.keys.toSeq).getOrElse(Seq.empty)
   }
 
-  def fetchModuleJson[R, A <: JD.PackageAsset : Reader](module: Module, version: String, fetch: MetadataRepository.Fetch[R]): RIO[R, A] = {
-    val dep = CoursierUtil.bareDepFromModule(module)
+  def fetchModuleJson[R, A <: JD.PackageAsset : Reader](dep: BareDep, version: String, fetch: MetadataRepository.Fetch[R]): RIO[R, A] = {
     channelData.get(dep).flatMap(_.get(version)) match {
       case None =>
-        ZIO.fail(new Sc4pacVersionNotFound(s"No versions of ${module.orgName} found in repository $baseUri.",
+        ZIO.fail(new Sc4pacVersionNotFound(s"No versions of ${dep.orgName} found in repository $baseUri.",
           "Either the package name is spelled incorrectly or the metadata stored in the corresponding channel is incorrect or incomplete."))
       case Some(pkgData: JD.PackageAsset) =>
         ZIO.succeed(pkgData.asInstanceOf[A])  // as long as we do not mix up Assets and Packages, casting should not be an issue (could be fixed using type classes)
