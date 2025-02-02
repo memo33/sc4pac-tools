@@ -44,15 +44,15 @@ object ApiSpecZIO extends ZIOSpecDefault {
   val fileServerLayer: ZLayer[Any, Nothing, FileServer] =
     FileServer.serve(os.pwd / "channel-testing" / "json", port = 8090)  // TODO port is hardcoded in ./channel-testing/ files
 
-  val setFileServerChannel: ZIO[FileServer & JD.Profile & ServerOptions & Client, Throwable, Unit] =
+  val setFileServerChannel: ZIO[FileServer & JD.ProfileData & ServerOptions & Client, Throwable, Unit] =
     for {
       port      <- ZIO.serviceWith[FileServer](_.port)
-      profileId <- ZIO.serviceWith[JD.Profile](_.id)
+      profileId <- ZIO.serviceWith[JD.ProfileData](_.id)
       resp      <- postEndpoint(s"channels.set?profile=$profileId", jsonBody(Seq(s"http://localhost:$port/")))
       _         <- ZIO.whenDiscard(resp.status.code != 200)(ZIO.fail(AssertionError(s"/channels.set responded with ${resp.status.code}")))
     } yield ()
 
-  val currentProfileLayer: zio.ZLayer[ServerOptions & Client, Throwable, JD.Profile] =
+  val currentProfileLayer: zio.ZLayer[ServerOptions & Client, Throwable, JD.ProfileData] =
     ZLayer(
       for {
         profilesList <- getEndpoint("profiles.list").flatMap(resp => parseBody[api.ProfilesList](resp.body))
@@ -119,9 +119,9 @@ object ApiSpecZIO extends ZIOSpecDefault {
   //     channel <- YamlChannelBuilder().result(packages).provideSomeLayer(ZLayer.succeed(JD.Channel.Info(channelLabel = Some("Test-Channel"), metadataSourceUrl = None)))
   //   } yield channel
 
-  val removeAll: RIO[JD.Profile & ServerOptions & Client, Unit] =
+  val removeAll: RIO[JD.ProfileData & ServerOptions & Client, Unit] =
     for {
-      id   <- ZIO.serviceWith[JD.Profile](_.id)
+      id   <- ZIO.serviceWith[JD.ProfileData](_.id)
       resp <- getEndpoint(s"plugins.added.list?profile=$id")
       pkgs <- parseBody[Seq[String]](resp.body)
       resp <- postEndpoint(s"plugins.remove?profile=$id", jsonBody(pkgs))
@@ -241,11 +241,11 @@ object ApiSpecZIO extends ZIOSpecDefault {
       test("/profiles.add") {
         val name = s"Test-Profile 🐛 ${scala.util.Random.between(1000, 10000)}"
         withTestResultRef(for {
-          profile  <- postEndpoint("profiles.add", jsonBody(Obj("name"-> name))).flatMap(getBody200[JD.Profile])
+          profile  <- postEndpoint("profiles.add", jsonBody(Obj("name"-> name))).flatMap(getBody200[JD.ProfileData])
           _        <- addTestResult(assertTrue(profile.id == "1", profile.name == name))
           data     <- getEndpoint("profiles.list").flatMap(getBody200[api.ProfilesList])
           _        <- addTestResult(assertTrue(data.profiles == Seq(profile), data.currentProfileId.is(_.some) == profile.id))
-          profile2 <- postEndpoint("profiles.add", jsonBody(Obj("name"-> s"$name~"))).flatMap(getBody200[JD.Profile])
+          profile2 <- postEndpoint("profiles.add", jsonBody(Obj("name"-> s"$name~"))).flatMap(getBody200[JD.ProfileData])
           _        <- addTestResult(assertTrue(profile2.id == "2", profile2.name == s"$name~"))
           data     <- getEndpoint("profiles.list").flatMap(getBody200[api.ProfilesList])
           _        <- addTestResult(assertTrue(data.profiles == Seq(profile, profile2), data.currentProfileId.is(_.some) == profile2.id))
@@ -270,7 +270,7 @@ object ApiSpecZIO extends ZIOSpecDefault {
       },
     ),
 
-    suite("profile")(ZIO.serviceWith[JD.Profile](_.id).map { (profileId: String) =>
+    suite("profile")(ZIO.serviceWith[JD.ProfileData](_.id).map { (profileId: String) =>
       Chunk(
         test("/profile.read") {
           withTestResultRef(for {
@@ -327,7 +327,7 @@ object ApiSpecZIO extends ZIOSpecDefault {
             } yield ())
           },
           test("/channels.stats") {
-            withTestResultRef[FileServer & JD.Profile & ServerOptions & Client](for {
+            withTestResultRef[FileServer & JD.ProfileData & ServerOptions & Client](for {
               _    <- setFileServerChannel
               data <- getEndpoint(s"channels.stats?profile=$profileId").flatMap(getBody200[api.ChannelStatsAll])
               _    <- addTestResult(assertTrue(

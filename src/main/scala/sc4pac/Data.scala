@@ -294,19 +294,19 @@ object JsonData extends SharedData {
 
   case class CheckFile(filename: Option[String], checksum: Checksum = Checksum.empty) derives ReadWriter
 
-  case class Profile(id: ProfileId, name: String) derives ReadWriter
+  case class ProfileData(id: ProfileId, name: String) derives ReadWriter
 
   // or GuiConfig or GuiSettings
-  case class Profiles(profiles: Seq[Profile], currentProfileId: Option[ProfileId], settings: ujson.Value = ujson.Obj()) derives ReadWriter {
+  case class Profiles(profiles: Seq[ProfileData], currentProfileId: Option[ProfileId], settings: ujson.Value = ujson.Obj()) derives ReadWriter {
 
     private def nextId: ProfileId = {
       val existing = profiles.map(_.id).toSet
       Iterator.from(1).map(_.toString).dropWhile(existing).next
     }
 
-    def add(name: String): (Profiles, Profile) = {
+    def add(name: String): (Profiles, ProfileData) = {
       val id = nextId
-      val profile = Profile(id = id, name = name)
+      val profile = ProfileData(id = id, name = name)
       (copy(profiles = profiles :+ profile, currentProfileId = Some(id)), profile)
     }
   }

@@ -181,4 +181,4 @@ case class ServerStatus(sc4pacVersion: String) derives UP.ReadWriter
 
 case class ProfileName(name: String) derives UP.ReadWriter
 case class ProfileIdObj(id: ProfileId) derives UP.ReadWriter
-case class ProfilesList(profiles: Seq[JD.Profile], currentProfileId: Option[ProfileId], profilesDir: java.nio.file.Path) derives UP.ReadWriter
+case class ProfilesList(profiles: Seq[JD.ProfileData], currentProfileId: Option[ProfileId], profilesDir: java.nio.file.Path) derives UP.ReadWriter
