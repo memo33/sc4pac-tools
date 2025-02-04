@@ -132,7 +132,9 @@ abstract class SharedData {
     subfolder: SubPath,
     info: Info = Info.empty,
     variants: Seq[VariantData],  // should be non-empty, but can consist of a single empty variant
-    variantDescriptions: Map[String, Map[String, String]] = Map.empty,  // variantKey -> variantValue -> description
+    @deprecated("use variantInfo instead", since = "0.5.4")
+    variantDescriptions: Map[String, Map[String, String]] = Map.empty,  // variantId -> variantValue -> description
+    variantInfo: Map[String, VariantInfo] = Map.empty,  // variantId -> variantInfo
     metadataSource: Option[SubPath] = None,  // path to yaml file
     metadataSourceUrl: Option[Uri] = None,  // full URL to yaml file
     metadataIssueUrl: Option[Uri] = None,  // URL to create new issue for this package
@@ -141,10 +143,15 @@ abstract class SharedData {
 
     def toBareDep: BareModule = BareModule(Organization(group), ModuleName(name))
 
-    // def unknownVariants(globalVariant: Variant): Map[String, Seq[String]] = {
-    //   val unknownKeys: Set[String] = Set.concat(variants.map(_.variant.keySet) *) &~ globalVariant.keySet
-    //   unknownKeys.iterator.map(k => (k, variants.flatMap(vd => vd.variant.get(k)).distinct)).toMap
-    // }
+    def upgradeVariantInfo: Package =
+      if (variantInfo.isEmpty && variantDescriptions.nonEmpty)
+        copy(
+          variantDescriptions = Map.empty,
+          variantInfo = variantDescriptions.mapValues { descs =>
+            VariantInfo(valueDescriptions = descs)
+          }.toMap,
+        )
+      else this
   }
   object Package {
     implicit val packageRw: ReadWriter[Package] = macroRW
@@ -167,6 +174,15 @@ abstract class SharedData {
   }
   object Info {
     val empty = Info()
+  }
+
+  case class VariantInfo(
+    description: String = "",
+    valueDescriptions: Map[String, String] = Map.empty,
+    default: Option[String] = None,
+  ) derives ReadWriter
+  object VariantInfo {
+    val empty = VariantInfo()
   }
 
   case class ExternalPackage(

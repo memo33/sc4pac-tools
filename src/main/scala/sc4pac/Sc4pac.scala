@@ -138,19 +138,10 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) {  // TODO d
       .zipWithPar(Find.requiredByExternal(module)) {  // In addition to existing intra-channel dependencies, add inter-channel dependency relations to `requiredBy` field.
         case (Some(pkg), relations) =>
           val requiredBy2 = (pkg.info.requiredBy.iterator ++ relations.iterator.flatMap(_._2)).toSeq.distinct.sorted
-          Some(pkg.copy(info = pkg.info.copy(requiredBy = requiredBy2)))
+          Some(pkg.copy(info = pkg.info.copy(requiredBy = requiredBy2)).upgradeVariantInfo)
         case (None, _) => None
       }
   }.provideSomeLayer(zio.ZLayer.succeed(context))
-
-  /** Currenty this does not apply full markdown formatting, but just `pkg=…`
-    * highlighting.
-    */
-  def applyMarkdown(text: String, cliLogger: CliLogger): String = {
-    BareModule.pkgMarkdownRegex.replaceAllIn(text, matcher =>
-      BareModule(Organization(matcher.group(1)), ModuleName(matcher.group(2))).formattedDisplayString(cliLogger.gray, cliLogger.bold)
-    )
-  }
 
   def info(module: BareModule): RIO[CliLogger, Option[Seq[(String, String)]]] = {
     for {
@@ -164,13 +155,13 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) {  // TODO d
         if (pkg.channelLabel.nonEmpty)
           b += "Channel" -> pkg.channelLabel.get
         b += "Subfolder" -> pkg.subfolder.toString
-        b += "Summary" -> applyMarkdown(pkg.info.summary, cliLogger)
+        b += "Summary" -> cliLogger.applyMarkdown(pkg.info.summary)
         if (pkg.info.description.nonEmpty)
-          b += "Description" -> applyMarkdown(pkg.info.description, cliLogger)
+          b += "Description" -> cliLogger.applyMarkdown(pkg.info.description)
         if (pkg.info.warning.nonEmpty)
-          b += "Warning" -> applyMarkdown(pkg.info.warning, cliLogger)
+          b += "Warning" -> cliLogger.applyMarkdown(pkg.info.warning)
         if (pkg.info.conflicts.nonEmpty)
-          b += "Conflicts" -> applyMarkdown(pkg.info.conflicts, cliLogger)
+          b += "Conflicts" -> cliLogger.applyMarkdown(pkg.info.conflicts)
         if (pkg.info.author.nonEmpty)
           b += "Author" -> pkg.info.author
         if (pkg.info.websites.nonEmpty) {
@@ -428,6 +419,7 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) {  // TODO d
     /** Prompts for missing variant keys, so that the result allows to pick a unique variant of the package. */
     def refineGlobalVariant(globalVariant: Variant, pkgData: JD.Package): RIO[Prompter, Variant] = {
       val mod = BareModule(Organization(pkgData.group), ModuleName(pkgData.name))
+      lazy val variantInfo = pkgData.upgradeVariantInfo.variantInfo
       import Sc4pac.{DecisionTree, Node, Empty}
       DecisionTree.fromVariants(pkgData.variants.map(_.variant)) match {
         case Left(err) => ZIO.fail(new error.UnsatisfiableVariantConstraints(
@@ -446,7 +438,7 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) {  // TODO d
                   module = mod,
                   label = key,
                   values = choices.map(_._1),
-                  descriptions = pkgData.variantDescriptions.get(key).getOrElse(Map.empty)
+                  info = variantInfo.get(key).getOrElse(JD.VariantInfo.empty),
                 ).map(value => choices.find(_._1 == value).get))  // prompter is guaranteed to return a matching value
           }
 

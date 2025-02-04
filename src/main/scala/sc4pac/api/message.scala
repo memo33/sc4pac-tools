@@ -25,14 +25,14 @@ object PromptMessage {
     `package`: BareModule,
     label: String,
     choices: Seq[String],
-    descriptions: Map[String, String],
+    info: JD.VariantInfo,
     token: String,
     responses: Map[String, ResponseMessage]
   ) extends PromptMessage
   object ChooseVariant {
-    def apply(`package`: BareModule, label: String, choices: Seq[String], descriptions: Map[String, String]): ChooseVariant = {
+    def apply(`package`: BareModule, label: String, choices: Seq[String], info: JD.VariantInfo): ChooseVariant = {
       val token = scala.util.Random.nextInt().toHexString
-      ChooseVariant(`package`, label, choices, descriptions, token, responsesFromChoices(choices, token))
+      ChooseVariant(`package`, label, choices, info, token, responsesFromChoices(choices, token))
     }
     given chooseVariantRw: UP.ReadWriter[ChooseVariant] = UP.stringKeyRW(UP.macroRW)
   }

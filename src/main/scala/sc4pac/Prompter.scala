@@ -3,11 +3,12 @@ package sc4pac
 
 import zio.{ZIO, Task, UIO}
 import sc4pac.Resolution.DepModule
+import JsonData as JD
 
 trait Prompter {
 
   /** Returns the selected variant value. */
-  def promptForVariant(module: BareModule, label: String, values: Seq[String], descriptions: Map[String, String]): Task[String]
+  def promptForVariant(module: BareModule, label: String, values: Seq[String], info: JD.VariantInfo): Task[String]
 
   def confirmUpdatePlan(plan: Sc4pac.UpdatePlan): Task[Boolean]
 
@@ -18,15 +19,16 @@ class CliPrompter(logger: CliLogger, autoYes: Boolean) extends Prompter {
 
   def withAutoYes(yes: Boolean): CliPrompter = CliPrompter(logger, yes)
 
-  def promptForVariant(module: BareModule, label: String, values: Seq[String], descriptions: Map[String, String]): Task[String] = {
+  def promptForVariant(module: BareModule, label: String, values: Seq[String], info: JD.VariantInfo): Task[String] = {
     val prefix = s"${label} = "
     val columnWidth = values.map(_.length).max + 8  // including some whitespace for separation, excluding prefix
-    def renderDesc(value: String): String = descriptions.get(value) match {
-      case None => prefix + value
-      case Some(desc) => prefix + value + (" " * ((columnWidth - value.length) max 0)) + desc
+    def renderDesc(value: String): String = info.valueDescriptions.get(value) match {
+      case Some(desc) if desc.nonEmpty => prefix + value + (" " * ((columnWidth - value.length) max 0)) + desc
+      case _ => prefix + value
     }
+    val pretext = if (info.description.nonEmpty) f"%n%n${logger.applyMarkdown(info.description)}" else ""
     Prompt.ifInteractive(
-      onTrue = Prompt.numbered(s"""Choose a variant for ${module.orgName}:""", values, render = renderDesc),
+      onTrue = Prompt.numbered(s"""Choose a variant for ${module.formattedDisplayString(logger.gray, logger.bold)}:$pretext""", values, render = renderDesc),
       onFalse = ZIO.fail(new error.Sc4pacNotInteractive(s"""Configure a "${label}" variant for ${module.orgName}: ${values.mkString(", ")}""")))
   }
 

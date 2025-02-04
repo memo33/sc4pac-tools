@@ -95,9 +95,9 @@ object ChannelPage {
     }
   }
 
-  def variantFrag(variant: JsonData.Variant, variantDescriptions: Map[String, Map[String, String]]) =
+  def variantFrag(variant: JsonData.Variant, info: Map[String, JsonData.VariantInfo]) =
     variant.toSeq.sorted.map { (k, v) =>
-      variantDescriptions.get(k).flatMap(_.get(v)) match {
+      info.get(k).flatMap(_.valueDescriptions.get(v)) match {
         case None => H.code(s"$k = $v")
         case Some(tooltipText) => H.code(H.div(H.cls := "tooltip")(s"$k = $v", H.span(H.cls := "tooltiptext")(tooltipText)))
       }
@@ -204,7 +204,7 @@ object ChannelPage {
       else
         H.ul(H.cls := "unstyled-list")(
           pkg.variants.map { vd =>
-            H.li(variantFrag(vd.variant, pkg.variantDescriptions))
+            H.li(variantFrag(vd.variant, pkg.variantInfo))
           }
         )
     )

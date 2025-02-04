@@ -16,7 +16,13 @@ variants:
     include: []
     exclude: []
 
-variantDescriptions: {}  # key -> value -> description
+# variantInfo:
+# - variantId: ""
+#   description: ""
+#   values:
+#   - value: ""
+#     description: ""
+#     default: true
 
 info:
   summary: "<one-line summary>"

@@ -24,10 +24,15 @@ variants:
 dependencies: []  # additional dependencies shared between all variants (optional)
 assets: []  # additional assets shared between all variants (optional)
 
-variantDescriptions:
-  driveside:
-    "right": "if cars in your game drive on the right"
-    "left": "if cars in your game drive on the left"
+variantInfo:
+- variantId: "driveside"
+  description: "Pick the driveside your game was installed with."
+  values:
+  - value: "right"
+    description: "if cars in your game drive on the right"
+    # default: true
+  - value: "left"
+    description: "if cars in your game drive on the left"
 
 ---
 assetId: "memo-testing-first"
