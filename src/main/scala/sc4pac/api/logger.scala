@@ -151,8 +151,8 @@ class WebSocketPrompter(wsChannel: zio.http.WebSocketChannel, logger: WebSocketL
     }.map(_.get)
   }
 
-  def promptForVariant(module: BareModule, label: String, values: Seq[String], info: JD.VariantInfo): Task[String] = {
-    sendPrompt(PromptMessage.ChooseVariant(module, label, values, info)).map(_.body)
+  def promptForVariant(module: BareModule, variantId: String, values: Seq[String], info: JD.VariantInfo): Task[String] = {
+    sendPrompt(PromptMessage.ChooseVariant(module, variantId, values, info)).map(_.body)
   }
 
   def confirmUpdatePlan(plan: Sc4pac.UpdatePlan): zio.Task[Boolean] = {

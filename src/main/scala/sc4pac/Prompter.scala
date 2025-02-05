@@ -8,7 +8,7 @@ import JsonData as JD
 trait Prompter {
 
   /** Returns the selected variant value. */
-  def promptForVariant(module: BareModule, label: String, values: Seq[String], info: JD.VariantInfo): Task[String]
+  def promptForVariant(module: BareModule, variantId: String, values: Seq[String], info: JD.VariantInfo): Task[String]
 
   def confirmUpdatePlan(plan: Sc4pac.UpdatePlan): Task[Boolean]
 
@@ -19,8 +19,8 @@ class CliPrompter(logger: CliLogger, autoYes: Boolean) extends Prompter {
 
   def withAutoYes(yes: Boolean): CliPrompter = CliPrompter(logger, yes)
 
-  def promptForVariant(module: BareModule, label: String, values: Seq[String], info: JD.VariantInfo): Task[String] = {
-    val prefix = s"${label} = "
+  def promptForVariant(module: BareModule, variantId: String, values: Seq[String], info: JD.VariantInfo): Task[String] = {
+    val prefix = s"${variantId} = "
     val columnWidth = values.map(_.length).max + 8  // including some whitespace for separation, excluding prefix
     def renderDesc(value: String): String = info.valueDescriptions.get(value) match {
       case Some(desc) if desc.nonEmpty => prefix + value + (" " * ((columnWidth - value.length) max 0)) + desc
@@ -34,7 +34,7 @@ class CliPrompter(logger: CliLogger, autoYes: Boolean) extends Prompter {
         render = renderDesc,
         default = info.default,
       ),
-      onFalse = ZIO.fail(new error.Sc4pacNotInteractive(s"""Configure a "${label}" variant for ${module.orgName}: ${values.mkString(", ")}""")))
+      onFalse = ZIO.fail(new error.Sc4pacNotInteractive(s"""Configure a "${variantId}" variant for ${module.orgName}: ${values.mkString(", ")}""")))
   }
 
   private def logPackages(msg: String, dependencies: Iterable[DepModule]): Unit = {

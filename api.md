@@ -439,9 +439,9 @@ The following specifies the message format used by the `/update` websocket.
   "variantId": string,                           // e.g. "nightmode"
   "choices": ["<value1>", "<value2>", …],        // e.g. ["standard", "dark"]
   "info": {
-    "description": "…",
-    "valueDescriptions": {"<value2>": "…", …},
-    "default": ["<value2">]  // or []
+    "description"?: "…",
+    "valueDescriptions"?: {"<value2>": "…", …},
+    "default": ["<value2">]                      // or []
   },
   "token": string,
   "responses": {"<value1>": object, "<value2>": object, …}

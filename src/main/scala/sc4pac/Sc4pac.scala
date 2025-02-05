@@ -436,7 +436,7 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) {  // TODO d
               case None =>  // global variant for key is not set, so choose it interactively
                 ZIO.serviceWithZIO[Prompter](_.promptForVariant(
                   module = mod,
-                  label = key,
+                  variantId = key,
                   values = choices.map(_._1),
                   info = variantInfo.get(key).getOrElse(JD.VariantInfo.empty),
                 ).map(value => choices.find(_._1 == value).get))  // prompter is guaranteed to return a matching value
