@@ -28,7 +28,12 @@ class CliPrompter(logger: CliLogger, autoYes: Boolean) extends Prompter {
     }
     val pretext = if (info.description.nonEmpty) f"%n%n${logger.applyMarkdown(info.description)}" else ""
     Prompt.ifInteractive(
-      onTrue = Prompt.numbered(s"""Choose a variant for ${module.formattedDisplayString(logger.gray, logger.bold)}:$pretext""", values, render = renderDesc),
+      onTrue = Prompt.numbered(
+        s"""Choose a variant for ${module.formattedDisplayString(logger.gray, logger.bold)}:$pretext""",
+        values,
+        render = renderDesc,
+        default = info.default,
+      ),
       onFalse = ZIO.fail(new error.Sc4pacNotInteractive(s"""Configure a "${label}" variant for ${module.orgName}: ${values.mkString(", ")}""")))
   }
 

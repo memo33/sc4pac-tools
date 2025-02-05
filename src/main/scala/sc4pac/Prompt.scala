@@ -40,11 +40,13 @@ object Prompt {
 
   /** Prompts for input until a valid option is chosen.
     */
-  def choice(question: String, options: Seq[String], default: Option[String], optionsShort: Option[String] = None): ZIO[Interactive, IOException, String] = {
+  def choice(question: String, options: Seq[String], default: Option[String], optionsShort: Option[String] = None, showDefault: Boolean = false): ZIO[Interactive, IOException, String] = {
     require(default.forall(options.contains), s"default option $default must be contained in options $options")
+    val defaultHint = if (showDefault && default.isDefined) s", default=${default.get}" else ""
+    val promptText = s"$question [${optionsShort.getOrElse(options.mkString("/"))}$defaultHint]: "
 
     val readOption: ZIO[Interactive, IOException, Option[String]] = for {
-      _     <- zio.Console.print(s"$question [${optionsShort.getOrElse(options.mkString("/"))}]: ")
+      _     <- zio.Console.print(promptText)
       input <- readLineTimeout.map(_.trim)
       // _     <- zio.Console.printLine("")
     } yield {
@@ -82,13 +84,13 @@ object Prompt {
   }
 
   /** Select a single option by number. */
-  def numbered[A](pretext: String, options: Seq[A], render: A => String = (_: A).toString): ZIO[Interactive, IOException, A] = {
-    val indexes = (1 to options.length).map(_.toString)
-    val default = indexes match { case Seq(one) => Some(one); case _ => None }
+  def numbered[A](pretext: String, options: Seq[A], render: A => String = (_: A).toString, default: Option[A] = None): ZIO[Interactive, IOException, A] = {
+    val toNumber: Map[A, String] = options.zip((1 to options.length).map(_.toString)).toMap
+    val defaultNumber = default.flatMap(toNumber.get).orElse(options match { case Seq(single) => Some(toNumber(single)); case _ => None })
     for {
-      _      <- zio.Console.printLine(f"$pretext%n%n" + indexes.zip(options).map((i, o) => s"  ($i) ${render(o)}").mkString(f"%n") + f"%n")
-      abbrev =  if (indexes.length <= 2) None else Some(s"${indexes.head}-${indexes.last}")
-      num    <- Prompt.choice("Enter a number", indexes, default, optionsShort = abbrev)
+      _      <- zio.Console.printLine(f"$pretext%n%n" + options.map(o => s"  (${toNumber(o)}) ${render(o)}").mkString(f"%n") + f"%n")
+      abbrev =  if (options.length <= 2) None else Some(s"${toNumber(options.head)}-${toNumber(options.last)}")
+      num    <- Prompt.choice("Enter a number", options.map(toNumber), defaultNumber, optionsShort = abbrev, showDefault = default.isDefined && options.length > 1)
     } yield options(num.toInt - 1)
   }
 
