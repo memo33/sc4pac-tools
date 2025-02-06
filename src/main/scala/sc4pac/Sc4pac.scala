@@ -384,7 +384,7 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) {  // TODO d
     /** Moves staged files from temp plugins to actual plugins. This effect has
       * no expected failures, but only potentially unexpected defects.
       */
-    def movePackagesToPlugins(staged: StageResult): IO[Sc4pacPublishWarning, Unit] = {
+    def movePackagesToPlugins(staged: StageResult): IO[Sc4pacPublishIncomplete, Unit] = {
       ZIO.validateDiscard(staged.items) { item =>
         ZIO.foreachDiscard(item.files) { subPath =>
           val src = staged.tempPluginsRoot / subPath
@@ -408,7 +408,11 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) {  // TODO d
           s"${item.dep.orgName}"  // failed to move some staged files of this package to plugins
         }
       }.mapError((failedPkgs: ::[ErrStr]) =>
-        new Sc4pacPublishWarning(s"Failed to correctly install the following packages (manual intervention needed): ${failedPkgs.mkString(" ")}")
+        new Sc4pacPublishIncomplete(s"Failed to correctly install the following packages (manual intervention needed): ${failedPkgs.mkString(" ")}.",
+          "Some files could not be copied into your Plugins folder." +
+          " This might be caused by file permission issues or other reasons." +
+          " You may try to install the affected files manually instead." +
+          " Report the problem if it persists.")
       )
     }
 
@@ -421,19 +425,16 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) {  // TODO d
       // - remove old packages
       // - move new packages into plugins folder
       // - write json database and release lock
-      val task = JsonIo.write(JD.PluginsLock.path(context.profileRoot), pluginsLockData.updateTo(plan, staged.items), Some(pluginsLockDataOrig)) {
+      val task = (JsonIo.write(JD.PluginsLock.path(context.profileRoot), pluginsLockData.updateTo(plan, staged.items), Some(pluginsLockDataOrig)) {
         for {
           _ <- remove(plan.toRemove, pluginsLockData.installed, pluginsRoot)
                  // .catchAll(???)  // TODO catch exceptions
-          _ <- movePackagesToPlugins(staged)
-        } yield true  // TODO return result
-      }
+          result <- movePackagesToPlugins(staged).map(_ => true).either  // switch to Either so that PluginsLock file can be written despite Sc4pacPublishIncomplete warning
+        } yield result
+      }).absolve
       // As this task alters the actual plugins, we make it uninterruptible to ensure completion in case the update is canceled.
       // The task is reasonably fast, as it just removes/moves/copies files.
       logger.publishing(removalOnly = plan.toInstall.isEmpty)(task.uninterruptible)
-        .catchSome {  // TODO expose publish warnings to clients
-          case e: Sc4pacPublishWarning => logger.warn(e.getMessage); ZIO.succeed(true)  // TODO return result
-        }
     }
 
     /** Prompts for missing variant keys, so that the result allows to pick a unique variant of the package. */

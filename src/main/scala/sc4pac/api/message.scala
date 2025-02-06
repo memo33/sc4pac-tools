@@ -119,6 +119,8 @@ object ErrorMessage {
   case class InitNotAllowed(title: String, detail: String) extends ErrorMessage derives UP.ReadWriter
   @upickle.implicits.key("/error/file-access-denied")
   case class FileAccessDenied(title: String, detail: String) extends ErrorMessage derives UP.ReadWriter
+  @upickle.implicits.key("/error/published-files-incomplete")
+  case class PublishedFilesIncomplete(title: String, detail: String) extends ErrorMessage derives UP.ReadWriter
 }
 
 @upickle.implicits.key("/result")
