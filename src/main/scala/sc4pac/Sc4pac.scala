@@ -387,14 +387,23 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) {  // TODO d
     def movePackagesToPlugins(staged: StageResult): IO[Sc4pacPublishWarning, Unit] = {
       ZIO.validateDiscard(staged.items) { item =>
         ZIO.foreachDiscard(item.files) { subPath =>
-          ZIO.attemptBlocking {
-            os.move.over(staged.tempPluginsRoot / subPath, pluginsRoot / subPath, replaceExisting = true, createFolders = true)
-          } catchSome { case _: java.nio.file.DirectoryNotEmptyException => ZIO.attemptBlocking {
-            // moving a directory fails if its children require moving as well
-            // (e.g. moving between two devices), so fall back to copying
-            os.copy.over(staged.tempPluginsRoot / subPath, pluginsRoot / subPath, replaceExisting = true, createFolders = true)
+          val src = staged.tempPluginsRoot / subPath
+          val dest = pluginsRoot / subPath
+          ZIO.attemptBlockingIO {
+            os.move.over(src, dest, replaceExisting = true, createFolders = true)
+          } catchSome { case _: java.io.IOException => ZIO.attemptBlockingIO {
+            // DirectoryNotEmptyException:
+            // Moving a directory fails if its children require moving as well
+            // (e.g. moving between two devices), so fall back to copying.
+            // FileSystemException: Moving symlinks can fail on Windows without admin permissions.
+            // With `followLinks=false`, if the file itself is a symlink, the symlink is copied according to Java documentation..
+            os.copy.over(src, dest, replaceExisting = true, createFolders = true, followLinks = false)
+          }} catchSome { case e: java.io.IOException => ZIO.attemptBlockingIO {
+            // Creating symlinks can fail on Windows, so once again fall back to copying.
+            logger.debug(s"Unexpected exception while copying $src to $dest: $e")
+            os.copy.over(src, dest, replaceExisting = true, createFolders = true, followLinks = true)
           }}
-        } refineOrDie { case e: java.io.IOException =>  // TODO this potentially dies on unexpected errors (defects) that should maybe be handled further up top
+        } refineOrDie { case e: java.io.IOException =>
           logger.warn(e.toString)
           s"${item.dep.orgName}"  // failed to move some staged files of this package to plugins
         }
