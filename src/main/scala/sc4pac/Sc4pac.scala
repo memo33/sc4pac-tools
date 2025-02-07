@@ -396,8 +396,17 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) {  // TODO d
             // Moving a directory fails if its children require moving as well
             // (e.g. moving between two devices), so fall back to copying.
             // FileSystemException: Moving symlinks can fail on Windows without admin permissions.
-            // With `followLinks=false`, if the file itself is a symlink, the symlink is copied according to Java documentation..
-            os.copy.over(src, dest, replaceExisting = true, createFolders = true, followLinks = false)
+            // os.copy.over(src, dest, replaceExisting = true, createFolders = true, followLinks = false)  // does not work for symlinks on Windows despite followLinks=false
+            val relPathOpt: Option[os.SubPath | os.RelPath] =
+              if (os.isLink(src)) Option(os.readLink(src)).collect { case r: (os.SubPath | os.RelPath) => r }
+              else None
+            relPathOpt match {
+              case Some(relPath) =>
+                logger.debug(s"Recreating symlink $dest -> $relPath")
+                os.symlink(dest, relPath)
+              case None =>  // e.g. moving directories between devices
+                os.copy.over(src, dest, replaceExisting = true, createFolders = true, followLinks = true)
+            }
           }} catchSome { case e: java.io.IOException => ZIO.attemptBlockingIO {
             // Creating symlinks can fail on Windows, so once again fall back to copying.
             logger.debug(s"Unexpected exception while copying $src to $dest: $e")
