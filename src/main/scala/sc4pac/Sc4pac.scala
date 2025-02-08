@@ -375,22 +375,44 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) {  // TODO d
     /** Moves staged files from temp plugins to actual plugins. This effect has
       * no expected failures, but only potentially unexpected defects.
       */
-    def movePackagesToPlugins(staged: StageResult): IO[Sc4pacPublishWarning, Unit] = {
+    def movePackagesToPlugins(staged: StageResult): IO[Sc4pacPublishIncomplete, Unit] = {
       ZIO.validateDiscard(staged.items) { item =>
         ZIO.foreachDiscard(item.files) { subPath =>
-          ZIO.attemptBlocking {
-            os.move.over(staged.tempPluginsRoot / subPath, pluginsRoot / subPath, replaceExisting = true, createFolders = true)
-          } catchSome { case _: java.nio.file.DirectoryNotEmptyException => ZIO.attemptBlocking {
-            // moving a directory fails if its children require moving as well
-            // (e.g. moving between two devices), so fall back to copying
-            os.copy.over(staged.tempPluginsRoot / subPath, pluginsRoot / subPath, replaceExisting = true, createFolders = true)
+          val src = staged.tempPluginsRoot / subPath
+          val dest = pluginsRoot / subPath
+          ZIO.attemptBlockingIO {
+            os.move.over(src, dest, replaceExisting = true, createFolders = true)
+          } catchSome { case _: java.io.IOException => ZIO.attemptBlockingIO {
+            // DirectoryNotEmptyException:
+            // Moving a directory fails if its children require moving as well
+            // (e.g. moving between two devices), so fall back to copying.
+            // FileSystemException: Moving symlinks can fail on Windows without admin permissions.
+            // os.copy.over(src, dest, replaceExisting = true, createFolders = true, followLinks = false)  // does not work for symlinks on Windows despite followLinks=false
+            val relPathOpt: Option[os.SubPath | os.RelPath] =
+              if (os.isLink(src)) Option(os.readLink(src)).collect { case r: (os.SubPath | os.RelPath) => r }
+              else None
+            relPathOpt match {
+              case Some(relPath) =>
+                logger.debug(s"Recreating symlink $dest -> $relPath")
+                os.symlink(dest, relPath)
+              case None =>  // e.g. moving directories between devices
+                os.copy.over(src, dest, replaceExisting = true, createFolders = true, followLinks = true)
+            }
+          }} catchSome { case e: java.io.IOException => ZIO.attemptBlockingIO {
+            // Creating symlinks can fail on Windows, so once again fall back to copying.
+            logger.debug(s"Unexpected exception while copying $src to $dest: $e")
+            os.copy.over(src, dest, replaceExisting = true, createFolders = true, followLinks = true)
           }}
-        } refineOrDie { case e: java.io.IOException =>  // TODO this potentially dies on unexpected errors (defects) that should maybe be handled further up top
+        } refineOrDie { case e: java.io.IOException =>
           logger.warn(e.toString)
           s"${item.dep.orgName}"  // failed to move some staged files of this package to plugins
         }
       }.mapError((failedPkgs: ::[ErrStr]) =>
-        new Sc4pacPublishWarning(s"Failed to correctly install the following packages (manual intervention needed): ${failedPkgs.mkString(" ")}")
+        new Sc4pacPublishIncomplete(s"Failed to correctly install the following packages (manual intervention needed): ${failedPkgs.mkString(" ")}.",
+          "Some files could not be copied into your Plugins folder." +
+          " This might be caused by file permission issues or other reasons." +
+          " You may try to install the affected files manually instead." +
+          " Report the problem if it persists.")
       )
     }
 
@@ -403,19 +425,16 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) {  // TODO d
       // - remove old packages
       // - move new packages into plugins folder
       // - write json database and release lock
-      val task = JsonIo.write(JD.PluginsLock.path(context.profileRoot), pluginsLockData.updateTo(plan, staged.items), Some(pluginsLockDataOrig)) {
+      val task = (JsonIo.write(JD.PluginsLock.path(context.profileRoot), pluginsLockData.updateTo(plan, staged.items), Some(pluginsLockDataOrig)) {
         for {
           _ <- remove(plan.toRemove, pluginsLockData.installed, pluginsRoot)
                  // .catchAll(???)  // TODO catch exceptions
-          _ <- movePackagesToPlugins(staged)
-        } yield true  // TODO return result
-      }
+          result <- movePackagesToPlugins(staged).map(_ => true).either  // switch to Either so that PluginsLock file can be written despite Sc4pacPublishIncomplete warning
+        } yield result
+      }).absolve
       // As this task alters the actual plugins, we make it uninterruptible to ensure completion in case the update is canceled.
       // The task is reasonably fast, as it just removes/moves/copies files.
       logger.publishing(removalOnly = plan.toInstall.isEmpty)(task.uninterruptible)
-        .catchSome {  // TODO expose publish warnings to clients
-          case e: Sc4pacPublishWarning => logger.warn(e.getMessage); ZIO.succeed(true)  // TODO return result
-        }
     }
 
     /** Prompts for missing variant keys, so that the result allows to pick a unique variant of the package. */

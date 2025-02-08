@@ -7,6 +7,7 @@
 
 ### Fixed
 - added support for extracting nested .rar files (#27).
+- an issue involving symbolic links on Windows when Plugins are stored on another drive (#28).
 
 ### Changed
 - API upgraded to 2.3:

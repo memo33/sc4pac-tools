@@ -12,7 +12,7 @@ final class Sc4pacTimeout(msg: String) extends java.io.IOException(msg) with Sc4
 
 final class Sc4pacNotInteractive(msg: String) extends java.io.IOException(msg) with Sc4pacErr
 
-final class Sc4pacPublishWarning(msg: String) extends java.io.IOException(msg) with Sc4pacErr
+final class Sc4pacPublishIncomplete(val title: String, val detail: String) extends java.io.IOException(s"$title $detail") with Sc4pacErr
 
 final class Sc4pacAssetNotFound(val title: String, val detail: String) extends java.io.IOException(s"$title $detail") with Sc4pacErr
 

@@ -48,6 +48,7 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
     case abort: error.ChecksumError => ErrorMessage.DownloadFailed(abort.title, abort.detail)
     case abort: error.ChannelsNotAvailable => ErrorMessage.ChannelsNotAvailable(abort.title, abort.detail)
     case abort: error.ReadingProfileFailed => ErrorMessage.ReadingProfileFailed(abort.title, abort.detail)
+    case abort: error.Sc4pacPublishIncomplete => ErrorMessage.PublishedFilesIncomplete(abort.title, abort.detail)
     case abort: error.Sc4pacAbort => ErrorMessage.Aborted("Operation aborted.", "")
     case abort: java.nio.file.AccessDeniedException => ErrorMessage.FileAccessDenied(
       "File access denied. Check that you have permissions to access the file or directory.", abort.getMessage)
@@ -62,6 +63,7 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
     case abort: error.ChecksumError => Status.BadGateway
     case abort: error.ChannelsNotAvailable => Status.BadGateway
     case abort: error.ReadingProfileFailed => Status.InternalServerError
+    case abort: error.Sc4pacPublishIncomplete => Status.InternalServerError
     case abort: error.Sc4pacAbort => Status.Ok  // this is not really an error, but the expected control flow
     case abort: java.nio.file.AccessDeniedException => Status.InternalServerError
   }

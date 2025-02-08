@@ -43,11 +43,13 @@ object Commands {
   type ExpectedFailure = error.Sc4pacAbort | error.DownloadFailed | error.ChannelsNotAvailable
     | error.Sc4pacVersionNotFound | error.Sc4pacAssetNotFound | error.ExtractionFailed
     | error.UnsatisfiableVariantConstraints | error.ChecksumError | error.ReadingProfileFailed
+    | error.Sc4pacPublishIncomplete
     | java.nio.file.AccessDeniedException
 
   private def handleExpectedFailures(abort: ExpectedFailure, exit: Int => Nothing): Nothing = abort match {
     case abort: error.Sc4pacAbort => { System.err.println("Operation aborted."); exit(1) }
-    case abort: java.nio.file.AccessDeniedException => { System.err.println(s"Operation.aborted. File access denied. Check your permissions to access the file or directory: ${abort.getMessage}"); exit(ExitCodes.AccessDenied) }  // any command that creates directories or files
+    case abort: java.nio.file.AccessDeniedException => { System.err.println(s"Operation aborted. File access denied. Check your permissions to access the file or directory: ${abort.getMessage}"); exit(ExitCodes.AccessDenied) }  // any command that creates directories or files
+    case abort: error.Sc4pacPublishIncomplete => { System.err.println(s"Operation finished with warnings. ${abort.getMessage}"); exit(ExitCodes.PublishIncomplete) }  // update (final step)
     case abort => { System.err.println(s"Operation aborted. ${abort.getMessage}"); exit(1) }
   }
 
@@ -55,6 +57,7 @@ object Commands {
     val JavaNotFound = 55  // see `sc4pac` and `sc4pac.bat` scripts
     val PortOccupied = 56
     val AccessDenied = 57
+    val PublishIncomplete = 58
   }
 
   private def runMainExit(task: Task[Unit], exit: Int => Nothing): Nothing = {
