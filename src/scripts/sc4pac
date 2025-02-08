@@ -18,6 +18,9 @@ SCRIPTDIR="$( cd -P "$( dirname "$(readlink -f "${BASH_SOURCE[0]}")" )" >/dev/nu
 #
 # export SC4PAC_SIMTROPOLIS_COOKIE="ips4_device_key=<value>; ips4_member_id=<value>; ips4_login_key=<value>"
 
+# Uncomment to enable debug mode:
+# export SC4PAC_DEBUG=1
+
 
 # We set defaults for environment variables if they are not defined.
 # The environment variable `SC4PAC_MONO_CMD` is only needed on Linux and macOS.

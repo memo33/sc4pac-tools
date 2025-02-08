@@ -31,6 +31,9 @@ REM
 REM
 REM SET "SC4PAC_SIMTROPOLIS_COOKIE=ips4_device_key=<value>; ips4_member_id=<value>; ips4_login_key=<value>"
 
+REM Uncomment to enable debug mode:
+REM SET "SC4PAC_DEBUG=1"
+
 
 IF "%SC4PAC_CICDEC_CMD%"=="" SET "SC4PAC_CICDEC_CMD=%SCRIPTDIR%\cicdec\cicdec.exe"
 
