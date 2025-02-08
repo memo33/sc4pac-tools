@@ -1,6 +1,9 @@
 # Changelog
 
 ## [Unreleased]
+
+
+## [0.5.4] - 2025-02-08
 ### Added
 - support for descriptions of variant IDs. The new `variantInfo` field should be used instead of `variantDescriptions` in newly written metadata ([#2][actions2]).
 - support for default choices of variants ([#2][actions2]).
@@ -12,9 +15,10 @@
 ### Changed
 - API upgraded to 2.3:
   - changes to format of `/prompt/choice/update/variant` message
-  - added `notCategory` and `ignoreInstalled` options to `/packages.search`
+  - added `notCategory` and `ignoreInstalled` options to `/packages.search` ([#20][gui20])
 
 [actions2]: https://github.com/memo33/sc4pac-actions/issues/2
+[gui20]: https://github.com/memo33/sc4pac-gui/issues/20
 
 
 ## [0.5.3] - 2025-01-26
@@ -230,8 +234,9 @@
 ## [0.1.5] - 2023-09-26
 …
 
-[Unreleased]: https://github.com/memo33/sc4pac-tools/compare/0.5.3...HEAD
-[0.5.2]: https://github.com/memo33/sc4pac-tools/compare/0.5.2...0.5.3
+[Unreleased]: https://github.com/memo33/sc4pac-tools/compare/0.5.4...HEAD
+[0.5.4]: https://github.com/memo33/sc4pac-tools/compare/0.5.3...0.5.4
+[0.5.3]: https://github.com/memo33/sc4pac-tools/compare/0.5.2...0.5.3
 [0.5.2]: https://github.com/memo33/sc4pac-tools/compare/0.5.1...0.5.2
 [0.5.1]: https://github.com/memo33/sc4pac-tools/compare/0.5.0...0.5.1
 [0.5.0]: https://github.com/memo33/sc4pac-tools/compare/0.4.5...0.5.0

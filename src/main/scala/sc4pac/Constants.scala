@@ -26,7 +26,8 @@ object Constants {
   // 3: rar support
   // 4: Clickteam installer support
   // 5: channel stats, external packages, replacement of `contents`
-  val channelSchemeVersions: Range = 1 to 5  // supported versions
+  // 6: variantInfo
+  val channelSchemeVersions: Range = 1 to 6  // supported versions
 
   val pluginsLockScheme = 2
   val bufferSizeExtract = 64 * 1024  // 64 kiB, bounded by disk speed
