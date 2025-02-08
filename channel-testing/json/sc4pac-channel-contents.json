@@ -1,6 +1,25 @@
 {
- "scheme": 4,
- "contents": [
+ "scheme": 5,
+ "info": {
+  "channelLabel": [
+   "Test-Local"
+  ],
+  "metadataSourceUrl": []
+ },
+ "stats": {
+  "totalPackageCount": 3,
+  "categories": [
+   {
+    "category": "100-props-textures",
+    "count": 2
+   },
+   {
+    "category": "150-mods",
+    "count": 1
+   }
+  ]
+ },
+ "packages": [
   {
    "group": "memo",
    "name": "demo-package",
@@ -9,7 +28,7 @@
    ],
    "checksums": {
     "1.0": {
-     "sha256": "6c7e6f865df0127e21efb37858686c6c810f540b70121ee3047b51ffe66eb55d"
+     "sha256": "c2b5e75d5cec44e33d48ddb94d8a143e9e65a30cc9ae150f6949d95316352de4"
     }
    },
    "category": [
@@ -24,7 +43,7 @@
    ],
    "checksums": {
     "2.0": {
-     "sha256": "282eae3c72728d2f70c29f144a0a701cb6810e5113ea4aa31250ede56c6159df"
+     "sha256": "3b2f22ebea304a1709a2f22ba6e7af342d2a02dd3eb5f7be9639829f58f1a278"
     }
    },
    "summary": "One-line summary",
@@ -40,13 +59,15 @@
    ],
    "checksums": {
     "1.0": {
-     "sha256": "bb137475621bcf1e736d149c31852deb8c5cadd4b66fd4afa05d5283ea209a92"
+     "sha256": "03b1c376e9dcd9037908c13b3385ebc6bca6f461536437420a159525362ec742"
     }
    },
    "category": [
     "150-mods"
    ]
-  },
+  }
+ ],
+ "assets": [
   {
    "group": "sc4pacAsset",
    "name": "memo-demo-package-file-a-zip",

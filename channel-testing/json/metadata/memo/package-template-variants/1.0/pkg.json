@@ -34,13 +34,19 @@
    ]
   }
  ],
- "variantDescriptions": {
+ "variantInfo": {
   "driveside": {
-   "right": "if cars in your game drive on the right",
-   "left": "if cars in your game drive on the left"
+   "description": "Pick the driveside your game was installed with.",
+   "valueDescriptions": {
+    "right": "if cars in your game drive on the right",
+    "left": "if cars in your game drive on the left"
+   }
   }
  },
  "metadataSource": [
   "templates/package-template-variants.yaml"
+ ],
+ "channelLabel": [
+  "Test-Local"
  ]
 }

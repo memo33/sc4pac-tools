@@ -1,4 +1,4 @@
-# API - version 2.2
+# API - version 2.3
 
 The API allows other programs to control *sc4pac* in a client-server fashion.
 
@@ -20,7 +20,7 @@ POST /plugins.add?profile=id         ["<pkg1>", "<pkg2>", …]
 POST /plugins.remove?profile=id      ["<pkg1>", "<pkg2>", …]
 
 GET  /variants.list?profile=id
-POST /variants.reset?profile=id      ["<label1>", "<label2>", …]
+POST /variants.reset?profile=id      ["<variantId1>", "<variantId2>", …]
 
 GET  /channels.list?profile=id
 POST /channels.set?profile=id        ["<url1>", "<url2>", …]
@@ -152,7 +152,7 @@ Returns:
         explicit: boolean,
         installed?: {
           version: string,
-          variant: {"<label>": "<value>", …},
+          variant: {"<variantId>": "<value>", …},
           installedAt: "<iso-date>",
           updatedAt: "<iso-date>"
         },
@@ -193,7 +193,7 @@ Returns:
       explicit: boolean,
       installed?: {
         version: string,
-        variant: {"<label>": "<value>", …},
+        variant: {"<variantId>": "<value>", …},
         installedAt: "<iso-date>",
         updatedAt: "<iso-date>"
       }
@@ -265,7 +265,7 @@ Returns:
   {
     package: "<pkg>",
     version: string,
-    variant: {"<label>": "<value>", …},
+    variant: {"<variantId>": "<value>", …},
     explicit: boolean
   },
   …
@@ -293,7 +293,7 @@ Returns:
         explicit: boolean,
         installed: {
           version: string,
-          variant: {"<label>": "<value>", …},
+          variant: {"<variantId>": "<value>", …},
           installedAt: "<iso-date>",
           updatedAt: "<iso-date>"
         }
@@ -347,7 +347,7 @@ Reset selected variants by removing them from `/variants.list`.
 Synopsis: `POST /variants.reset?profile=id ["<driveside>", "<nightmode>", …]`
 
 Returns:
-- 400 `/error/bad-request` if one of the variant labels is not in `/variants.list`
+- 400 `/error/bad-request` if one of the variant IDs is not in `/variants.list`
 - 200 `{"$type": "/result", "ok": true}`
 
 Example:
@@ -436,9 +436,13 @@ The following specifies the message format used by the `/update` websocket.
 {
   "$type": "/prompt/choice/update/variant",
   "package": "<pkg>",
-  "label": string,                               // e.g. "nightmode"
+  "variantId": string,                           // e.g. "nightmode"
   "choices": ["<value1>", "<value2>", …],        // e.g. ["standard", "dark"]
-  "descriptions": {"<value2>": "…", …},
+  "info": {
+    "description"?: "…",
+    "valueDescriptions"?: {"<value2>": "…", …},
+    "default": ["<value2">]                      // or []
+  },
   "token": string,
   "responses": {"<value1>": object, "<value2>": object, …}
 }
@@ -450,13 +454,13 @@ The `responses` field contains the valid response message objects to send back t
 {
   "$type": "/prompt/confirmation/update/plan"
   toRemove: [
-    {"package": "<pkg>", "version": string, "variant": {"<label>": "<value>", …}},
+    {"package": "<pkg>", "version": string, "variant": {"<variantId>": "<value>", …}},
     {"package": "<pkg>", "version": string, "variant": {}},
     …
   ],
   toInstall: [
     {"package": "<pkg>", "version": string, "variant": {}},
-    {"package": "<pkg>", "version": string, "variant": {"<label>": "<value>", …}},
+    {"package": "<pkg>", "version": string, "variant": {"<variantId>": "<value>", …}},
     …
   ],
   choices: ["Yes", "No"],

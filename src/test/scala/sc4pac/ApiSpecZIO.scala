@@ -427,7 +427,7 @@ object ApiSpecZIO extends ZIOSpecDefault {
                           for {
                             _  <- addTestResult(assertTrue(
                                     msg.`package`.orgName == "memo:package-template-variants",
-                                    msg.label == "driveside",
+                                    msg.variantId == "driveside",
                                     msg.choices == Seq("right", "left"),
                                   ))
                           } yield msg.responses("right")
@@ -555,7 +555,7 @@ object ApiSpecZIO extends ZIOSpecDefault {
                               case msg: api.PromptMessage.ChooseVariant =>
                                 for {
                                   _  <- addTestResult(assertTrue(
-                                          msg.label == "driveside",
+                                          msg.variantId == "driveside",
                                           msg.choices == Seq("right", "left"),
                                         ))
                                 } yield msg.responses("left")

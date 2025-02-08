@@ -24,6 +24,25 @@ object ChannelUtil {
     )
   }
 
+  case class YamlVariantInfo(
+    variantId: String,
+    description: String = "",
+    values: Seq[YamlVariantInfo.Value] = Seq.empty,
+  ) derives ReadWriter {
+    def toVariantInfo = variantId -> JD.VariantInfo(
+      description = description,
+      valueDescriptions = values.iterator.map(v => (v.value, v.description)).toMap,
+      default = values.find(_.default == true).map(_.value),
+    )
+  }
+  object YamlVariantInfo {
+    case class Value(
+      value: String,
+      description: String = "",
+      default: Boolean = false,
+    ) derives ReadWriter
+  }
+
   private[sc4pac] def resolveMetadataSourceUrl(baseUri: java.net.URI, path: os.SubPath): java.net.URI =
     baseUri.resolve(os.root.toNIO.toUri.relativize((os.root / path).toNIO.toUri))
 
@@ -36,7 +55,9 @@ object ChannelUtil {
     dependencies: Seq[BareModule] = Seq.empty,  // shared between variants
     assets: Seq[JD.AssetReference] = Seq.empty,  // shared between variants
     variants: Seq[YamlVariantData] = Seq.empty,
-    variantDescriptions: Map[String, Map[String, String]] = Map.empty  // variantKey -> variantValue -> description
+    @deprecated("use variantDescriptions instead", since = "0.5.4")
+    variantDescriptions: Map[String, Map[String, String]] = Map.empty,  // variantKey -> variantValue -> description
+    variantInfo: Seq[YamlVariantInfo] = Seq.empty,
   ) derives ReadWriter {
     def toPackageData(metadataSource: Option[os.SubPath]): ZIO[JD.Channel.Info, ErrStr, JD.Package] = {
       val variants2 = (if (variants.isEmpty) Seq(YamlVariantData(Map.empty)) else variants).map(_.toVariantData(dependencies, assets))
@@ -52,12 +73,12 @@ object ChannelUtil {
           JD.Package(
             group = group, name = name, version = version, subfolder = subfolder, info = info.upgradeWebsites,
             variants = variants2,
-            variantDescriptions = variantDescriptions,
+            variantDescriptions = variantDescriptions, variantInfo = variantInfo.iterator.map(_.toVariantInfo).toMap,
             metadataSource = metadataSource,  // kept for backward compatibility
             metadataSourceUrl = metadataSourceUrl,
             metadataIssueUrl = channelInfo.metadataIssueUrl.filter(_.getHost == "github.com").map(newIssueUrl(_, metadataSourceUrl)),
             channelLabel = channelInfo.channelLabel,
-          )
+          ).upgradeVariantInfo
         }
       }
     }

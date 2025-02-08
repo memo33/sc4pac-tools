@@ -35,5 +35,8 @@
  ],
  "metadataSource": [
   "memo/demo-package.yaml"
+ ],
+ "channelLabel": [
+  "Test-Local"
  ]
 }

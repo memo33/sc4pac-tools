@@ -51,6 +51,15 @@ class CliLogger private (out: java.io.PrintStream, useColor: Boolean, isInteract
   def gray(msg: String): String = if (useColor) grayEscape + msg + Console.RESET else msg  // aka bright black
   private val grayEscape = s"${27.toChar}[90m"
 
+  /** Currenty this does not apply full markdown formatting, but just `pkg=…`
+    * highlighting.
+    */
+  def applyMarkdown(text: String): String = {
+    BareModule.pkgMarkdownRegex.replaceAllIn(text, matcher =>
+      BareModule(Organization(matcher.group(1)), ModuleName(matcher.group(2))).formattedDisplayString(gray, bold)
+    )
+  }
+
   override def downloadingArtifact(url: String, artifact: Artifact) =
     out.println("  " + cyan(s"> Downloading $url"))
   override def downloadedArtifact(url: String, success: Boolean) =

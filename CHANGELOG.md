@@ -1,8 +1,18 @@
 # Changelog
 
 ## [Unreleased]
+### Added
+- support for descriptions of variant IDs. The new `variantInfo` field should be used instead of `variantDescriptions` in newly written metadata ([#2][actions2]).
+- support for default choices of variants ([#2][actions2]).
+
 ### Fixed
 - added support for extracting nested .rar files (#27).
+
+### Changed
+- API upgraded to 2.3:
+  - changes to format of `/prompt/choice/update/variant` message
+
+[actions2]: https://github.com/memo33/sc4pac-actions/issues/2
 
 
 ## [0.5.3] - 2025-01-26
