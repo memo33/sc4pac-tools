@@ -1,6 +1,58 @@
 # Command-line interface
 
-The *sc4pac* CLI supports all the commands you need.
+The *sc4pac* CLI is a non-graphical alternative interface for the terminal.
+For most uses, it is recommended to use the *sc4pac* GUI instead.
+
+
+## Overview
+
+- Prerequisites:
+  - Java 11+ ([Windows]/[macOS]/[Linux], see [Adoptium] for details)
+  - Mono ([macOS](https://www.mono-project.com/docs/getting-started/install/)/[Linux](https://repology.org/project/mono/versions), not needed on Windows)
+  - Enough disk space
+
+  [Adoptium]: https://adoptium.net/installation/
+  [Windows]: https://adoptium.net/temurin/releases/?os=windows&package=jre
+  [macOS]: https://adoptium.net/temurin/releases/?os=mac&package=jre
+  [Linux]: https://repology.org/project/openjdk/versions
+
+- [Download the latest release of the sc4pac CLI](https://github.com/memo33/sc4pac-tools/releases/latest)
+  and extract the contents to any location in your user directory (for example, your Desktop).
+- Open a shell in the new directory (e.g. on Windows, open the folder and type `cmd` in the address bar of the explorer window)
+  and run the command-line tool `sc4pac` by calling:
+  - `sc4pac` in Windows cmd.exe
+  - `.\sc4pac` in Windows PowerShell
+  - `./sc4pac` on Linux or macOS
+
+  If everything works, this displays a help message.
+- Install your first package [cyclone-boom:save-warning](https://memo33.github.io/sc4pac/channel/?pkg=cyclone-boom:save-warning):
+  - `sc4pac add cyclone-boom:save-warning`
+  - `sc4pac update`
+- Be aware that Simtropolis has a download limit of 20 files per day.
+  Intermediate downloads are cached, so if you reach the limit,
+  simply continue the installation process the next day.
+  Alternatively, there is a temporary [workaround using cookies](https://github.com/memo33/sc4pac-tools/blob/main/src/scripts/sc4pac.bat#L13-L32).
+- Install other [available packages](https://memo33.github.io/sc4pac/#/packages).
+
+![demo-video](https://github.com/memo33/sc4pac-tools/releases/download/0.1.3/demo-video.gif)
+
+
+## Available commands
+
+```
+add             Add new packages to install explicitly.
+update          Update all installed packages to their latest version and install any missing packages.
+remove          Remove packages that have been installed explicitly.
+search          Search for the name of a package.
+info            Display more information about a package.
+list            List all installed packages.
+variant reset   Select variants to reset in order to choose a different package variant.
+channel add     Add a channel to fetch package metadata from.
+channel remove  Select channels to remove.
+channel list    List the channel URLs.
+channel build   Build a channel locally by converting YAML files to JSON.
+server          Start a local server to use the HTTP API.
+```
 
 
 ---
@@ -14,7 +66,7 @@ Afterwards, run `sc4pac update` for the changes to take effect.
 
 **Example:**
 ```sh
-sc4pac add memo:essential-fixes
+sc4pac add cyclone-boom:save-warning
 ```
 
 Package names are of the form `<group>:<package-name>`.
@@ -49,8 +101,8 @@ Afterwards, run `sc4pac update` for the changes to take effect.
 
 **Examples:**
 ```sh
-sc4pac remove --interactive          # Interactively select packages to remove.
-sc4pac remove memo:essential-fixes   # Remove package <group>:<package-name>.
+sc4pac remove --interactive               # Interactively select packages to remove.
+sc4pac remove cyclone-boom:save-warning   # Remove package <group>:<package-name>.
 ```
 
 **Options:**
@@ -99,7 +151,7 @@ Display more information about a package.
 
 **Examples:**
 ```sh
-sc4pac info memo:essential-fixes
+sc4pac info cyclone-boom:save-warning
 ```
 
 ---
