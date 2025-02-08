@@ -34,19 +34,24 @@ The GUI is located in the <a href="https://github.com/memo33/sc4pac-gui/releases
   [macOS]: https://adoptium.net/temurin/releases/?os=mac&package=jre
   [Linux]: https://repology.org/project/openjdk/versions
 
-- [Download the latest release of the sc4pac GUI](https://github.com/memo33/sc4pac-gui/releases/latest)
-  and extract the contents to any location of your choice.
+- [Download the latest release of the sc4pac GUI](https://github.com/memo33/sc4pac-gui/releases/latest).
   Choose between
   - the Windows desktop application,
   - the Linux desktop application, and
   - the cross-platform web-app for other platforms,
   - or the non-graphical terminal-based [sc4pac CLI](https://github.com/memo33/sc4pac-tools/releases/latest).
 
+- [Verify the checksum](https://howardsimpson.blogspot.com/2022/01/quickly-create-checksum-in-windows.html)
+  of the downloaded ZIP file against the [checksums published on Github](https://github.com/memo33/sc4pac-gui/releases) (optional).
+
+- Extract the contents of the downloaded ZIP file to any location of your choice.
+
 - At first launch of the application, it will guide you through the initial setup:
   creating a new Profile and configuring the location of your Plugins folder.
 
 - Go to **Find Packages** to search and select packages to install
   (for example [cyclone-boom:save-warning](https://memo33.github.io/sc4pac/channel/?pkg=cyclone-boom:save-warning)).
+  There are already more than 3000 plugins with compatible *metadata* to choose from.
   Once satisfied, go to the **Dashboard** and hit **Update** to download and install the plugin files.
 
 - Be aware that Simtropolis has a download limit of 20 files per day for guests.
