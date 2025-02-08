@@ -449,44 +449,22 @@ object ApiSpecZIO extends ZIOSpecDefault {
                           } yield msg.responses("Yes")
                       },
                       checkMessages = queue => (for {
-                        _ <- queue.take.flatMap(f => addTestResult(assertTrue(f.json("$type").str == "/progress/download/started")))
-                        _ <- queue.take.flatMap(f => addTestResult(assertTrue(f.json("$type").str == "/progress/download/length")))
-                        _ <- queue.take.flatMap(f => addTestResult(assertTrue(f.json("$type").str == "/progress/download/intermediate")))
-                        _ <- queue.take.flatMap(f => addTestResult(assertTrue(f.json("$type").str == "/progress/download/finished")))
-                        _ <- queue.take.flatMap(f => addTestResult(assertTrue(f.json("$type").str == "/progress/download/started")))
-                        _ <- queue.take.flatMap(f => addTestResult(assertTrue(f.json("$type").str == "/progress/download/length")))
-                        _ <- queue.take.flatMap(f => addTestResult(assertTrue(f.json("$type").str == "/progress/download/intermediate")))
-                        _ <- queue.take.flatMap(f => addTestResult(assertTrue(f.json("$type").str == "/progress/download/finished")))
-                        _ <- queue.take.flatMap(f => addTestResult(assertTrue(f.json("$type").str == "/progress/download/started")))
-                        _ <- queue.take.flatMap(f => addTestResult(assertTrue(f.json("$type").str == "/progress/download/length")))
-                        _ <- queue.take.flatMap(f => addTestResult(assertTrue(f.json("$type").str == "/progress/download/intermediate")))
-                        _ <- queue.take.flatMap(f => addTestResult(assertTrue(f.json("$type").str == "/progress/download/finished")))
-                        _ <- queue.take.flatMap(f => addTestResult(assertTrue(f.json("$type").str == "/prompt/choice/update/variant")))
-                        _ <- queue.take.flatMap(f => addTestResult(assertTrue(f.json("$type").str == "/progress/download/started")))
-                        _ <- queue.take.flatMap(f => addTestResult(assertTrue(f.json("$type").str == "/progress/download/length")))
-                        _ <- queue.take.flatMap(f => addTestResult(assertTrue(f.json("$type").str == "/progress/download/intermediate")))
-                        _ <- queue.take.flatMap(f => addTestResult(assertTrue(f.json("$type").str == "/progress/download/finished")))
-                        _ <- queue.take.flatMap(f => addTestResult(assertTrue(f.json("$type").str == "/progress/download/started")))
-                        _ <- queue.take.flatMap(f => addTestResult(assertTrue(f.json("$type").str == "/progress/download/length")))
-                        _ <- queue.take.flatMap(f => addTestResult(assertTrue(f.json("$type").str == "/progress/download/intermediate")))
-                        _ <- queue.take.flatMap(f => addTestResult(assertTrue(f.json("$type").str == "/progress/download/finished")))
-                        _ <- queue.take.flatMap(f => addTestResult(assertTrue(f.json("$type").str == "/progress/download/started")))
-                        _ <- queue.take.flatMap(f => addTestResult(assertTrue(f.json("$type").str == "/progress/download/length")))
-                        _ <- queue.take.flatMap(f => addTestResult(assertTrue(f.json("$type").str == "/progress/download/intermediate")))
-                        _ <- queue.take.flatMap(f => addTestResult(assertTrue(f.json("$type").str == "/progress/download/finished")))
-                        _ <- queue.take.flatMap(f => addTestResult(assertTrue(f.json("$type").str == "/progress/download/started")))
-                        _ <- queue.take.flatMap(f => addTestResult(assertTrue(f.json("$type").str == "/progress/download/length")))
-                        _ <- queue.take.flatMap(f => addTestResult(assertTrue(f.json("$type").str == "/progress/download/intermediate")))
-                        _ <- queue.take.flatMap(f => addTestResult(assertTrue(f.json("$type").str == "/progress/download/finished")))
-                        _ <- queue.take.flatMap(f => addTestResult(assertTrue(f.json("$type").str == "/progress/download/started")))
-                        _ <- queue.take.flatMap(f => addTestResult(assertTrue(f.json("$type").str == "/progress/download/length")))
-                        _ <- queue.take.flatMap(f => addTestResult(assertTrue(f.json("$type").str == "/progress/download/intermediate")))
-                        _ <- queue.take.flatMap(f => addTestResult(assertTrue(f.json("$type").str == "/progress/download/finished")))
-                        _ <- queue.take.flatMap(f => addTestResult(assertTrue(f.json("$type").str == "/progress/download/started")))
-                        _ <- queue.take.flatMap(f => addTestResult(assertTrue(f.json("$type").str == "/progress/download/length")))
-                        _ <- queue.take.flatMap(f => addTestResult(assertTrue(f.json("$type").str == "/progress/download/intermediate")))
-                        _ <- queue.take.flatMap(f => addTestResult(assertTrue(f.json("$type").str == "/progress/download/finished")))
-                        _ <- queue.take.flatMap(f => addTestResult(assertTrue(f.json("$type").str == "/prompt/confirmation/update/plan")))
+                        msgs <- queue.takeN(3*4).map(_.map(_.json("$type").str))
+                        _    <- addTestResult(assertTrue(msgs.groupMapReduce(identity)(_ => 1)(_ + _) == Map(
+                                  "/progress/download/length" -> 3,
+                                  "/progress/download/intermediate" -> 3,
+                                  "/progress/download/finished" -> 3,
+                                  "/progress/download/started" -> 3,
+                                )))
+                        _    <- queue.take.flatMap(f => addTestResult(assertTrue(f.json("$type").str == "/prompt/choice/update/variant")))
+                        msgs <- queue.takeN(6*4).map(_.map(_.json("$type").str))
+                        _    <- addTestResult(assertTrue(msgs.groupMapReduce(identity)(_ => 1)(_ + _) == Map(
+                                  "/progress/download/length" -> 6,
+                                  "/progress/download/intermediate" -> 6,
+                                  "/progress/download/finished" -> 6,
+                                  "/progress/download/started" -> 6,
+                                )))
+                        _    <- queue.take.flatMap(f => addTestResult(assertTrue(f.json("$type").str == "/prompt/confirmation/update/plan")))
                         // from here on, two downloads in parallel
                         maxDownloads = 2
                         _    <- queue.take.flatMap(f => addTestResult(assertTrue(f.json("$type").str == "/progress/download/started")))
