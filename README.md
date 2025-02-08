@@ -83,12 +83,12 @@ The GUI is located in the <a href="https://github.com/memo33/sc4pac-gui/releases
 700-transit
 710-automata
 777-network-addon-mod  (installed manually)
-891-my-overrides       (your manually installed zzz-folders)
+895-my-overrides       (your manually installed zzz-folders)
 900-overrides
 ```
 [(source)](https://github.com/memo33/sc4pac-actions/blob/main/src/lint.py#L16-L36)
 
-Packages are installed into subfolders prefixed by an even number, as the order in which files are loaded by the game is important.
+Packages are installed into subfolders prefixed by an *even* number, as the order in which files are loaded by the game is important.
 This ensures a consistent load order.
 Files you install manually should be put into subfolders prefixed by an *odd* number
 (ideally before `900-overrides`).
@@ -98,7 +98,7 @@ Files you install manually should be put into subfolders prefixed by an *odd* nu
 
 If you already have a non-empty Plugins folder and want to switch to *sc4pac*,
 start by moving the bulk of your manually installed files into a new subfolder `075-my-plugins`
-and your zzz-folders into `891-my-overrides` to ensure correct load order.
+and your zzz-folders into `895-my-overrides` to ensure correct load order.
 Once you install more and more packages and dependencies with *sc4pac*,
 delete the corresponding older, redundant, manually installed files
 to avoid duplication or version conflicts.
@@ -114,7 +114,7 @@ The *sc4pac* GUI supports creating multiple Profiles.
 For example, you could use a unique Profile for each of your Regions.
 Each Profile corresponds to a Plugins folder.
 
-!> Important: Make sure to select distinct locations for all your Plugins folder to avoid interference between Profiles.
+!> Important: Make sure to select distinct locations for all your Plugins folders to avoid interference between Profiles.
 
 ?> You can use the [SC4 launch parameter](https://www.wiki.sc4devotion.com/index.php?title=Shortcut_Parameters#User_Dir) `-UserDir:"..."`
    to start the game with a custom location for the Plugins folder.
