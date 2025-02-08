@@ -467,10 +467,8 @@ object ApiSpecZIO extends ZIOSpecDefault {
                         _    <- queue.take.flatMap(f => addTestResult(assertTrue(f.json("$type").str == "/prompt/confirmation/update/plan")))
                         // from here on, two downloads in parallel
                         maxDownloads = 2
-                        _    <- queue.take.flatMap(f => addTestResult(assertTrue(f.json("$type").str == "/progress/download/started")))
-                        _    <- queue.take.flatMap(f => addTestResult(assertTrue(f.json("$type").str == "/progress/download/started")))
-                        msgs <- queue.takeN(22).map(_.map(_.json("$type").str))
-                        _    <- ZIO.foldLeft(msgs)(2) { (numActive, progType) =>
+                        msgs <- queue.takeN(24).map(_.map(_.json("$type").str))
+                        _    <- ZIO.foldLeft(msgs)(0) { (numActive, progType) =>
                                   for {
                                     _ <- addTestResult(assertTrue(numActive >= 0, numActive <= maxDownloads))
                                   } yield progType match {
@@ -483,7 +481,7 @@ object ApiSpecZIO extends ZIOSpecDefault {
                                   "/progress/download/length" -> 6,
                                   "/progress/download/intermediate" -> 6,
                                   "/progress/download/finished" -> 6,
-                                  "/progress/download/started" -> 4,
+                                  "/progress/download/started" -> 6,
                                 )))
                         _    <- queue.take.flatMap(f => addTestResult(assertTrue(f.json("$type").str == "/progress/update/extraction")))
                         _    <- queue.take.flatMap(f => addTestResult(assertTrue(f.json("$type").str == "/progress/update/extraction")))
