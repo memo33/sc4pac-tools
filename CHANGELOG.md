@@ -11,6 +11,7 @@
 ### Changed
 - API upgraded to 2.3:
   - changes to format of `/prompt/choice/update/variant` message
+  - added `notCategory` and `ignoreInstalled` options to `/packages.search`
 
 [actions2]: https://github.com/memo33/sc4pac-actions/issues/2
 

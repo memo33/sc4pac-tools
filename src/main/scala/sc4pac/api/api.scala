@@ -290,15 +290,20 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
       wrapHttpEndpoint {
         for {
           (searchText, threshold) <- searchParams(req)
-          categoryOpt  =  req.url.queryParams.getAll("category").headOption
+          category     =  req.url.queryParams.getAll("category").toSet
+          notCategory  =  req.url.queryParams.getAll("notCategory").toSet
           channelOpt   =  req.url.queryParams.getAll("channel").headOption
+          ignoreInstalled = req.url.queryParams.getAll("ignoreInstalled").nonEmpty
           pluginsSpec  <- readPluginsSpecOr409
           pac          <- Sc4pac.init(pluginsSpec.config)
-          searchResult <- pac.search(searchText, threshold, category = categoryOpt, channel = channelOpt)
+          searchResult <- pac.search(searchText, threshold, category = category, notCategory = notCategory, channel = channelOpt)
           createStatus <- installedStatusBuilder(pluginsSpec)
-        } yield jsonResponse(searchResult.map { case (pkg, ratio, summaryOpt) =>
+        } yield jsonResponse(searchResult.flatMap { case (pkg, ratio, summaryOpt) =>
           val statusOrNull = createStatus(pkg)
-          PackageSearchResultItem(pkg, relevance = ratio, summary = summaryOpt.getOrElse(""), status = statusOrNull)
+          if (ignoreInstalled && statusOrNull != null && statusOrNull.installed != null)
+            None
+          else
+            Some(PackageSearchResultItem(pkg, relevance = ratio, summary = summaryOpt.getOrElse(""), status = statusOrNull))
         })
       }
     },

@@ -84,7 +84,8 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) {  // TODO d
   def search(
     query: String,
     threshold: Int,
-    category: Option[String],
+    category: Set[String],
+    notCategory: Set[String],
     channel: Option[String],
   ): Task[Seq[(BareModule, Int, Option[String])]] = iterateAllChannelPackages(channel).map { itemsIter =>
     val externalIdOpt: Option[(String, String)] = JD.Channel.findExternalId(url = query)
@@ -93,12 +94,13 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) {  // TODO d
       itemsIter.flatMap { item =>
         if (item.isSc4pacAsset) {
           assert(false, "iteration should not include any assets")  // None
-        } else if (category.isDefined && item.category != category) {
+        } else if (category.nonEmpty && !item.category.exists(category)
+            || notCategory.nonEmpty && item.category.exists(notCategory)) {
           None
         } else {
           val ratio = externalIdOpt match {
             case None =>
-              if (searchTokens.isEmpty && category.isDefined) 100  // return the entire category
+              if (searchTokens.isEmpty && category.nonEmpty) 100  // return the entire category
               else Sc4pac.fuzzySearchRatio(searchTokens, item.toSearchString, threshold)
             case Some(exchangeKey -> externalId) =>
               if (item.externalIds.get(exchangeKey).exists(_.contains(externalId))) 100 else 0

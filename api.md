@@ -181,6 +181,9 @@ Optional parameters:
 - `channel=<url>` to limit results to this channel.
 - `category=<cat>` to limit results to this category.
   If `category` is passed, but `q` is empty, then all packages of that category are returned.
+  Can be passed multiple times to include more than one category.
+- `notCategory=<cat>` to ignore results from one or more categories.
+- `ignoreInstalled` to limit results to packages that are not installed yet.
 
 Returns:
 ```
