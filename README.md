@@ -25,8 +25,8 @@ The GUI is located in the <a href="https://github.com/memo33/sc4pac-gui/releases
 ## Usage
 
 - Prerequisites:
-  - Java 11+ ([Windows]/[macOS]/[Linux], see [Adoptium] for details)
-  - Mono ([macOS](https://www.mono-project.com/docs/getting-started/install/)/[Linux](https://repology.org/project/mono/versions), not needed on Windows)
+  - **Java** 11+ ([Windows]/[macOS]/[Linux], see [Adoptium] for details)
+  - **Mono** ([macOS](https://www.mono-project.com/docs/getting-started/install/)/[Linux](https://repology.org/project/mono/versions), not needed on Windows)
   - Enough disk space
 
   [Adoptium]: https://adoptium.net/installation/
@@ -36,9 +36,9 @@ The GUI is located in the <a href="https://github.com/memo33/sc4pac-gui/releases
 
 - [Download the latest release of the sc4pac GUI](https://github.com/memo33/sc4pac-gui/releases/latest).
   Choose between
-  - the Windows desktop application,
-  - the Linux desktop application, and
-  - the cross-platform web-app for other platforms,
+  - the desktop application for **Windows** 10+,
+  - the desktop application for **Linux**, and
+  - the **cross-platform** web-app for other platforms,
   - or the non-graphical terminal-based [sc4pac CLI](https://github.com/memo33/sc4pac-tools/releases/latest).
 
 - [Verify the checksum](https://howardsimpson.blogspot.com/2022/01/quickly-create-checksum-in-windows.html)
@@ -46,13 +46,27 @@ The GUI is located in the <a href="https://github.com/memo33/sc4pac-gui/releases
 
 - Extract the contents of the downloaded ZIP file to any location of your choice.
 
-- At first launch of the application, it will guide you through the initial setup:
+- At first launch of the application, it guides you through the initial setup:
   creating a new Profile and configuring the location of your Plugins folder.
 
-- Go to **Find Packages** to search and select packages to install
-  (for example [cyclone-boom:save-warning](https://memo33.github.io/sc4pac/channel/?pkg=cyclone-boom:save-warning)).
+- Go to **Find Packages** to search and select packages to install (for example `pkg=cyclone-boom:save-warning`).
   There are already more than 3000 plugins with compatible *metadata* to choose from.
   Once satisfied, go to the **Dashboard** and hit **Update** to download and install the plugin files.
+
+- Add the [Simtropolis Channel](https://community.simtropolis.com/forums/topic/763620-simtropolis-x-sc4pac-a-new-way-to-install-plugins/)
+  in your **Dashboard** to be able to find and install many additional files from the STEX:
+  ```
+  https://memo33.github.io/sc4pac/channel/
+  https://sc4pac.simtropolis.com/
+  ```
+  Start small and gradually build up your Plugins folder. Don't download everything at once.
+
+- If you are signed in to [Simtropolis](https://community.simtropolis.com), watch out for the **“Install with sc4pac”** button on the STEX.
+  It appears for plugins that can be installed with *sc4pac*.
+
+- Install `pkg=null-45:startup-performance-optimization-dll` if you use the Windows digital edition of the game.
+  (This adds support for plugin file paths exceeding the 260 character limit on Windows,
+  which could otherwise be a problem for a small number of packages that use deeply-nested, long file names.)
 
 - Be aware that Simtropolis has a download limit of 20 files per day for guests.
   If you reach the limit, go to **Settings** and set up authentication.
