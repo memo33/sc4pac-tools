@@ -40,6 +40,9 @@ lazy val root = (project in file("."))
     buildInfoKeys := Seq[BuildInfoKey](name, organization, version, scalaVersion, sbtVersion, licenses),
     buildInfoPackage := "io.github.memo33.sc4pac.cli"
   )
+  .settings(
+    commands += Command.command("testUntilFailed") { state => "testOnly *ApiSpecZIO" :: "testUntilFailed" :: state }
+  )
 
 
 Compile / run / fork := true

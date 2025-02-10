@@ -128,6 +128,12 @@ object ApiSpecZIO extends ZIOSpecDefault {
       _    <- ZIO.whenDiscard(resp.status.code != 200)(ZIO.fail(AssertionError(s"/plugins.remove responded with ${resp.status.code}")))
     } yield ()
 
+  def takeUntil[A](queue: Queue[A])(predicate: A => Boolean): UIO[(Seq[A], A)] =
+    ZIO.iterate(List.empty[A])(cont = !_.headOption.exists(predicate)) {
+      buf => queue.take.map(_ :: buf)
+    }
+    .map { buf => (buf.tail.reverse, buf.head) }
+
   class MsgFrame(val msg: api.Message, val json: ujson.Value)
 
   /** Calls a websocket endpoint, allowing to verify messages against
@@ -449,25 +455,26 @@ object ApiSpecZIO extends ZIOSpecDefault {
                           } yield msg.responses("Yes")
                       },
                       checkMessages = queue => (for {
-                        msgs <- queue.takeN(3*4).map(_.map(_.json("$type").str))
-                        _    <- addTestResult(assertTrue(msgs.groupMapReduce(identity)(_ => 1)(_ + _) == Map(
+                        (msgs, f) <- takeUntil(queue)(!_.json("$type").str.startsWith("/progress/download/"))
+                        _    <- addTestResult(assertTrue(msgs.map(_.json("$type").str).groupMapReduce(identity)(_ => 1)(_ + _) == Map(
                                   "/progress/download/length" -> 3,
                                   "/progress/download/intermediate" -> 3,
                                   "/progress/download/finished" -> 3,
                                   "/progress/download/started" -> 3,
                                 )))
-                        _    <- queue.take.flatMap(f => addTestResult(assertTrue(f.json("$type").str == "/prompt/choice/update/variant")))
-                        msgs <- queue.takeN(6*4).map(_.map(_.json("$type").str))
-                        _    <- addTestResult(assertTrue(msgs.groupMapReduce(identity)(_ => 1)(_ + _) == Map(
+                        _    <- addTestResult(assertTrue(f.json("$type").str == "/prompt/choice/update/variant"))
+                        (msgs, f) <- takeUntil(queue)(!_.json("$type").str.startsWith("/progress/download/"))
+                        _    <- addTestResult(assertTrue(msgs.map(_.json("$type").str).groupMapReduce(identity)(_ => 1)(_ + _) == Map(
                                   "/progress/download/length" -> 6,
                                   "/progress/download/intermediate" -> 6,
                                   "/progress/download/finished" -> 6,
                                   "/progress/download/started" -> 6,
                                 )))
-                        _    <- queue.take.flatMap(f => addTestResult(assertTrue(f.json("$type").str == "/prompt/confirmation/update/plan")))
+                        _    <- addTestResult(assertTrue(f.json("$type").str == "/prompt/confirmation/update/plan"))
                         // from here on, two downloads in parallel
                         maxDownloads = 2
-                        msgs <- queue.takeN(24).map(_.map(_.json("$type").str))
+                        (msgs0, f) <- takeUntil(queue)(!_.json("$type").str.startsWith("/progress/download/"))
+                        msgs = msgs0.map(_.json("$type").str)
                         _    <- ZIO.foldLeft(msgs)(0) { (numActive, progType) =>
                                   for {
                                     _ <- addTestResult(assertTrue(numActive >= 0, numActive <= maxDownloads))
@@ -483,7 +490,7 @@ object ApiSpecZIO extends ZIOSpecDefault {
                                   "/progress/download/finished" -> 6,
                                   "/progress/download/started" -> 6,
                                 )))
-                        _    <- queue.take.flatMap(f => addTestResult(assertTrue(f.json("$type").str == "/progress/update/extraction")))
+                        _    <- addTestResult(assertTrue(f.json("$type").str == "/progress/update/extraction"))
                         _    <- queue.take.flatMap(f => addTestResult(assertTrue(f.json("$type").str == "/progress/update/extraction")))
                         _    <- queue.take.flatMap(f => addTestResult(assertTrue(f.json("$type").str == "/progress/update/extraction")))
                         _    <- queue.take.flatMap(f => addTestResult(assertTrue(f.json("$type").str == "/prompt/confirmation/update/warnings")))
