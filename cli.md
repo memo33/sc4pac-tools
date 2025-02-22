@@ -29,9 +29,10 @@ For most uses, it is recommended to use the *sc4pac* GUI instead.
   - `sc4pac add cyclone-boom:save-warning`
   - `sc4pac update`
 - Be aware that Simtropolis has a download limit of 20 files per day.
-  Intermediate downloads are cached, so if you reach the limit,
-  simply continue the installation process the next day.
-  Alternatively, there is a temporary [workaround using cookies](https://github.com/memo33/sc4pac-tools/blob/main/src/scripts/sc4pac.bat#L13-L32).
+  If you reach the limit, configure your
+  [personal Simtropolis token](https://github.com/memo33/sc4pac-tools/blob/main/src/scripts/sc4pac.bat#L13-L23)
+  for authentication.
+  Alternatively, simply continue the installation process the next day.
 - Install other [available packages](https://memo33.github.io/sc4pac/#/packages).
 
 ![demo-video](https://github.com/memo33/sc4pac-tools/releases/download/0.1.3/demo-video.gif)

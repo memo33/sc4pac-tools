@@ -131,7 +131,7 @@ object Commands {
         pac          <- Sc4pac.init(pluginsSpec.config)
         pluginsRoot  <- pluginsSpec.config.pluginsRootAbs
         flag         <- pac.update(pluginsSpec.explicit, globalVariant0 = pluginsSpec.config.variant, pluginsRoot = pluginsRoot)
-                          .provideSomeLayer(zio.ZLayer.succeed(Downloader.Cookies(Constants.simtropolisCookie)))
+                          .provideSomeLayer(zio.ZLayer.succeed(Downloader.Cookies(simtropolisCookie = Constants.simtropolisCookie, simtropolisToken = Constants.simtropolisToken)))
       } yield ()
       runMainExit(task.provideLayer(cliLayer.map(_.update((_: CliPrompter).withAutoYes(options.yes)))), exit)
     }

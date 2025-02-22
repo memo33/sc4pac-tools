@@ -402,6 +402,8 @@ This mirrors the interactive `sc4pac update` command of the CLI.
 The websocket sends a series of messages, some of which expect a specific response, such as a confirmation to continue.
 
 Parameters:
+- `simtropolisToken=<value>` to re-use an authenticated session.
+  Otherwise, the environment variable will be used instead if available.
 - `simtropolisCookie=<value>` to re-use an authenticated session.
   Otherwise, the environment variable will be used instead if available.
 - `refreshChannels` to clear the cached channel contents files before updating.

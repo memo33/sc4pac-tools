@@ -245,8 +245,8 @@ class Downloader(
 
 object Downloader {
 
-  class Cookies(val simtropolisCookie: Option[String])
-  val emptyCookiesLayer = zio.ZLayer.succeed(Cookies(simtropolisCookie = None))
+  class Cookies(val simtropolisCookie: Option[String], val simtropolisToken: Option[String])
+  val emptyCookiesLayer = zio.ZLayer.succeed(Cookies(simtropolisCookie = None, simtropolisToken = None))
 
   /** Returns true on success, false if data transfer was canceled. */
   private def readFullyTo(
@@ -374,11 +374,15 @@ object Downloader {
             conn0.setConnectTimeout(Constants.urlConnectTimeout.toMillis.toInt)  // timeout for establishing a connection
             conn0.setReadTimeout(Constants.urlReadTimeout.toMillis.toInt)  // timeout in case of internet outage while downloading a file
 
-            // Set session cookie for rudimentary authentication to Simtropolis.
-            for (cookie <- cookies.simtropolisCookie) {
-              val host = conn0.getURL().getHost()
-              if (host == "simtropolis.com" || host.endsWith(".simtropolis.com")) {
-                conn0.setRequestProperty("Cookie", cookie)
+            val host = conn0.getURL().getHost()
+            if (host == "simtropolis.com" || host.endsWith(".simtropolis.com")) {
+              if (cookies.simtropolisToken.isDefined) {
+                conn0.addRequestProperty("Authorization", s"""SC4PAC-TOKEN-ST userkey="${cookies.simtropolisToken.get}"""")
+              } else {
+                // Set session cookie for rudimentary authentication to Simtropolis.
+                for (cookie <- cookies.simtropolisCookie) {
+                  conn0.setRequestProperty("Cookie", cookie)
+                }
               }
             }
           case _ =>

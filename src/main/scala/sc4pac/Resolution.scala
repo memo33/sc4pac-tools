@@ -199,9 +199,9 @@ class Resolution(reachableDeps: TreeSeqMap[BareDep, Seq[BareDep]], nonbareDeps: 
             e.getMessage))
         case e: (ArtifactError.DownloadError | ArtifactError.WrongLength | ArtifactError.NotFound) =>
           ZIO.serviceWithZIO[Downloader.Cookies] { cookies =>
-            val msg = if (cookies.simtropolisCookie.isDefined) {
+            val msg = if (cookies.simtropolisToken.isDefined || cookies.simtropolisCookie.isDefined) {
               "Failed to download some assets. " +
-              "Maybe your authentication cookies have expired or the file exchange server is currently unavailable."
+              "Check whether the file exchange server is currently unavailable and check that your personal Simtropolis authentication token is correct."
             } else {
               "Failed to download some assets. " +
               "You may have reached your daily download quota (Simtropolis: 20 files per day for guests) " +
