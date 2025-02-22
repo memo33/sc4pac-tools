@@ -324,7 +324,7 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) {  // TODO d
   }
 
   /** Update all installed packages from modules (the list of explicitly added packages). */
-  def update(modules0: Seq[BareModule], globalVariant0: Variant, pluginsRoot: os.Path): RIO[ProfileRoot & Prompter & Downloader.Cookies, Boolean] = {
+  def update(modules0: Seq[BareModule], globalVariant0: Variant, pluginsRoot: os.Path): RIO[ProfileRoot & Prompter & Downloader.Credentials, Boolean] = {
 
     // - before starting to remove anything, we download and extract everything
     //   to install into temp folders (staging)
@@ -591,7 +591,7 @@ object Sc4pac {
       channelContentsFile <- cache
                               .withTtl(Some(channelContentsTtl))
                               .fetchFile(artifact)  // requires initialized logger
-                              .provideSomeLayer(Downloader.emptyCookiesLayer)  // as we do not fetch channel file from Simtropolis, no need for cookies
+                              .provideSomeLayer(Downloader.emptyCredentialsLayer)  // as we do not fetch channel file from Simtropolis, no need for credentials
                               .mapError {
                                 case err: coursier.cache.ArtifactError =>
                                   error.ChannelsNotAvailable(s"Channel not available. Check your internet connection and that the channel URL is correct: $repoUri", err.getMessage)

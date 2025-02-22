@@ -247,7 +247,7 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
         success = pluginsSpec =>
           Handler.webSocket { wsChannel =>
             val updateTask: zio.RIO[ProfileRoot & Ref[Option[FileCache]] & WebSocketLogger, Message] =
-              val credentials = Downloader.Cookies(
+              val credentials = Downloader.Credentials(
                 simtropolisCookie = req.url.queryParams.getAll("simtropolisCookie").headOption.orElse(Constants.simtropolisCookie),
                 simtropolisToken = req.url.queryParams.getAll("simtropolisToken").headOption.orElse(Constants.simtropolisToken),
               )

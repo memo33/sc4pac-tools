@@ -174,7 +174,7 @@ class Resolution(reachableDeps: TreeSeqMap[BareDep, Seq[BareDep]], nonbareDeps: 
   /** Download artifacts of a subset of the dependency set of the resolution, or
     * take files from cache in case they are still up-to-date.
     */
-  def fetchArtifactsOf(subset: Seq[Dep]): RIO[ResolutionContext & Downloader.Cookies, Seq[(DepAsset, Artifact, java.io.File)]] = {
+  def fetchArtifactsOf(subset: Seq[Dep]): RIO[ResolutionContext & Downloader.Credentials, Seq[(DepAsset, Artifact, java.io.File)]] = {
     val assetsArtifacts = subset.collect{ case d: DepAsset =>
       (d, Artifact(
         d.url,
@@ -198,8 +198,8 @@ class Resolution(reachableDeps: TreeSeqMap[BareDep, Seq[BareDep]], nonbareDeps: 
             "so the integrity of the file cannot be verified by sc4pac: Report this to the maintainers of the metadata.",
             e.getMessage))
         case e: (ArtifactError.DownloadError | ArtifactError.WrongLength | ArtifactError.NotFound) =>
-          ZIO.serviceWithZIO[Downloader.Cookies] { cookies =>
-            val msg = if (cookies.simtropolisToken.isDefined || cookies.simtropolisCookie.isDefined) {
+          ZIO.serviceWithZIO[Downloader.Credentials] { credentials =>
+            val msg = if (credentials.simtropolisToken.isDefined || credentials.simtropolisCookie.isDefined) {
               "Failed to download some assets. " +
               "Check whether the file exchange server is currently unavailable and check that your personal Simtropolis authentication token is correct."
             } else {

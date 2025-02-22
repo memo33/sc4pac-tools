@@ -23,7 +23,7 @@ class Downloader(
   localFile: java.io.File,  // the local file after download
   logger: Logger,
   pool: java.util.concurrent.ExecutorService,
-  cookies: Downloader.Cookies,
+  credentials: Downloader.Credentials,
 ) {
 
   def download: IO[CC.ArtifactError, java.io.File] = {
@@ -115,7 +115,7 @@ class Downloader(
     var conn: URLConnection = null
 
     try {
-      val (conn0, partialDownload) = Downloader.urlConnectionMaybePartial(url, Downloader.PartialDownloadSpec.initBlocking(tmp), cookies)
+      val (conn0, partialDownload) = Downloader.urlConnectionMaybePartial(url, Downloader.PartialDownloadSpec.initBlocking(tmp), credentials)
       conn = conn0
 
       val respCodeOpt = CC.CacheUrl.responseCode(conn)
@@ -245,8 +245,8 @@ class Downloader(
 
 object Downloader {
 
-  class Cookies(val simtropolisCookie: Option[String], val simtropolisToken: Option[String])
-  val emptyCookiesLayer = zio.ZLayer.succeed(Cookies(simtropolisCookie = None, simtropolisToken = None))
+  class Credentials(val simtropolisCookie: Option[String], val simtropolisToken: Option[String])
+  val emptyCredentialsLayer = zio.ZLayer.succeed(Credentials(simtropolisCookie = None, simtropolisToken = None))
 
   /** Returns true on success, false if data transfer was canceled. */
   private def readFullyTo(
@@ -358,7 +358,7 @@ object Downloader {
   /** Open a URL connection for download, optionally for resuming a partial
     * download (if byte-serving is supported by the server).
     */
-  private def urlConnectionMaybePartial(url0: String, specOpt: Option[PartialDownloadSpec], cookies: Downloader.Cookies): (URLConnection, Option[PartialDownloadSpec]) = {
+  private def urlConnectionMaybePartial(url0: String, specOpt: Option[PartialDownloadSpec], credentials: Downloader.Credentials): (URLConnection, Option[PartialDownloadSpec]) = {
 
     var conn: URLConnection = null
 
@@ -376,11 +376,11 @@ object Downloader {
 
             val host = conn0.getURL().getHost()
             if (host == "simtropolis.com" || host.endsWith(".simtropolis.com")) {
-              if (cookies.simtropolisToken.isDefined) {
-                conn0.addRequestProperty("Authorization", s"""SC4PAC-TOKEN-ST userkey="${cookies.simtropolisToken.get}"""")
+              if (credentials.simtropolisToken.isDefined) {
+                conn0.addRequestProperty("Authorization", s"""SC4PAC-TOKEN-ST userkey="${credentials.simtropolisToken.get}"""")
               } else {
                 // Set session cookie for rudimentary authentication to Simtropolis.
-                for (cookie <- cookies.simtropolisCookie) {
+                for (cookie <- credentials.simtropolisCookie) {
                   conn0.setRequestProperty("Cookie", cookie)
                 }
               }
@@ -419,7 +419,7 @@ object Downloader {
 
     res match {
       case Left(specOpt) =>
-        urlConnectionMaybePartial(url0, specOpt, cookies)  // reconnect, possibly starting from 0
+        urlConnectionMaybePartial(url0, specOpt, credentials)  // reconnect, possibly starting from 0
       case Right(ret) =>
         ret
     }

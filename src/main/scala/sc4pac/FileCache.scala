@@ -75,8 +75,8 @@ class FileCache private (
     *
     * Otherwise, return local file, potentially failing with a checksum error.
     */
-  def fetchFile(artifact: Artifact): ZIO[Downloader.Cookies & Logger, CC.ArtifactError, java.io.File] = {
-    def task0(cookies: Downloader.Cookies, logger: Logger): IO[CC.ArtifactError, java.io.File] = {
+  def fetchFile(artifact: Artifact): ZIO[Downloader.Credentials & Logger, CC.ArtifactError, java.io.File] = {
+    def task0(credentials: Downloader.Credentials, logger: Logger): IO[CC.ArtifactError, java.io.File] = {
       val destFile = localFile(artifact.url)
       (for {
         destFileChecksumVerifiedLazy <- verifyChecksum(destFile, artifact).memoize  // lazily evaluates only when needed
@@ -87,7 +87,7 @@ class FileCache private (
                     } || ZIO.succeed(artifact.redownloadOnChecksumError) && destFileChecksumVerifiedLazy.map(_.isLeft)
         result   <- if (refresh) {
                       for {
-                        newFile <- new Downloader(artifact, cacheLocation = location, localFile = destFile, logger, pool, cookies).download
+                        newFile <- new Downloader(artifact, cacheLocation = location, localFile = destFile, logger, pool, credentials).download
                         // We enforce that checksums match (if present) to avoid redownloading same file repeatedly.
                         //
                         // In case of pkg.json files, there is a small chance (30 minutes time window, see `channelContentsTtl`)
@@ -128,9 +128,9 @@ class FileCache private (
                   if (p1 != null)  // key was present: there was already a running task for url
                     p1.await.zipLeft(ZIO.serviceWith[Logger](_.concurrentCacheAccess(artifact.url)))
                   else
-                    ZIO.serviceWithZIO[Downloader.Cookies] { cookies =>
+                    ZIO.serviceWithZIO[Downloader.Credentials] { credentials =>
                       ZIO.serviceWithZIO[Logger] { logger =>
-                        p0.complete(task0(cookies, logger)).flatMap(_ => p0.await)  // Note that `complete` also handles failure of `task0`
+                        p0.complete(task0(credentials, logger)).flatMap(_ => p0.await)  // Note that `complete` also handles failure of `task0`
                       }
                     }
                 }
@@ -149,7 +149,7 @@ class FileCache private (
         )
       }
     }
-    .provideSomeLayer(Downloader.emptyCookiesLayer)  // as we do not fetch text files from Simtropolis, no need for cookies
+    .provideSomeLayer(Downloader.emptyCredentialsLayer)  // as we do not fetch text files from Simtropolis, no need for credentials
   }
 
   /** If artifact has an expected checksum, check that it matches the cached
