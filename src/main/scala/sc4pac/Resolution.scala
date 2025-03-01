@@ -196,22 +196,32 @@ class Resolution(reachableDeps: TreeSeqMap[BareDep, Seq[BareDep]], nonbareDeps: 
                 "- Otherwise, this means the uploaded file was modified after the channel metadata was last updated, " +
                 "so the integrity of the file cannot be verified by sc4pac: Report this to the maintainers of the metadata.",
                 e.getMessage))
-            case e: (ArtifactError.DownloadError | ArtifactError.WrongLength | ArtifactError.NotFound) =>
+            case e: ArtifactError.Unauthorized =>  // 401
               ZIO.serviceWithZIO[Downloader.Credentials] { credentials =>
                 val msg = if (!art.isFromSimtropolis) {
-                  "Failed to download some assets. Maybe the file exchange server is currently unavailable. Also check your internet connection."
+                  "Failed to download some assets due to lack of authorization. This should not normally happen. Please report this problem."
                 } else if (credentials.simtropolisToken.isDefined || credentials.simtropolisCookie.isDefined) {
-                  "Failed to download some assets from Simtropolis. " +
-                  "Maybe Simtropolis is currently offline. Also check that your personal Simtropolis authentication token is correct."
+                  "Failed to download some assets from Simtropolis. Your personal Simtropolis authentication token seems to be incorrect."
                 } else {
-                  "Failed to download some assets from Simtropolis. " +
-                  "You may have reached your daily download quota (20 files per day for guests on Simtropolis) " +
-                  "or Simtropolis is currently unavailable. " +
-                  "Set up Authentication or try again later."
+                  "Failed to download some assets from Simtropolis due to lack of authorization. Set up a personal Simtropolis authentication token and try again."
                 }
                 ZIO.fail(new error.DownloadFailed(msg, e.getMessage))
               }
-            case e: ArtifactError =>
+            case e: ArtifactError.Forbidden =>  // 403
+              ZIO.serviceWithZIO[Downloader.Credentials] { credentials =>
+                val msg = if (art.isFromSimtropolis && !(credentials.simtropolisToken.isDefined || credentials.simtropolisCookie.isDefined)) {
+                  "Failed to download some assets from Simtropolis (forbidden). " +
+                  "You likely have reached your daily download quota (20 files per day for guests on Simtropolis). " +
+                  "Go to Settings to set up a personal Simtropolis authentication token and try again."
+                } else {
+                  "Failed to download some assets (forbidden). Maybe the file exchange server has download limits that you have exceeded."
+                }
+                ZIO.fail(new error.DownloadFailed(msg, e.getMessage))
+              }
+            case e: (ArtifactError.DownloadError | ArtifactError.WrongLength | ArtifactError.NotFound) =>  // e.g. 500, 404 or other issues
+              val msg = "Failed to download some assets. Maybe the file exchange server is currently unavailable. Also check your internet connection."
+              ZIO.fail(new error.DownloadFailed(msg, e.getMessage))
+            case e: ArtifactError =>  // e.g. 500 or other issues
               context.logger.debugPrintStackTrace(e)
               ZIO.fail(new error.DownloadFailed("Unexpected download error.", e.getMessage))
           }

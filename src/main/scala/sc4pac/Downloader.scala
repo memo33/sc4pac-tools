@@ -16,6 +16,9 @@ import Downloader.PartialDownloadSpec
   * https://github.com/coursier/coursier/blob/8d93005b56dd84770c062aeae6d7a12c53948596/modules/cache/jvm/src/main/scala/coursier/cache/internal/Downloader.scala
   *
   * Our changes of the implementation resolve issues related to timeouts and resuming partial downloads.
+  *
+  * TODO This code is a mess and should be rewritten with less indirection and
+  * better wrapping of failures (e.g. using Either or ZIO).
   */
 class Downloader(
   artifact: Artifact,  // contains the URL
@@ -42,7 +45,7 @@ class Downloader(
   }
 
   private def wrapDownloadError(e: Throwable, url: String): CC.ArtifactError = e match {
-    case e: CC.ArtifactError.DownloadError => e
+    case e: CC.ArtifactError => e
     case _ => CC.ArtifactError.DownloadError(
       s"Caught ${e.getClass().getName()}${Option(e.getMessage).fold("")(" (" + _ + ")")} while downloading $url",
       Some(e)
@@ -391,7 +394,15 @@ object Downloader {
         def makeResult[A](x: A): Right[A, (URLConnection, A)] = {
           if (is4xx(conn)) {
             closeConn(conn)
-            throw new Exception(s"Connection error 4xx: $conn")
+            val respCodeOpt = CC.CacheUrl.responseCode(conn)
+            if (respCodeOpt.contains(404))
+              throw new CC.ArtifactError.NotFound(url0, permanent = Some(true))
+            else if (respCodeOpt.contains(403))
+              throw new CC.ArtifactError.Forbidden(url0)
+            else if (respCodeOpt.contains(401))
+              throw new CC.ArtifactError.Unauthorized(url0, realm = CC.CacheUrl.realm(conn))
+            else
+              throw new Exception(s"Connection error ${respCodeOpt.map(_.toString).getOrElse("4xx")}: $conn")
           } else {
             Right((conn, x))
           }
