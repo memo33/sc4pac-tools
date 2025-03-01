@@ -324,7 +324,7 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) {  // TODO d
   }
 
   /** Update all installed packages from modules (the list of explicitly added packages). */
-  def update(modules: Seq[BareModule], globalVariant0: Variant, pluginsRoot: os.Path): RIO[ProfileRoot & Prompter & Downloader.Cookies, Boolean] = {
+  def update(modules0: Seq[BareModule], globalVariant0: Variant, pluginsRoot: os.Path): RIO[ProfileRoot & Prompter & Downloader.Cookies, Boolean] = {
 
     // - before starting to remove anything, we download and extract everything
     //   to install into temp folders (staging)
@@ -485,20 +485,46 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) {  // TODO d
       }.map(_.toOption.get)
     }
 
-    def storeGlobalVariant(globalVariant: Variant): Task[Unit] = for {
+    def doResolveHandleUnresolvable(explicitModules: Seq[BareModule], globalVariant: Variant): RIO[Prompter & ResolutionContext, (Resolution, Seq[BareModule], Variant)] = {
+      ZIO.iterate(Left(explicitModules): Either[Seq[BareModule], (Resolution, Seq[BareModule], Variant)])(_.isLeft) {
+        case Right(_) => throw new AssertionError
+        case Left(explicitModules) =>
+          doPromptingForVariant(globalVariant)(Resolution.resolve(explicitModules, _))
+            .map { case (resolution, globalVariant) => Right((resolution, explicitModules, globalVariant)) }
+            .catchSome {
+              case e: error.UnresolvableDependencies =>
+                val unresolvable = e.deps.toSet
+                val (unresolvableExplicitModules, resolvableExplicitModules) = explicitModules.partition(unresolvable)
+                if (unresolvableExplicitModules.nonEmpty) {
+                  ZIO.ifZIO(ZIO.serviceWithZIO[Prompter](_.confirmRemovingUnresolvableExplicitPackages(unresolvableExplicitModules)))(
+                    onTrue = ZIO.succeed(Left(resolvableExplicitModules)),  // retry with strictly smaller set of explicit packages
+                    onFalse = ZIO.fail(e),
+                  )
+                } else {
+                  ZIO.fail(e)
+                }
+            }
+      }.map(_.toOption.get)
+    }
+
+    def storeUpdatedSpec(globalVariant: Variant, explicitModules: Seq[BareModule]): Task[Unit] = for {
       pluginsSpec <- JsonIo.read[JD.PluginsSpec](JD.PluginsSpec.path(context.profileRoot))  // json file should exist already
-      _           <- JsonIo.write(JD.PluginsSpec.path(context.profileRoot), pluginsSpec.copy(config = pluginsSpec.config.copy(variant = globalVariant)), None)(ZIO.succeed(()))
+      _           <- JsonIo.write(
+                       JD.PluginsSpec.path(context.profileRoot),
+                       pluginsSpec.copy(config = pluginsSpec.config.copy(variant = globalVariant), explicit = explicitModules),
+                       None
+                     )(ZIO.succeed(()))
     } yield ()
 
     // TODO catch coursier.error.ResolutionError$CantDownloadModule (e.g. when json files have syntax issues)
     val updateTask = for {
       pluginsLockData1 <- JD.PluginsLock.readOrInit
       pluginsLockData <- JD.PluginsLock.upgradeFromScheme1(pluginsLockData1, iterateAllChannelPackages(channelUrl = None), logger, pluginsRoot)
-      (resolution, globalVariant) <- doPromptingForVariant(globalVariant0)(Resolution.resolve(modules, _))
+      (resolution, modules, globalVariant) <- doResolveHandleUnresolvable(modules0, globalVariant0)
       plan            =  UpdatePlan.fromResolution(resolution, installed = pluginsLockData.dependenciesWithAssets)
       continue        <- ZIO.serviceWithZIO[Prompter](_.confirmUpdatePlan(plan))
                            .filterOrFail(_ == true)(error.Sc4pacAbort())
-      _               <- ZIO.unless(!continue || globalVariant == globalVariant0)(storeGlobalVariant(globalVariant))  // only store something after confirmation
+      _               <- ZIO.unless(!continue || globalVariant == globalVariant0 && modules == modules0)(storeUpdatedSpec(globalVariant, modules))  // only store something after confirmation
       flagOpt         <- ZIO.unless(!continue || plan.isUpToDate)(for {
         assetsToInstall <- resolution.fetchArtifactsOf(resolution.transitiveDependencies.filter(plan.toInstall).reverse)  // we start by fetching artifacts in reverse as those have fewest dependencies of their own
         // TODO if some artifacts fail to be fetched, fall back to installing remaining packages (maybe not(?), as this leads to missing dependencies,

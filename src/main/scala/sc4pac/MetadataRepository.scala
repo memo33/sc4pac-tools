@@ -144,7 +144,7 @@ private class JsonRepository(
       // The assumption is that all methods of MetadataRepository are only called with concrete versions.
       case None =>
         ZIO.fail(new Sc4pacVersionNotFound(s"No versions of ${dep.orgName} found in repository $baseUri.",
-          "Either the package name is spelled incorrectly or the metadata stored in the corresponding channel is incorrect or incomplete."))
+          "Either the package name is spelled incorrectly or the metadata stored in the corresponding channel is incorrect or incomplete.", dep))
       case Some((_, checksum)) =>
         val remoteUrl = baseUri.resolve(MetadataRepository.jsonSubPath(dep, version).segments0.mkString("/")).toString
         // We have complete control over the json metadata files. Usually, they
@@ -191,7 +191,7 @@ private class YamlRepository(
     channelData.get(dep).flatMap(_.get(version)) match {
       case None =>
         ZIO.fail(new Sc4pacVersionNotFound(s"No versions of ${dep.orgName} found in repository $baseUri.",
-          "Either the package name is spelled incorrectly or the metadata stored in the corresponding channel is incorrect or incomplete."))
+          "Either the package name is spelled incorrectly or the metadata stored in the corresponding channel is incorrect or incomplete.", dep))
       case Some(pkgData: JD.PackageAsset) =>
         ZIO.succeed(pkgData.asInstanceOf[A])  // as long as we do not mix up Assets and Packages, casting should not be an issue (could be fixed using type classes)
     }

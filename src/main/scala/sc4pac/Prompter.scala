@@ -10,6 +10,8 @@ trait Prompter {
   /** Returns the selected variant value. */
   def promptForVariant(module: BareModule, variantId: String, values: Seq[String], info: JD.VariantInfo): Task[String]
 
+  def confirmRemovingUnresolvableExplicitPackages(modules: Seq[BareModule]): Task[Boolean]
+
   def confirmUpdatePlan(plan: Sc4pac.UpdatePlan): Task[Boolean]
 
   def confirmInstallationWarnings(warnings: Seq[(BareModule, Seq[String])]): Task[Boolean]
@@ -37,8 +39,11 @@ class CliPrompter(logger: CliLogger, autoYes: Boolean) extends Prompter {
       onFalse = ZIO.fail(new error.Sc4pacNotInteractive(s"""Configure a "${variantId}" variant for ${module.orgName}: ${values.mkString(", ")}""")))
   }
 
-  private def logPackages(msg: String, dependencies: Iterable[DepModule]): Unit = {
-    logger.log(msg + dependencies.iterator.map(_.formattedDisplayString(logger.gray)).toSeq.sorted.mkString(f"%n"+" "*4, f"%n"+" "*4, f"%n"))
+  private def logPackages(msg: String, dependencies: Iterable[DepModule | BareModule]): Unit = {
+    logger.log(msg + dependencies.iterator.map {
+      case m: DepModule => m.formattedDisplayString(logger.gray)
+      case m: BareModule => m.formattedDisplayString(logger.gray, logger.bold)
+    }.toSeq.sorted.mkString(f"%n"+" "*4, f"%n"+" "*4, f"%n"))
   }
 
   private def logPlan(plan: Sc4pac.UpdatePlan): UIO[Unit] = ZIO.succeed {
@@ -46,6 +51,15 @@ class CliPrompter(logger: CliLogger, autoYes: Boolean) extends Prompter {
     // if (plan.toReinstall.nonEmpty) logPackages(f"The following packages will be reinstalled:%n", plan.toReinstall.collect{ case d: DepModule => d })
     if (plan.toInstall.nonEmpty) logPackages(f"The following packages will be installed:%n", plan.toInstall.collect{ case d: DepModule => d })
     if (plan.isUpToDate) logger.log("Everything is up-to-date.")
+  }
+
+  def confirmRemovingUnresolvableExplicitPackages(modules: Seq[BareModule]): Task[Boolean] = {
+    logPackages(f"The following packages could not be resolved. Maybe they have been renamed or deleted from the corresponding channel.%n", modules)
+    // we don't use autoYes, as removing explicit packages would be unexpected and should be handled manually
+    Prompt.ifInteractive(
+      onTrue = Prompt.yesNo("Do you want to remove these unresolvable packages from your Plugins?"),
+      onFalse = ZIO.succeed(false),  // in non-interactive mode, error out
+    )
   }
 
   def confirmUpdatePlan(plan: Sc4pac.UpdatePlan): Task[Boolean] = {

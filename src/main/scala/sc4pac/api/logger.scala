@@ -155,6 +155,10 @@ class WebSocketPrompter(wsChannel: zio.http.WebSocketChannel, logger: WebSocketL
     sendPrompt(PromptMessage.ChooseVariant(module, variantId, values, info)).map(_.body)
   }
 
+  def confirmRemovingUnresolvableExplicitPackages(modules: Seq[BareModule]): Task[Boolean] = {
+    sendPrompt(PromptMessage.ConfirmRemoveUnresolvablePackages(packages = modules)).map(_.body == yes)
+  }
+
   def confirmUpdatePlan(plan: Sc4pac.UpdatePlan): zio.Task[Boolean] = {
     val toRemove = plan.toRemove.toSeq.collect { case dep: DepModule => PromptMessage.ConfirmUpdatePlan.Pkg(dep.toBareDep, dep.version, dep.variant) }
     val toInstall = plan.toInstall.toSeq.collect { case dep: DepModule => PromptMessage.ConfirmUpdatePlan.Pkg(dep.toBareDep, dep.version, dep.variant) }

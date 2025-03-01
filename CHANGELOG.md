@@ -1,6 +1,12 @@
 # Changelog
 
 ## [Unreleased]
+### Changed
+- When calling `update`, a new dialog allows to remove unresolvable packages if any (e.g. when packages have been renamed or deleted from a channel) ([#24][gui24]).
+- API upgraded to 2.4:
+  - added a new `/prompt/confirmation/update/remove-unresolvable-packages` message to `/update`
+
+[gui24]: https://github.com/memo33/sc4pac-gui/issues/24
 
 
 ## [0.5.4] - 2025-02-08

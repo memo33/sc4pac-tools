@@ -1,4 +1,4 @@
-# API - version 2.3
+# API - version 2.4
 
 The API allows other programs to control *sc4pac* in a client-server fashion.
 
@@ -415,6 +415,7 @@ The messages sent from the server are logged in the network tab of the browser d
 
 Messages sent:
 - `/prompt/choice/update/variant` for each variant to choose
+- `/prompt/confirmation/update/remove-unresolvable-packages` if explicit packages cannot be found (e.g. if renamed in channel)
 - `/prompt/confirmation/update/plan` once (even if everything is up-to-date, in which case you can accept without user input)
 - for each download (in parallel):
   - `/progress/download/started` once

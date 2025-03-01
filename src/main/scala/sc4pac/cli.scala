@@ -43,7 +43,7 @@ object Commands {
   type ExpectedFailure = error.Sc4pacAbort | error.DownloadFailed | error.ChannelsNotAvailable
     | error.Sc4pacVersionNotFound | error.Sc4pacAssetNotFound | error.ExtractionFailed
     | error.UnsatisfiableVariantConstraints | error.ChecksumError | error.ReadingProfileFailed
-    | error.Sc4pacPublishIncomplete
+    | error.Sc4pacPublishIncomplete | error.UnresolvableDependencies
     | java.nio.file.AccessDeniedException
 
   private def handleExpectedFailures(abort: ExpectedFailure, exit: Int => Nothing): Nothing = abort match {

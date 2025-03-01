@@ -117,7 +117,21 @@ object Resolution {
     val computeReachableDependencies: RIO[ResolutionContext, TreeSeqMap[BareDep, Seq[BareDep]]] =
       ZIO.iterate((TreeSeqMap.empty[BareDep, Seq[BareDep]], initialDependencies))(_._2.nonEmpty) { (seen, remaining) =>
         for {
-          seen2 <- ZIO.foreachPar(remaining.filterNot(seen.contains))(d => lookupDependencies(d).map(ds => (d, ds)))
+          seen2 <-  ZIO.validatePar(remaining.filterNot(seen.contains)) { d =>
+                      lookupDependencies(d).map(ds => (d, ds))
+                    }
+                    .mapError { errs =>
+                      errs.find(!_.isInstanceOf[error.Sc4pacVersionNotFound]) match {
+                        case Some(e) => e
+                        case None =>
+                          val deps = errs.map(_.asInstanceOf[error.Sc4pacVersionNotFound].dep).distinct
+                          error.UnresolvableDependencies(
+                            title = "Some packages could not be resolved. Maybe they have been renamed or deleted from the corresponding channel.",
+                            detail = deps.map(_.orgName).mkString(f"%n"),
+                            deps,
+                          )
+                      }
+                    }
           deps2 = seen2.flatMap(_._2).distinct
         } yield (seen ++ seen2, deps2)
       }.map(_._1)

@@ -573,6 +573,44 @@ object ApiSpecZIO extends ZIOSpecDefault {
               } yield ()
             })
           },
+          test("/update (unresolvable)") {
+            withTestResultRef(ZIO.scoped {
+              def respond(choice: String): PartialFunction[api.PromptMessage, RIO[Ref[TestResult], api.ResponseMessage]] = {
+                case msg: api.PromptMessage.ConfirmRemoveUnresolvablePackages =>
+                  for {
+                    _ <- addTestResult(assertTrue(msg.packages.map(_.orgName) == Seq("test:nonexistent")))
+                  } yield msg.responses(choice)
+                case msg: api.PromptMessage.ConfirmUpdatePlan =>
+                  for {
+                    _ <- addTestResult(assertTrue(msg.toRemove.length == 0, msg.toInstall.length == 0))
+                  } yield msg.responses("Yes")
+              }
+              for {
+                _    <- postEndpoint(s"plugins.add?profile=$profileId", jsonBody(Seq("test:nonexistent"))).flatMap(isOk200)
+                _    <- wsEndpoint(s"update?profile=$profileId",
+                          respond = respond("No"),
+                          filter = msg => !msg.json("$type").str.startsWith("/progress/download"),
+                          checkMessages = queue => (for {
+                            _ <- queue.take.flatMap(f => addTestResult(assertTrue(f.json("$type").str == "/prompt/confirmation/update/remove-unresolvable-packages")))
+                            _ <- queue.take.flatMap(f => addTestResult(assertTrue(f.json("$type").str == "/error/unresolvable-dependencies")))
+                          } yield ()),
+                        )
+                data <- getEndpoint(s"plugins.added.list?profile=$profileId").flatMap(getBody200[Seq[String]])
+                _    <- addTestResult(assertTrue(data.contains("test:nonexistent")))
+                _    <- wsEndpoint(s"update?profile=$profileId",
+                          respond = respond("Yes"),
+                          filter = msg => !msg.json("$type").str.startsWith("/progress/download"),
+                          checkMessages = queue => (for {
+                            _ <- queue.take.flatMap(f => addTestResult(assertTrue(f.json("$type").str == "/prompt/confirmation/update/remove-unresolvable-packages")))
+                            _ <- queue.take.flatMap(f => addTestResult(assertTrue(f.json("$type").str == "/prompt/confirmation/update/plan")))
+                            _ <- queue.take.flatMap(f => addTestResult(assertTrue(f.json == jsonOk)))
+                          } yield ()),
+                        )
+                data <- getEndpoint(s"plugins.added.list?profile=$profileId").flatMap(getBody200[Seq[String]])
+                _    <- addTestResult(assertTrue(!data.contains("test:nonexistent")))
+              } yield ()
+            })
+          },
         ),
 
       )
