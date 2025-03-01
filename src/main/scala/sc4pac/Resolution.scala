@@ -187,32 +187,34 @@ class Resolution(reachableDeps: TreeSeqMap[BareDep, Seq[BareDep]], nonbareDeps: 
     def fetchTask(context: ResolutionContext) =
       ZIO.foreachPar(assetsArtifacts) { (dep, art) =>
         context.cache.fetchFile(art).map(file => (dep, art, file))
-      }
-      .catchAll {
-        // See also download-error handling in Find.
-        case e: (ArtifactError.WrongChecksum | ArtifactError.ChecksumFormatError | ArtifactError.ChecksumNotFound) =>
-          ZIO.fail(new error.ChecksumError(
-            f"Checksum verification failed for a downloaded asset.%n" +
-            f"- Either, this means the downloaded file is incomplete: Delete the file to try downloading it again.%n" +
-            "- Otherwise, this means the uploaded file was modified after the channel metadata was last updated, " +
-            "so the integrity of the file cannot be verified by sc4pac: Report this to the maintainers of the metadata.",
-            e.getMessage))
-        case e: (ArtifactError.DownloadError | ArtifactError.WrongLength | ArtifactError.NotFound) =>
-          ZIO.serviceWithZIO[Downloader.Credentials] { credentials =>
-            val msg = if (credentials.simtropolisToken.isDefined || credentials.simtropolisCookie.isDefined) {
-              "Failed to download some assets. " +
-              "Check whether the file exchange server is currently unavailable and check that your personal Simtropolis authentication token is correct."
-            } else {
-              "Failed to download some assets. " +
-              "You may have reached your daily download quota (Simtropolis: 20 files per day for guests) " +
-              "or the file exchange server is currently unavailable. " +
-              "Set up Authentication or try again later."
-            }
-            ZIO.fail(new error.DownloadFailed(msg, e.getMessage))
+          .catchAll {
+            // See also download-error handling in Find.
+            case e: (ArtifactError.WrongChecksum | ArtifactError.ChecksumFormatError | ArtifactError.ChecksumNotFound) =>
+              ZIO.fail(new error.ChecksumError(
+                f"Checksum verification failed for a downloaded asset.%n" +
+                f"- Either, this means the downloaded file is incomplete: Delete the file to try downloading it again.%n" +
+                "- Otherwise, this means the uploaded file was modified after the channel metadata was last updated, " +
+                "so the integrity of the file cannot be verified by sc4pac: Report this to the maintainers of the metadata.",
+                e.getMessage))
+            case e: (ArtifactError.DownloadError | ArtifactError.WrongLength | ArtifactError.NotFound) =>
+              ZIO.serviceWithZIO[Downloader.Credentials] { credentials =>
+                val msg = if (!art.isFromSimtropolis) {
+                  "Failed to download some assets. Maybe the file exchange server is currently unavailable. Also check your internet connection."
+                } else if (credentials.simtropolisToken.isDefined || credentials.simtropolisCookie.isDefined) {
+                  "Failed to download some assets from Simtropolis. " +
+                  "Maybe Simtropolis is currently offline. Also check that your personal Simtropolis authentication token is correct."
+                } else {
+                  "Failed to download some assets from Simtropolis. " +
+                  "You may have reached your daily download quota (20 files per day for guests on Simtropolis) " +
+                  "or Simtropolis is currently unavailable. " +
+                  "Set up Authentication or try again later."
+                }
+                ZIO.fail(new error.DownloadFailed(msg, e.getMessage))
+              }
+            case e: ArtifactError =>
+              context.logger.debugPrintStackTrace(e)
+              ZIO.fail(new error.DownloadFailed("Unexpected download error.", e.getMessage))
           }
-        case e: ArtifactError =>
-          context.logger.debugPrintStackTrace(e)
-          ZIO.fail(new error.DownloadFailed("Unexpected download error.", e.getMessage))
       }
       .provideSomeLayer(zio.ZLayer.succeed(context.logger))
 
