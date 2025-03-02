@@ -513,6 +513,62 @@ object Commands {
     }
   }
 
+  @ArgsName("input-archive-file")
+  @HelpMessage(s"""
+    |Extract an archive file, such as ZIP, JAR, 7z, RAR or EXE installer files, using sc4pac semantics.
+    |This is mainly useful when creating new metadata, as this provides a generic way for extracting multiple different archive formats.
+    |
+    |This works best for archives containing only DBPF files.
+    |Archives containing DLL files or Clickteam EXE installers may require some extra care.
+    |
+    |Examples:
+    |  sc4pac extract --output out asset.zip                                           ${gray("# extract all DBPF files")}
+    |  sc4pac extract -o out --include="\\.SC4Model$$" --include="\\.SC4Desc$$" asset.zip  ${gray("# extract only Model and Desc files")}
+    |  sc4pac extract -o out --include="." --exclude='(?<!\\.dll)$$' asset.zip           ${gray("# extract only DLL files")}
+    |  sc4pac extract -o out --clickteam-version 40 asset.zip                          ${gray("# use only with Clickteam installers")}
+    """.stripMargin.trim)
+  final case class ExtractOptions(
+    @ExtraName("o") @ValueDescription("dir") @HelpMessage("Output directory for extracted files") @Group("Main") @Tag("Main")
+    output: String,
+    @ValueDescription("pattern") @HelpMessage("Include patterns") @Group("Main") @Tag("Main")
+    include: I.List[String] = Nil,
+    @ValueDescription("pattern") @HelpMessage("Exclude patterns") @Group("Main") @Tag("Main")
+    exclude: I.List[String] = Nil,
+    @ValueDescription("version") @HelpMessage("Optional version for extracting Clickteam installers (40, 35, 30, 24, 20)") @Group("Main") @Tag("Main")
+    clickteamVersion: String = null,
+  ) extends Sc4pacCommandOptions
+
+  case object Extract extends Command[ExtractOptions] {
+    def run(options: ExtractOptions, args: RemainingArgs): Unit = {
+      args.all match {
+        case Seq[String](input) =>
+          val task = ZIO.scoped(for {
+            logger <- ZIO.service[Logger]
+            archive = java.io.File(input)
+            destination = os.Path(java.nio.file.Paths.get(options.output), os.pwd)
+            stagingRoot <- Sc4pac.makeTempStagingDir(destination, logger)
+            assetData = JD.AssetReference(assetId = "dummy-asset", include = options.include, exclude = options.exclude)
+            (recipe, regexWarnings) = Extractor.InstallRecipe.fromAssetReference(assetData)
+            usedPatterns <- ZIO.attemptBlocking {
+              Extractor(logger).extract(
+                archive = archive,
+                fallbackFilename = None,
+                destination = destination,
+                recipe = recipe,
+                jarExtractionOpt = Some(Extractor.JarExtraction(stagingRoot / "nested")),
+                hints = Option(options.clickteamVersion).filter(_.nonEmpty).map(v => JD.ArchiveType(format = JD.ArchiveType.clickteamFormat, version = v)),
+                stagingRoot = stagingRoot,
+                validate = false,  // to allow extracting non-DBPF files such as DLL files
+              )
+            }
+            _ <- ZIO.foreachDiscard(regexWarnings ++ recipe.usedPatternWarnings(usedPatterns, BareAsset(ModuleName(assetData.assetId)), short = true)) { msg => ZIO.succeed(logger.warn(msg)) }
+          } yield ())
+          runMainExit(task.provideSomeLayer(zio.ZLayer.succeed(CliLogger())), exit)
+        case _ => error(caseapp.core.Error.Other("A single argument is needed: input-archive-file"))
+      }
+    }
+  }
+
   @HelpMessage(s"""
     |Start a local server to use the HTTP API.
     |
@@ -677,6 +733,7 @@ object CliMain extends caseapp.core.app.CommandsEntryPoint {
     Commands.ChannelRemove,
     Commands.ChannelList,
     Commands.ChannelBuild,
+    Commands.Extract,
     Commands.Server)
 
   val progName = BuildInfo.name
