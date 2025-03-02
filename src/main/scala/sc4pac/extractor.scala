@@ -21,7 +21,7 @@ object Extractor {
     excludeNested: Seq[Pattern],
     includeWithChecksum: Seq[(Pattern, JD.IncludeWithChecksum)],
   ) {
-    def makeAcceptancePredicates(): (Builder[Pattern, Set[Pattern]], Predicate, Predicate) = {
+    def makeAcceptancePredicates(validate: Boolean): (Builder[Pattern, Set[Pattern]], Predicate, Predicate) = {
       val usedPatternsBuilder = {
         val b = Set.newBuilder[Pattern] += Constants.defaultExcludePattern  // default exclude pattern is not required to match anything
         if (includeWithChecksum.nonEmpty)
@@ -34,14 +34,14 @@ object Extractor {
         includeWithChecksum.find(_._1.matcher(pathString).find()) match {
           case Some(matchedPattern, checksum) =>
             usedPatternsBuilder += matchedPattern
-            Some(ChecksumValidator(checksum))  // as checksum is only valid for a single file, there is no need for evaluating exclude rules
+            Some(if (validate) ChecksumValidator(checksum) else NoopValidator)  // as checksum is only valid for a single file, there is no need for evaluating exclude rules
           case None =>
             include.find(_.matcher(pathString).find()) match {
               case None => None
               case Some(matchedPattern) =>
                 usedPatternsBuilder += matchedPattern
                 exclude.find(_.matcher(pathString).find()) match {
-                  case None => Some(DbpfValidator)
+                  case None => Some(if (validate) DbpfValidator else NoopValidator)
                   case Some(matchedPattern) =>
                     usedPatternsBuilder += matchedPattern
                     None
@@ -55,7 +55,7 @@ object Extractor {
         if (lname.endsWith(".jar") || lname.endsWith(".zip") || lname.endsWith(".7z") || lname.endsWith(".rar") || lname.endsWith(".exe")) {
           val pathString = path.segments.mkString("/", "/", "")  // paths are checked with leading / and with / as separator
           excludeNested.find(_.matcher(pathString).find()) match {
-            case None => Some(NestedArchiveNoopValidator)
+            case None => Some(NoopValidator)  // no validation for nested archives
             case Some(matchedPattern) =>
               usedPatternsBuilder += matchedPattern
               None
@@ -68,17 +68,20 @@ object Extractor {
       (usedPatternsBuilder, accepts, acceptsNested)
     }
 
-    def usedPatternWarnings(usedPatterns: Set[Pattern], asset: BareAsset): Seq[Warning] = {
+    def usedPatternWarnings(usedPatterns: Set[Pattern], asset: BareAsset, short: Boolean): Seq[Warning] = {
       val unused: Seq[Pattern] =
         (include.iterator ++ exclude ++ includeWithChecksum.iterator.map(_._1))
         .filter(p => !usedPatterns.contains(p)).toSeq
       if (unused.isEmpty) {
         Seq.empty
       } else {
+        val msg = s"These inclusion/exclusion patterns did not match any files in the asset ${asset.assetId.value}: " + unused.mkString(" ")
         Seq(
-          "The package metadata seems to be out-of-date, so the installed plugin files might be incomplete. " +
-          "Please report this to the maintainers of the package metadata. " +
-          s"These inclusion/exclusion patterns did not match any files in the asset ${asset.assetId.value}: " + unused.mkString(" "))
+          if (!short)
+            "The package metadata seems to be out-of-date, so the installed plugin files might be incomplete. " +
+            "Please report this to the maintainers of the package metadata. " + msg
+          else msg
+        )
       }
     }
   }
@@ -253,7 +256,7 @@ object Extractor {
         val extracted: Seq[os.Path] = entries.map((_, subpath, _) => destination / mapper(subpath))
         val selected = entries.zip(extracted).flatMap { case ((entry, _, validator), target) =>
             if (!overwrite && os.exists(target))
-              assert(validator == NestedArchiveNoopValidator)  // important since we do not validate these
+              assert(validator == NoopValidator)  // important since we do not validate these
               None  // do nothing, as file has already been extracted previously (this avoids re-extracting large nested archives)
             else
               Some(entry, target, validator)
@@ -457,7 +460,7 @@ object Extractor {
   }
 
   // Nested archives currently do not use checksums for validation. If desired, the outer archive should use a checksum instead.
-  object NestedArchiveNoopValidator extends Validator {
+  object NoopValidator extends Validator {
     def validate(path: os.Path): Unit = {}
   }
 
@@ -475,8 +478,9 @@ class Extractor(logger: Logger) {
     jarExtractionOpt: Option[Extractor.JarExtraction],
     hints: Option[JD.ArchiveType],
     stagingRoot: os.Path,
+    validate: Boolean,
   ): Set[Pattern] = try {
-    val (usedPatternsBuilder, predicate, predicateNested) = recipe.makeAcceptancePredicates()  // tracks used patterns to warn about unused patterns
+    val (usedPatternsBuilder, predicate, predicateNested) = recipe.makeAcceptancePredicates(validate = validate)  // tracks used patterns to warn about unused patterns
     scala.util.Using.resource(Extractor.WrappedArchive(archive, fallbackFilename, stagingRoot, logger, hints)) { wrappedArchive =>
       // first extract just the main files
       wrappedArchive.extractByPredicate(destination, predicate, overwrite = true, flatten = false, logger)
@@ -488,7 +492,7 @@ class Extractor(logger: Logger) {
         for (jarFile <- jarFiles) {
           logger.debug(s"Extracting nested archive ${jarFile.last}")
           usedPatternsBuilder ++=
-            extract(jarFile.toIO, fallbackFilename = None, destination, recipe, jarExtractionOpt = None, hints, stagingRoot = stagingRoot)
+            extract(jarFile.toIO, fallbackFilename = None, destination, recipe, jarExtractionOpt = None, hints, stagingRoot = stagingRoot, validate = validate)
         }
       }
     }

@@ -88,7 +88,7 @@ class ExtractorSpec extends AnyWordSpec with Matchers {
 
   def createPredicate(assetRef: JD.AssetReference = assetRef) = {
     val (recipe, warnings) = Extractor.InstallRecipe.fromAssetReference(assetRef)
-    val (usedPatternsBuilder, predicate, predicateNested) = recipe.makeAcceptancePredicates()
+    val (usedPatternsBuilder, predicate, predicateNested) = recipe.makeAcceptancePredicates(validate = true)
     predicate
   }
 
@@ -161,7 +161,7 @@ class ExtractorSpec extends AnyWordSpec with Matchers {
 
         val recipe = Extractor.InstallRecipe.fromAssetReference(assetRef)._1
         Extractor(CliLogger())
-          .extract(archiveFile.toIO, fallbackFilename = None, out, recipe, Some(Extractor.JarExtraction(jarsDir)), hints = None, stagingRoot = out)
+          .extract(archiveFile.toIO, fallbackFilename = None, out, recipe, Some(Extractor.JarExtraction(jarsDir)), hints = None, stagingRoot = out, validate = true)
 
         os.exists(out).shouldBe(true)
         os.walk(out).filter(os.isFile(_)).map(_.subRelativeTo(out)).sorted
@@ -183,7 +183,7 @@ class ExtractorSpec extends AnyWordSpec with Matchers {
 
       val recipe = Extractor.InstallRecipe.fromAssetReference(assetRef)._1
       Extractor(CliLogger())
-        .extract(archiveFile.toIO, fallbackFilename = None, out, recipe, Some(Extractor.JarExtraction(jarsDir)), hints = None, stagingRoot = out)
+        .extract(archiveFile.toIO, fallbackFilename = None, out, recipe, Some(Extractor.JarExtraction(jarsDir)), hints = None, stagingRoot = out, validate = true)
 
       os.exists(out).shouldBe(false)
     }

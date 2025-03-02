@@ -52,6 +52,7 @@ channel add     Add a channel to fetch package metadata from.
 channel remove  Select channels to remove.
 channel list    List the channel URLs.
 channel build   Build a channel locally by converting YAML files to JSON.
+extract         Extract a downloaded archive file.
 server          Start a local server to use the HTTP API.
 ```
 
@@ -259,6 +260,32 @@ Use the options `--label` and `--metadata-source-url` particularly for building 
 - `-o, --output <dir>`         Output directory for JSON files
 - `--label str`                Optional short channel name for display in the UI
 - `--metadata-source-url url`  Optional base URL linking to the online YAML source files (for Edit Metadata button)
+
+
+---
+## extract
+
+**Usage:** `sc4pac extract [options] [input-archive-file]`
+
+Extract an archive file, such as ZIP, JAR, 7z, RAR or EXE installer files, using sc4pac semantics.
+This is mainly useful when creating new metadata, as this provides a generic way for extracting multiple different archive formats.
+
+This works best for archives containing only DBPF files.
+Archives containing DLL files or Clickteam EXE installers may require some extra care.
+
+**Examples:**
+```sh
+sc4pac extract --output out asset.zip                                           # extract all DBPF files
+sc4pac extract -o out --include="\.SC4Model$" --include="\.SC4Desc$" asset.zip  # extract only Model and Desc files
+sc4pac extract -o out --include="." --exclude='(?<!\.dll)$' asset.zip           # extract only DLL files
+sc4pac extract -o out --clickteam-version 40 asset.zip                          # use only with Clickteam installers
+```
+
+**Options:**
+- `-o, --output <dir>`             Output directory for extracted files
+- `--include <pattern>`            Include patterns
+- `--exclude <pattern>`            Exclude patterns
+- `--clickteam-version <version>`  Optional version for extracting Clickteam installers (40, 35, 30, 24, 20)
 
 
 ---

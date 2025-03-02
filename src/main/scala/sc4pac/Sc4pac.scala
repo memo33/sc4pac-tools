@@ -239,7 +239,9 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) {  // TODO d
               recipe,
               Some(Extractor.JarExtraction.fromUrl(art.url, jarsRoot = jarsRoot)),
               hints = depAsset.archiveType,
-              stagingRoot)
+              stagingRoot,
+              validate = true,
+            )
 
           for {
             fallbackFilename <- context.cache.getFallbackFilename(archive).provideSomeLayer(zio.ZLayer.succeed(logger))
@@ -253,7 +255,7 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) {  // TODO d
                                 }
           } yield {
             // TODO catch IOExceptions
-            regexWarnings ++ recipe.usedPatternWarnings(usedPatterns, id)
+            regexWarnings ++ recipe.usedPatternWarnings(usedPatterns, id, short = false)
           }
       }
     }
@@ -340,26 +342,8 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) {  // TODO d
       * actual plugins folder in the publication step.
       */
     def stageAll(deps: Seq[DepModule], artifactsById: Map[BareAsset, (Artifact, java.io.File, DepAsset)]): RIO[Scope & Prompter & ResolutionContext, StageResult] = {
-
-      val makeTempStagingDir: ZIO[Scope, java.io.IOException, os.Path] =
-        ZIO.acquireRelease(
-          acquire = ZIO.attemptBlockingIO {
-            os.makeDir.all(tempRoot)
-            val res = os.temp.dir(tempRoot, prefix = "staging-process", deleteOnExit = false)  // deleteOnExit does not seem to work reliably, so explicitly delete temp folder
-            logger.debug(s"Creating temp staging dir: $res")
-            res
-          }
-        )(
-          release = (stagingRoot: os.Path) => ZIO.attemptBlockingIO {  // TODO not executed in case of interrupt, so consider cleaning up temp dir from previous runs regularly.
-            logger.debug(s"Deleting temp staging dir: $stagingRoot")
-            os.remove.all(stagingRoot)
-          }.catchAll {
-            case e => ZIO.succeed(logger.warn(s"Failed to remove temp folder $stagingRoot: ${e.getMessage}"))
-          }
-        )
-
       for {
-        stagingRoot             <- makeTempStagingDir
+        stagingRoot             <- Sc4pac.makeTempStagingDir(tempRoot, logger)
         tempPluginsRoot         =  stagingRoot / "plugins"
         _                       <- ZIO.attemptBlocking(os.makeDir(tempPluginsRoot))
         numDeps                 =  deps.length
@@ -711,5 +695,22 @@ object Sc4pac {
       math.round(acc.toFloat / searchTokens.length)
     }
   }
+
+  private[sc4pac] def makeTempStagingDir(tempRoot: os.Path, logger: Logger): ZIO[Scope, java.io.IOException, os.Path] =
+    ZIO.acquireRelease(
+      acquire = ZIO.attemptBlockingIO {
+        os.makeDir.all(tempRoot)
+        val res = os.temp.dir(tempRoot, prefix = "staging-process", deleteOnExit = false)  // deleteOnExit does not seem to work reliably, so explicitly delete temp folder
+        logger.debug(s"Creating temp staging dir: $res")
+        res
+      }
+    )(
+      release = (stagingRoot: os.Path) => ZIO.attemptBlockingIO {  // TODO not executed in case of interrupt, so consider cleaning up temp dir from previous runs regularly.
+        logger.debug(s"Deleting temp staging dir: $stagingRoot")
+        os.remove.all(stagingRoot)
+      }.catchAll {
+        case e => ZIO.succeed(logger.warn(s"Failed to remove temp folder $stagingRoot: ${e.getMessage}"))
+      }
+    )
 
 }
