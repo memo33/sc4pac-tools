@@ -130,6 +130,8 @@ class Downloader(
         Left(new Artifact2Error.Forbidden(url))
       else if (respCodeOpt.contains(401))
         Left(new Artifact2Error.Unauthorized(url))
+      else if (respCodeOpt.contains(429))
+        Left(new Artifact2Error.RateLimited(url))
       else {
         val lenOpt: Option[Long] =
           for (len0 <- Option(conn.getContentLengthLong).filter(_ >= 0L).orElse(Downloader.lengthFromContentRange(conn))) yield {
@@ -402,6 +404,8 @@ object Downloader {
               throw new Artifact2Error.Forbidden(url0)
             else if (respCodeOpt.contains(401))
               throw new Artifact2Error.Unauthorized(url0)
+            else if (respCodeOpt.contains(429))
+              throw new Artifact2Error.RateLimited(url0)
             else
               throw new Exception(s"Connection error ${respCodeOpt.map(_.toString).getOrElse("4xx")}: $conn")  // TODO use an Artifact2Error
           } else {

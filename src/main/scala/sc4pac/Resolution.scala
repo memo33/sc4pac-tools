@@ -206,23 +206,22 @@ class Resolution(reachableDeps: TreeSeqMap[BareDep, Seq[BareDep]], nonbareDeps: 
                 }
                 ZIO.fail(new error.DownloadFailed(msg, e.getMessage))
               }
-            case e: Artifact2Error.Forbidden =>  // 403
+            case e: Artifact2Error.RateLimited =>  // 429
               ZIO.serviceWithZIO[Downloader.Credentials] { credentials =>
                 val msg = if (art.isFromSimtropolis && !(credentials.simtropolisToken.isDefined || credentials.simtropolisCookie.isDefined)) {
-                  "Failed to download some assets from Simtropolis (forbidden). " +
-                  "You likely have reached your daily download quota (20 files per day for guests on Simtropolis). " +
+                  "Failed to download some assets from Simtropolis (rate-limited). " +
+                  "You have reached your daily download limit (20 files per day for guests on Simtropolis). " +
                   "Go to Settings to set up a personal Simtropolis authentication token and try again."
                 } else {
-                  "Failed to download some assets (forbidden). " +
-                  "It looks like the file exchange server has blocked your download request. " +
-                  "For example, this can happen when using a public VPN, when a file has been locked, or when you have downloaded too much at once."
+                  "Failed to download some assets (rate-limited). " +
+                  "The file exchange server has blocked your download, as you have sent too many download requests in a short time."
                 }
                 ZIO.fail(new error.DownloadFailed(msg, e.getMessage))
               }
             case e: (Artifact2Error.DownloadError | Artifact2Error.WrongLength | Artifact2Error.NotFound) =>  // e.g. 500, 404 or other issues
               val msg = "Failed to download some assets. Maybe the file exchange server is currently unavailable. Also check your internet connection."
               ZIO.fail(new error.DownloadFailed(msg, e.getMessage))
-            case e: Artifact2Error =>  // e.g. 500 or other issues
+            case e: Artifact2Error =>  // e.g. 500, 403 or other issues
               context.logger.debugPrintStackTrace(e)
               ZIO.fail(new error.DownloadFailed("Unexpected download error.", e.getMessage))
           }
