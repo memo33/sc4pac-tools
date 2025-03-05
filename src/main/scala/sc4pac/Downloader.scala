@@ -9,6 +9,7 @@ import coursier.cache as CC
 import zio.{ZIO, IO}
 import upickle.default as UP
 import sc4pac.JsonData as JD
+import sc4pac.error.Artifact2Error
 
 import Downloader.PartialDownloadSpec
 
@@ -29,13 +30,13 @@ class Downloader(
   credentials: Downloader.Credentials,
 ) {
 
-  def download: IO[CC.ArtifactError, java.io.File] = {
+  def download: IO[Artifact2Error, java.io.File] = {
     val url = artifact.url
     logger.checkingArtifact(url, artifact)
     if (url.startsWith("file:/")) {
       ZIO.attemptBlocking {
         if (localFile.exists()) Right(localFile)
-        else Left(new CC.ArtifactError.NotFound(localFile.toString))
+        else Left(new Artifact2Error.NotFound(localFile.toString))
       }.catchSome {
         case scala.util.control.NonFatal(e) => ZIO.succeed(Left(wrapDownloadError(e, url)))
       }.orDie.absolve
@@ -44,15 +45,15 @@ class Downloader(
     }
   }
 
-  private def wrapDownloadError(e: Throwable, url: String): CC.ArtifactError = e match {
-    case e: CC.ArtifactError => e
-    case _ => CC.ArtifactError.DownloadError(
+  private def wrapDownloadError(e: Throwable, url: String): Artifact2Error = e match {
+    case e: Artifact2Error => e
+    case _ => Artifact2Error.DownloadError(
       s"Caught ${e.getClass().getName()}${Option(e.getMessage).fold("")(" (" + _ + ")")} while downloading $url",
       Some(e)
     )
   }
 
-  private def remote(file: java.io.File, url: String): IO[CC.ArtifactError, Unit] = {
+  private def remote(file: java.io.File, url: String): IO[Artifact2Error, Unit] = {
     Downloader.attemptCancelableOnPool(pool, (isCanceled) => {
       val tmp = coursier.paths.CachePath.temporaryFile(file)  // file => .file.part
       logger.downloadingArtifact(url, artifact)
@@ -61,9 +62,9 @@ class Downloader(
         val res = downloading(url, file)(
           CC.CacheLocks.withLockOr(cacheLocation, file)(
             doDownload(file, url, tmp, isCanceled),
-            ifLocked = Some(Left(new CC.ArtifactError.Locked(file)))  // should not be an issue as long as just one instance of sc4pac is running
+            ifLocked = Some(Left(new Artifact2Error.Locked(file)))  // should not be an issue as long as just one instance of sc4pac is running
           ),
-          ifLocked = Some(Left(new CC.ArtifactError.Locked(file)))  // should not be an issue as long as just one instance of sc4pac is running
+          ifLocked = Some(Left(new Artifact2Error.Locked(file)))  // should not be an issue as long as just one instance of sc4pac is running
         )
         success = res.isRight
         res
@@ -77,20 +78,20 @@ class Downloader(
     * resumption attempts.
     */
   private def downloading[T](url: String, file: java.io.File)(
-    f: => Either[CC.ArtifactError, T], ifLocked: => Option[Either[CC.ArtifactError, T]]
-  ): Either[CC.ArtifactError, T] = {
+    f: => Either[Artifact2Error, T], ifLocked: => Option[Either[Artifact2Error, T]]
+  ): Either[Artifact2Error, T] = {
 
     @tailrec
-    def helper(retrySsl: Int, retryResumption: Int): Either[CC.ArtifactError, T] = {
+    def helper(retrySsl: Int, retryResumption: Int): Either[Artifact2Error, T] = {
       require(retrySsl >= 0 && retryResumption >= 0)
 
-      val resOpt: Either[(Int, Int), Either[CC.ArtifactError, T]] =
+      val resOpt: Either[(Int, Int), Either[Artifact2Error, T]] =
         try {
           val res0 = CC.CacheLocks.withUrlLock(url) {
             try f
             catch {
               case nfe: java.io.FileNotFoundException if nfe.getMessage != null =>
-                Left(new CC.ArtifactError.NotFound(nfe.getMessage))
+                Left(new Artifact2Error.NotFound(nfe.getMessage))
             }
           }
           res0.orElse(ifLocked).toRight((retrySsl - 1, retryResumption))  // as a safe-guard, we also decrease retry counter here
@@ -103,7 +104,7 @@ class Downloader(
         }
 
       resOpt match {
-        case Right(Left(ex: CC.ArtifactError.WrongLength)) if ex.got < ex.expected && retryResumption >= 1 =>
+        case Right(Left(ex: Artifact2Error.WrongLength)) if ex.got < ex.expected && retryResumption >= 1 =>
           System.err.println(s"File transmission incomplete (${ex.got}/${ex.expected}): trying to resume download $url")
           helper(retrySsl, retryResumption - 1)
         case Right(res) => res
@@ -114,7 +115,7 @@ class Downloader(
   }
 
   /** Download in blocking fashion. */
-  private def doDownload(file: java.io.File, url: String, tmp: java.io.File, isCanceled: AtomicBoolean): Either[CC.ArtifactError, Unit] = {
+  private def doDownload(file: java.io.File, url: String, tmp: java.io.File, isCanceled: AtomicBoolean): Either[Artifact2Error, Unit] = {
     var conn: URLConnection = null
 
     try {
@@ -124,11 +125,11 @@ class Downloader(
       val respCodeOpt = CC.CacheUrl.responseCode(conn)
 
       if (respCodeOpt.contains(404))
-        Left(new CC.ArtifactError.NotFound(url, permanent = Some(true)))
+        Left(new Artifact2Error.NotFound(url))
       else if (respCodeOpt.contains(403))
-        Left(new CC.ArtifactError.Forbidden(url))
+        Left(new Artifact2Error.Forbidden(url))
       else if (respCodeOpt.contains(401))
-        Left(new CC.ArtifactError.Unauthorized(url, realm = CC.CacheUrl.realm(conn)))
+        Left(new Artifact2Error.Unauthorized(url))
       else {
         val lenOpt: Option[Long] =
           for (len0 <- Option(conn.getContentLengthLong).filter(_ >= 0L).orElse(Downloader.lengthFromContentRange(conn))) yield {
@@ -156,7 +157,7 @@ class Downloader(
               }
             }
 
-        def consumeStream(): Either[CC.ArtifactError, Unit] = {
+        def consumeStream(): Either[Artifact2Error, Unit] = {
           scala.util.Using.resource {
             val baseStream =
               if (conn.getContentEncoding == "gzip") new java.util.zip.GZIPInputStream(conn.getInputStream)
@@ -170,7 +171,7 @@ class Downloader(
             }
 
             if (!overlapRegionMatches) {
-              Left(new CC.ArtifactError.DownloadError(s"Partially downloaded file $tmp does not match remote file $url: delete the file and try again.", None))
+              Left(new Artifact2Error.DownloadError(s"Partially downloaded file $tmp does not match remote file $url: delete the file and try again.", None))
             } else {
               scala.util.Using.resource(
                 CC.CacheLocks.withStructureLock(cacheLocation) {
@@ -182,7 +183,7 @@ class Downloader(
                 if (interrupted) {
                   val msg = s"Download was canceled, so partially downloaded file is incomplete: $tmp"
                   logger.warn(msg)  // we log this directly, since the error cannot usually be handled via API after websocket was closed
-                  Left(new CC.ArtifactError.DownloadError(msg, None))
+                  Left(new Artifact2Error.DownloadError(msg, None))
                 } else {
                   Right(())
                 }
@@ -191,7 +192,7 @@ class Downloader(
           }
         }
 
-        def lengthCheck(): Either[CC.ArtifactError, Unit] =
+        def lengthCheck(): Either[Artifact2Error, Unit] =
           lenOpt match {
             case None => Right(())
             case Some(len) =>
@@ -199,7 +200,7 @@ class Downloader(
               if (len == tmpLen)
                 Right(())
               else
-                Left(new CC.ArtifactError.WrongLength(tmpLen, len, tmp.getAbsolutePath))
+                Left(new Artifact2Error.WrongLength(tmpLen, len, tmp.getAbsolutePath))
           }
 
         for {
@@ -396,13 +397,13 @@ object Downloader {
             closeConn(conn)
             val respCodeOpt = CC.CacheUrl.responseCode(conn)
             if (respCodeOpt.contains(404))
-              throw new CC.ArtifactError.NotFound(url0, permanent = Some(true))
+              throw new Artifact2Error.NotFound(url0)
             else if (respCodeOpt.contains(403))
-              throw new CC.ArtifactError.Forbidden(url0)
+              throw new Artifact2Error.Forbidden(url0)
             else if (respCodeOpt.contains(401))
-              throw new CC.ArtifactError.Unauthorized(url0, realm = CC.CacheUrl.realm(conn))
+              throw new Artifact2Error.Unauthorized(url0)
             else
-              throw new Exception(s"Connection error ${respCodeOpt.map(_.toString).getOrElse("4xx")}: $conn")
+              throw new Exception(s"Connection error ${respCodeOpt.map(_.toString).getOrElse("4xx")}: $conn")  // TODO use an Artifact2Error
           } else {
             Right((conn, x))
           }

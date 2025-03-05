@@ -1,12 +1,11 @@
 package io.github.memo33
 package sc4pac
 
-import coursier.cache.ArtifactError
 import zio.{ZIO, Task, RIO}
 import upickle.default.Reader
 
 import sc4pac.JsonData as JD
-import sc4pac.error.{Sc4pacVersionNotFound, Sc4pacMissingVariant, Sc4pacAssetNotFound}
+import sc4pac.error.{Sc4pacVersionNotFound, Sc4pacMissingVariant, Sc4pacAssetNotFound, Artifact2Error}
 
 object Find {
 
@@ -26,14 +25,14 @@ object Find {
   // See also download-error handling in Resolution.
   private def handleMetadataDownloadError(orgName: => String, context: ResolutionContext): PartialFunction[Throwable, Task[Option[Nothing]]] = {
     case _: error.Sc4pacVersionNotFound => ZIO.succeed(None)  // repositories not containing module:version can be ignored
-    case e: (ArtifactError.WrongChecksum | ArtifactError.ChecksumFormatError | ArtifactError.ChecksumNotFound) =>
+    case e: (Artifact2Error.WrongChecksum | Artifact2Error.ChecksumFormatError | Artifact2Error.ChecksumNotFound) =>
       ZIO.fail(new error.ChecksumError(
         s"Checksum verification failed for $orgName. Usually this should not happen and suggests a problem with the channel data.",
         e.getMessage))
-    case e: (ArtifactError.DownloadError | ArtifactError.WrongLength | ArtifactError.NotFound) =>
+    case e: (Artifact2Error.DownloadError | Artifact2Error.WrongLength | Artifact2Error.NotFound) =>
       ZIO.fail(new error.DownloadFailed("Failed to download some metadata files. Check your internet connection.",
         e.getMessage))
-    case e: ArtifactError =>
+    case e: Artifact2Error =>
       context.logger.debugPrintStackTrace(e)
       ZIO.fail(new error.DownloadFailed("Unexpected download error.", e.getMessage))
   }

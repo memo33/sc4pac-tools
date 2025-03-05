@@ -6,13 +6,14 @@ import coursier.cache as CC
 import zio.{ZIO, IO, Task, Promise}
 
 import sc4pac.JsonData as JD
+import sc4pac.error.Artifact2Error
 
 /** A thin wrapper around Coursier's FileCache providing minimal functionality
   * in order to supply a custom downloader implementation.
   */
 class FileCache private (
   csCache: CC.FileCache[Task],
-  runningTasks: ConcurrentHashMap[String, Promise[CC.ArtifactError, java.io.File]]
+  runningTasks: ConcurrentHashMap[String, Promise[Artifact2Error, java.io.File]]
 ) {
 
   def location: java.io.File = csCache.location
@@ -75,8 +76,8 @@ class FileCache private (
     *
     * Otherwise, return local file, potentially failing with a checksum error.
     */
-  def fetchFile(artifact: Artifact): ZIO[Downloader.Credentials & Logger, CC.ArtifactError, java.io.File] = {
-    def task0(credentials: Downloader.Credentials, logger: Logger): IO[CC.ArtifactError, java.io.File] = {
+  def fetchFile(artifact: Artifact): ZIO[Downloader.Credentials & Logger, Artifact2Error, java.io.File] = {
+    def task0(credentials: Downloader.Credentials, logger: Logger): IO[Artifact2Error, java.io.File] = {
       val destFile = localFile(artifact.url)
       (for {
         destFileChecksumVerifiedLazy <- verifyChecksum(destFile, artifact).memoize  // lazily evaluates only when needed
@@ -102,8 +103,8 @@ class FileCache private (
       } yield result)
         .provideSomeLayer(zio.ZLayer.succeed(logger))
         .mapError {
-          case e: CC.ArtifactError => e
-          case e: java.io.IOException => new CC.ArtifactError.DownloadError(
+          case e: Artifact2Error => e
+          case e: java.io.IOException => new Artifact2Error.DownloadError(
             s"Caught ${e.getClass().getName()}${Option(e.getMessage).fold("")(" (" + _ + ")")} while accessing $destFile",
             Some(e)
           )
@@ -119,7 +120,7 @@ class FileCache private (
     // First check if there is a concurrently running task.
     // If so, await its result, otherwise compute the result by running `task0`.
     for {
-      p0     <- Promise.make[CC.ArtifactError, java.io.File]
+      p0     <- Promise.make[Artifact2Error, java.io.File]
       result <- ZIO.acquireReleaseWith(
                   acquire = ZIO.succeed(runningTasks.putIfAbsent(artifact.url, p0))
                 )(
@@ -138,12 +139,12 @@ class FileCache private (
   }
 
   /** Retrieve the file contents as String from the cache or download if necessary. */
-  def fetchText: Artifact => ZIO[Logger, CC.ArtifactError, String] = { artifact =>
+  def fetchText: Artifact => ZIO[Logger, Artifact2Error, String] = { artifact =>
     fetchFile(artifact).flatMap { (f: java.io.File) =>
       zio.ZIO.attemptBlockingIO {
         new String(java.nio.file.Files.readAllBytes(f.toPath), java.nio.charset.StandardCharsets.UTF_8)
       }.mapError {
-        case e: java.io.IOException => new CC.ArtifactError.DownloadError(
+        case e: java.io.IOException => new Artifact2Error.DownloadError(
           s"Caught ${e.getClass().getName()}${Option(e.getMessage).fold("")(" (" + _ + ")")} while reading $f",
           Some(e)
         )
@@ -155,7 +156,7 @@ class FileCache private (
   /** If artifact has an expected checksum, check that it matches the cached
     * file. This is merely used for checking whether certain cached files are
     * out-of-date, not for ensuring overall data integrity. */
-  def verifyChecksum(file: java.io.File, artifact: Artifact): ZIO[Logger, java.io.IOException, Either[CC.ArtifactError, Unit]] = {
+  def verifyChecksum(file: java.io.File, artifact: Artifact): ZIO[Logger, java.io.IOException, Either[Artifact2Error, Unit]] = {
     if (!isManagedByCache(artifact.url, file))
       // For local channels, there's no need to verify checksums as the local
       // channel files are always up-to-date and Downloader .checked files do not exist.
@@ -166,19 +167,19 @@ class FileCache private (
         logger.debug(s"Verifying checksum for file $file")
         val checkedFile = FileCache.ttlFile(file)
         if (!checkedFile.exists() || checkedFile.length() == 0)   // zero-length is possible for historic reasons
-          Left(CC.ArtifactError.ChecksumNotFound(sumType = "sha256", file = file.toString))
+          Left(Artifact2Error.ChecksumNotFound(sumType = "sha256", file = file.toString))
         else
           JsonIo.readBlocking[JD.CheckFile](os.Path(checkedFile.getAbsolutePath()))
             .left.map { err =>
               logger.debug(s"Failed to read checksum: $err")
-              CC.ArtifactError.ChecksumFormatError(sumType = "sha256", file = file.toString)
+              Artifact2Error.ChecksumFormatError(sumType = "sha256", file = file.toString)
             }
-            .flatMap { data => data.checksum.sha256.toRight(left = CC.ArtifactError.ChecksumNotFound(sumType = "sha256", file = file.toString)) }
+            .flatMap { data => data.checksum.sha256.toRight(left = Artifact2Error.ChecksumNotFound(sumType = "sha256", file = file.toString)) }
             .flatMap { sha256Actual =>
               if (sha256Actual == sha256Expected)
                 Right(())
               else
-                Left(CC.ArtifactError.WrongChecksum(sumType = "sha256", got = JD.Checksum.bytesToString(sha256Actual),
+                Left(Artifact2Error.WrongChecksum(sumType = "sha256", got = JD.Checksum.bytesToString(sha256Actual),
                   expected = JD.Checksum.bytesToString(sha256Expected), file = file.toString, sumFile = checkedFile.toString))
             }
       })

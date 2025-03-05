@@ -593,7 +593,7 @@ object Sc4pac {
                               .fetchFile(artifact)  // requires initialized logger
                               .provideSomeLayer(Downloader.emptyCredentialsLayer)  // as we do not fetch channel file from Simtropolis, no need for credentials
                               .mapError {
-                                case err: coursier.cache.ArtifactError =>
+                                case err: error.Artifact2Error =>
                                   error.ChannelsNotAvailable(s"Channel not available. Check your internet connection and that the channel URL is correct: $repoUri", err.getMessage)
                               }
       profileRoot         <- ZIO.service[ProfileRoot]
