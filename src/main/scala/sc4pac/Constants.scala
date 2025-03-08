@@ -10,7 +10,10 @@ object Constants {
   val defaultExcludePattern = Pattern.compile("""(?<!\.dat|\.sc4model|\.sc4lot|\.sc4desc|\.sc4)$""", Pattern.CASE_INSENSITIVE)  // excludes files with other file types
   val sc4fileTypePattern = Pattern.compile("""\.dat|\.sc4model|\.sc4lot|\.sc4desc|\.sc4|\.dll$""", Pattern.CASE_INSENSITIVE)
   val versionLatestRelease = "latest.release"
-  val defaultChannelUrls = Seq(MetadataRepository.parseChannelUrl("https://memo33.github.io/sc4pac/channel/").toOption.get)
+  val defaultChannelUrls = Seq(
+    MetadataRepository.parseChannelUrl("https://memo33.github.io/sc4pac/channel/").toOption.get,
+    MetadataRepository.parseChannelUrl("https://sc4pac.simtropolis.com/").toOption.get,
+  )
 
   // Channels are built with the maximum version.
   // When incrementing the maximum, older sc4pac clients become incompatible

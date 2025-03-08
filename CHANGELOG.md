@@ -3,6 +3,7 @@
 ## [Unreleased]
 ### Added
 - support for token-based authentication to Simtropolis (#31)
+- The [Simtropolis Channel](https://community.simtropolis.com/forums/topic/763620-simtropolis-x-sc4pac-a-new-way-to-install-plugins/) has been added to the default channels.
 
 ### Changed
 - When calling `update`, a new dialog allows to remove unresolvable packages if any (e.g. when packages have been renamed or deleted from a channel) ([#24][gui24]).

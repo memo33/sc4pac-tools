@@ -53,16 +53,9 @@ The GUI is located in the <a href="https://github.com/memo33/sc4pac-gui/releases
   There are already more than 3000 plugins with compatible *metadata* to choose from.
   Once satisfied, go to the **Dashboard** and hit **Update** to download and install the plugin files.
 
-- Add the [Simtropolis Channel](https://community.simtropolis.com/forums/topic/763620-simtropolis-x-sc4pac-a-new-way-to-install-plugins/)
-  in your **Dashboard** to be able to find and install many additional files from the STEX:
-  ```
-  https://memo33.github.io/sc4pac/channel/
-  https://sc4pac.simtropolis.com/
-  ```
-  Start small and gradually build up your Plugins folder. Don't download everything at once.
-
 - If you are signed in to [Simtropolis](https://community.simtropolis.com), watch out for the **“Install with sc4pac”** button on the STEX.
   It appears for plugins that can be installed with *sc4pac*.
+  Start small and gradually build up your Plugins folder. Don't download everything at once.
 
 - Install `pkg=null-45:startup-performance-optimization-dll` if you use the Windows digital edition of the game.
   (This adds support for plugin file paths exceeding the 260 character limit on Windows,
