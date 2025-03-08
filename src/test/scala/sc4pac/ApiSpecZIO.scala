@@ -516,7 +516,7 @@ object ApiSpecZIO extends ZIOSpecDefault {
           test("/variants.list") {
             withTestResultRef(for {
               data <- getEndpoint(s"variants.list?profile=$profileId").flatMap(getBody200[ujson.Value])
-              _    <- addTestResult(assertTrue(data == Obj("driveside" -> "right")))
+              _    <- addTestResult(assertTrue(data == Obj("variants" -> Obj("driveside" -> Obj("value" -> "right", "unused" -> false)))))
             } yield ())
           },
           test("/variants.reset") {
@@ -525,7 +525,7 @@ object ApiSpecZIO extends ZIOSpecDefault {
               resp <- postEndpoint(s"variants.reset?profile=$profileId", jsonBody(Seq("driveside")))
               _    <- addTestResult(assertTrue(resp.status.code == 400))
               data <- getEndpoint(s"variants.list?profile=$profileId").flatMap(getBody200[ujson.Value])
-              _    <- addTestResult(assertTrue(data == Obj()))
+              _    <- addTestResult(assertTrue(data == Obj("variants" -> Obj())))
             } yield ())
           },
           test("/update (switching variant)") {
@@ -608,6 +608,28 @@ object ApiSpecZIO extends ZIOSpecDefault {
                         )
                 data <- getEndpoint(s"plugins.added.list?profile=$profileId").flatMap(getBody200[Seq[String]])
                 _    <- addTestResult(assertTrue(!data.contains("test:nonexistent")))
+              } yield ()
+            })
+          },
+          test("/update (uninstall all)") {
+            withTestResultRef(ZIO.scoped {
+              for {
+                _    <- removeAll
+                _    <- wsEndpoint(s"update?profile=$profileId",
+                          respond = {
+                            case msg: api.PromptMessage.ConfirmUpdatePlan => ZIO.succeed(msg.responses("Yes"))
+                            case msg: api.PromptMessage.ConfirmInstallation => ZIO.succeed(msg.responses("Yes"))
+                          },
+                          filter = msg => msg.json("$type").str.startsWith("/result"),
+                          checkMessages = queue => (for {
+                            _ <- queue.take.flatMap(f => addTestResult(assertTrue(f.json == jsonOk)))
+                          } yield ()),
+                        )
+                data <- getEndpoint(s"plugins.added.list?profile=$profileId").flatMap(getBody200[Seq[String]])
+                _    <- addTestResult(assertTrue(data == Nil))
+                data <- getEndpoint(s"variants.list?profile=$profileId").flatMap(getBody200[ujson.Value])
+                _    <- addTestResult(assertTrue(data("variants")("driveside")("unused").bool == true))
+                _    <- addTestResult(assertTrue(data("variants").obj.forall(_._2("unused").bool) == true))
               } yield ()
             })
           },

@@ -427,8 +427,12 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
     Method.GET / "variants.list" -> handler {
       wrapHttpEndpoint {
         for {
-          pluginsSpec <- readPluginsSpecOr409
-        } yield jsonResponse(pluginsSpec.config.variant)(using UP.stringKeyW(implicitly[UP.Writer[Variant]]))
+          pluginsSpec  <- readPluginsSpecOr409
+          installed    <- JD.PluginsLock.listInstalled2
+          used         =  installed.iterator.flatMap(_.variant.keysIterator).toSet[String]
+        } yield jsonResponse(VariantsList(pluginsSpec.config.variant.map { (id, value) =>
+          id -> VariantsList.Item(value = value, unused = !used(id))
+        }))
       }
     },
 

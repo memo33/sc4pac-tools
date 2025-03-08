@@ -341,7 +341,16 @@ Get the list of configured variants of your plugins folder.
 
 Synopsis: `GET  /variants.list?profile=id`
 
-Returns: `{"<driveside>": "<right>", "<nightmode>": "<dark>", …}`
+Returns:
+```
+{
+  "variants": {
+    "<driveside>": {"value": "<right>", "unused": false},
+    "<nightmode>": {"value": "<dark>", "unused": false},
+    …
+  }
+}
+```
 
 ## variants.reset
 

@@ -200,3 +200,9 @@ case class ServerStatus(sc4pacVersion: String) derives UP.ReadWriter
 case class ProfileName(name: String) derives UP.ReadWriter
 case class ProfileIdObj(id: ProfileId) derives UP.ReadWriter
 case class ProfilesList(profiles: Seq[JD.ProfileData], currentProfileId: Option[ProfileId], profilesDir: java.nio.file.Path) derives UP.ReadWriter
+
+case class VariantsList(variants: Map[String, VariantsList.Item])
+object VariantsList {
+  given variantsListRw: UP.ReadWriter[VariantsList] = UP.stringKeyRW(UP.macroRW)
+  case class Item(value: String, unused: Boolean) derives UP.ReadWriter
+}
