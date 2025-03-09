@@ -218,10 +218,23 @@ class Resolution(reachableDeps: TreeSeqMap[BareDep, Seq[BareDep]], nonbareDeps: 
                 }
                 ZIO.fail(new error.DownloadFailed(msg, e.getMessage))
               }
+            case e: Artifact2Error.Forbidden =>  // 403
+              ZIO.serviceWithZIO[Downloader.Credentials] { credentials =>
+                val msg = if (art.isFromSimtropolis && !(credentials.simtropolisToken.isDefined || credentials.simtropolisCookie.isDefined)) {
+                  "Failed to download some assets from Simtropolis (forbidden). " +
+                  "Your download request has been blocked by Simtropolis or by Cloudflare. " +
+                  "Setting up a personal Simtropolis authentication token might resolve the problem."
+                } else {
+                  "Failed to download some assets (forbidden). " +
+                  "Your download request has been blocked by the file exchange server. " +
+                  "For example, this can happen when using a public VPN or a suspicious IP address, or when a file has been locked."
+                }
+                ZIO.fail(new error.DownloadFailed(msg, e.getMessage))
+              }
             case e: (Artifact2Error.DownloadError | Artifact2Error.WrongLength | Artifact2Error.NotFound) =>  // e.g. 500, 404 or other issues
               val msg = "Failed to download some assets. Maybe the file exchange server is currently unavailable. Also check your internet connection."
               ZIO.fail(new error.DownloadFailed(msg, e.getMessage))
-            case e: Artifact2Error =>  // e.g. 500, 403 or other issues
+            case e: Artifact2Error =>  // e.g. 500 or other issues
               context.logger.debugPrintStackTrace(e)
               ZIO.fail(new error.DownloadFailed("Unexpected download error.", e.getMessage))
           }
