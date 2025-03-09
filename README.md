@@ -62,7 +62,7 @@ The GUI is located in the <a href="https://github.com/memo33/sc4pac-gui/releases
   which could otherwise be a problem for a small number of packages that use deeply-nested, long file names.)
 
 - Be aware that Simtropolis has a download limit of 20 files per day for guests.
-  If you reach the limit, go to **Settings** and set up authentication.
+  To avoid the limit, go to **Settings** and set up your [personal authentication token](https://community.simtropolis.com/sc4pac/my-token/) for Simtropolis.
   Alternatively, simply continue the installation process the next day.
 
 

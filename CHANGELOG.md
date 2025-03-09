@@ -1,6 +1,9 @@
 # Changelog
 
 ## [Unreleased]
+
+
+## [0.6.0] - 2025-03-09
 ### Added
 - support for token-based authentication to Simtropolis (#31)
 - The [Simtropolis Channel](https://community.simtropolis.com/forums/topic/763620-simtropolis-x-sc4pac-a-new-way-to-install-plugins/) has been added to the default channels.
@@ -246,7 +249,8 @@
 ## [0.1.5] - 2023-09-26
 …
 
-[Unreleased]: https://github.com/memo33/sc4pac-tools/compare/0.5.4...HEAD
+[Unreleased]: https://github.com/memo33/sc4pac-tools/compare/0.6.0...HEAD
+[0.6.0]: https://github.com/memo33/sc4pac-tools/compare/0.5.4...0.6.0
 [0.5.4]: https://github.com/memo33/sc4pac-tools/compare/0.5.3...0.5.4
 [0.5.3]: https://github.com/memo33/sc4pac-tools/compare/0.5.2...0.5.3
 [0.5.2]: https://github.com/memo33/sc4pac-tools/compare/0.5.1...0.5.2
