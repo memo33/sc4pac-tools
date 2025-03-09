@@ -12,11 +12,11 @@ set -e
 # Find the location of this script, accounting for symlinks, see https://stackoverflow.com/a/246128
 SCRIPTDIR="$( cd -P "$( dirname "$(readlink -f "${BASH_SOURCE[0]}")" )" >/dev/null 2>&1 && pwd )"
 
-# Basic support for authentication to Simtropolis is provided via cookies.
-# Either set this as environment variable or uncomment the line below and fill in the values.
+# Support for authentication to Simtropolis is provided using a personal token.
+# Either set this as environment variable or uncomment the line below and fill in the value.
 # For details, see the instructions in `sc4pac.bat`.
 #
-# export SC4PAC_SIMTROPOLIS_COOKIE="ips4_device_key=<value>; ips4_member_id=<value>; ips4_login_key=<value>"
+# export SC4PAC_SIMTROPOLIS_TOKEN="<value>"
 
 # Uncomment to enable debug mode:
 # export SC4PAC_DEBUG=1

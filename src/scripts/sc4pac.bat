@@ -10,26 +10,17 @@ REM     .\sc4pac
 
 SET SCRIPTDIR=%~dp0.
 
-REM Basic support for authentication to Simtropolis is provided via cookies. To use this:
+REM Support for authentication to Simtropolis is provided using a personal token. To use this:
 REM
-REM - Use your web browser to sign in to Simtropolis with the "remember me" option.
+REM - Sign in to Simtropolis and generate your personal token at https://community.simtropolis.com/sc4pac/my-token/
 REM
-REM - Inspect the cookies by opening the browser Dev Tools:
+REM - Set the environment variable `SC4PAC_SIMTROPOLIS_TOKEN`:
 REM
-REM   * in Firefox: Storage > Cookies
-REM
-REM   * in Chrome: Application > Storage > Cookies
-REM
-REM - Set the environment variable `SC4PAC_SIMTROPOLIS_COOKIE` to the required cookie values of your session:
-REM
-REM   * Either uncomment the line below by removing the `REM` and fill in the <value> placeholders.
+REM   * Either uncomment the line below by removing the `REM` and fill in the <value> placeholder.
 REM
 REM   * Or set the environment variable as a User Variable in your system settings, using the same format.
 REM
-REM   Note that the cookies will expire after a few months.
-REM
-REM
-REM SET "SC4PAC_SIMTROPOLIS_COOKIE=ips4_device_key=<value>; ips4_member_id=<value>; ips4_login_key=<value>"
+REM SET "SC4PAC_SIMTROPOLIS_TOKEN=<value>"
 
 REM Uncomment to enable debug mode:
 REM SET "SC4PAC_DEBUG=1"

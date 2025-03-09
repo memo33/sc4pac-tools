@@ -2,12 +2,11 @@ package io.github.memo33
 package sc4pac
 
 import coursier.core as C
-import coursier.cache.ArtifactError
 import zio.{ZIO, RIO}
 import scala.collection.immutable.TreeSeqMap
 
 import sc4pac.JsonData as JD
-import sc4pac.error.Sc4pacAssetNotFound
+import sc4pac.error.{Sc4pacAssetNotFound, Artifact2Error}
 import Resolution.{Dep, DepAsset}
 
 /** Wrapper around Coursier's resolution mechanism with more stringent types for
@@ -174,7 +173,7 @@ class Resolution(reachableDeps: TreeSeqMap[BareDep, Seq[BareDep]], nonbareDeps: 
   /** Download artifacts of a subset of the dependency set of the resolution, or
     * take files from cache in case they are still up-to-date.
     */
-  def fetchArtifactsOf(subset: Seq[Dep]): RIO[ResolutionContext & Downloader.Cookies, Seq[(DepAsset, Artifact, java.io.File)]] = {
+  def fetchArtifactsOf(subset: Seq[Dep]): RIO[ResolutionContext & Downloader.Credentials, Seq[(DepAsset, Artifact, java.io.File)]] = {
     val assetsArtifacts = subset.collect{ case d: DepAsset =>
       (d, Artifact(
         d.url,
@@ -187,32 +186,58 @@ class Resolution(reachableDeps: TreeSeqMap[BareDep, Seq[BareDep]], nonbareDeps: 
     def fetchTask(context: ResolutionContext) =
       ZIO.foreachPar(assetsArtifacts) { (dep, art) =>
         context.cache.fetchFile(art).map(file => (dep, art, file))
-      }
-      .catchAll {
-        // See also download-error handling in Find.
-        case e: (ArtifactError.WrongChecksum | ArtifactError.ChecksumFormatError | ArtifactError.ChecksumNotFound) =>
-          ZIO.fail(new error.ChecksumError(
-            f"Checksum verification failed for a downloaded asset.%n" +
-            f"- Either, this means the downloaded file is incomplete: Delete the file to try downloading it again.%n" +
-            "- Otherwise, this means the uploaded file was modified after the channel metadata was last updated, " +
-            "so the integrity of the file cannot be verified by sc4pac: Report this to the maintainers of the metadata.",
-            e.getMessage))
-        case e: (ArtifactError.DownloadError | ArtifactError.WrongLength | ArtifactError.NotFound) =>
-          ZIO.serviceWithZIO[Downloader.Cookies] { cookies =>
-            val msg = if (cookies.simtropolisCookie.isDefined) {
-              "Failed to download some assets. " +
-              "Maybe your authentication cookies have expired or the file exchange server is currently unavailable."
-            } else {
-              "Failed to download some assets. " +
-              "You may have reached your daily download quota (Simtropolis: 20 files per day for guests) " +
-              "or the file exchange server is currently unavailable. " +
-              "Set up Authentication or try again later."
-            }
-            ZIO.fail(new error.DownloadFailed(msg, e.getMessage))
+          .catchAll {
+            // See also download-error handling in Find.
+            case e: (Artifact2Error.WrongChecksum | Artifact2Error.ChecksumFormatError | Artifact2Error.ChecksumNotFound) =>
+              ZIO.fail(new error.ChecksumError(
+                f"Checksum verification failed for a downloaded asset.%n" +
+                f"- Either, this means the downloaded file is incomplete: Delete the file to try downloading it again.%n" +
+                "- Otherwise, this means the uploaded file was modified after the channel metadata was last updated, " +
+                "so the integrity of the file cannot be verified by sc4pac: Report this to the maintainers of the metadata.",
+                e.getMessage))
+            case e: Artifact2Error.Unauthorized =>  // 401
+              ZIO.serviceWithZIO[Downloader.Credentials] { credentials =>
+                val msg = if (!art.isFromSimtropolis) {
+                  "Failed to download some assets due to lack of authorization. This should not normally happen. Please report this problem and mention which file or URL is affected."
+                } else if (credentials.simtropolisToken.isDefined || credentials.simtropolisCookie.isDefined) {
+                  "Failed to download some assets from Simtropolis. Your personal Simtropolis authentication token seems to be incorrect."
+                } else {
+                  "Failed to download some assets from Simtropolis due to lack of authorization. Set up a personal Simtropolis authentication token and try again."
+                }
+                ZIO.fail(new error.DownloadFailed(msg, e.getMessage))
+              }
+            case e: Artifact2Error.RateLimited =>  // 429
+              ZIO.serviceWithZIO[Downloader.Credentials] { credentials =>
+                val msg = if (art.isFromSimtropolis && !(credentials.simtropolisToken.isDefined || credentials.simtropolisCookie.isDefined)) {
+                  "Failed to download some assets from Simtropolis (rate-limited). " +
+                  "You have reached your daily download limit (20 files per day for guests on Simtropolis). " +
+                  "Go to Settings to set up a personal Simtropolis authentication token and try again."
+                } else {
+                  "Failed to download some assets (rate-limited). " +
+                  "The file exchange server has blocked your download, as you have sent too many download requests in a short time."
+                }
+                ZIO.fail(new error.DownloadFailed(msg, e.getMessage))
+              }
+            case e: Artifact2Error.Forbidden =>  // 403
+              ZIO.serviceWithZIO[Downloader.Credentials] { credentials =>
+                val msg = if (art.isFromSimtropolis && !(credentials.simtropolisToken.isDefined || credentials.simtropolisCookie.isDefined)) {
+                  "Failed to download some assets from Simtropolis (forbidden). " +
+                  "Your download request has been blocked by Simtropolis or by Cloudflare. " +
+                  "Setting up a personal Simtropolis authentication token might resolve the problem."
+                } else {
+                  "Failed to download some assets (forbidden). " +
+                  "Your download request has been blocked by the file exchange server. " +
+                  "For example, this can happen when using a public VPN or a suspicious IP address, or when a file has been locked."
+                }
+                ZIO.fail(new error.DownloadFailed(msg, e.getMessage))
+              }
+            case e: (Artifact2Error.DownloadError | Artifact2Error.WrongLength | Artifact2Error.NotFound) =>  // e.g. 500, 404 or other issues
+              val msg = "Failed to download some assets. Maybe the file exchange server is currently unavailable. Also check your internet connection."
+              ZIO.fail(new error.DownloadFailed(msg, e.getMessage))
+            case e: Artifact2Error =>  // e.g. 500 or other issues
+              context.logger.debugPrintStackTrace(e)
+              ZIO.fail(new error.DownloadFailed("Unexpected download error.", e.getMessage))
           }
-        case e: ArtifactError =>
-          context.logger.debugPrintStackTrace(e)
-          ZIO.fail(new error.DownloadFailed("Unexpected download error.", e.getMessage))
       }
       .provideSomeLayer(zio.ZLayer.succeed(context.logger))
 

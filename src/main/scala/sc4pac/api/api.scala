@@ -247,17 +247,22 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
         success = pluginsSpec =>
           Handler.webSocket { wsChannel =>
             val updateTask: zio.RIO[ProfileRoot & Ref[Option[FileCache]] & WebSocketLogger, Message] =
-              val cookies = Downloader.Cookies(req.url.queryParams.getAll("simtropolisCookie").headOption.orElse(Constants.simtropolisCookie))
-              val cookieDesc = cookies.simtropolisCookie.map(c => s"with cookie: ${c.length} bytes").getOrElse("without cookie")
+              val credentials = Downloader.Credentials(
+                simtropolisCookie = req.url.queryParams.getAll("simtropolisCookie").headOption.orElse(Constants.simtropolisCookie),
+                simtropolisToken = req.url.queryParams.getAll("simtropolisToken").headOption.orElse(Constants.simtropolisToken),
+              )
+              val credentialsDesc = credentials.simtropolisToken.map(t => s"with token: ${t.length} bytes")
+                .orElse(credentials.simtropolisCookie.map(c => s"with cookie: ${c.length} bytes"))
+                .getOrElse("without token")
               for {
                 pac          <- Sc4pac.init(pluginsSpec.config, refreshChannels = req.url.queryParams.getAll("refreshChannels").nonEmpty)
                 pluginsRoot  <- pluginsSpec.config.pluginsRootAbs
                 wsLogger     <- ZIO.service[WebSocketLogger]
-                _            <- ZIO.succeed(wsLogger.log(s"Updating... ($cookieDesc)"))
+                _            <- ZIO.succeed(wsLogger.log(s"Updating... ($credentialsDesc)"))
                 flag         <- pac.update(pluginsSpec.explicit, globalVariant0 = pluginsSpec.config.variant, pluginsRoot = pluginsRoot)
                                   .provideSomeLayer(zio.ZLayer.succeedEnvironment(zio.ZEnvironment(
                                     WebSocketPrompter(wsChannel, wsLogger),
-                                    cookies,
+                                    credentials,
                                   )))
               } yield ResultMessage(ok = true)
 

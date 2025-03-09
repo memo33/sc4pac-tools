@@ -43,3 +43,18 @@ final class FileOpsFailure(msg: String) extends java.io.IOException(msg) with Sc
 final class YamlFormatIssue(msg: String) extends java.io.IOException(msg) with Sc4pacErr
 
 final class PortOccupied(msg: String) extends java.io.IOException(msg) with Sc4pacErr
+
+// derived from coursier.cache.ArtifactError
+sealed abstract class Artifact2Error(val message: String, val parentOpt: Option[Throwable]) extends Exception(message, parentOpt.orNull)
+object Artifact2Error {
+  final class RateLimited(val url: String) extends Artifact2Error(s"Rate limited: $url", None)
+  final class NotFound(val url: String) extends Artifact2Error(s"Note found: $url", None)
+  final class Forbidden(val url: String) extends Artifact2Error(s"Forbidden: $url", None)
+  final class Unauthorized(val url: String) extends Artifact2Error(s"Unauthorized: $url", None)
+  final class DownloadError(val reason: String, e: Option[Throwable]) extends Artifact2Error(reason, e)
+  final class Locked(val file: java.io.File) extends Artifact2Error(s"File is locked: $file", None)
+  final class WrongLength(val got: Long, val expected: Long, val file: String) extends Artifact2Error(s"Wrong length: $file (expected $expected B, got $got B)", None)
+  final class ChecksumNotFound(val sumType: String, val file: String) extends Artifact2Error(s"Checksum not found: $file", None)
+  final class ChecksumFormatError(val sumType: String, val file: String) extends Artifact2Error(s"Checksum format error: $file", None)
+  final class WrongChecksum(val sumType: String, val got: String, val expected: String, val file: String, val sumFile: String) extends Artifact2Error(s"Wrong checksum: $file (expected $sumType $expected in $sumFile, got $got)", None)
+}

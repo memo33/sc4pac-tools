@@ -53,7 +53,7 @@ sealed abstract class MetadataRepository(val baseUri: java.net.URI) {
 
 object MetadataRepository {
 
-  type Fetch[R] = Artifact => ZIO[R, CC.ArtifactError, String]
+  type Fetch[R] = Artifact => ZIO[R, error.Artifact2Error, String]
 
   def channelContentsUrl(baseUri: java.net.URI): java.net.URI =
     if (baseUri.getPath.endsWith(".yaml")) baseUri else baseUri.resolve(JsonRepoUtil.channelContentsFilename)

@@ -1,6 +1,9 @@
 # Changelog
 
 ## [Unreleased]
+### Added
+- support for token-based authentication to Simtropolis (#31)
+
 ### Changed
 - When calling `update`, a new dialog allows to remove unresolvable packages if any (e.g. when packages have been renamed or deleted from a channel) ([#24][gui24]).
 - API upgraded to 2.4:
