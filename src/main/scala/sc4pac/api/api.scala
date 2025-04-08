@@ -18,7 +18,7 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
   private def jsonResponse[A : UP.Writer](obj: A): Response = Response.json(UP.write(obj, indent = options.indent))
   private def jsonFrame[A : UP.Writer](obj: A): WebSocketFrame = WebSocketFrame.Text(UP.write(obj, indent = options.indent))
 
-  private val makePlatformDefaults: URIO[ProfileRoot, Map[String, Seq[String]]] =
+  private val makePlatformDefaults: URIO[ProfileRoot & service.FileSystem, Map[String, Seq[String]]] =
     for {
       defPlugins  <- JD.PluginsSpec.defaultPluginsRoot
       defCache    <- JD.PluginsSpec.defaultCacheRoot
@@ -29,7 +29,7 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
     )
 
   /** Sends a 409 ProfileNotInitialized or 500 ReadingProfileFailed if PluginsSpec cannot be loaded. */
-  private val readPluginsSpecOr409: ZIO[ProfileRoot, Response, JD.PluginsSpec] =
+  private val readPluginsSpecOr409: ZIO[ProfileRoot & service.FileSystem, Response, JD.PluginsSpec] =
     JD.PluginsSpec.readMaybe
       .mapError((e: error.ReadingProfileFailed) => jsonResponse(expectedFailureMessage(e)).status(expectedFailureStatus(e)))
       .someOrElseZIO((  // PluginsSpec file does not exist
@@ -50,6 +50,7 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
     case abort: error.ChannelsNotAvailable => ErrorMessage.ChannelsNotAvailable(abort.title, abort.detail)
     case abort: error.ReadingProfileFailed => ErrorMessage.ReadingProfileFailed(abort.title, abort.detail)
     case abort: error.Sc4pacPublishIncomplete => ErrorMessage.PublishedFilesIncomplete(abort.title, abort.detail)
+    case abort: error.ObtainingUserDirsFailed => ErrorMessage.ObtainingUserDirsFailed(abort.title, abort.detail)
     case abort: error.Sc4pacAbort => ErrorMessage.Aborted("Operation aborted.", "")
     case abort: java.nio.file.AccessDeniedException => ErrorMessage.FileAccessDenied(
       "File access denied. Check that you have permissions to access the file or directory.", abort.getMessage)
@@ -66,6 +67,7 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
     case abort: error.ChannelsNotAvailable => Status.BadGateway
     case abort: error.ReadingProfileFailed => Status.InternalServerError
     case abort: error.Sc4pacPublishIncomplete => Status.InternalServerError
+    case abort: error.ObtainingUserDirsFailed => Status.InternalServerError
     case abort: error.Sc4pacAbort => Status.Ok  // this is not really an error, but the expected control flow
     case abort: java.nio.file.AccessDeniedException => Status.InternalServerError
   }
@@ -169,7 +171,7 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
   }
 
   /** Routes that require a `profile=id` query parameter as part of the URL. */
-  def profileRoutes: Routes[ProfileRoot & Ref[Option[FileCache]], Throwable] = Routes(
+  def profileRoutes: Routes[ProfileRoot & service.FileSystem & Ref[Option[FileCache]], Throwable] = Routes(
 
     // 200, 409, 500
     Method.GET / "profile.read" -> handler { (req: Request) =>
@@ -499,7 +501,7 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
 
   )
 
-  def routes(webAppDir: Option[os.Path]): Routes[ProfilesDir & ServerFiber & Client & Ref[ServerConnection] & Ref[Option[FileCache]], Nothing] = {
+  def routes(webAppDir: Option[os.Path]): Routes[ProfilesDir & service.FileSystem & ServerFiber & Client & Ref[ServerConnection] & Ref[Option[FileCache]], Nothing] = {
     // Extract profile ID from URL query parameter and add it to environment.
     // 400 error if "profile" parameter is absent.
     val profileRoutes2 =
@@ -507,7 +509,7 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
         req.url.queryParams.getAll("profile").headOption match {
           case Some[ProfileId](id) =>
             handler0(req)
-              .provideSomeLayer[ProfilesDir & Ref[Option[FileCache]]](zio.ZLayer.fromFunction(
+              .provideSomeLayer[ProfilesDir & service.FileSystem & Ref[Option[FileCache]]](zio.ZLayer.fromFunction(
                 (dir: ProfilesDir) => ProfileRoot(dir.path / id)
               ))
           case None =>

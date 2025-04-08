@@ -24,7 +24,7 @@ object ApiSpecZIO extends ZIOSpecDefault {
     )
 
   /** Launches an API server for the duration of the Scope. */
-  val serverLayer: zio.ZLayer[ProfilesDir, Throwable, ServerOptions] =
+  val serverLayer: zio.ZLayer[ProfilesDir & service.FileSystem, Throwable, ServerOptions] =
     zio.ZLayer.scoped(
       for {
         profilesDir  <- ZIO.serviceWith[ProfilesDir](_.path)
@@ -639,7 +639,7 @@ object ApiSpecZIO extends ZIOSpecDefault {
     }).provideSomeLayerShared(fileServerLayer)  // shared across all tests
       .provideSomeLayer(currentProfileLayer),
 
-  ).provideShared(profilesDirLayer, serverLayer, Client.default)  // shared across all tests
+  ).provideShared(profilesDirLayer, service.FileSystem.live, serverLayer, Client.default)  // shared across all tests
     @@ TestAspect.sequential @@ TestAspect.withLiveClock @@ TestAspect.timeout(30.seconds)
 
 }

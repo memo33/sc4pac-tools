@@ -70,22 +70,25 @@ object JsonData extends SharedData {
 
     def pathURIO: URIO[ProfileRoot, os.Path] = ZIO.service[ProfileRoot].map(profileRoot => PluginsSpec.path(profileRoot.path))
 
-    private[sc4pac] val projDirs = dev.dirs.ProjectDirectories.from("", cli.BuildInfo.organization, cli.BuildInfo.name)  // qualifier, organization, application
-
     val defaultPluginsRoot: URIO[ProfileRoot, Seq[os.Path]] = ZIO.serviceWith[ProfileRoot](profileRoot => Seq(
       os.home / "Documents" / "SimCity 4" / "Plugins",
       profileRoot.path / "plugins"
     ))
 
-    val defaultCacheRoot: URIO[ProfileRoot, Seq[os.Path]] = ZIO.serviceWith[ProfileRoot](profileRoot => Seq(
-      os.Path(java.nio.file.Paths.get(projDirs.cacheDir)),
-      profileRoot.path / "cache"
-    ))
+    val defaultCacheRoot: URIO[ProfileRoot & service.FileSystem, Seq[os.Path]] =
+      for {
+        profileRoot <- ZIO.service[ProfileRoot]
+        fs <- ZIO.service[service.FileSystem]
+      } yield Seq(
+        util.Try(os.Path(java.nio.file.Paths.get(fs.projectCacheDir)))
+          .toOption.getOrElse(os.home / "sc4pac" / "cache"),  // safe fallback, see https://github.com/memo33/sc4pac-gui/issues/25
+        profileRoot.path / "cache",
+      )
 
     val defaultTempRoot: os.FilePath = os.FilePath("temp")
 
     /** Prompt for pluginsRoot and cacheRoot. This has a `CliPrompter` constraint as we only want to prompt about this using the CLI. */
-    val promptForPaths: RIO[ProfileRoot & CliPrompter, (os.Path, os.Path)] = {
+    val promptForPaths: RIO[ProfileRoot & service.FileSystem & CliPrompter, (os.Path, os.Path)] = {
       val task = for {
         defaultPlugins <- defaultPluginsRoot
         pluginsRoot    <- Prompt.paths("Choose the location of your Plugins folder. (It is recommended to start with an empty folder.)", defaultPlugins)
@@ -132,7 +135,7 @@ object JsonData extends SharedData {
     }
 
     /** Read PluginsSpec from file if it exists, else create it and write it to file. */
-    val readOrInit: RIO[ProfileRoot & CliPrompter, PluginsSpec] = PluginsSpec.pathURIO.flatMap { pluginsPath =>
+    val readOrInit: RIO[ProfileRoot & service.FileSystem & CliPrompter, PluginsSpec] = PluginsSpec.pathURIO.flatMap { pluginsPath =>
       ZIO.ifZIO(ZIO.attemptBlocking(os.exists(pluginsPath)))(
         onTrue = JsonIo.read[PluginsSpec](pluginsPath),
         onFalse = for {
@@ -311,7 +314,27 @@ object JsonData extends SharedData {
     }
   }
   object Profiles {
-    val defaultProfilesRoot: os.Path = os.Path(java.nio.file.Paths.get(PluginsSpec.projDirs.configDir)) / "profiles"
+
+    def parseProfilesRoot(path: Option[String]): ZIO[service.FileSystem, error.ObtainingUserDirsFailed, os.Path] = {
+      ZIO.serviceWithZIO[service.FileSystem] { fs =>
+        ZIO.attempt {
+          path match {
+            case None =>
+              if (fs.env.sc4pacProfilesDir.isDefined)  // environment variable
+                os.Path(java.nio.file.Paths.get(fs.env.sc4pacProfilesDir.get))  // absolute only
+              else
+                os.Path(java.nio.file.Paths.get(fs.projectConfigDir)) / "profiles"  // absolute only
+            case Some(p) =>
+              os.Path(java.nio.file.Paths.get(p), os.pwd)  // relative allowed
+          }
+        }.mapError(e => error.ObtainingUserDirsFailed(
+          "Failed to determine sc4pac profiles directory."
+          + " As a workaround, either use the --profiles-dir launch parameter or set the SC4PAC_PROFILES_DIR environment variable –"
+          + """ on Windows, usually to the path "C:\Users\YOURUSERNAME\AppData\Roaming\io.github.memo33\sc4pac\config\profiles"""",
+          e.getMessage,  // see https://github.com/memo33/sc4pac-gui/issues/25
+        ))
+      }
+    }
 
     def path(profilesDir: os.Path): os.Path = profilesDir / "sc4pac-profiles.json"
 

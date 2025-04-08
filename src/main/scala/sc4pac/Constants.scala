@@ -62,7 +62,7 @@ object Constants {
   lazy val noColor: Boolean = (System.getenv("NO_COLOR") match { case null | "" => false; case _ => true }) ||
                               (System.getenv("SC4PAC_NO_COLOR") match { case null | "" => false; case _ => true })
 
-  private def readEnvVar(name: String): Option[String] =
+  private[sc4pac] def readEnvVar(name: String): Option[String] =
     Option(System.getenv(name)).filter(_.nonEmpty)
       .map { s =>
         if (s.startsWith("\"") || s.endsWith("\"")) {

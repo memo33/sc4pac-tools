@@ -31,6 +31,7 @@ object Commands {
   val cliLayer =
     zio.ZLayer(Ref.make(Option.empty[FileCache]))
       .map(_.union(cliEnvironment))
+      ++ service.FileSystem.live
 
   // TODO strip escape sequences if jansi failed with a link error
   private[sc4pac] def gray(msg: String): String = s"${27.toChar}[90m" + msg + Console.RESET  // aka bright black
@@ -43,7 +44,7 @@ object Commands {
   type ExpectedFailure = error.Sc4pacAbort | error.DownloadFailed | error.ChannelsNotAvailable
     | error.Sc4pacVersionNotFound | error.Sc4pacAssetNotFound | error.ExtractionFailed
     | error.UnsatisfiableVariantConstraints | error.ChecksumError | error.ReadingProfileFailed
-    | error.Sc4pacPublishIncomplete | error.UnresolvableDependencies
+    | error.Sc4pacPublishIncomplete | error.UnresolvableDependencies | error.ObtainingUserDirsFailed
     | java.nio.file.AccessDeniedException
 
   private def handleExpectedFailures(abort: ExpectedFailure, exit: Int => Nothing): Nothing = abort match {
@@ -576,13 +577,18 @@ object Commands {
     |  sc4pac server --profiles-dir profiles --indent 1
     |  sc4pac server --profiles-dir profiles --web-app-dir build/web --launch-browser  ${gray("# used by GUI web")}
     |  sc4pac server --profiles-dir profiles --auto-shutdown --startup-tag [READY]     ${gray("# used by GUI desktop")}
+    |
+    |The ${emph("--profiles-dir")} path defaults to the environment variable ${emph("SC4PAC_PROFILES_DIR")} if it is set. Otherwise, it defaults to
+    |- "%AppData%\\io.github.memo33\\sc4pac\\config\\profiles" on Windows,
+    |- "$$XDG_CONFIG_HOME/sc4pac/profiles" or "$$HOME/.config/sc4pac/profiles" on Linux,
+    |- "$$HOME/Library/Application Support/io.github.memo33.sc4pac/profiles" on macOS.
     """.stripMargin.trim)
   final case class ServerOptions(
     @ValueDescription("number") @Group("Server") @Tag("Server")
     @HelpMessage(s"(default: ${Constants.defaultPort})")
     port: Int = Constants.defaultPort,
     @ValueDescription("path") @Group("Server") @Tag("Server")
-    @HelpMessage(s"""directory containing the sc4pac-profiles.json file and profile sub-directories (platform-dependent default: "${JD.Profiles.defaultProfilesRoot}"), newly created if necessary""")
+    @HelpMessage(s"""directory containing the sc4pac-profiles.json file and profile sub-directories (platform-dependent default), newly created if necessary""")
     profilesDir: String = "",
     @ValueDescription("path") @Group("Server") @Tag("Server")
     @HelpMessage(s"optional directory containing statically served webapp files (default: no static files)")
@@ -607,7 +613,7 @@ object Commands {
       ZIO.logInfo(message).as(resp)
     })
 
-    def serve(options: ServerOptions, profilesDir: os.Path, webAppDir: Option[os.Path]): RIO[zio.Scope, zio.Fiber[Throwable, Nothing]] = {
+    def serve(options: ServerOptions, profilesDir: os.Path, webAppDir: Option[os.Path]): RIO[zio.Scope & service.FileSystem, zio.Fiber[Throwable, Nothing]] = {
       val api = sc4pac.api.Api(options)
       // Enabling CORS is important so that web browsers do not block the
       // request response for lack of the following response header:
@@ -615,7 +621,7 @@ object Commands {
       // (e.g. when Flutter-web is hosted on port 12345)
       val app = api.routes(webAppDir) @@ zio.http.Middleware.cors
 
-      val serverTask: RIO[ServerFiber, Nothing] =
+      val serverTask: RIO[ServerFiber & service.FileSystem, Nothing] =
         zio.http.Server.install(app)
           .catchSomeDefect {
             // usually: "bind(..) failed: Address already in use"
@@ -648,7 +654,7 @@ object Commands {
             }
           )
           .zipRight(ZIO.never)  // keep server running indefinitely unless interrupted
-          .provideSome[ServerFiber](
+          .provideSome[ServerFiber & service.FileSystem](
             zio.http.Server.defaultWithPort(options.port)
               .mapError { e =>  // usually: "bind(..) failed: Address already in use"
                 // This branch does not seem to usually catch the error anymore.
@@ -666,7 +672,7 @@ object Commands {
       for {
         promise  <- zio.Promise.make[Nothing, zio.Fiber[Throwable, Nothing]]
         fiber    <- serverTask
-                      .provide(zio.ZLayer.succeed(ServerFiber(promise)))
+                      .provideSomeLayer(zio.ZLayer.succeed(ServerFiber(promise)))
                       .forkScoped
                       // Forking is used to allow interrupting the server to shut it down;
                       // forkScoped (instead of fork or acquireRelease) is mainly needed for tests (to avoid uninterruptible hanging),
@@ -678,8 +684,6 @@ object Commands {
     def run(options: ServerOptions, args: RemainingArgs): Unit = {
       if (options.indent < -1)
         error(caseapp.core.Error.Other(s"Indentation must be -1 or larger."))
-      val profilesDir: os.Path =
-        if (options.profilesDir.isEmpty) JD.Profiles.defaultProfilesRoot else os.Path(java.nio.file.Paths.get(options.profilesDir), os.pwd)
       val webAppDir: Option[os.Path] =
         if (options.webAppDir.isEmpty) None else Some(os.Path(java.nio.file.Paths.get(options.webAppDir), os.pwd))
       val task: Task[Unit] = {
@@ -687,6 +691,7 @@ object Commands {
           _  <- ZIO.whenZIODiscard(ZIO.attemptBlockingIO(webAppDir.isDefined && !os.exists(webAppDir.get)))(
                   error(caseapp.core.Error.Other(s"Webapp directory does not exist: ${webAppDir.get}"))
                 )
+          profilesDir <- JD.Profiles.parseProfilesRoot(Option(options.profilesDir).filter(_.nonEmpty))
           _  <- ZIO.attemptBlockingIO(if (!os.exists(profilesDir)) {
                   println(s"Creating sc4pac profiles directory: $profilesDir")
                   os.makeDir.all(profilesDir)
@@ -708,7 +713,7 @@ object Commands {
                   } yield ()
                 }
         } yield ()
-      }
+      }.provideSomeLayer(service.FileSystem.live)
       runMainExit(task, exit)
     }
 
