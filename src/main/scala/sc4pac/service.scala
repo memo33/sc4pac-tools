@@ -21,13 +21,6 @@ trait FileSystem {
   object env {
     /** If not specified as command-line argument, the profiles directory can be set as environment variable. */
     lazy val sc4pacProfilesDir: Option[String] = readEnvVar("SC4PAC_PROFILES_DIR")
-    /** (Deprecated) Basic support for authentication to Simtropolis is provided via cookies. Format:
-      *
-      *     SC4PAC_SIMTROPOLIS_COOKIE=ips4_device_key=<value>; ips4_member_id=<value>; ips4_login_key=<value>
-      *
-      * For details, see the instructions in `sc4pac.bat`.
-      */
-    lazy val simtropolisCookie: Option[String] = readEnvVar("SC4PAC_SIMTROPOLIS_COOKIE")
     /** Personal access token for authenticating to Simtropolis. */
     lazy val simtropolisToken: Option[String] = readEnvVar("SC4PAC_SIMTROPOLIS_TOKEN")
   }

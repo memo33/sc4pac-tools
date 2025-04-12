@@ -133,7 +133,7 @@ object Commands {
         pluginsRoot  <- pluginsSpec.config.pluginsRootAbs
         fs           <- ZIO.service[service.FileSystem]
         flag         <- pac.update(pluginsSpec.explicit, globalVariant0 = pluginsSpec.config.variant, pluginsRoot = pluginsRoot)
-                          .provideSomeLayer(zio.ZLayer.succeed(Downloader.Credentials(simtropolisCookie = fs.env.simtropolisCookie, simtropolisToken = fs.env.simtropolisToken)))
+                          .provideSomeLayer(zio.ZLayer.succeed(Downloader.Credentials(simtropolisToken = fs.env.simtropolisToken)))
       } yield ()
       runMainExit(task.provideLayer(cliLayer.map(_.update((_: CliPrompter).withAutoYes(options.yes)))), exit)
     }

@@ -199,7 +199,7 @@ class Resolution(reachableDeps: TreeSeqMap[BareDep, Seq[BareDep]], nonbareDeps: 
               ZIO.serviceWithZIO[Downloader.Credentials] { credentials =>
                 val msg = if (!art.isFromSimtropolis) {
                   "Failed to download some assets due to lack of authorization. This should not normally happen. Please report this problem and mention which file or URL is affected."
-                } else if (credentials.simtropolisToken.isDefined || credentials.simtropolisCookie.isDefined) {
+                } else if (credentials.simtropolisToken.isDefined) {
                   "Failed to download some assets from Simtropolis. Your personal Simtropolis authentication token seems to be incorrect."
                 } else {
                   "Failed to download some assets from Simtropolis due to lack of authorization. Set up a personal Simtropolis authentication token and try again."
@@ -208,7 +208,7 @@ class Resolution(reachableDeps: TreeSeqMap[BareDep, Seq[BareDep]], nonbareDeps: 
               }
             case e: Artifact2Error.RateLimited =>  // 429
               ZIO.serviceWithZIO[Downloader.Credentials] { credentials =>
-                val msg = if (art.isFromSimtropolis && !(credentials.simtropolisToken.isDefined || credentials.simtropolisCookie.isDefined)) {
+                val msg = if (art.isFromSimtropolis && !credentials.simtropolisToken.isDefined) {
                   "Failed to download some assets from Simtropolis (rate-limited). " +
                   "You have reached your daily download limit (20 files per day for guests on Simtropolis). " +
                   "Go to Settings to set up a personal Simtropolis authentication token and try again."
@@ -220,10 +220,10 @@ class Resolution(reachableDeps: TreeSeqMap[BareDep, Seq[BareDep]], nonbareDeps: 
               }
             case e: Artifact2Error.Forbidden =>  // 403
               ZIO.serviceWithZIO[Downloader.Credentials] { credentials =>
-                val msg = if (art.isFromSimtropolis && !(credentials.simtropolisToken.isDefined || credentials.simtropolisCookie.isDefined)) {
+                val msg = if (art.isFromSimtropolis && !credentials.simtropolisToken.isDefined) {
                   "Failed to download some assets from Simtropolis (forbidden). " +
                   "Your download request has been blocked by Simtropolis or by Cloudflare. " +
-                  "Setting up a personal Simtropolis authentication token might resolve the problem."
+                  "Setting up a personal Simtropolis authentication token might resolve the problem (see Settings)."
                 } else {
                   "Failed to download some assets (forbidden). " +
                   "Your download request has been blocked by the file exchange server. " +

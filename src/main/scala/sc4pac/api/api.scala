@@ -252,12 +252,9 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
               for {
                 fs           <- ZIO.service[service.FileSystem]
                 credentials  =  Downloader.Credentials(
-                                  simtropolisCookie = req.url.queryParams.getAll("simtropolisCookie").headOption.orElse(fs.env.simtropolisCookie),
                                   simtropolisToken = req.url.queryParams.getAll("simtropolisToken").headOption.orElse(fs.env.simtropolisToken),
                                 )
-                credentialsDesc = credentials.simtropolisToken.map(t => s"with token: ${t.length} bytes")
-                                    .orElse(credentials.simtropolisCookie.map(c => s"with cookie: ${c.length} bytes"))
-                                    .getOrElse("without token")
+                credentialsDesc = credentials.simtropolisToken.map(t => s"with token: ${t.length} bytes").getOrElse("without token")
                 pac          <- Sc4pac.init(pluginsSpec.config, refreshChannels = req.url.queryParams.getAll("refreshChannels").nonEmpty)
                 pluginsRoot  <- pluginsSpec.config.pluginsRootAbs
                 wsLogger     <- ZIO.service[WebSocketLogger]
