@@ -4,6 +4,7 @@ package sc4pac
 import java.util.regex.Pattern
 import scala.concurrent.duration.DurationInt
 
+// Some constants have been moved to service.FileSystem
 object Constants {
   export JsonRepoUtil.sc4pacAssetOrg  // val sc4pacAssetOrg = Organization("sc4pacAsset")
   val defaultIncludePattern = Pattern.compile("""(?<=\.dat|\.sc4model|\.sc4lot|\.sc4desc|\.sc4)$""", Pattern.CASE_INSENSITIVE)  // includes only plugin files (without dll)
@@ -61,25 +62,6 @@ object Constants {
 
   lazy val noColor: Boolean = (System.getenv("NO_COLOR") match { case null | "" => false; case _ => true }) ||
                               (System.getenv("SC4PAC_NO_COLOR") match { case null | "" => false; case _ => true })
-
-  private[sc4pac] def readEnvVar(name: String): Option[String] =
-    Option(System.getenv(name)).filter(_.nonEmpty)
-      .map { s =>
-        if (s.startsWith("\"") || s.endsWith("\"")) {
-          System.err.println(s"Warning: $name should not be surrounded by quotes. Remove the quotes and try again.")
-        }
-        s
-      }
-
-  /** (Deprecated) Basic support for authentication to Simtropolis is provided via cookies. Format:
-    *
-    *     SC4PAC_SIMTROPOLIS_COOKIE=ips4_device_key=<value>; ips4_member_id=<value>; ips4_login_key=<value>
-    *
-    * For details, see the instructions in `sc4pac.bat`.
-    */
-  lazy val simtropolisCookie: Option[String] = readEnvVar("SC4PAC_SIMTROPOLIS_COOKIE")
-  /** Personal access token for authenticating to Simtropolis. */
-  lazy val simtropolisToken: Option[String] = readEnvVar("SC4PAC_SIMTROPOLIS_TOKEN")
 
   /* On non-Windows platforms, cicdec is invoked by `mono cicdec [args]`, but on Windows Mono is not required: `cicdec [args]`.
    * We choose reasonable defaults, but allow customizing these two commands via environment variables (which are set in the launch scripts).

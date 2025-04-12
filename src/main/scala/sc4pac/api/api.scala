@@ -248,15 +248,16 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
         failure = ZIO.succeed[Response](_),
         success = pluginsSpec =>
           Handler.webSocket { wsChannel =>
-            val updateTask: zio.RIO[ProfileRoot & Ref[Option[FileCache]] & WebSocketLogger, Message] =
-              val credentials = Downloader.Credentials(
-                simtropolisCookie = req.url.queryParams.getAll("simtropolisCookie").headOption.orElse(Constants.simtropolisCookie),
-                simtropolisToken = req.url.queryParams.getAll("simtropolisToken").headOption.orElse(Constants.simtropolisToken),
-              )
-              val credentialsDesc = credentials.simtropolisToken.map(t => s"with token: ${t.length} bytes")
-                .orElse(credentials.simtropolisCookie.map(c => s"with cookie: ${c.length} bytes"))
-                .getOrElse("without token")
+            val updateTask: zio.RIO[ProfileRoot & service.FileSystem & Ref[Option[FileCache]] & WebSocketLogger, Message] =
               for {
+                fs           <- ZIO.service[service.FileSystem]
+                credentials  =  Downloader.Credentials(
+                                  simtropolisCookie = req.url.queryParams.getAll("simtropolisCookie").headOption.orElse(fs.env.simtropolisCookie),
+                                  simtropolisToken = req.url.queryParams.getAll("simtropolisToken").headOption.orElse(fs.env.simtropolisToken),
+                                )
+                credentialsDesc = credentials.simtropolisToken.map(t => s"with token: ${t.length} bytes")
+                                    .orElse(credentials.simtropolisCookie.map(c => s"with cookie: ${c.length} bytes"))
+                                    .getOrElse("without token")
                 pac          <- Sc4pac.init(pluginsSpec.config, refreshChannels = req.url.queryParams.getAll("refreshChannels").nonEmpty)
                 pluginsRoot  <- pluginsSpec.config.pluginsRootAbs
                 wsLogger     <- ZIO.service[WebSocketLogger]
@@ -268,7 +269,7 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
                                   )))
               } yield ResultMessage(ok = true)
 
-            val wsTask: zio.RIO[ProfileRoot & Ref[Option[FileCache]], Unit] =
+            val wsTask: zio.RIO[ProfileRoot & service.FileSystem & Ref[Option[FileCache]], Unit] =
               WebSocketLogger.run(send = msg => wsChannel.send(Read(jsonFrame(msg)))) {
                 for {
                   finalMsg <- updateTask.catchSome { case err: cli.Commands.ExpectedFailure => ZIO.succeed(expectedFailureMessage(err)) }
@@ -290,9 +291,9 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
                 fiberLeft.interruptFork  // forking is important here to be able to interrupt a blocked fiber
                   .zipRight(ZIO.serviceWith[Logger](_.log("Update task was canceled.")))
                   .zipRight(result)
-            ).provideSomeLayer(httpLogger): zio.RIO[ProfileRoot & Ref[Option[FileCache]], Unit]
+            ).provideSomeLayer(httpLogger): zio.RIO[ProfileRoot & service.FileSystem & Ref[Option[FileCache]], Unit]
 
-          }.toResponse: zio.URIO[ProfileRoot & Ref[Option[FileCache]], Response]
+          }.toResponse: zio.URIO[ProfileRoot & service.FileSystem & Ref[Option[FileCache]], Response]
       )
     },
 
