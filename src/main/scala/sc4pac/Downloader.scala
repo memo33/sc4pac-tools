@@ -251,8 +251,8 @@ class Downloader(
 
 object Downloader {
 
-  class Credentials(val simtropolisCookie: Option[String], val simtropolisToken: Option[String])
-  val emptyCredentialsLayer = zio.ZLayer.succeed(Credentials(simtropolisCookie = None, simtropolisToken = None))
+  class Credentials(val simtropolisToken: Option[String])
+  val emptyCredentialsLayer = zio.ZLayer.succeed(Credentials(simtropolisToken = None))
 
   /** Returns true on success, false if data transfer was canceled. */
   private def readFullyTo(
@@ -384,11 +384,6 @@ object Downloader {
             if (host == "simtropolis.com" || host.endsWith(".simtropolis.com")) {
               if (credentials.simtropolisToken.isDefined) {
                 conn0.addRequestProperty("Authorization", s"""SC4PAC-TOKEN-ST userkey="${credentials.simtropolisToken.get}"""")
-              } else {
-                // Set session cookie for rudimentary authentication to Simtropolis.
-                for (cookie <- credentials.simtropolisCookie) {
-                  conn0.setRequestProperty("Cookie", cookie)
-                }
               }
             }
           case _ =>

@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+### Fixed
+- a rare problem where the default profiles configuration directory could not be located ([#25][gui25]).
+  As a workaround, the directory path can now also be configured using the new environment variable `SC4PAC_PROFILES_DIR`, as an alternative to the `--profiles-dir` launch parameter.
+
+### Changed
+- removed support for cookie-based authentication
+
+[gui25]: https://github.com/memo33/sc4pac-gui/issues/25
+
 
 ## [0.6.0] - 2025-03-09
 ### Added

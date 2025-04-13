@@ -44,6 +44,8 @@ final class YamlFormatIssue(msg: String) extends java.io.IOException(msg) with S
 
 final class PortOccupied(msg: String) extends java.io.IOException(msg) with Sc4pacErr
 
+final class ObtainingUserDirsFailed(val title: String, val detail: String) extends java.io.IOException(s"$title $detail") with Sc4pacErr
+
 // derived from coursier.cache.ArtifactError
 sealed abstract class Artifact2Error(val message: String, val parentOpt: Option[Throwable]) extends Exception(message, parentOpt.orNull)
 object Artifact2Error {

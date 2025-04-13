@@ -311,7 +311,7 @@ sc4pac server --profiles-dir profiles --auto-shutdown --startup-tag [READY]     
 - `--startup-tag <string>`  optional tag to print once server has started and is listening
 - `--indent <number>`       indentation of JSON responses (default: -1, no indentation)
 
-The `--profiles-dir` path defaults to
+The `--profiles-dir` path defaults to the environment variable `SC4PAC_PROFILES_DIR` if it is set. Otherwise, it defaults to
 - `%AppData%\io.github.memo33\sc4pac\config\profiles` on Windows,
 - `$XDG_CONFIG_HOME/sc4pac/profiles` or `$HOME/.config/sc4pac/profiles` on Linux,
 - `$HOME/Library/Application Support/io.github.memo33.sc4pac/profiles` on macOS.

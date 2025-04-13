@@ -14,22 +14,29 @@ set -e
 # Find the location of this script, accounting for symlinks, see https://stackoverflow.com/a/246128
 SCRIPTDIR="$( cd -P "$( dirname "$(readlink -f "${BASH_SOURCE[0]}")" )" >/dev/null 2>&1 && pwd )"
 
+#------------------------------------------------------------
 # Support for authentication to Simtropolis is provided using a personal token.
 # Either set this as environment variable or uncomment the line below and fill in the value.
 # For details, see the instructions in `sc4pac.bat`.
 #
 # export SC4PAC_SIMTROPOLIS_TOKEN="<value>"
 
+#------------------------------------------------------------
+# Uncomment and adjust the following line to set a custom location for the profiles directory used by the GUI.
+# export SC4PAC_PROFILES_DIR="$HOME/.config/sc4pac/profiles"
+
+#------------------------------------------------------------
 # Uncomment to enable debug mode:
 # export SC4PAC_DEBUG=1
 
-
+#------------------------------------------------------------
 # We set defaults for environment variables if they are not defined.
 # The environment variable `SC4PAC_MONO_CMD` is only needed on Linux and macOS.
 # If you happen to run this script on Windows without Mono installed, remove the environment variable.
 export SC4PAC_MONO_CMD="${SC4PAC_MONO_CMD-"mono"}"
 export SC4PAC_CICDEC_CMD="${SC4PAC_CICDEC_CMD-"${SCRIPTDIR}/cicdec/cicdec.exe"}"
 
+#------------------------------------------------------------
 # Check if java is available or provide suitable exit code for the GUI.
 if ! command -v java 2>&1 >/dev/null
 then
