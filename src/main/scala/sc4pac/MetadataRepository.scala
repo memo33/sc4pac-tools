@@ -53,7 +53,7 @@ sealed abstract class MetadataRepository(val baseUri: java.net.URI) {
 
 object MetadataRepository {
 
-  type Fetch[R] = Artifact => ZIO[R, error.Artifact2Error, String]
+  type Fetch[R] = [A] => Artifact => Reader[A] ?=> ZIO[R, Artifact2Error, A]
 
   def channelContentsUrl(baseUri: java.net.URI): java.net.URI =
     if (baseUri.getPath.endsWith(".yaml")) baseUri else baseUri.resolve(JsonRepoUtil.channelContentsFilename)
@@ -154,8 +154,7 @@ private class JsonRepository(
         // channel files are always up-to-date and Downloader .checked files do not exist.)
         val jsonArtifact = Artifact(remoteUrl, changing = false, checksum = checksum, redownloadOnChecksumError = true)
 
-        fetch(jsonArtifact)
-          .flatMap((jsonStr: String) => JsonIo.read[A](jsonStr, errMsg = remoteUrl))
+        fetch[A](jsonArtifact)
   }
 
   def fetchExternalPackage[R](module: BareModule, fetch: MetadataRepository.Fetch[R]): RIO[R, Option[JD.ExternalPackage]] = {
@@ -164,8 +163,7 @@ private class JsonRepository(
       case Some(extPkg) =>
         val remoteUrl = baseUri.resolve(MetadataRepository.extPkgJsonSubPath(module).segments0.mkString("/")).toString
         val jsonArtifact = Artifact(remoteUrl, changing = false, checksum = extPkg.checksum)
-        fetch(jsonArtifact)
-          .flatMap((jsonStr: String) => JsonIo.read[JD.ExternalPackage](jsonStr, errMsg = remoteUrl))
+        fetch[JD.ExternalPackage](jsonArtifact)
           .map(Some(_))
     }
   }

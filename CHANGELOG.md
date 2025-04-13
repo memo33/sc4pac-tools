@@ -5,6 +5,7 @@
 ### Fixed
 - a rare problem where the default profiles configuration directory could not be located ([#25][gui25]).
   As a workaround, the directory path can now also be configured using the new environment variable `SC4PAC_PROFILES_DIR`, as an alternative to the `--profiles-dir` launch parameter.
+- a sporadic issue in which corrupted downloaded files stored in the download cache could block normal execution of the program (#34).
 
 ### Changed
 - removed support for cookie-based authentication

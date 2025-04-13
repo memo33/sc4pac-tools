@@ -77,9 +77,15 @@ package object sc4pac {
     val lastModified: Option[java.time.Instant] = None,  // redownload local artifact if older than that
     val checksum: JsonData.Checksum = JsonData.Checksum.empty,  // redownload local artifact if remote checksum does not match anymore
     val redownloadOnChecksumError: Boolean = true,  // otherwise fail
+    val forceRedownload: Boolean = false,  // used when downloaded file seems corrupted
   ) {
     /** for diagnostic purposes only, so does not need to be 100% accurate */
     def isFromSimtropolis = url.contains("simtropolis.com/")
+
+    def withForceRedownload(forceRedownload: Boolean): Artifact =
+      Artifact(
+        url = url, changing = changing, lastModified = lastModified, checksum = checksum,
+        redownloadOnChecksumError = redownloadOnChecksumError, forceRedownload = forceRedownload)
   }
 
 }

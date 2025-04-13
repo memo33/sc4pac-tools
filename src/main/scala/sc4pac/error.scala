@@ -59,4 +59,5 @@ object Artifact2Error {
   final class ChecksumNotFound(val sumType: String, val file: String) extends Artifact2Error(s"Checksum not found: $file", None)
   final class ChecksumFormatError(val sumType: String, val file: String) extends Artifact2Error(s"Checksum format error: $file", None)
   final class WrongChecksum(val sumType: String, val got: String, val expected: String, val file: String, val sumFile: String) extends Artifact2Error(s"Wrong checksum: $file (expected $sumType $expected in $sumFile, got $got)", None)
+  final class JsonFormatError(val reason: String, e: Throwable) extends Artifact2Error(s"$reason - ${e.getMessage}", Some(e))
 }

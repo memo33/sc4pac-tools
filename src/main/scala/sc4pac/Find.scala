@@ -42,7 +42,7 @@ object Find {
     * repository channel contents updated. */
   def packageData[A <: JD.Package | JD.Asset : Reader](dep: BareDep, version: String): RIO[ResolutionContext, Option[A]] = {
     def tryAllRepos(repos: Seq[MetadataRepository], context: ResolutionContext): Task[Option[A]] = ZIO.collectFirst(repos) { repo =>
-        repo.fetchModuleJson[Logger, A](dep, version, context.cache.fetchText)
+        repo.fetchModuleJson[Logger, A](dep, version, context.cache.fetchJson)
           .uninterruptible  // uninterruptile to avoid incomplete-download error messages when resolving is interrupted to prompt for a variant selection (downloading json should be fairly quick anyway)
           .map(Some(_))
           .catchSome(handleMetadataDownloadError(dep.orgName, context))
@@ -104,7 +104,7 @@ object Find {
     for {
       context      <- ZIO.service[ResolutionContext]
       (errs, rels) <- ZIO.partitionPar(context.repositories) { repo =>
-                        repo.fetchExternalPackage(module, context.cache.fetchText)
+                        repo.fetchExternalPackage(module, context.cache.fetchJson)
                           .catchSome(handleMetadataDownloadError(module.orgName, context))
                           .map(extPkgOpt => repo.baseUri -> extPkgOpt.toSeq.flatMap(_.requiredBy))
                       }
