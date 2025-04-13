@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+
+## [0.6.1] - 2025-04-13
 ### Fixed
 - a rare problem where the default profiles configuration directory could not be located ([#25][gui25]).
   As a workaround, the directory path can now also be configured using the new environment variable `SC4PAC_PROFILES_DIR`, as an alternative to the `--profiles-dir` launch parameter.
@@ -259,7 +261,8 @@
 ## [0.1.5] - 2023-09-26
 …
 
-[Unreleased]: https://github.com/memo33/sc4pac-tools/compare/0.6.0...HEAD
+[Unreleased]: https://github.com/memo33/sc4pac-tools/compare/0.6.1...HEAD
+[0.6.1]: https://github.com/memo33/sc4pac-tools/compare/0.6.0...0.6.1
 [0.6.0]: https://github.com/memo33/sc4pac-tools/compare/0.5.4...0.6.0
 [0.5.4]: https://github.com/memo33/sc4pac-tools/compare/0.5.3...0.5.4
 [0.5.3]: https://github.com/memo33/sc4pac-tools/compare/0.5.2...0.5.3
