@@ -269,7 +269,10 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
             val wsTask: zio.RIO[ProfileRoot & service.FileSystem & Ref[Option[FileCache]], Unit] =
               WebSocketLogger.run(send = msg => wsChannel.send(Read(jsonFrame(msg)))) {
                 for {
-                  finalMsg <- updateTask.catchSome { case err: cli.Commands.ExpectedFailure => ZIO.succeed(expectedFailureMessage(err)) }
+                  finalMsg <- updateTask.catchAll {
+                                case err: cli.Commands.ExpectedFailure => ZIO.succeed(expectedFailureMessage(err))
+                                case err => ZIO.succeed(ErrorMessage.ServerError("Unexpected error during Update. This looks like a bug. Please report it.", err.toString))
+                              }
                   unit     <- ZIO.serviceWithZIO[WebSocketLogger](_.sendMessageAwait(finalMsg))
                 } yield unit
               } // wsLogger is shut down here (TODO use resource for safer closing)
@@ -656,7 +659,7 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
     (profileRoutes2 ++ genericRoutes ++ fetchRoutes ++ webAppDir.map(staticRoutes).getOrElse(Routes.empty))
       .handleError { err =>
         err.printStackTrace()
-        jsonResponse(ErrorMessage.ServerError("Unhandled error.", err.toString)).status(Status.InternalServerError)
+        jsonResponse(ErrorMessage.ServerError("Unhandled error. This looks like a bug. Please report it.", err.toString)).status(Status.InternalServerError)
       }
   }
 
