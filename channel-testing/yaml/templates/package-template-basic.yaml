@@ -40,6 +40,9 @@ subfolder: "100-props-textures"  # The folder inside Plugins to which the packag
 dependencies:  # Optional list of package identifiers (zero or more)
 - "memo:package-template-variants"
 
+# conflicting:  # Optional list of conflicting packages (use sparingly)
+# - "memo:conflicting-package"
+
 assets:  # Optional list of assets from which to extract files (zero or more)
 - assetId: "memo-testing-file-d-zip"
   # Optional RegEx include patterns matched against the path inside the archive

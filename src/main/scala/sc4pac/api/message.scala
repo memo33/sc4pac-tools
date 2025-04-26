@@ -39,6 +39,7 @@ object PromptMessage {
 
   val yesNo = Seq("Yes", "No")
   val yes = yesNo.head
+  val oneTwoCancel = Seq("1", "2", "Cancel")
 
   @upickle.implicits.key("/prompt/confirmation/update/remove-unresolvable-packages")
   case class ConfirmRemoveUnresolvablePackages(
@@ -51,6 +52,21 @@ object PromptMessage {
     def apply(packages: Seq[BareModule]): ConfirmRemoveUnresolvablePackages = {
       val token = scala.util.Random.nextInt().toHexString
       ConfirmRemoveUnresolvablePackages(packages = packages, choices = yesNo, token = token, responsesFromChoices(yesNo, token))
+    }
+  }
+
+  @upickle.implicits.key("/prompt/choice/update/remove-conflicting-packages")
+  case class ChooseToRemoveConflictingPackages(
+    conflict: (BareModule, BareModule),
+    explicitPackages: (Seq[BareModule], Seq[BareModule]),
+    choices: Seq[String],
+    token: String,
+    responses: Map[String, ResponseMessage],
+  ) extends PromptMessage derives UP.ReadWriter
+  object ChooseToRemoveConflictingPackages {
+    def apply(conflict: (BareModule, BareModule), explicitPackages: (Seq[BareModule], Seq[BareModule])): ChooseToRemoveConflictingPackages = {
+      val token = scala.util.Random.nextInt().toHexString
+      ChooseToRemoveConflictingPackages(conflict, explicitPackages, choices = oneTwoCancel, token = token, responsesFromChoices(oneTwoCancel, token))
     }
   }
 
@@ -112,6 +128,8 @@ object ErrorMessage {
   case class VersionNotFound(title: String, detail: String) extends ErrorMessage derives UP.ReadWriter
   @upickle.implicits.key("/error/unresolvable-dependencies")
   case class UnresolvableDependencies(title: String, detail: String) extends ErrorMessage derives UP.ReadWriter
+  @upickle.implicits.key("/error/conflicting-packages")
+  case class ConflictingPackages(title: String, detail: String, conflict: (BareModule, BareModule)) extends ErrorMessage derives UP.ReadWriter
   @upickle.implicits.key("/error/asset-not-found")
   case class AssetNotFound(title: String, detail: String) extends ErrorMessage derives UP.ReadWriter
   @upickle.implicits.key("/error/extraction-failed")

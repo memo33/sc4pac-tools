@@ -488,6 +488,16 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) {  // TODO d
                   ZIO.fail(e)
                 }
             }
+            .catchSome {
+              case e: error.ConflictingPackages =>
+                ZIO.serviceWithZIO[Prompter](_.chooseToRemoveConflictingExplicitPackages(e.conflict, (e.explicitPackages1, e.explicitPackages2)))
+                  .flatMap {
+                    case None => ZIO.fail(e)
+                    case Some(explicitPackages1or2) =>
+                      val discard = explicitPackages1or2.toSet
+                      ZIO.succeed(Left(explicitModules.filterNot(discard)))  // retry with smaller set of explicit packages
+                  }
+            }
       }.map(_.toOption.get)
     }
 

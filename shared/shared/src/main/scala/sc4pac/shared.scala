@@ -75,7 +75,8 @@ abstract class SharedData {
   case class VariantData(
     variant: Variant,
     dependencies: Seq[Dependency] = Seq.empty,
-    assets: Seq[AssetReference] = Seq.empty
+    assets: Seq[AssetReference] = Seq.empty,
+    conflictingPackages: Seq[BareModule] = Seq.empty,
   ) derives ReadWriter {
     def bareModules: Seq[BareModule] = dependencies.map(d => BareModule(Organization(d.group), ModuleName(d.name)))
     def bareDependencies: Seq[BareDep] = bareModules ++ assets.map(a => BareAsset(ModuleName(a.assetId)))

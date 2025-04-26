@@ -337,7 +337,7 @@ object ApiSpecZIO extends ZIOSpecDefault {
               _    <- setFileServerChannel
               data <- getEndpoint(s"channels.stats?profile=$profileId").flatMap(getBody200[api.ChannelStatsAll])
               _    <- addTestResult(assertTrue(
-                        data.combined.totalPackageCount == 3,
+                        data.combined.totalPackageCount == 4,
                         data.channels.length == 1,
                         data.channels(0).url.startsWith("http://localhost:"),
                       ))
@@ -611,6 +611,47 @@ object ApiSpecZIO extends ZIOSpecDefault {
                         )
                 data <- getEndpoint(s"plugins.added.list?profile=$profileId").flatMap(getBody200[Seq[String]])
                 _    <- addTestResult(assertTrue(!data.contains("test:nonexistent")))
+              } yield ()
+            })
+          },
+          test("/update (conflicting)") {
+            withTestResultRef(ZIO.scoped {
+              def respond(cancel: Boolean): PartialFunction[api.PromptMessage, RIO[Ref[TestResult], api.ResponseMessage]] = {
+                case msg: api.PromptMessage.ChooseToRemoveConflictingPackages =>
+                  val conflict = Seq(msg.conflict._1, msg.conflict._2).map(_.orgName)
+                  val pkgs = Seq(msg.explicitPackages._1, msg.explicitPackages._2).map(_.map(_.orgName))
+                  for {
+                    _ <- addTestResult(assertTrue(conflict.toSet == Set("memo:conflicting-package", "memo:package-template-variants")))
+                    _ <- addTestResult(assertTrue(pkgs.toSet == Set(Seq("memo:conflicting-package"), Seq("memo:demo-package"))))
+                  } yield msg.responses(if (cancel) "Cancel" else msg.choices(conflict.indexOf("memo:conflicting-package")))
+                case msg: api.PromptMessage.ConfirmUpdatePlan =>
+                  for {
+                    _ <- addTestResult(assertTrue(msg.toRemove.length == 0, msg.toInstall.length == 0))
+                  } yield msg.responses("Yes")
+              }
+              for {
+                _    <- postEndpoint(s"plugins.add?profile=$profileId", jsonBody(Seq("memo:conflicting-package"))).flatMap(isOk200)
+                _    <- wsEndpoint(s"update?profile=$profileId",
+                          respond = respond(cancel = true),
+                          filter = msg => !msg.json("$type").str.startsWith("/progress/download"),
+                          checkMessages = queue => (for {
+                            _ <- queue.take.flatMap(f => addTestResult(assertTrue(f.json("$type").str == "/prompt/choice/update/remove-conflicting-packages")))
+                            _ <- queue.take.flatMap(f => addTestResult(assertTrue(f.json("$type").str == "/error/conflicting-packages")))
+                          } yield ()),
+                        )
+                data <- getEndpoint(s"plugins.added.list?profile=$profileId").flatMap(getBody200[Seq[String]])
+                _    <- addTestResult(assertTrue(data.contains("memo:conflicting-package")))
+                _    <- wsEndpoint(s"update?profile=$profileId",
+                          respond = respond(cancel = false),
+                          filter = msg => !msg.json("$type").str.startsWith("/progress/download"),
+                          checkMessages = queue => (for {
+                            _ <- queue.take.flatMap(f => addTestResult(assertTrue(f.json("$type").str == "/prompt/choice/update/remove-conflicting-packages")))
+                            _ <- queue.take.flatMap(f => addTestResult(assertTrue(f.json("$type").str == "/prompt/confirmation/update/plan")))
+                            _ <- queue.take.flatMap(f => addTestResult(assertTrue(f.json == jsonOk)))
+                          } yield ()),
+                        )
+                data <- getEndpoint(s"plugins.added.list?profile=$profileId").flatMap(getBody200[Seq[String]])
+                _    <- addTestResult(assertTrue(!data.contains("memo:conflicting-package")))
               } yield ()
             })
           },

@@ -12,6 +12,8 @@ trait Prompter {
 
   def confirmRemovingUnresolvableExplicitPackages(modules: Seq[BareModule]): Task[Boolean]
 
+  def chooseToRemoveConflictingExplicitPackages(conflict: (BareModule, BareModule), explicitPackages: (Seq[BareModule], Seq[BareModule])): Task[Option[Seq[BareModule]]]
+
   def confirmUpdatePlan(plan: Sc4pac.UpdatePlan): Task[Boolean]
 
   def confirmInstallationWarnings(warnings: Seq[(BareModule, Seq[String])]): Task[Boolean]
@@ -59,6 +61,25 @@ class CliPrompter(logger: CliLogger, autoYes: Boolean) extends Prompter {
     Prompt.ifInteractive(
       onTrue = Prompt.yesNo("Do you want to remove these unresolvable packages from your Plugins?"),
       onFalse = ZIO.succeed(false),  // in non-interactive mode, error out
+    )
+  }
+
+  def chooseToRemoveConflictingExplicitPackages(conflict: (BareModule, BareModule), explicitPackages: (Seq[BareModule], Seq[BareModule])): Task[Option[Seq[BareModule]]] = {
+    logger.log(
+      f"The packages ${conflict._1.formattedDisplayString(logger.gray, logger.bold)} and ${conflict._2.formattedDisplayString(logger.gray, logger.bold)}"
+      + " are in conflict with each other and cannot be installed at the same time."
+      + f" Decide which of the two packages you want to keep; uninstall the other and all packages that depend on it.%n"
+    )
+    logPackages("  (1)", explicitPackages._1)
+    logPackages("  (2)", explicitPackages._2)
+    Prompt.ifInteractive(
+      onTrue = Prompt.choice("Do you want to remove these conflicting packages from your Plugins?", Seq("1", "2", "No"), default = Some("No"))
+        .map {
+          case "1" => Some(explicitPackages._1)
+          case "2" => Some(explicitPackages._2)
+          case _ => None
+        },
+      onFalse = ZIO.succeed(None),  // in non-interactive mode, error out
     )
   }
 

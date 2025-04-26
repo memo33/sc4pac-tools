@@ -1,6 +1,12 @@
 # Changelog
 
 ## [Unreleased]
+### Added
+- new `conflicting` attribute in YAML files, a list of conflicting packages (#11). Packages that are in conflict with each other cannot be installed at the same time.
+
+### Changed
+- API upgraded to 2.5:
+  - added a new `/prompt/choice/update/remove-conflicting-packages` message to `/update`
 
 
 ## [0.6.1] - 2025-04-13

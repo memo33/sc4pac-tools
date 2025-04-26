@@ -13,14 +13,16 @@ object ChannelUtil {
   case class YamlVariantData(
     variant: Variant,
     dependencies: Seq[BareModule] = Seq.empty,
-    assets: Seq[JD.AssetReference] = Seq.empty
+    assets: Seq[JD.AssetReference] = Seq.empty,
+    conflicting: Seq[BareModule] = Seq.empty,
   ) derives ReadWriter {
-    def toVariantData(sharedDependencies: Seq[BareModule], sharedAssets: Seq[JD.AssetReference]) = JD.VariantData(
+    def toVariantData(sharedDependencies: Seq[BareModule], sharedAssets: Seq[JD.AssetReference], sharedConflicting: Seq[BareModule]) = JD.VariantData(
       variant = variant,
       dependencies = (sharedDependencies ++ dependencies).map { mod =>
         JD.Dependency(group = mod.group.value, name = mod.name.value, version = Constants.versionLatestRelease)
       },
-      assets = sharedAssets ++ assets
+      assets = sharedAssets ++ assets,
+      conflictingPackages = sharedConflicting ++ conflicting,
     )
   }
 
@@ -54,13 +56,14 @@ object ChannelUtil {
     info: JD.Info = JD.Info.empty,
     dependencies: Seq[BareModule] = Seq.empty,  // shared between variants
     assets: Seq[JD.AssetReference] = Seq.empty,  // shared between variants
+    conflicting: Seq[BareModule] = Seq.empty,  // shared between variants
     variants: Seq[YamlVariantData] = Seq.empty,
     @deprecated("use variantDescriptions instead", since = "0.5.4")
     variantDescriptions: Map[String, Map[String, String]] = Map.empty,  // variantKey -> variantValue -> description
     variantInfo: Seq[YamlVariantInfo] = Seq.empty,
   ) derives ReadWriter {
     def toPackageData(metadataSource: Option[os.SubPath]): ZIO[JD.Channel.Info, ErrStr, JD.Package] = {
-      val variants2 = (if (variants.isEmpty) Seq(YamlVariantData(Map.empty)) else variants).map(_.toVariantData(dependencies, assets))
+      val variants2 = (if (variants.isEmpty) Seq(YamlVariantData(Map.empty)) else variants).map(_.toVariantData(dependencies, assets, conflicting))
       // validate that variants form a DecisionTree
       Sc4pac.DecisionTree.fromVariants(variants2.map(_.variant)) match {
         case Left(errStr) => ZIO.fail(errStr)

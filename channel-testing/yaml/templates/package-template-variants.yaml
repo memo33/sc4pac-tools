@@ -10,6 +10,7 @@ subfolder: "150-mods"
 variants:
 - variant: { driveside: "right" }
   dependencies: []
+  conflicting: []
   assets:
   - assetId: "memo-testing-first"
     # include:
@@ -18,10 +19,12 @@ variants:
 
 - variant: { driveside: "left" }
   dependencies: []
+  conflicting: []
   assets:
   - assetId: "memo-testing-first"
 
 dependencies: []  # additional dependencies shared between all variants (optional)
+conflicting: []  # additional package conflicts shared between all variants (optional)
 assets: []  # additional assets shared between all variants (optional)
 
 variantInfo:
