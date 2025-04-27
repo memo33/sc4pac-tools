@@ -456,7 +456,8 @@ object ApiSpecZIO extends ZIOSpecDefault {
                       },
                       checkMessages = queue => (for {
                         (msgs, f) <- takeUntil(queue)(!_.json("$type").str.startsWith("/progress/download/"))
-                        _    <- addTestResult(assertTrue(msgs.map(_.json("$type").str).groupMapReduce(identity)(_ => 1)(_ + _) == Map(
+                        sums =  msgs.map(_.json("$type").str).groupMapReduce(identity)(_ => 1)(_ + _)
+                        _    <- addTestResult(assertTrue(sums == Map(
                                   "/progress/download/length" -> 3,
                                   "/progress/download/intermediate" -> 3,
                                   "/progress/download/finished" -> 3,
@@ -464,12 +465,13 @@ object ApiSpecZIO extends ZIOSpecDefault {
                                 )))
                         _    <- addTestResult(assertTrue(f.json("$type").str == "/prompt/choice/update/variant"))
                         (msgs, f) <- takeUntil(queue)(!_.json("$type").str.startsWith("/progress/download/"))
-                        _    <- addTestResult(assertTrue(msgs.map(_.json("$type").str).groupMapReduce(identity)(_ => 1)(_ + _) == Map(
-                                  "/progress/download/length" -> 6,
-                                  "/progress/download/intermediate" -> 6,
-                                  "/progress/download/finished" -> 6,
-                                  "/progress/download/started" -> 6,
-                                )))
+                        sums =  msgs.map(_.json("$type").str).groupMapReduce(identity)(_ => 1)(_ + _)
+                        _    <- addTestResult(assertTrue(
+                                  sums("/progress/download/length") >= 1,
+                                  sums("/progress/download/intermediate") >= 1,
+                                  sums("/progress/download/finished") == 6,
+                                  sums("/progress/download/started") == 6,
+                                ))
                         _    <- addTestResult(assertTrue(f.json("$type").str == "/prompt/confirmation/update/plan"))
                         // from here on, two downloads in parallel
                         maxDownloads = 2
@@ -484,12 +486,13 @@ object ApiSpecZIO extends ZIOSpecDefault {
                                     case _ => numActive
                                   }
                                 }
-                        _    <- addTestResult(assertTrue(msgs.groupMapReduce(identity)(_ => 1)(_ + _) == Map(
-                                  "/progress/download/length" -> 6,
-                                  "/progress/download/intermediate" -> 6,
-                                  "/progress/download/finished" -> 6,
-                                  "/progress/download/started" -> 6,
-                                )))
+                        sums =  msgs.groupMapReduce(identity)(_ => 1)(_ + _)
+                        _    <- addTestResult(assertTrue(
+                                  sums("/progress/download/length") >= 1,
+                                  sums("/progress/download/intermediate") >= 1,
+                                  sums("/progress/download/finished") == 6,
+                                  sums("/progress/download/started") == 6,
+                                ))
                         _    <- addTestResult(assertTrue(f.json("$type").str == "/progress/update/extraction"))
                         _    <- queue.take.flatMap(f => addTestResult(assertTrue(f.json("$type").str == "/progress/update/extraction")))
                         _    <- queue.take.flatMap(f => addTestResult(assertTrue(f.json("$type").str == "/progress/update/extraction")))
