@@ -185,7 +185,6 @@ object ChannelPage {
       add("Description", markdownFrag(pkg.info.description))
     if (pkg.info.warning.nonEmpty)
       add("Warning", markdownFrag(pkg.info.warning))
-    add("Conflicts", if (pkg.info.conflicts.isEmpty) "None" else markdownFrag(pkg.info.conflicts))
     if (pkg.info.author.nonEmpty)
       add("Author", pkg.info.author)
     if (pkg.info.websites.nonEmpty) {
@@ -217,6 +216,12 @@ object ChannelPage {
       if (deps.isEmpty) "None"
       else H.ul(H.cls := "unstyled-list")(deps.map(dep => H.li(pkgNameFrag(dep))))
     )
+
+    add("Incompatibilities", if (pkg.info.conflicts.isEmpty) "None" else markdownFrag(pkg.info.conflicts))
+    val conflicting = (pkg.variants.flatMap(_.conflictingPackages) ++ pkg.info.reverseConflictingPackages).distinct.sorted
+    if (conflicting.nonEmpty) {
+      add("Conflicts With", H.ul(H.cls := "unstyled-list")(conflicting.map(dep => H.li(pkgNameFrag(dep)))))
+    }
 
     add("Required By",
       if (pkg.info.requiredBy.isEmpty) "None"

@@ -94,23 +94,23 @@ object Find {
       .flatMap(pickVariant)
   }
 
-  /** Find all external packages that depend on this module. This searches
+  /** Find all external packages that depend on or conflict with this module. This searches
     * across all repositories and returns the union of all inter-channel
-    * dependencies on this module.
+    * dependencies/conflicts on this module.
     * Intra-channel dependencies are not part of the result (since they are
     * not listed as external packages, but are part of the regular JD.Package).
     */
-  def requiredByExternal(module: BareModule): RIO[ResolutionContext, Iterable[(java.net.URI, Seq[BareModule])]] = {
+  def requiredByExternal(module: BareModule): RIO[ResolutionContext, Iterable[(java.net.URI, (Seq[BareModule], Seq[BareModule]))]] = {
     for {
       context      <- ZIO.service[ResolutionContext]
       (errs, rels) <- ZIO.partitionPar(context.repositories) { repo =>
                         repo.fetchExternalPackage(module, context.cache.fetchJson)
                           .catchSome(handleMetadataDownloadError(module.orgName, context))
-                          .map(extPkgOpt => repo.baseUri -> extPkgOpt.toSeq.flatMap(_.requiredBy))
+                          .map(extPkgOpt => repo.baseUri -> (extPkgOpt.toSeq.flatMap(_.requiredBy), extPkgOpt.toSeq.flatMap(_.reverseConflictingPackages)))
                       }
                       .provideSomeLayer(zio.ZLayer.succeed(context.logger))
       result       <- if (rels.nonEmpty) {  // some channels could be read successfully (so ignore errors for simplicity, even though result may be incomplete)
-                        ZIO.succeed(rels.filter(_._2.nonEmpty))
+                        ZIO.succeed(rels.filter(rel => rel._2._1.nonEmpty || rel._2._2.nonEmpty))
                       } else {
                         ZIO.fail(Sc4pacAssetNotFound(s"Could not find inter-channel reverse dependencies of package ${module.orgName}",
                           s"Most likely you are offline or the channel metadata is not up-to-date: $errs"))

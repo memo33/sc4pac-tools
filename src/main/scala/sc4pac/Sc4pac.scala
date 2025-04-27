@@ -137,10 +137,12 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) {  // TODO d
   def infoJson(module: BareModule): Task[Option[JD.Package]] = {
     Find.concreteVersion(module, Constants.versionLatestRelease)
       .flatMap(Find.packageData[JD.Package](module, _))
-      .zipWithPar(Find.requiredByExternal(module)) {  // In addition to existing intra-channel dependencies, add inter-channel dependency relations to `requiredBy` field.
+      .zipWithPar(Find.requiredByExternal(module)) {  // In addition to existing intra-channel dependencies, add inter-channel dependency relations to `requiredBy` and `reverseConflictingPackages` fields.
         case (Some(pkg), relations) =>
-          val requiredBy2 = (pkg.info.requiredBy.iterator ++ relations.iterator.flatMap(_._2)).toSeq.distinct.sorted
-          Some(pkg.copy(info = pkg.info.copy(requiredBy = requiredBy2)).upgradeVariantInfo)
+          Some(pkg.copy(info = pkg.info.copy(
+            requiredBy = (pkg.info.requiredBy.iterator ++ relations.iterator.flatMap(_._2._1)).toSeq.distinct.sorted,
+            reverseConflictingPackages = (pkg.info.reverseConflictingPackages.iterator ++ relations.iterator.flatMap(_._2._2)).toSeq.distinct.sorted,
+          )).upgradeVariantInfo)
         case (None, _) => None
       }
   }.provideSomeLayer(zio.ZLayer.succeed(context))
@@ -187,6 +189,10 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) {  // TODO d
             b += "Variant" -> JD.VariantData.variantString(vd.variant)
             b += " Dependencies" -> mkDeps(vd.bareDependencies)
           }
+        }
+        val conflicting = (pkg.variants.flatMap(_.conflictingPackages) ++ pkg.info.reverseConflictingPackages).distinct.sorted
+        if (conflicting.nonEmpty) {
+          b += "Conflicting" -> mkDeps(conflicting)
         }
         if (pkg.info.requiredBy.nonEmpty) {
           b += "Required By" -> mkDeps(pkg.info.requiredBy)

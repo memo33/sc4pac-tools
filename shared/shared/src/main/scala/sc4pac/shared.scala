@@ -167,8 +167,8 @@ abstract class SharedData {
     images: Seq[String] = Seq.empty,
     website: String = "",
     websites: Seq[String] = Seq.empty,
-    requiredBy: Seq[BareModule] = Seq.empty,  // optional and only informative (mangles all variants and versions, is limited to one channel,
-                                              // can easily become outdated since json files are cached indefinitely)
+    requiredBy: Seq[BareModule] = Seq.empty,  // optional and only informative (mangles all variants and versions, is limited to one channel)
+    reverseConflictingPackages: Seq[BareModule] = Seq.empty,  // optional and only informative (mangles all variants and versions)
   ) derives ReadWriter {
     def upgradeWebsites: Info =
       if (websites.isEmpty && website.nonEmpty) copy(website = "", websites = Seq(website)) else this
@@ -191,6 +191,7 @@ abstract class SharedData {
     name: String,
     // channel: Option[String],
     requiredBy: Seq[BareModule],
+    reverseConflictingPackages: Seq[BareModule] = Seq.empty,
   ) derives ReadWriter {
     def toBareDep: BareModule = BareModule(Organization(group), ModuleName(name))
   }

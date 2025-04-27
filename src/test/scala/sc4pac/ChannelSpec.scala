@@ -107,7 +107,7 @@ url: dummy
       repos(1).channel.externalAssets should have length 0
 
       val logger = CliLogger()
-      val cache = FileCache((tmpDir / "cache").toIO, coursier.cache.internal.ThreadUtil.fixedThreadPool(size = 2))  // TODO replace by Sc4pac.createThreadPool
+      val cache = FileCache((tmpDir / "cache").toIO, Sc4pac.createThreadPool())
       val context = new ResolutionContext(repos, cache, logger, tmpDir / "profile")
       val layer = zio.ZLayer.succeed(context)
       import JsonData.bareModuleRw
@@ -115,13 +115,13 @@ url: dummy
       unsafeRunNoWrap(
         Find.requiredByExternal(JD.bareModuleRead("ext:pkg101"))
           .provideSomeLayer(layer)
-      ).head._2
+      ).head._2._1
         .map(_.orgName).toSet.shouldBe(Set("test:pkg1"))
 
       unsafeRunNoWrap(
         Find.requiredByExternal(JD.bareModuleRead("ext:pkg102"))
           .provideSomeLayer(layer)
-      ).head._2
+      ).head._2._1
         .map(_.orgName).toSet.shouldBe(Set("test:pkg1", "test:pkg2"))
     }
 
