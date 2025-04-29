@@ -11,7 +11,7 @@ POST /profile.init?profile=id        {plugins: "<path>", cache: "<path>", temp: 
 GET  /packages.list?profile=id
 GET  /packages.info?pkg=<pkg>&profile=id
 GET  /packages.search?q=<text>&profile=id
-POST /packages.search.id?profile=id  {packages: ["<pkg1>", "<pkg2>", …]}
+POST /packages.search.id?profile=id  {packages: ["<pkg1>", "<pkg2>", …], externalIds: [["sc4e", "<extId1>"], …]}
 POST /packages.open                  [{package: "<pkg>", channelUrl: "<url>"}]
 
 GET  /plugins.added.list?profile=id
@@ -211,7 +211,7 @@ The `status` field contains the local installation status if the package has bee
 
 Find a list of packages by identifier across all channels and lookup their summary and installation status.
 
-Synopsis: `POST /packages.search.id?profile=id {packages: ["<pkg1>", "<pkg2>", …]}`
+Synopsis: `POST /packages.search.id?profile=id {packages: ["<pkg1>", "<pkg2>", …], externalIds: [["sc4e", "<extId1>"], …]}`
 
 Returns:
 ```

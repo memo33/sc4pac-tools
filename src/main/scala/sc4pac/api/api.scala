@@ -327,7 +327,7 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
         args         <- parseOr400[FindPackagesArgs](req.body, ErrorMessage.BadRequest("Malformed package names", """Pass a "packages" array of strings of the form '<group>:<name>'."""))
         pluginsSpec  <- readPluginsSpecOr409
         pac          <- Sc4pac.init(pluginsSpec.config)
-        searchResult <- pac.searchById(args.packages)
+        searchResult <- pac.searchById(args.packages, args.externalIds.groupMap(_._1)(_._2).map((p, ids) => (p, ids.toSet)))
         createStatus <- installedStatusBuilder(pluginsSpec)
       } yield jsonResponse(searchResult.map { case (pkg, summaryOpt) =>
         val statusOrNull = createStatus(pkg)
