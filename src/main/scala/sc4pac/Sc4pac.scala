@@ -113,10 +113,11 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) {  // TODO d
     results.sortBy((mod, ratio, desc) => (-ratio, mod.group.value, mod.name.value)).distinctBy(_._1)
   }
 
-  def searchById(packages: Seq[BareModule], externalIds: Map[String, Set[String]]): Task[Seq[(BareModule, Option[String])]] = {
+  def searchById(packages: Seq[BareModule], externalIds: Map[String, Set[String]]): Task[(Seq[(BareModule, Option[String])], Int)] = {
     // TODO avoid iterating all channel items, but look up packages directly instead (and parallelize) for better performance
     iterateAllChannelPackages(channelUrl = None).map { itemsIter =>
       val relevantItems = collection.mutable.SortedMap.from[BareModule, Option[JD.ChannelItem]](packages.iterator.map(_ -> None))
+      val foundExternalIds = collection.mutable.Set.empty[(String, String)]
       itemsIter.foreach { item =>
         item.toBareDep match {
           case _: BareAsset =>  // don't care, shouldn't happen
@@ -127,6 +128,7 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) {  // TODO d
               case None =>
                 if (!item.externalIds.isEmpty && item.externalIds.exists((provider, ids) => externalIds.get(provider).exists(requested => ids.exists(requested)))) {
                   relevantItems(mod) = Some(item)
+                  foundExternalIds.addAll(item.externalIds.iterator.flatMap((provider, ids) => ids.map(provider -> _)))
                 } else {
                   // item is irrelevant
                 }
@@ -143,7 +145,8 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) {  // TODO d
       for ((module, itemOpt) <- relevantItems) {
         b += ((module, itemOpt.map(_.summary)))
       }
-      b.result()
+      val notFoundExternalIdCount = externalIds.iterator.flatMap((provider, ids) => ids.map(provider -> _)).filterNot(foundExternalIds).length
+      (b.result(), notFoundExternalIdCount)
     }
   }
 

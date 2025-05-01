@@ -312,13 +312,15 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
           pac          <- Sc4pac.init(pluginsSpec.config)
           searchResult <- pac.search(searchText, threshold, category = category, notCategory = notCategory, channel = channelOpt)
           createStatus <- installedStatusBuilder(pluginsSpec)
-        } yield jsonResponse(searchResult.flatMap { case (pkg, ratio, summaryOpt) =>
-          val statusOrNull = createStatus(pkg)
-          if (ignoreInstalled && statusOrNull != null && statusOrNull.installed != null)
-            None
-          else
-            Some(PackageSearchResultItem(pkg, relevance = ratio, summary = summaryOpt.getOrElse(""), status = statusOrNull))
-        })
+        } yield jsonResponse(PackagesSearchResult(
+          packages = searchResult.flatMap { case (pkg, ratio, summaryOpt) =>
+            val statusOrNull = createStatus(pkg)
+            if (ignoreInstalled && statusOrNull != null && statusOrNull.installed != null)
+              None
+            else
+              Some(PackageSearchResultItem(pkg, relevance = ratio, summary = summaryOpt.getOrElse(""), status = statusOrNull))
+          },
+        ))
       }
     },
 
@@ -329,10 +331,13 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
         pac          <- Sc4pac.init(pluginsSpec.config)
         searchResult <- pac.searchById(args.packages, args.externalIds.groupMap(_._1)(_._2).map((p, ids) => (p, ids.toSet)))
         createStatus <- installedStatusBuilder(pluginsSpec)
-      } yield jsonResponse(searchResult.map { case (pkg, summaryOpt) =>
-        val statusOrNull = createStatus(pkg)
-        PackageSearchResultItem(pkg, relevance = 100, summary = summaryOpt.getOrElse(""), status = statusOrNull)
-      })
+      } yield jsonResponse(PackagesSearchResult(
+        packages = searchResult._1.map { case (pkg, summaryOpt) =>
+          val statusOrNull = createStatus(pkg)
+          PackageSearchResultItem(pkg, relevance = 100, summary = summaryOpt.getOrElse(""), status = statusOrNull)
+        },
+        notFoundExternalIdCount = searchResult._2,
+      ))
     }),
 
     Method.GET / "plugins.search" -> handler((req: Request) => wrapHttpEndpoint {

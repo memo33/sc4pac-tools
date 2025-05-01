@@ -187,23 +187,25 @@ Optional parameters:
 
 Returns:
 ```
-[
-  {
-    package: "<pkg>",
-    relevance: 100,
-    summary: string,
-    status?: {
-      explicit: boolean,
-      installed?: {
-        version: string,
-        variant: {"<variantId>": "<value>", …},
-        installedAt: "<iso-date>",
-        updatedAt: "<iso-date>"
+{
+  packages: [
+    {
+      package: "<pkg>",
+      relevance: 100,
+      summary: string,
+      status?: {
+        explicit: boolean,
+        installed?: {
+          version: string,
+          variant: {"<variantId>": "<value>", …},
+          installedAt: "<iso-date>",
+          updatedAt: "<iso-date>"
+        }
       }
-    }
-  },
-  …
-]
+    },
+    …
+  ]
+}
 ```
 The `status` field contains the local installation status if the package has been explicitly added or actually installed.
 
@@ -215,14 +217,17 @@ Synopsis: `POST /packages.search.id?profile=id {packages: ["<pkg1>", "<pkg2>", �
 
 Returns:
 ```
-[
-  {
-    package: "<pkg>",
-    summary: string,
-    status?: … // see packages.search
-  },
-  …
-]
+{
+  packages: [
+    {
+      package: "<pkg>",
+      summary: string,
+      status?: … // see packages.search
+    },
+    …
+  ],
+  notFoundExternalIdCount: int
+}
 ```
 
 Example:

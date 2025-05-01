@@ -8,6 +8,7 @@
 - API upgraded to 2.5:
   - added a new `/prompt/choice/update/remove-conflicting-packages` message to `/update`
   - added support for `externalIds` in `/packages.search.id` ([#26][gui26])
+  - output format changes in `/packages.search` and `/packages.search.id`
 
 [gui26]: https://github.com/memo33/sc4pac-gui/issues/26
 
