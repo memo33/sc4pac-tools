@@ -310,7 +310,7 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
           ignoreInstalled = req.url.queryParams.getAll("ignoreInstalled").nonEmpty
           pluginsSpec  <- readPluginsSpecOr409
           pac          <- Sc4pac.init(pluginsSpec.config)
-          searchResult <- pac.search(searchText, threshold, category = category, notCategory = notCategory, channel = channelOpt)
+          (stats, searchResult) <- pac.search(searchText, threshold, category = category, notCategory = notCategory, channel = channelOpt, skipStats = false)
           createStatus <- installedStatusBuilder(pluginsSpec)
         } yield jsonResponse(PackagesSearchResult(
           packages = searchResult.flatMap { case (pkg, ratio, summaryOpt) =>
@@ -320,6 +320,7 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
             else
               Some(PackageSearchResultItem(pkg, relevance = ratio, summary = summaryOpt.getOrElse(""), status = statusOrNull))
           },
+          stats = stats.orNull,
         ))
       }
     },

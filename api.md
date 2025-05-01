@@ -188,6 +188,7 @@ Optional parameters:
 Returns:
 ```
 {
+  stats?: {"totalPackageCount": int, "categories": [{"category": "150-mods", "count": int}, …]}
   packages: [
     {
       package: "<pkg>",
@@ -208,6 +209,8 @@ Returns:
 }
 ```
 The `status` field contains the local installation status if the package has been explicitly added or actually installed.
+
+The `stats` field is omitted when it would not differ from the ordinary, non-filtered channel stats, e.g. when `q` is empty.
 
 ## packages.search.id
 

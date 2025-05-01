@@ -87,30 +87,53 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) {  // TODO d
     category: Set[String],
     notCategory: Set[String],
     channel: Option[String],
-  ): Task[Seq[(BareModule, Int, Option[String])]] = iterateAllChannelPackages(channel).map { itemsIter =>
+    skipStats: Boolean,
+  ): Task[(Option[JD.Channel.Stats], Seq[(BareModule, Int, Option[String])])] = iterateAllChannelPackages(channel).map { itemsIter =>
     val externalIdOpt: Option[(String, String)] = JD.Channel.findExternalId(url = query)
     val searchTokens = Sc4pac.fuzzySearchTokenize(query)
+    val wholeCategory = searchTokens.isEmpty && category.nonEmpty
+    val trackStats = (searchTokens.nonEmpty || externalIdOpt.isDefined) && !skipStats
+    val categoryStats = collection.mutable.Map.empty[String, Int]
+
+    /* Determine how well search text matches. */
+    def matchRatio(item: JD.ChannelItem): Int = externalIdOpt match {
+      case None =>
+        if (wholeCategory) 100  // return the entire category
+        else Sc4pac.fuzzySearchRatio(searchTokens, item.toSearchString, threshold)
+      case Some(exchangeKey -> externalId) =>
+        if (item.externalIds.get(exchangeKey).exists(_.contains(externalId))) 100 else 0
+    }
+
+    def incrementCategoryCount(item: JD.ChannelItem): Unit =
+      for (cat <- item.category) {
+        categoryStats(cat) = categoryStats.getOrElse(cat, 0) + 1
+      }
+
     val results: Seq[(BareModule, Int, Option[String])] =
       itemsIter.flatMap { item =>
         if (item.isSc4pacAsset) {
           assert(false, "iteration should not include any assets")  // None
         } else if (category.nonEmpty && !item.category.exists(category)
             || notCategory.nonEmpty && item.category.exists(notCategory)) {
+          if (trackStats && matchRatio(item) >= threshold) {
+            incrementCategoryCount(item)  // search text matches, so count towards categories, even though category doesn't match
+          }
           None
         } else {
-          val ratio = externalIdOpt match {
-            case None =>
-              if (searchTokens.isEmpty && category.nonEmpty) 100  // return the entire category
-              else Sc4pac.fuzzySearchRatio(searchTokens, item.toSearchString, threshold)
-            case Some(exchangeKey -> externalId) =>
-              if (item.externalIds.get(exchangeKey).exists(_.contains(externalId))) 100 else 0
-          }
+          val ratio = matchRatio(item)
           if (ratio >= threshold) {
+            if (trackStats) {
+              incrementCategoryCount(item)
+            }
             Some(BareModule(Organization(item.group), ModuleName(item.name)), ratio, Option(item.summary).filter(_.nonEmpty))
           } else None
         }
       }.toSeq
-    results.sortBy((mod, ratio, desc) => (-ratio, mod.group.value, mod.name.value)).distinctBy(_._1)
+
+    (
+      Option.when(trackStats)(JD.Channel.Stats.fromMap(categoryStats)),
+      results.sortBy((mod, ratio, desc) => (-ratio, mod.group.value, mod.name.value)).distinctBy(_._1)
+    )
   }
 
   def searchById(packages: Seq[BareModule], externalIds: Map[String, Set[String]]): Task[(Seq[(BareModule, Option[String])], Int)] = {

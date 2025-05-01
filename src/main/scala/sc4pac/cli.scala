@@ -216,7 +216,7 @@ object Commands {
           pluginsSpec  <- JD.PluginsSpec.readOrInit
           pac          <- Sc4pac.init(pluginsSpec.config)
           query        =  args.all.mkString(" ")
-          searchResult <- pac.search(query, options.threshold, category = Set.empty, notCategory = Set.empty, channel = None)
+          (_, searchResult) <- pac.search(query, options.threshold, category = Set.empty, notCategory = Set.empty, channel = None, skipStats = true)
           installed    <- JD.PluginsLock.listInstalled.map(_.map(_.toBareDep).toSet)
           logger       <- ZIO.service[CliLogger]
         } yield {
