@@ -13,14 +13,16 @@ object ChannelUtil {
   case class YamlVariantData(
     variant: Variant,
     dependencies: Seq[BareModule] = Seq.empty,
-    assets: Seq[JD.AssetReference] = Seq.empty
+    assets: Seq[JD.AssetReference] = Seq.empty,
+    conflicting: Seq[BareModule] = Seq.empty,
   ) derives ReadWriter {
-    def toVariantData(sharedDependencies: Seq[BareModule], sharedAssets: Seq[JD.AssetReference]) = JD.VariantData(
+    def toVariantData(sharedDependencies: Seq[BareModule], sharedAssets: Seq[JD.AssetReference], sharedConflicting: Seq[BareModule]) = JD.VariantData(
       variant = variant,
       dependencies = (sharedDependencies ++ dependencies).map { mod =>
         JD.Dependency(group = mod.group.value, name = mod.name.value, version = Constants.versionLatestRelease)
       },
-      assets = sharedAssets ++ assets
+      assets = sharedAssets ++ assets,
+      conflictingPackages = sharedConflicting ++ conflicting,
     )
   }
 
@@ -54,13 +56,14 @@ object ChannelUtil {
     info: JD.Info = JD.Info.empty,
     dependencies: Seq[BareModule] = Seq.empty,  // shared between variants
     assets: Seq[JD.AssetReference] = Seq.empty,  // shared between variants
+    conflicting: Seq[BareModule] = Seq.empty,  // shared between variants
     variants: Seq[YamlVariantData] = Seq.empty,
     @deprecated("use variantDescriptions instead", since = "0.5.4")
     variantDescriptions: Map[String, Map[String, String]] = Map.empty,  // variantKey -> variantValue -> description
     variantInfo: Seq[YamlVariantInfo] = Seq.empty,
   ) derives ReadWriter {
     def toPackageData(metadataSource: Option[os.SubPath]): ZIO[JD.Channel.Info, ErrStr, JD.Package] = {
-      val variants2 = (if (variants.isEmpty) Seq(YamlVariantData(Map.empty)) else variants).map(_.toVariantData(dependencies, assets))
+      val variants2 = (if (variants.isEmpty) Seq(YamlVariantData(Map.empty)) else variants).map(_.toVariantData(dependencies, assets, conflicting))
       // validate that variants form a DecisionTree
       Sc4pac.DecisionTree.fromVariants(variants2.map(_.variant)) match {
         case Left(errStr) => ZIO.fail(errStr)
@@ -234,57 +237,75 @@ trait ChannelBuilder[+E] {
   def storeExtAsset(data: JD.ExternalAsset): IO[E, JD.Checksum]
 
   def result(packages: Seq[JD.PackageAsset]): ZIO[JD.Channel.Info, E, JD.Channel] = {
-    // compute reverse dependencies (for each asset/package, the set of modules that depend on it)
-    val reverseDependenciesTask: IO[E, collection.Map[BareDep, Set[BareModule]]] = {
+    // compute reverse dependencies (for each asset/package, the set of modules
+    // that depend on it) and conflicts
+    val reverseLinksTask: IO[E, collection.Map[BareDep, (Set[BareModule], Set[BareModule])]] = {
       import scala.jdk.CollectionConverters.*
       for {
-        map  <- ZIO.succeed((new java.util.concurrent.ConcurrentHashMap[BareDep, Set[BareModule]]()).asScala)  // concurrent for thread-safe access later on
+        map  <- ZIO.succeed((new java.util.concurrent.ConcurrentHashMap[BareDep, (Set[BareModule], Set[BareModule])]()).asScala)  // concurrent for thread-safe access later on
         _    <- ZIO.foreachParDiscard(packages) {
-                  case _: JD.Asset => ZIO.succeed(()) // assets do not depend on anything
+                  case _: JD.Asset => ZIO.succeed(()) // assets do not depend on or conflict with anything
                   case pkgData: JD.Package =>
                     val mod = pkgData.toBareDep
-                    ZIO.foreachDiscard(pkgData.variants.flatMap(_.bareDependencies).distinct) { dep => ZIO.succeed {
-                      map.updateWith(dep) {  // mod depends on dep
-                        case Some(mods) => Some(mods + mod)
-                        case None => Some(Set(mod))
-                      }
-                    }}
+                    val addDeps =
+                      ZIO.foreachDiscard(pkgData.variants.flatMap(_.bareDependencies).distinct) { dep => ZIO.succeed {
+                        map.updateWith(dep) {  // mod depends on dep
+                          case Some((deps, conflicts)) => Some((deps + mod, conflicts))
+                          case None => Some((Set(mod), Set.empty))
+                        }
+                      }}
+                    val addConflicts =
+                      ZIO.foreachDiscard(pkgData.variants.flatMap(_.conflictingPackages).distinct) { dep => ZIO.succeed {
+                        map.updateWith(dep) {  // mod conflicts with dep
+                          case Some((deps, conflicts)) => Some((deps, conflicts + mod))
+                          case None => Some((Set.empty, Set(mod)))
+                        }
+                      }}
+                    addDeps.zipRight(addConflicts)
                 }
       } yield map
     }
 
-    // add reverseDependencies (requiredBy) to each asset/package and write package json files
-    def packagesMapTask(reverseDependencies: collection.Map[BareDep, Set[BareModule]]): IO[E, Map[BareDep, Seq[(String, JD.PackageAsset, JD.Checksum)]]] =
+    // add reverseDependencies (requiredBy) and reverseConflictingPackages to each asset/package and write package json files
+    def packagesMapTask(reverseLinks: collection.Map[BareDep, (Set[BareModule], Set[BareModule])]): IO[E, Map[BareDep, Seq[(String, JD.PackageAsset, JD.Checksum)]]] =
       ZIO.foreachPar(packages) { pkgData =>
-        val computed = reverseDependencies.getOrElse(pkgData.toBareDep, Set.empty)
+        val dep = pkgData.toBareDep
+        val computedRevLinks = reverseLinks.getOrElse(dep, (Set.empty, Set.empty))  // dependencies and conflicts
         // this joins the computed reverseDependencies and those explicitly specified in yaml
         pkgData match {
           case data: JD.Asset =>
-            val data2 = data.copy(requiredBy =
-              (computed ++ data.requiredBy).toSeq.sorted)
+            val data2 = data.copy(
+              requiredBy = (computedRevLinks._1 ++ data.requiredBy).toSeq.sorted,
+            )
+            assert(computedRevLinks._2.isEmpty, s"assets cannot have conflicts: $data")
             storeAsset(data2)
-              .map(checksum => data2.toBareDep -> (data2.version, data2, checksum))
+              .map(checksum => dep -> (data2.version, data2, checksum))
           case data: JD.Package =>
-            val data2 = data.copy(info = data.info.copy(requiredBy =
-              (computed ++ data.info.requiredBy).toSeq.sorted))
+            val data2 = data.copy(info = data.info.copy(
+              requiredBy = (computedRevLinks._1 ++ data.info.requiredBy).toSeq.sorted,
+              reverseConflictingPackages = (computedRevLinks._2 ++ data.info.reverseConflictingPackages).toSeq.sorted,
+            ))
             storePackage(data2)
-              .map(checksum => data2.toBareDep -> (data2.version, data2, checksum))
+              .map(checksum => dep -> (data2.version, data2, checksum))
         }
       }
       .map(_.groupMap(_._1)(_._2))
 
     def externalTask(
-      reverseDependencies: collection.Map[BareDep, Set[BareModule]],
+      reverseLinks: collection.Map[BareDep, (Set[BareModule], Set[BareModule])],
       packagesMap: Map[BareDep, Seq[(String, JD.PackageAsset, JD.Checksum)]],
     ): IO[E, (Seq[JD.Channel.ExtPkg], Seq[JD.Channel.ExtAsset])] = {
-      ZIO.foreachPar(reverseDependencies.iterator.filter(item => !packagesMap.contains(item._1)).toSeq){
-        case (module: BareModule, requiredBy) =>
+      ZIO.foreachPar(reverseLinks.iterator.filter(item => !packagesMap.contains(item._1)).toSeq){
+        case (module: BareModule, (requiredBy, conflicts)) =>
           val data = JD.ExternalPackage(group = module.group.value, name = module.name.value,
-            requiredBy = requiredBy.toSeq.sorted)
+            requiredBy = requiredBy.toSeq.sorted,
+            reverseConflictingPackages = conflicts.toSeq.sorted,
+          )
           for {
             checksum <- storeExtPackage(data)
           } yield Left(JD.Channel.ExtPkg(group = module.group.value, name = module.name.value, checksum))
-        case (asset: BareAsset, requiredBy) =>
+        case (asset: BareAsset, (requiredBy, conflicts)) =>
+          assert(conflicts.isEmpty, s"assets cannot have conflicts: $asset")
           val data = JD.ExternalAsset(assetId = asset.assetId.value,
             requiredBy = requiredBy.toSeq.sorted)
           for {
@@ -295,9 +316,9 @@ trait ChannelBuilder[+E] {
     }
 
     for {
-      reverseDependencies  <- reverseDependenciesTask
-      packagesMap          <- packagesMapTask(reverseDependencies)
-      (extPkgs, extAssets) <- externalTask(reverseDependencies, packagesMap)
+      reverseLinks         <- reverseLinksTask
+      packagesMap          <- packagesMapTask(reverseLinks)
+      (extPkgs, extAssets) <- externalTask(reverseLinks, packagesMap)
       info                 <- ZIO.service[JD.Channel.Info]
     } yield {
       val channel = JD.Channel.create(

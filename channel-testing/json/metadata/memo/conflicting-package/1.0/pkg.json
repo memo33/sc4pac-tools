@@ -1,0 +1,21 @@
+{
+ "$type": "Package",
+ "group": "memo",
+ "name": "conflicting-package",
+ "version": "1.0",
+ "subfolder": "150-mods",
+ "variants": [
+  {
+   "variant": {},
+   "conflictingPackages": [
+    "memo:package-template-variants"
+   ]
+  }
+ ],
+ "metadataSource": [
+  "memo/conflicting-package.yaml"
+ ],
+ "channelLabel": [
+  "Test-Local"
+ ]
+}

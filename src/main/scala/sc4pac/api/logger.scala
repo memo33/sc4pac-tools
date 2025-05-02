@@ -8,7 +8,7 @@ import zio.http.ChannelEvent.{Read, Unregistered, UserEvent, UserEventTriggered}
 
 import JsonData as JD
 import Resolution.DepModule
-import PromptMessage.yes
+import PromptMessage.{yes, oneTwoCancel}
 
 class WebSocketLogger private (private[api] val queue: java.util.concurrent.LinkedBlockingQueue[WebSocketLogger.Event]) extends Logger {
 
@@ -157,6 +157,15 @@ class WebSocketPrompter(wsChannel: zio.http.WebSocketChannel, logger: WebSocketL
 
   def confirmRemovingUnresolvableExplicitPackages(modules: Seq[BareModule]): Task[Boolean] = {
     sendPrompt(PromptMessage.ConfirmRemoveUnresolvablePackages(packages = modules)).map(_.body == yes)
+  }
+
+  def chooseToRemoveConflictingExplicitPackages(conflict: (BareModule, BareModule), explicitPackages: (Seq[BareModule], Seq[BareModule])): Task[Option[Seq[BareModule]]] = {
+    sendPrompt(PromptMessage.ChooseToRemoveConflictingPackages(conflict, explicitPackages))
+      .map {
+        case resp if resp.body == oneTwoCancel(0) => Some(explicitPackages._1)
+        case resp if resp.body == oneTwoCancel(1) => Some(explicitPackages._2)
+        case _ => None
+      }
   }
 
   def confirmUpdatePlan(plan: Sc4pac.UpdatePlan): zio.Task[Boolean] = {

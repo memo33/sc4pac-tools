@@ -20,6 +20,8 @@ final class Sc4pacVersionNotFound(val title: String, val detail: String, val dep
 
 final class UnresolvableDependencies(val title: String, val detail: String, val deps: Seq[BareDep]) extends java.io.IOException(s"$title $detail") with Sc4pacErr
 
+final class ConflictingPackages(val title: String, val detail: String, val conflict: (BareModule, BareModule), val explicitPackages1: Seq[BareModule], val explicitPackages2: Seq[BareModule]) extends java.io.IOException(s"$title $detail") with Sc4pacErr
+
 final class Sc4pacMissingVariant(val packageData: JsonData.Package, msg: String) extends scala.util.control.ControlThrowable(msg)
 
 final class UnsatisfiableVariantConstraints(val title: String, val detail: String) extends java.io.IOException(s"$title $detail") with Sc4pacErr

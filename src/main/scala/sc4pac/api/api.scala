@@ -42,6 +42,7 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
   private def expectedFailureMessage(err: cli.Commands.ExpectedFailure): ErrorMessage = err match {
     case abort: error.Sc4pacVersionNotFound => ErrorMessage.VersionNotFound(abort.title, abort.detail)
     case abort: error.UnresolvableDependencies => ErrorMessage.UnresolvableDependencies(abort.title, abort.detail)
+    case abort: error.ConflictingPackages => ErrorMessage.ConflictingPackages(abort.title, abort.detail, abort.conflict)
     case abort: error.Sc4pacAssetNotFound => ErrorMessage.AssetNotFound(abort.title, abort.detail)
     case abort: error.ExtractionFailed => ErrorMessage.ExtractionFailed(abort.title, abort.detail)
     case abort: error.UnsatisfiableVariantConstraints => ErrorMessage.UnsatisfiableVariantConstraints(abort.title, abort.detail)
@@ -59,6 +60,7 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
   private def expectedFailureStatus(err: cli.Commands.ExpectedFailure): Status = err match {
     case abort: error.Sc4pacVersionNotFound => Status.NotFound
     case abort: error.UnresolvableDependencies => Status.NotFound
+    case abort: error.ConflictingPackages => Status.BadRequest
     case abort: error.Sc4pacAssetNotFound => Status.NotFound
     case abort: error.ExtractionFailed => Status.InternalServerError
     case abort: error.UnsatisfiableVariantConstraints => Status.InternalServerError
@@ -370,6 +372,8 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
           val targetPkgs = collection.mutable.Set[BareModule](mod)  // original package and direct dependencies
             ++= remoteData.variants.iterator.flatMap(_.bareModules)
             ++= remoteData.info.requiredBy
+            ++= remoteData.variants.iterator.flatMap(_.conflictingPackages)
+            ++= remoteData.info.reverseConflictingPackages
           val statuses = collection.mutable.Map.empty[BareModule, InstalledStatus]
           // first check all installed packages for matches
           for (inst <- installed) {

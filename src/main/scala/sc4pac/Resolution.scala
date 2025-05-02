@@ -7,7 +7,7 @@ import scala.collection.immutable.TreeSeqMap
 
 import sc4pac.JsonData as JD
 import sc4pac.error.{Sc4pacAssetNotFound, Artifact2Error}
-import Resolution.{Dep, DepAsset}
+import Resolution.{Dep, DepAsset, Links}
 
 /** Wrapper around Coursier's resolution mechanism with more stringent types for
   * our purposes.
@@ -95,6 +95,9 @@ object Resolution {
     }
   }
 
+  /** Dependency links or conflicts to other packages. */
+  class Links(val dependencies: Seq[BareDep], val conflicts: Seq[BareModule])
+
   /** We resolve dependencies without concrete version information, but
     * implicitly always take the latest version. That way, we do not need to
     * worry about reconciliation strategies or dependency cycles.
@@ -102,22 +105,22 @@ object Resolution {
   def resolve(initialDependencies: Seq[BareDep], globalVariant: Variant): RIO[ResolutionContext, Resolution] = {
 
     // TODO avoid looking up variants and packageData multiple times
-    def lookupDependencies(dep: BareDep): RIO[ResolutionContext, Seq[BareDep]] = dep match {
-      case dep: BareAsset => ZIO.succeed(Seq.empty)
+    def lookupDependencyLinks(dep: BareDep): RIO[ResolutionContext, Links] = dep match {
+      case dep: BareAsset => ZIO.succeed(Links(Seq.empty, Seq.empty))
       case mod: BareModule => {
         Find.matchingVariant(mod, Constants.versionLatestRelease, globalVariant)
-          .map { (pkgData, variantData) => variantData.bareDependencies }
+          .map { (pkgData, variantData) => Links(dependencies = variantData.bareDependencies, conflicts = variantData.conflictingPackages) }
       }
     }
 
     // Here we iteratively compute transitive dependencies.
     // The keys contain all reachable dependencies, the values may be empty sequences.
     // The TreeSeqMap preserves insertion order.
-    val computeReachableDependencies: RIO[ResolutionContext, TreeSeqMap[BareDep, Seq[BareDep]]] =
-      ZIO.iterate((TreeSeqMap.empty[BareDep, Seq[BareDep]], initialDependencies))(_._2.nonEmpty) { (seen, remaining) =>
+    val computeReachableDependencies: RIO[ResolutionContext, TreeSeqMap[BareDep, Links]] =
+      ZIO.iterate((TreeSeqMap.empty[BareDep, Links], initialDependencies))(_._2.nonEmpty) { (seen, remaining) =>
         for {
           seen2 <-  ZIO.validatePar(remaining.filterNot(seen.contains)) { d =>
-                      lookupDependencies(d).map(ds => (d, ds))
+                      lookupDependencyLinks(d).map(links => (d, links))
                     }
                     .mapError { errs =>
                       errs.find(!_.isInstanceOf[error.Sc4pacVersionNotFound]) match {
@@ -131,26 +134,53 @@ object Resolution {
                           )
                       }
                     }
-          deps2 = seen2.flatMap(_._2).distinct
+          deps2 = seen2.flatMap(_._2.dependencies).distinct
         } yield (seen ++ seen2, deps2)
       }.map(_._1)
 
+    // note that this drops modules with zero dependencies
+    def computeReverseDependencies(reachableDeps: TreeSeqMap[BareDep, Links]): Map[BareDep, Seq[BareDep]] =
+      reachableDeps.toSeq
+        .flatMap((d0, links) => links.dependencies.map(_ -> d0))  // reverse dependency relation
+        .groupMap(_._1)(_._2)
+
+    def computeExplicitPackagesTransitivelyDependingOn(mod: BareModule, reverseDeps: Map[BareDep, Seq[BareDep]]): Seq[BareModule] = {
+      val seen = collection.mutable.Set[BareDep](mod)
+      var remaining = reverseDeps.getOrElse(mod, Nil).filterNot(seen)
+      while (remaining.nonEmpty) {
+        seen.addAll(remaining)
+        remaining = remaining.flatMap(d => reverseDeps.getOrElse(d, Nil)).filterNot(seen)
+      }
+      initialDependencies.collect { case d: BareModule if seen(d) => d }
+    }
+
     for {
-      reachableDeps <- computeReachableDependencies
-      nonbareDeps   <- ZIO.foreach(reachableDeps.keySet) { d => Dep.fromBareDependency(d, globalVariant).map(d -> _) }
-    } yield Resolution(reachableDeps, nonbareDeps.toMap)
+      reachableDeps  <- computeReachableDependencies
+      reverseDeps    =  computeReverseDependencies(reachableDeps)
+      conflictOpt    =  reachableDeps.iterator.collect { case (dep: BareModule, links) =>  // assets can't have conflicts
+                          links.conflicts.find(reachableDeps.contains).map(dep -> _)
+                        }.flatten.nextOption(): Option[(BareModule, BareModule)]
+      _              <- ZIO.noneOrFailWith(conflictOpt) { conflict =>
+                          val pkgs1 = computeExplicitPackagesTransitivelyDependingOn(conflict._1, reverseDeps)
+                          val pkgs2 = computeExplicitPackagesTransitivelyDependingOn(conflict._2, reverseDeps)
+                          val hint = f"""Either uninstall:%n%n${pkgs1.map(m => s"    ${m.orgName}").mkString(f"%n")}%n%nOr uninstall:%n%n${pkgs2.map(m => s"    ${m.orgName}").mkString(f"%n")}"""
+                          error.ConflictingPackages(
+                            title = s"The packages ${conflict._1.orgName} and ${conflict._2.orgName} are in conflict with each other and cannot be installed at the same time.",
+                            detail = "Decide which of the two packages you want to keep; uninstall the other and all packages that depend on it."
+                              + f" Sometimes, choosing different package variants can resolve the conflict, as well.%n$hint",
+                            conflict = conflict,
+                            explicitPackages1 = pkgs1,
+                            explicitPackages2 = pkgs2,
+                          )
+                        }
+      nonbareDeps    <- ZIO.foreach(reachableDeps.keySet) { d => Dep.fromBareDependency(d, globalVariant).map(d -> _) }
+    } yield Resolution(reachableDeps, nonbareDeps.toMap, reverseDeps)
 
   }
 
 }
 
-class Resolution(reachableDeps: TreeSeqMap[BareDep, Seq[BareDep]], nonbareDeps: Map[BareDep, Dep]) {
-
-  private val reverseDeps: Map[BareDep, Seq[BareDep]] = {  // note that this drops modules with zero dependencies
-    reachableDeps.toSeq
-      .flatMap((d0, d1s) => d1s.map(_ -> d0))  // reverse dependency relation
-      .groupMap(_._1)(_._2)
-  }
+class Resolution(reachableDeps: TreeSeqMap[BareDep, Links], nonbareDeps: Map[BareDep, Dep], reverseDeps: Map[BareDep, Seq[BareDep]]) {
 
   /** Since `TreeSeqMap` preserves insertion order, this sequence should contain
     * all reachable dependencies such that, if you take any number from the
@@ -162,7 +192,7 @@ class Resolution(reachableDeps: TreeSeqMap[BareDep, Seq[BareDep]], nonbareDeps: 
 
   /** Compute the direct dependencies. */
   def dependenciesOf(dep: Dep): Set[Dep] = {
-    reachableDeps(dep.toBareDep).map(nonbareDeps).toSet
+    reachableDeps(dep.toBareDep).dependencies.map(nonbareDeps).toSet
   }
 
   /** Compute the direct reverse dependencies. */
