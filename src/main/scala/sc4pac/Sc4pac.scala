@@ -113,24 +113,40 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) {  // TODO d
     results.sortBy((mod, ratio, desc) => (-ratio, mod.group.value, mod.name.value)).distinctBy(_._1)
   }
 
-  def searchById(packages: Seq[BareModule]): Task[Seq[(BareModule, Option[String])]] = {
+  def searchById(packages: Seq[BareModule], externalIds: Map[String, Set[String]]): Task[(Seq[(BareModule, Option[String])], Int)] = {
     // TODO avoid iterating all channel items, but look up packages directly instead (and parallelize) for better performance
     iterateAllChannelPackages(channelUrl = None).map { itemsIter =>
-      val relevantItems = collection.mutable.Map.from[BareModule, Option[JD.ChannelItem]](packages.iterator.map(_ -> None))
+      val relevantItems = collection.mutable.SortedMap.from[BareModule, Option[JD.ChannelItem]](packages.iterator.map(_ -> None))
+      val foundExternalIds = collection.mutable.Set.empty[(String, String)]
       itemsIter.foreach { item =>
         item.toBareDep match {
           case _: BareAsset =>  // don't care, shouldn't happen
           case mod: BareModule =>
             relevantItems.get(mod) match {
               case Some(None) => relevantItems(mod) = Some(item)
-              case _ =>  // item is irrelevant or has already been found
+              case Some(_) =>  // item has already been found
+              case None =>
+                if (!item.externalIds.isEmpty && item.externalIds.exists((provider, ids) => externalIds.get(provider).exists(requested => ids.exists(requested)))) {
+                  relevantItems(mod) = Some(item)
+                  foundExternalIds.addAll(item.externalIds.iterator.flatMap((provider, ids) => ids.map(provider -> _)))
+                } else {
+                  // item is irrelevant
+                }
             }
         }
       }
-      packages.map { module =>
-        val summaryOpt = relevantItems(module).map(_.summary)
-        (module, summaryOpt)
+      val b = Seq.newBuilder[(BareModule, Option[String])]
+      // first handle packages only (to preserve the order)
+      for (module <- packages) {
+        val summaryOpt = relevantItems.remove(module).flatten.map(_.summary)
+        b += ((module, summaryOpt))
       }
+      // items that haven't been removed are modules from externalIds
+      for ((module, itemOpt) <- relevantItems) {
+        b += ((module, itemOpt.map(_.summary)))
+      }
+      val notFoundExternalIdCount = externalIds.iterator.flatMap((provider, ids) => ids.map(provider -> _)).filterNot(foundExternalIds).length
+      (b.result(), notFoundExternalIdCount)
     }
   }
 

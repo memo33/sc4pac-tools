@@ -107,6 +107,8 @@ object PromptMessage {
 @upickle.implicits.key("/prompt/response")
 case class ResponseMessage(token: String, body: String) extends Message derives UP.ReadWriter
 
+// externalIds are not really needed for this interface, as there's no limit on
+// the number of packages (unlike the limit for custom sc4pac:// URLs)
 @upickle.implicits.key("/prompt/open/package")
 case class OpenPackageMessage(packages: Seq[OpenPackageMessage.Item]) extends Message derives UP.ReadWriter
 object OpenPackageMessage {
@@ -192,7 +194,7 @@ object InstalledStatus {
   given installedRw: UP.ReadWriter[Installed] = UP.stringKeyRW(UP.macroRW)
 }
 
-case class FindPackagesArgs(packages: Seq[BareModule]) derives UP.ReadWriter
+case class FindPackagesArgs(packages: Seq[BareModule], externalIds: Seq[(String, String)] = Seq.empty) derives UP.ReadWriter
 
 case class PluginsSearchResult(stats: JD.Channel.Stats, packages: Seq[PluginsSearchResultItem]) derives UP.ReadWriter
 
@@ -201,6 +203,8 @@ case class PluginsSearchResultItem(`package`: BareModule, relevance: Int, summar
 
 // `status` may be null
 case class PackageSearchResultItem(`package`: BareModule, relevance: Int, summary: String, status: InstalledStatus = null) derives UP.ReadWriter
+
+case class PackagesSearchResult(packages: Seq[PackageSearchResultItem], notFoundExternalIdCount: Int = 0) derives UP.ReadWriter
 
 case class PackageInfo(local: PackageInfo.Local, remote: JD.Package) derives UP.ReadWriter
 object PackageInfo {
