@@ -1,7 +1,7 @@
 package io.github.memo33
 package sc4pac
 
-import zio.{ZIO, Task}
+import zio.{ZIO, Task, RIO}
 
 import sc4pac.JsonData as JD
 import sc4pac.error.Sc4pacMissingVariant
@@ -78,6 +78,41 @@ class VariantSelection private (
         }
       }
 
+  /** Prompts for missing variant keys, so that the result allows to pick a unique variant of the package. */
+  def refineFor(pkgData: JD.Package): RIO[Prompter, VariantSelection] = {
+    val mod = pkgData.toBareDep
+    lazy val variantInfo = pkgData.upgradeVariantInfo.variantInfo
+    import VariantSelection.{DecisionTree, Node, Empty}
+    DecisionTree.fromVariants(pkgData.variants.map(_.variant)) match {
+      case Left(err) => ZIO.fail(new error.UnsatisfiableVariantConstraints(
+        s"Unable to choose variants as the metadata of ${mod.orgName} seems incomplete", err.toString))
+      case Right(decisionTree) =>
+        type Key = String; type Value = String
+        def choose[T](key: Key, choices: Seq[(Value, T)]): RIO[Prompter, (Value, T)] = {
+          getSelectedValue(key) match
+            case Right(selectedValue) => choices.find(_._1 == selectedValue) match
+              case Some(choice) => ZIO.succeed(choice)
+              case None => ZIO.fail(new error.UnsatisfiableVariantConstraints(
+                s"""None of the variants ${choices.map(_._1).mkString(", ")} of ${mod.orgName} match the configured variant $key=$selectedValue.""",
+                s"""The package metadata seems incorrect, but resetting the configured variant in the GUI Dashboard may resolve the problem (CLI command: `sc4pac variant reset "$key"`)."""))
+            case Left((globalValueOpt, importedValues)) =>  // variant for key has not been selected or is ambiguous, so choose it interactively
+              ZIO.serviceWithZIO[Prompter](_.promptForVariant(
+                module = mod,
+                variantId = key,
+                values = choices.map(_._1),
+                info = variantInfo.get(key).getOrElse(JD.VariantInfo.empty),
+                // TODO pass globalValueOpt and importedValues
+              ).map(selectedValue => choices.find(_._1 == selectedValue).get))  // prompter is guaranteed to return a matching value
+        }
+
+        ZIO.iterate(decisionTree, Seq.newBuilder[(Key, Value)])(_._1 != Empty) {
+          case (Node(key, choices), builder) => choose(key, choices).map { case (value, subtree) => (subtree, builder += key -> value) }
+          case (Empty, builder) => throw new AssertionError
+        }.map(_._2.result())
+          .map(addSelections)
+    }
+  }
+
 }
 
 object VariantSelection {
@@ -87,4 +122,34 @@ object VariantSelection {
       initialGlobalSelections = initialGlobalSelections,
       importedSelections = importedSelections.flatMap(_.iterator).groupMap(_._1)(_._2).view.mapValues(_.distinct).toMap,
     )
+
+  sealed trait DecisionTree[+A, +B]
+  case class Node[+A, +B](key: A, choices: Seq[(B, DecisionTree[A, B])]) extends DecisionTree[A, B] {
+    require(choices.nonEmpty, "decision tree must not have empty choices")
+  }
+  case object Empty extends DecisionTree[Nothing, Nothing]
+
+  object DecisionTree {
+    private class NoCommonKeys(val msg: String) extends scala.util.control.ControlThrowable
+
+    def fromVariants[A, B](variants: Seq[Map[A, B]]): Either[ErrStr, DecisionTree[A, B]] = {
+
+      def helper(variants: Seq[Map[A, B]], remainingKeys: Set[A]): DecisionTree[A, B] = {
+        remainingKeys.find(key => variants.forall(_.contains(key))) match
+          case None => variants match
+            case Seq(singleVariant) => Empty  // if there is just a single variant left, all its keys have already been chosen validly
+            case _ => throw new NoCommonKeys(s"Variants do not have a key in common: $variants")  // our choices of keys left an ambiguity
+          case Some(key) =>  // this key allows partitioning
+            val remainingKeys2 = remainingKeys - key  // strictly smaller, so recursion is well-founded
+            val parts: Map[B, Seq[Map[A, B]]] = variants.groupBy(_(key))
+            val values: Seq[B] = variants.map(_(key)).distinct  // note that this preserves order
+            val choices = values.map { value => value -> helper(parts(value), remainingKeys2) }
+            Node(key, choices)
+      }
+
+      val allKeys = variants.flatMap(_.keysIterator).toSet
+      try Right(helper(variants, allKeys)) catch { case e: NoCommonKeys => Left(e.msg) }
+    }
+  }
+
 }

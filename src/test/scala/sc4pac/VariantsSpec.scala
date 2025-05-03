@@ -3,8 +3,8 @@ package io.github.memo33.sc4pac
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AnyWordSpec
 
-import Sc4pac.DecisionTree as DT
-import Sc4pac.{Node, Empty}
+import VariantSelection.DecisionTree as DT
+import VariantSelection.{Node, Empty}
 
 class VariantsSpec extends AnyWordSpec with Matchers {
 
