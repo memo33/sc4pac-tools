@@ -341,7 +341,7 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) {  // TODO d
     // variant successfully, but have lost the JsonData.Package, so we reconstruct it
     // here a second time.
     for {
-      (pkgData, variant) <- Find.matchingVariant(dependency.toBareDep, dependency.version, dependency.variant)
+      (pkgData, variant) <- Find.matchingVariant(dependency.toBareDep, dependency.version, VariantSelection(currentSelections = dependency.variant, initialGlobalSelections = Map.empty, importedSelections = Seq.empty))
       pkgFolder          =  pkgData.subfolder / packageFolderName(dependency)
       artifactWarnings   <- logger.extractingPackage(dependency, progress)(for {
                               _  <- ZIO.attemptBlocking(os.makeDir.all(tempPluginsRoot / pkgFolder))  // create folder even if package does not have any assets or files
@@ -471,8 +471,8 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) {  // TODO d
     }
 
     /** Prompts for missing variant keys, so that the result allows to pick a unique variant of the package. */
-    def refineGlobalVariant(globalVariant: Variant, pkgData: JD.Package): RIO[Prompter, Variant] = {
-      val mod = BareModule(Organization(pkgData.group), ModuleName(pkgData.name))
+    def refineVariantSelection(variantSelection: VariantSelection, pkgData: JD.Package): RIO[Prompter, VariantSelection] = {
+      val mod = pkgData.toBareDep
       lazy val variantInfo = pkgData.upgradeVariantInfo.variantInfo
       import Sc4pac.{DecisionTree, Node, Empty}
       DecisionTree.fromVariants(pkgData.variants.map(_.variant)) match {
@@ -481,49 +481,50 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) {  // TODO d
         case Right(decisionTree) =>
           type Key = String; type Value = String
           def choose[T](key: Key, choices: Seq[(Value, T)]): RIO[Prompter, (Value, T)] = {
-            globalVariant.get(key) match
-              case Some(value) => choices.find(_._1 == value) match
+            variantSelection.getSelectedValue(key) match
+              case Right(selectedValue) => choices.find(_._1 == selectedValue) match
                 case Some(choice) => ZIO.succeed(choice)
                 case None => ZIO.fail(new error.UnsatisfiableVariantConstraints(
-                  s"""None of the variants ${choices.map(_._1).mkString(", ")} of ${mod.orgName} match the configured variant $key=$value.""",
-                  s"""The package metadata seems incorrect, but resetting the variant may resolve the problem (command: `sc4pac variant reset "$key"`)."""))
-              case None =>  // global variant for key is not set, so choose it interactively
+                  s"""None of the variants ${choices.map(_._1).mkString(", ")} of ${mod.orgName} match the configured variant $key=$selectedValue.""",
+                  s"""The package metadata seems incorrect, but resetting the configured variant in the GUI Dashboard may resolve the problem (CLI command: `sc4pac variant reset "$key"`)."""))
+              case Left((globalValueOpt, importedValues)) =>  // variant for key has not been selected or is ambiguous, so choose it interactively
                 ZIO.serviceWithZIO[Prompter](_.promptForVariant(
                   module = mod,
                   variantId = key,
                   values = choices.map(_._1),
                   info = variantInfo.get(key).getOrElse(JD.VariantInfo.empty),
-                ).map(value => choices.find(_._1 == value).get))  // prompter is guaranteed to return a matching value
+                  // TODO pass globalValueOpt and importedValues
+                ).map(selectedValue => choices.find(_._1 == selectedValue).get))  // prompter is guaranteed to return a matching value
           }
 
           ZIO.iterate(decisionTree, Seq.newBuilder[(Key, Value)])(_._1 != Empty) {
             case (Node(key, choices), builder) => choose(key, choices).map { case (value, subtree) => (subtree, builder += key -> value) }
             case (Empty, builder) => throw new AssertionError
           }.map(_._2.result())
-            .map(additionalChoices => globalVariant ++ additionalChoices)
+            .map(additionalChoices => variantSelection.addSelections(additionalChoices))
       }
     }
 
-    def doPromptingForVariant[R, A](globalVariant: Variant)(task: Variant => RIO[R, A]): RIO[Prompter & R, (A, Variant)] = {
-      ZIO.iterate(Left(globalVariant): Either[Variant, (A, Variant)])(_.isLeft) {
+    def doPromptingForVariant[R, A](variantSelection: VariantSelection)(task: VariantSelection => RIO[R, A]): RIO[Prompter & R, (A, VariantSelection)] = {
+      ZIO.iterate(Left(variantSelection): Either[VariantSelection, (A, VariantSelection)])(_.isLeft) {
         case Right(_) => throw new AssertionError
-        case Left(globalVariant) =>
-          val handler: PartialFunction[Throwable, RIO[Prompter, Either[Variant, (A, Variant)]]] = {
-            case e: Sc4pacMissingVariant => refineGlobalVariant(globalVariant, e.packageData).map(Left(_))
+        case Left(variantSelection) =>
+          val handler: PartialFunction[Throwable, RIO[Prompter, Either[VariantSelection, (A, VariantSelection)]]] = {
+            case e: Sc4pacMissingVariant => refineVariantSelection(variantSelection, e.packageData).map(Left(_))
           }
-          task(globalVariant)
-            .map(x => Right((x, globalVariant)))
+          task(variantSelection)
+            .map(x => Right((x, variantSelection)))
             .catchSome(handler)
             .catchSomeDefect(handler)  // legacy: Originally Repository used EitherT[Task, ErrStr, _], so Sc4pacMissingVariant was a `defect` rather than a regular `error`
       }.map(_.toOption.get)
     }
 
-    def doResolveHandleUnresolvable(explicitModules: Seq[BareModule], globalVariant: Variant): RIO[Prompter & ResolutionContext, (Resolution, Seq[BareModule], Variant)] = {
-      ZIO.iterate(Left(explicitModules): Either[Seq[BareModule], (Resolution, Seq[BareModule], Variant)])(_.isLeft) {
+    def doResolveHandleUnresolvable(explicitModules: Seq[BareModule], variantSelection: VariantSelection): RIO[Prompter & ResolutionContext, (Resolution, Seq[BareModule], VariantSelection)] = {
+      ZIO.iterate(Left(explicitModules): Either[Seq[BareModule], (Resolution, Seq[BareModule], VariantSelection)])(_.isLeft) {
         case Right(_) => throw new AssertionError
         case Left(explicitModules) =>
-          doPromptingForVariant(globalVariant)(Resolution.resolve(explicitModules, _))
-            .map { case (resolution, globalVariant) => Right((resolution, explicitModules, globalVariant)) }
+          doPromptingForVariant(variantSelection)(Resolution.resolve(explicitModules, _))
+            .map { case (resolution, variantSelection) => Right((resolution, explicitModules, variantSelection)) }
             .catchSome {
               case e: error.UnresolvableDependencies =>
                 val unresolvable = e.deps.toSet
@@ -563,7 +564,9 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) {  // TODO d
     val updateTask = for {
       pluginsLockData1 <- JD.PluginsLock.readOrInit
       pluginsLockData <- JD.PluginsLock.upgradeFromScheme1(pluginsLockData1, iterateAllChannelPackages(channelUrl = None), logger, pluginsRoot)
-      (resolution, modules, globalVariant) <- doResolveHandleUnresolvable(modules0, globalVariant0)
+      variantSelection0 = VariantSelection(currentSelections = Map.empty, initialGlobalSelections = globalVariant0, importedSelections = Seq.empty)  // TODO define importedSelections
+      (resolution, modules, variantSelection) <- doResolveHandleUnresolvable(modules0, variantSelection0)
+      globalVariant   =  variantSelection.buildResultingSelections()
       plan            =  UpdatePlan.fromResolution(resolution, installed = pluginsLockData.dependenciesWithAssets)
       continue        <- ZIO.serviceWithZIO[Prompter](_.confirmUpdatePlan(plan))
                            .filterOrFail(_ == true)(error.Sc4pacAbort())

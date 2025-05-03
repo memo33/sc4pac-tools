@@ -5,7 +5,7 @@ import zio.{ZIO, Task, RIO}
 import upickle.default.Reader
 
 import sc4pac.JsonData as JD
-import sc4pac.error.{Sc4pacVersionNotFound, Sc4pacMissingVariant, Sc4pacAssetNotFound, Artifact2Error}
+import sc4pac.error.{Sc4pacVersionNotFound, Sc4pacAssetNotFound, Artifact2Error}
 
 object Find {
 
@@ -75,23 +75,16 @@ object Find {
 
   private[sc4pac] def isSubMap[A, B](small: Map[A, B], large: Map[A, B]): Boolean = small.keysIterator.forall(a => small.get(a) == large.get(a))
 
-  /** Given a module without specific variant, find a variant that matches globalVariant. */
-  def matchingVariant(module: BareModule, version: String, globalVariant: Variant): RIO[ResolutionContext, (JD.Package, JD.VariantData)] = {
-
-    def pickVariant(pkgOpt: Option[JD.Package]): Task[(JD.Package, JD.VariantData)] = pkgOpt match {
-      case None => ZIO.fail(new Sc4pacVersionNotFound(s"Could not find metadata of ${module.orgName} or suitable variant.",
-                                                      "Either the package name is spelled incorrectly or the metadata stored in the corresponding channel is incorrect or incomplete.", module))
-      case Some(pkgData) =>
-        pkgData.variants.find(vd => isSubMap(vd.variant, globalVariant)) match {
-          case Some(vd) => ZIO.succeed((pkgData, vd))
-          case None =>
-            ZIO.fail(new Sc4pacMissingVariant(pkgData, s"could not find variant for ${module.orgName} matching [${JD.VariantData.variantString(globalVariant)}]"))
-        }
-    }
-
+  /** Given a module without specific variant, find a variant that matches variantSelection. */
+  def matchingVariant(module: BareModule, version: String, variantSelection: VariantSelection): RIO[ResolutionContext, (JD.Package, JD.VariantData)] = {
     concreteVersion(module, version)
       .flatMap(packageData[JD.Package](module, _))
-      .flatMap(pickVariant)
+      .someOrFail(new Sc4pacVersionNotFound(
+        s"Could not find metadata of ${module.orgName} or suitable variant.",
+        "Either the package name is spelled incorrectly or the metadata stored in the corresponding channel is incorrect or incomplete.",
+        module,
+      ))
+      .flatMap(variantSelection.pickVariant)
   }
 
   /** Find all external packages that depend on or conflict with this module. This searches
