@@ -101,7 +101,8 @@ class VariantSelection private (
                 variantId = key,
                 values = choices.map(_._1),
                 info = variantInfo.get(key).getOrElse(JD.VariantInfo.empty),
-                // TODO pass globalValueOpt and importedValues
+                previouslySelectedValue = globalValueOpt,
+                importedValues = importedValues,
               ).map(selectedValue => choices.find(_._1 == selectedValue).get))  // prompter is guaranteed to return a matching value
         }
 

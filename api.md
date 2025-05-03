@@ -465,8 +465,10 @@ The following specifies the message format used by the `/update` websocket.
   "info": {
     "description"?: "…",
     "valueDescriptions"?: {"<value2>": "…", …},
-    "default": ["<value2">]                      // or []
+    "default": ["<value2>"]                      // or []
   },
+  "previouslySelectedValue": ["<value1>"],       // or []
+  "importedValues": ["<value2>", …],
   "token": string,
   "responses": {"<value1>": object, "<value2>": object, …}
 }

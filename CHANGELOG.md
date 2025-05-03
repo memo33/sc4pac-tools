@@ -12,6 +12,7 @@
   - added a new `/prompt/choice/update/remove-conflicting-packages` message to `/update`
   - added support for `externalIds` in `/packages.search.id` ([#26][gui26])
   - output format changes in `/packages.search` and `/packages.search.id`
+  - message `/prompt/choice/update/variant` now informs about `previouslySelectedValue` and `importedValues` if applicable
 
 [gui26]: https://github.com/memo33/sc4pac-gui/issues/26
 

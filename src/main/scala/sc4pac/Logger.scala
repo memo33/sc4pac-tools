@@ -45,7 +45,7 @@ trait Logger {
 class CliLogger private (out: java.io.PrintStream, useColor: Boolean, isInteractive: Boolean) extends Logger {
 
   private def cyan(msg: String): String = if (useColor) Console.CYAN + msg + Console.RESET else msg
-  private def cyanBold(msg: String): String = if (useColor) Console.CYAN + Console.BOLD + msg + Console.RESET else msg
+  def cyanBold(msg: String): String = if (useColor) Console.CYAN + Console.BOLD + msg + Console.RESET else msg
   private def yellowBold(msg: String): String = if (useColor) Console.YELLOW + Console.BOLD + msg + Console.RESET else msg
   def bold(msg: String): String = if (useColor) Console.BOLD + msg + Console.RESET else msg
   def gray(msg: String): String = if (useColor) grayEscape + msg + Console.RESET else msg  // aka bright black

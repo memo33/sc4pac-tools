@@ -8,7 +8,7 @@ import JsonData as JD
 trait Prompter {
 
   /** Returns the selected variant value. */
-  def promptForVariant(module: BareModule, variantId: String, values: Seq[String], info: JD.VariantInfo): Task[String]
+  def promptForVariant(module: BareModule, variantId: String, values: Seq[String], info: JD.VariantInfo, previouslySelectedValue: Option[String], importedValues: Seq[String]): Task[String]
 
   def confirmRemovingUnresolvableExplicitPackages(modules: Seq[BareModule]): Task[Boolean]
 
@@ -23,12 +23,20 @@ class CliPrompter(logger: CliLogger, autoYes: Boolean) extends Prompter {
 
   def withAutoYes(yes: Boolean): CliPrompter = CliPrompter(logger, yes)
 
-  def promptForVariant(module: BareModule, variantId: String, values: Seq[String], info: JD.VariantInfo): Task[String] = {
+  def promptForVariant(module: BareModule, variantId: String, values: Seq[String], info: JD.VariantInfo, previouslySelectedValue: Option[String], importedValues: Seq[String]): Task[String] = {
     val prefix = s"${variantId} = "
     val columnWidth = values.map(_.length).max + 8  // including some whitespace for separation, excluding prefix
-    def renderDesc(value: String): String = info.valueDescriptions.get(value) match {
-      case Some(desc) if desc.nonEmpty => prefix + value + (" " * ((columnWidth - value.length) max 0)) + desc
-      case _ => prefix + value
+    def renderDesc(value: String): String = {
+      val desc: String = Seq[Option[String]](
+        previouslySelectedValue.filter(_ == value).map(_ => logger.cyanBold("[previous]")),
+        Option.when(importedValues.contains(value))(logger.cyanBold("[imported]")),
+        info.valueDescriptions.get(value),
+      ).flatten.mkString(" ")
+      if (desc.nonEmpty) {
+        prefix + value + (" " * ((columnWidth - value.length) max 0)) + desc
+      } else {
+        prefix + value
+      }
     }
     val pretext = if (info.description.nonEmpty) f"%n%n${logger.applyMarkdown(info.description)}" else ""
     Prompt.ifInteractive(
