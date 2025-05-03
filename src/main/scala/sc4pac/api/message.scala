@@ -12,7 +12,7 @@ sealed trait Message derives UP.ReadWriter
 sealed trait PromptMessage extends Message derives UP.ReadWriter {
   def token: String
   def choices: Seq[String]
-  def accept(response: ResponseMessage): Boolean = response.token == token && choices.contains(response.body)
+  def accept(response: ResponseMessage): Boolean = response.token == token && choices.contains(response.body.str)
 }
 object PromptMessage {
 
@@ -107,7 +107,7 @@ object PromptMessage {
 }
 
 @upickle.implicits.key("/prompt/response")
-case class ResponseMessage(token: String, body: String) extends Message derives UP.ReadWriter
+case class ResponseMessage(token: String, body: ujson.Value) extends Message derives UP.ReadWriter
 
 // externalIds are not really needed for this interface, as there's no limit on
 // the number of packages (unlike the limit for custom sc4pac:// URLs)
