@@ -104,6 +104,29 @@ object PromptMessage {
     }
     given confirmInstallation: UP.ReadWriter[ConfirmInstallation] = UP.stringKeyRW(UP.macroRW)
   }
+
+  @upickle.implicits.key("/prompt/json/update/initial-arguments")
+  case class InitialArgumentsForUpdate(
+    choices: Seq[String],  // = "Default"
+    token: String,
+    responses: Map[String, ResponseMessage],
+  ) extends PromptMessage {
+    override def accept(response: ResponseMessage): Boolean = response.token == token
+  }
+  object InitialArgumentsForUpdate {
+    def apply(): InitialArgumentsForUpdate = {
+      val token = scala.util.Random.nextInt().toHexString
+      InitialArgumentsForUpdate(
+        choices = Seq("Default"),
+        token = token,
+        responses = Map("Default" -> ResponseMessage(token, ujson.Obj() /* empty Args() as json */)),
+      )
+    }
+
+    case class Args(
+      importedSelections: Seq[Variant] = Seq.empty,
+    ) derives UP.ReadWriter
+  }
 }
 
 @upickle.implicits.key("/prompt/response")

@@ -10,6 +10,7 @@
 ### Changed
 - API upgraded to 2.5:
   - added a new `/prompt/choice/update/remove-conflicting-packages` message to `/update`
+  - added a new `/prompt/json/update/initial-arguments` message to `/update`
   - added support for `externalIds` in `/packages.search.id` ([#26][gui26])
   - output format changes in `/packages.search` and `/packages.search.id`
   - message `/prompt/choice/update/variant` now informs about `previouslySelectedValue` and `importedValues` if applicable

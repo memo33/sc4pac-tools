@@ -341,7 +341,7 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) {  // TODO d
     // variant successfully, but have lost the JsonData.Package, so we reconstruct it
     // here a second time.
     for {
-      (pkgData, variant) <- Find.matchingVariant(dependency.toBareDep, dependency.version, VariantSelection(currentSelections = dependency.variant, initialGlobalSelections = Map.empty, importedSelections = Seq.empty))
+      (pkgData, variant) <- Find.matchingVariant(dependency.toBareDep, dependency.version, VariantSelection(currentSelections = dependency.variant, initialSelections = Map.empty, importedSelections = Seq.empty))
       pkgFolder          =  pkgData.subfolder / packageFolderName(dependency)
       artifactWarnings   <- logger.extractingPackage(dependency, progress)(for {
                               _  <- ZIO.attemptBlocking(os.makeDir.all(tempPluginsRoot / pkgFolder))  // create folder even if package does not have any assets or files
@@ -375,7 +375,7 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) {  // TODO d
   }
 
   /** Update all installed packages from modules (the list of explicitly added packages). */
-  def update(modules0: Seq[BareModule], globalVariant0: Variant, pluginsRoot: os.Path): RIO[ProfileRoot & Prompter & Downloader.Credentials, Boolean] = {
+  def update(modules0: Seq[BareModule], variantSelection0: VariantSelection, pluginsRoot: os.Path): RIO[ProfileRoot & Prompter & Downloader.Credentials, Boolean] = {
 
     // - before starting to remove anything, we download and extract everything
     //   to install into temp folders (staging)
@@ -516,11 +516,11 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) {  // TODO d
       }.map(_.toOption.get)
     }
 
-    def storeUpdatedSpec(globalVariant: Variant, explicitModules: Seq[BareModule]): Task[Unit] = for {
+    def storeUpdatedSpec(selections: Variant, explicitModules: Seq[BareModule]): Task[Unit] = for {
       pluginsSpec <- JsonIo.read[JD.PluginsSpec](JD.PluginsSpec.path(context.profileRoot))  // json file should exist already
       _           <- JsonIo.write(
                        JD.PluginsSpec.path(context.profileRoot),
-                       pluginsSpec.copy(config = pluginsSpec.config.copy(variant = globalVariant), explicit = explicitModules),
+                       pluginsSpec.copy(config = pluginsSpec.config.copy(variant = selections), explicit = explicitModules),
                        None
                      )(ZIO.succeed(()))
     } yield ()
@@ -529,13 +529,12 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) {  // TODO d
     val updateTask = for {
       pluginsLockData1 <- JD.PluginsLock.readOrInit
       pluginsLockData <- JD.PluginsLock.upgradeFromScheme1(pluginsLockData1, iterateAllChannelPackages(channelUrl = None), logger, pluginsRoot)
-      variantSelection0 = VariantSelection(currentSelections = Map.empty, initialGlobalSelections = globalVariant0, importedSelections = Seq.empty)  // TODO define importedSelections
       (resolution, modules, variantSelection) <- doResolveHandleUnresolvable(modules0, variantSelection0)
-      globalVariant   =  variantSelection.buildResultingSelections()
+      finalSelections =  variantSelection.buildFinalSelections()
       plan            =  UpdatePlan.fromResolution(resolution, installed = pluginsLockData.dependenciesWithAssets)
       continue        <- ZIO.serviceWithZIO[Prompter](_.confirmUpdatePlan(plan))
                            .filterOrFail(_ == true)(error.Sc4pacAbort())
-      _               <- ZIO.unless(!continue || globalVariant == globalVariant0 && modules == modules0)(storeUpdatedSpec(globalVariant, modules))  // only store something after confirmation
+      _               <- ZIO.unless(!continue || finalSelections == variantSelection0.initialSelections && modules == modules0)(storeUpdatedSpec(finalSelections, modules))  // only store something after confirmation
       flagOpt         <- ZIO.unless(!continue || plan.isUpToDate)(for {
         assetsToInstall <- resolution.fetchArtifactsOf(resolution.transitiveDependencies.filter(plan.toInstall).reverse)  // we start by fetching artifacts in reverse as those have fewest dependencies of their own
         // TODO if some artifacts fail to be fetched, fall back to installing remaining packages (maybe not(?), as this leads to missing dependencies,

@@ -261,7 +261,15 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
                 pluginsRoot  <- pluginsSpec.config.pluginsRootAbs
                 wsLogger     <- ZIO.service[WebSocketLogger]
                 _            <- ZIO.succeed(wsLogger.log(s"Updating... ($credentialsDesc)"))
-                flag         <- pac.update(pluginsSpec.explicit, globalVariant0 = pluginsSpec.config.variant, pluginsRoot = pluginsRoot)
+                flag         <- ZIO.serviceWithZIO[WebSocketPrompter](_.promptForInitialArguments())
+                                  .flatMap { args =>
+                                    val variantSelection = VariantSelection(
+                                      currentSelections = Map.empty,
+                                      initialSelections = pluginsSpec.config.variant,
+                                      importedSelections = args.importedSelections,
+                                    )
+                                    pac.update(pluginsSpec.explicit, variantSelection, pluginsRoot = pluginsRoot)
+                                  }
                                   .provideSomeLayer(zio.ZLayer.succeedEnvironment(zio.ZEnvironment(
                                     WebSocketPrompter(wsChannel, wsLogger),
                                     credentials,

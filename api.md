@@ -433,6 +433,7 @@ let ws = new WebSocket('ws://localhost:51515/update?profile=1');
 The messages sent from the server are logged in the network tab of the browser dev tools.
 
 Messages sent:
+- `/prompt/json/update/initial-arguments` to allow passing additional initial arguments as JSON
 - `/prompt/choice/update/variant` for each variant to choose
 - `/prompt/choice/update/remove-conflicting-packages` to resolve a potential package conflict
 - `/prompt/confirmation/update/remove-unresolvable-packages` if explicit packages cannot be found (e.g. if renamed in channel)
