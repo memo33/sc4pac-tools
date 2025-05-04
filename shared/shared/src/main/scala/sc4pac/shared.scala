@@ -50,6 +50,7 @@ abstract class SharedData {
 
   type SubPath
   implicit val subPathRw: ReadWriter[SubPath]
+  protected def categoryFromSubPath(subpath: SubPath): Option[String]
 
   type Checksum
   implicit val checksumRw: ReadWriter[Checksum]
@@ -295,7 +296,7 @@ abstract class SharedData {
           }
           // we arbitrarily pick the summary of the first item (usually there is just one version anyway)
           val summaryOpt = versions.iterator.collectFirst { case (_, pkg: Package, _) if pkg.info.summary.nonEmpty => pkg.info.summary }
-          val catOpt = versions.iterator.collectFirst { case (_, pkg: Package, _) => pkg.subfolder.toString }
+          val catOpt = versions.iterator.collectFirst { case (_, pkg: Package, _) => categoryFromSubPath(pkg.subfolder) }.flatten
           ChannelItem(
             group = g, name = n,
             versions = versions.iterator.map(_._1).toSeq,

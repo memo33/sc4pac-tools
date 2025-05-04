@@ -194,7 +194,7 @@ object JsonData extends SharedData {
             version = dep.version,
             files = stagedItem.map(_.files).getOrElse(previousPkgs(bareDep).files),
             summary = stagedItem.map(item => item.pkgData.info.summary).getOrElse(previousPkgs(bareDep).summary),
-            category = stagedItem.map(item => Some(item.pkgData.subfolder.toString)).getOrElse(previousPkgs(bareDep).category),
+            category = stagedItem.map(item => categoryFromSubPath(item.pkgData.subfolder)).getOrElse(previousPkgs(bareDep).category),
             installedAt = previousPkgs.get(bareDep).map(_.installedAt).getOrElse(now),
             updatedAt = if (stagedItem.isDefined) now else previousPkgs(bareDep).updatedAt,
           )
@@ -288,6 +288,8 @@ object JsonData extends SharedData {
     }
   }
   protected def emptyChecksum = Checksum.empty
+
+  protected def categoryFromSubPath(subpath: SubPath): Option[String] = subpath.segments0.headOption
 
   implicit val checksumRw: ReadWriter[Checksum] =
     readwriter[Map[String, String]].bimap[Checksum](

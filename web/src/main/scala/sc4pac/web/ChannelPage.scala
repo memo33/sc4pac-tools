@@ -21,6 +21,9 @@ object JsonData extends SharedData {
   val instantRw = UP.readwriter[String]
   opaque type SubPath = String
   val subPathRw = UP.readwriter[String]
+  protected def categoryFromSubPath(subpath: SubPath) =
+    if (subpath.contains("/")) Some(subpath.substring(0, subpath.indexOf("/")))
+    else Option.unless(subpath.isEmpty)(subpath)
   opaque type Checksum = Map[String, String]
   val checksumRw = UP.readwriter[Map[String, String]]
   protected def emptyChecksum = Map.empty
