@@ -127,8 +127,14 @@ url: dummy
 
     "encode spaces in metadata source URL" in {
       val baseUri = java.net.URI("https://github.com/memo33/sc4pac/blob/main/src/yaml/")
-      ChannelUtil.resolveMetadataSourceUrl(baseUri, os.SubPath("a b/c d.yaml"))
-        .toString.shouldBe(s"${baseUri}a%20b/c%20d.yaml")
+      MetadataRepository.resolveUriWithSubPath(baseUri, os.SubPath("a b/c d+e%f.yaml"))
+        .toString.shouldBe(s"${baseUri}a%20b/c%20d+e%25f.yaml")
+
+      val baseUri2 = java.net.URI("file:/tmp/sc4pac-channel/")
+      MetadataRepository.resolveUriWithSubPath(
+        baseUri2,
+        MetadataRepository.jsonSubPath(Sc4pac.parseModule("foo:bar").toOption.get, "0.1 alpha"),
+      ).toString.shouldBe(s"file:/tmp/sc4pac-channel/metadata/foo/bar/0.1%20alpha/pkg.json")
     }
   }
 

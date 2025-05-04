@@ -7,6 +7,7 @@ import zio.{ZIO, IO, Task, RIO}
 
 import sc4pac.JsonData as JD
 import sc4pac.JsonData.{subPathRw, instantRw, bareModuleRw}
+import sc4pac.MetadataRepository.resolveUriWithSubPath
 
 object ChannelUtil {
 
@@ -45,9 +46,6 @@ object ChannelUtil {
     ) derives ReadWriter
   }
 
-  private[sc4pac] def resolveMetadataSourceUrl(baseUri: java.net.URI, path: os.SubPath): java.net.URI =
-    baseUri.resolve(os.root.toNIO.toUri.relativize((os.root / path).toNIO.toUri))
-
   case class YamlPackageData(
     group: String,
     name: String,
@@ -72,7 +70,7 @@ object ChannelUtil {
             for {
               baseUri <- channelInfo.metadataSourceUrl
               path    <- metadataSource
-            } yield resolveMetadataSourceUrl(baseUri, path)
+            } yield resolveUriWithSubPath(baseUri, path)
           JD.Package(
             group = group, name = name, version = version, subfolder = subfolder, info = info.upgradeWebsites,
             variants = variants2,

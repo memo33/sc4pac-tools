@@ -74,6 +74,9 @@ object MetadataRepository {
     case e: java.net.URISyntaxException => Left(e.getMessage)
   }
 
+  def resolveUriWithSubPath(baseUri: java.net.URI, path: os.SubPath): java.net.URI =
+    baseUri.resolve(new java.net.URI(null, path.toString, null))  // while single-arg URI constructor doesn't accept illegal characters, multi-arg URI constructors do handle them correctly
+
   def create(channelContentsFile: os.Path, baseUri: java.net.URI): IO[ErrStr, MetadataRepository] = {
     if (baseUri.getPath.endsWith(".yaml")) {  // yaml repository
       (for {
@@ -146,7 +149,7 @@ private class JsonRepository(
         ZIO.fail(new Sc4pacVersionNotFound(s"No versions of ${dep.orgName} found in repository $baseUri.",
           "Either the package name is spelled incorrectly or the metadata stored in the corresponding channel is incorrect or incomplete.", dep))
       case Some((_, checksum)) =>
-        val remoteUrl = baseUri.resolve(MetadataRepository.jsonSubPath(dep, version).segments0.mkString("/")).toString
+        val remoteUrl = MetadataRepository.resolveUriWithSubPath(baseUri, MetadataRepository.jsonSubPath(dep, version)).toString
         // We have complete control over the json metadata files. Usually, they
         // do not functionally change for a fixed version, but info fields like
         // `requiredBy` can change, so we redownload them once the checksum stops matching.
@@ -161,7 +164,7 @@ private class JsonRepository(
     externalPackages.get(module) match {
       case None => ZIO.succeed(None)
       case Some(extPkg) =>
-        val remoteUrl = baseUri.resolve(MetadataRepository.extPkgJsonSubPath(module).segments0.mkString("/")).toString
+        val remoteUrl = MetadataRepository.resolveUriWithSubPath(baseUri, MetadataRepository.extPkgJsonSubPath(module)).toString
         val jsonArtifact = Artifact(remoteUrl, changing = false, checksum = extPkg.checksum)
         fetch[JD.ExternalPackage](jsonArtifact)
           .map(Some(_))
