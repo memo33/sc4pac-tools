@@ -16,6 +16,7 @@ POST /packages.open                  [{package: "<pkg>", channelUrl: "<url>"}]
 
 GET  /plugins.added.list?profile=id
 GET  /plugins.installed.list?profile=id
+GET  /plugins.search?profile=id&q=<text>&category=<cat>
 POST /plugins.add?profile=id         ["<pkg1>", "<pkg2>", …]
 POST /plugins.remove?profile=id      ["<pkg1>", "<pkg2>", …]
 
@@ -229,6 +230,7 @@ Returns:
     },
     …
   ],
+  notFoundPackageCount: Int,
   notFoundExternalIdCount: int
 }
 ```

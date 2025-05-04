@@ -136,7 +136,7 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) {  // TODO d
     )
   }
 
-  def searchById(packages: Seq[BareModule], externalIds: Map[String, Set[String]]): Task[(Seq[(BareModule, Option[String])], Int)] = {
+  def searchById(packages: Seq[BareModule], externalIds: Map[String, Set[String]]): Task[(Seq[(BareModule, Option[String])], Int, Int)] = {
     // TODO avoid iterating all channel items, but look up packages directly instead (and parallelize) for better performance
     iterateAllChannelPackages(channelUrl = None).map { itemsIter =>
       val relevantItems = collection.mutable.SortedMap.from[BareModule, Option[JD.ChannelItem]](packages.iterator.map(_ -> None))
@@ -159,17 +159,21 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) {  // TODO d
         }
       }
       val b = Seq.newBuilder[(BareModule, Option[String])]
+      var notFoundPackageCount = 0
       // first handle packages only (to preserve the order)
       for (module <- packages) {
-        val summaryOpt = relevantItems.remove(module).flatten.map(_.summary)
-        b += ((module, summaryOpt))
+        val foundItemOpt: Option[JD.ChannelItem] = relevantItems.remove(module).flatten
+        if (!foundItemOpt.isDefined) {
+          notFoundPackageCount += 1
+        }
+        b += ((module, foundItemOpt.map(_.summary)))  // even if not found, we can display it
       }
       // items that haven't been removed are modules from externalIds
       for ((module, itemOpt) <- relevantItems) {
         b += ((module, itemOpt.map(_.summary)))
       }
       val notFoundExternalIdCount = externalIds.iterator.flatMap((provider, ids) => ids.map(provider -> _)).filterNot(foundExternalIds).length
-      (b.result(), notFoundExternalIdCount)
+      (b.result(), notFoundPackageCount, notFoundExternalIdCount)
     }
   }
 

@@ -337,7 +337,8 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
           val statusOrNull = createStatus(pkg)
           PackageSearchResultItem(pkg, relevance = 100, summary = summaryOpt.getOrElse(""), status = statusOrNull)
         },
-        notFoundExternalIdCount = searchResult._2,
+        notFoundPackageCount = searchResult._2,
+        notFoundExternalIdCount = searchResult._3,
       ))
     }),
 

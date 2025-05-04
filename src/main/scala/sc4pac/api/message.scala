@@ -204,7 +204,7 @@ case class PluginsSearchResultItem(`package`: BareModule, relevance: Int, summar
 // `status` may be null
 case class PackageSearchResultItem(`package`: BareModule, relevance: Int, summary: String, status: InstalledStatus = null) derives UP.ReadWriter
 
-case class PackagesSearchResult(packages: Seq[PackageSearchResultItem], notFoundExternalIdCount: Int = 0, stats: JD.Channel.Stats = null) derives UP.ReadWriter
+case class PackagesSearchResult(packages: Seq[PackageSearchResultItem], notFoundPackageCount: Int = 0, notFoundExternalIdCount: Int = 0, stats: JD.Channel.Stats = null) derives UP.ReadWriter
 
 case class PackageInfo(local: PackageInfo.Local, remote: JD.Package) derives UP.ReadWriter
 object PackageInfo {
