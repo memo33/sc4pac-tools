@@ -363,4 +363,10 @@ object JsonData extends SharedData {
       (m: Map[String, String]) => IncludeWithChecksum(include = m("include"), sha256 = Checksum.stringToBytes(m("sha256"))),
     )
 
+  case class ExportData(
+    explicit: Seq[BareModule] = Seq.empty,
+    variants: Variant = Map.empty,
+    channels: Seq[Uri] = Seq.empty,
+  ) derives ReadWriter
+
 }

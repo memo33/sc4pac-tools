@@ -19,6 +19,7 @@ GET  /plugins.installed.list?profile=id
 GET  /plugins.search?profile=id&q=<text>&category=<cat>
 POST /plugins.add?profile=id         ["<pkg1>", "<pkg2>", …]
 POST /plugins.remove?profile=id      ["<pkg1>", "<pkg2>", …]
+POST /plugins.export?profile=id      ["<pkg1>", "<pkg2>", …]
 
 GET  /variants.list?profile=id
 POST /variants.reset?profile=id      ["<variantId1>", "<variantId2>", …]
@@ -343,6 +344,40 @@ Returns:
 Example:
 ```sh
 curl -X POST -d '["cyclone-boom:save-warning"]' http://localhost:51515/plugins.remove?profile=1
+```
+
+## plugins.export
+
+Generate the export format for a list of installed packages,
+including only the variants and channels relevant for the selected packages and all their dependencies.
+
+Synopsis: `POST /plugins.export?profile=id ["<pkg1>", "<pkg2>", …]`
+
+Returns:
+- 404 error if some package variant cannot be resolved from currently installed variants (i.e. installed packages are not up-to-date or not fully installed)
+- 200:
+```
+{
+  "explicit" : ["<pkg1>", …],
+  "variants": {"<variantId1>: "<value1>", …},
+  "channels": ["url1", …]
+}
+```
+
+Example:
+```sh
+curl -X POST -d '["sfbt:essentials"]' http://localhost:51515/plugins.export?profile=1
+```
+Result:
+```
+{
+  "explicit": ["sfbt:essentials"],
+  "variants": {
+    "sfbt:essentials:tree-family": "CP-deciduous-trees",
+    "roadstyle": "US"
+  },
+  "channels": ["https://memo33.github.io/sc4pac/channel/"]
+}
 ```
 
 ## variants.list

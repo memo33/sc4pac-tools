@@ -519,6 +519,16 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
       }
     },
 
+    // 200, 400, 404, 409
+    Method.POST / "plugins.export" -> handler((req: Request) => wrapHttpEndpoint {
+      for {
+        mods        <- parseModulesOr400(req.body)
+        pluginsSpec <- readPluginsSpecOr409
+        pac         <- Sc4pac.init(pluginsSpec.config)
+        data        <- pac.`export`(mods, pluginsSpec.config.variant, pluginsSpec.config.channels)
+      } yield jsonResponse(data)
+    })
+
   )
 
   def routes(webAppDir: Option[os.Path]): Routes[ProfilesDir & service.FileSystem & ServerFiber & Client & Ref[ServerConnection] & Ref[Option[FileCache]], Nothing] = {

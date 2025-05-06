@@ -551,6 +551,40 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) {  // TODO d
     updateTask.provideSomeLayer(zio.ZLayer.succeed(context))
   }
 
+  /** Trims down variants and channels to what is relevant for the transitive
+    * dependencies of passed modules. */
+  def `export`(modules: Seq[BareModule], variants: Variant, channels: Seq[java.net.URI]): Task[JD.ExportData] = {
+    val variantSelection = VariantSelection(currentSelections = variants, initialSelections = Map.empty, importedSelections = Seq.empty)
+    val handler: PartialFunction[Throwable, Task[Nothing]] = {
+      case e: Sc4pacMissingVariant => ZIO.fail(error.UnresolvableDependencies(
+        title = "Some package variants could not be resolved. Click Update to ensure that your installed packages are up-to-date with concrete variants.",
+        detail = e.packageData.toBareDep.orgName,
+        deps = Seq(e.packageData.toBareDep),
+      ))
+    }
+    for {
+      // TODO Once dependencies are stored in lock file, resolving could be
+      // avoided (and thus Sc4pacMissingVariant exceptions could be avoided).
+      // The lock file would then be taken as the truth for `export`.
+      resolution   <- Resolution.resolve(modules, variantSelection)
+                        .catchSome(handler)
+                        .provideSomeLayer(zio.ZLayer.succeed(context))
+      relevantIds  =  resolution.transitiveDependencies.iterator.flatMap {
+                        case d: DepModule => d.variant.keysIterator
+                        case _ => Iterator.empty
+                      }.toSet
+      relevantUrls =  resolution.transitiveDependencies.iterator.flatMap { dep =>
+                        val bareDep = dep.toBareDep
+                        context.repositories.find(_.getRawVersions(bareDep).contains(dep.version))
+                          .map(_.baseUri): Option[java.net.URI]
+                      }.toSet
+    } yield JD.ExportData(
+      explicit = modules,
+      variants = variants.view.filterKeys(relevantIds).toMap,
+      channels = channels.filter(relevantUrls),  // preserve order of input channels
+    )
+  }
+
 }
 
 
