@@ -19,7 +19,7 @@ sealed abstract class MetadataRepository(val baseUri: java.net.URI) {
   /** Reads the repository's channel contents to obtain all available versions
     * of modules.
     */
-  def fetchVersions(dep: BareDep): IO[ErrStr, (Versions, String)] = {
+  def fetchVersions(dep: BareDep): IO[ErrStr, Versions] = {
     ZIO.fromEither {
       val rawVersions = getRawVersions(dep)
       if (rawVersions.nonEmpty) {
@@ -33,8 +33,7 @@ sealed abstract class MetadataRepository(val baseUri: java.net.URI) {
         val release = latest  // We do not bother with detecting prerelease versions,
                               // as our version numbers are not predictable enough
                               // and we only care about the current release anyway.
-        Right((Versions(latest.repr, release.repr, available = parsedVersions.map(_.repr).toList, lastUpdated = None),  // TODO lastUpdated = lastModified?
-               MetadataRepository.channelContentsUrl(baseUri).toString))
+        Right(Versions(latest.repr, release.repr, available = parsedVersions.map(_.repr).toList, lastUpdated = None))  // TODO lastUpdated = lastModified?
       } else {
         Left(s"no versions of ${dep.orgName} found in repository $baseUri")
       }
