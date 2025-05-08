@@ -3,6 +3,7 @@
 ## [Unreleased]
 ### Added
 - new `conflicting` attribute in YAML files, a list of conflicting packages (#11). Packages that are in conflict with each other cannot be installed at the same time.
+- support for searching by author name (#20)
 
 ### Fixed
 - a problem with handling version numbers containing spaces.

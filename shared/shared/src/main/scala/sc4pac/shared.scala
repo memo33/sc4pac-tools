@@ -213,10 +213,11 @@ abstract class SharedData {
     externalIds: Map[String, Seq[String]] = Map.empty,  // stex or sc4e
     summary: String = "",
     category: Option[String] = None,
+    tags: Seq[String] = Seq.empty,  // e.g. authors (for searching)
   ) derives ReadWriter {
     def isSc4pacAsset: Boolean = group == JsonRepoUtil.sc4pacAssetOrg.value
     def toBareDep: BareDep = if (isSc4pacAsset) BareAsset(ModuleName(name)) else BareModule(Organization(group), ModuleName(name))
-    private[sc4pac] def toSearchString: String = s"$group:$name $summary".toLowerCase(java.util.Locale.ENGLISH)
+    private[sc4pac] def toSearchString: String = (s"$group:$name $summary" + tags.mkString(" ", " ", "")).toLowerCase(java.util.Locale.ENGLISH)
   }
 
   case class Channel(
@@ -297,6 +298,16 @@ abstract class SharedData {
           // we arbitrarily pick the summary of the first item (usually there is just one version anyway)
           val summaryOpt = versions.iterator.collectFirst { case (_, pkg: Package, _) if pkg.info.summary.nonEmpty => pkg.info.summary }
           val catOpt = versions.iterator.collectFirst { case (_, pkg: Package, _) => categoryFromSubPath(pkg.subfolder) }.flatten
+          val tags = versions.iterator.collectFirst { case (_, pkg: Package, _) =>
+            pkg.info.author.split("[/,;]|\\band\\b").iterator
+              .map(_.trim())
+              .filter(_.nonEmpty)
+              .filterNot { author =>
+                // if author is already contained in one of the other searchable fields, we can ignore it
+                val p = Pattern.compile(Pattern.quote(author.replaceAll("_|\\s+", "-")), Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE)
+                p.matcher(pkg.group).find() || p.matcher(pkg.name).find() || pkg.info.summary.nonEmpty && p.matcher(pkg.info.summary).find()
+              }.toSeq
+          }.getOrElse(Seq.empty)
           ChannelItem(
             group = g, name = n,
             versions = versions.iterator.map(_._1).toSeq,
@@ -304,6 +315,7 @@ abstract class SharedData {
             externalIds = versions.iterator.collectFirst { case (_, pkg: Package, _) => findExternalIds(pkg) }.getOrElse(Map.empty),
             summary = summaryOpt.getOrElse(""),
             category = catOpt,
+            tags = tags,
           )
       }.partition(_.isSc4pacAsset)
       createAddStats(scheme, info, packages = packages.toSeq, assets = assets.toSeq, externalPackages, externalAssets)
