@@ -9,6 +9,8 @@
 - a problem with handling version numbers containing spaces.
 
 ### Changed
+- If a package uses a per-package variant of another package, the variant selection dialog now looks for the `variantInfo` field in both packages (#32).
+  From now on, the `variantInfo` for a per-package variant only needs to be defined in the one package it belongs to, rather than everywhere it is used.
 - API upgraded to 2.5:
   - added a new `/prompt/choice/update/remove-conflicting-packages` message to `/update`
   - added a new `/prompt/json/update/initial-arguments` message to `/update`

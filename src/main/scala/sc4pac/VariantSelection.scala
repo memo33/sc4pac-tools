@@ -78,17 +78,50 @@ class VariantSelection private (
         }
       }
 
+  /** Obtain module from prefix of variantId. */
+  def packageLocalVariantToModule(variantId: String): Option[BareModule] = {
+    val i1 = variantId.indexOf(":")
+    if (i1 == -1) {
+      None
+    } else {
+      val i2 = variantId.indexOf(":", i1 + 1)
+      if (i2 == -1) {
+        None
+      } else {
+        Sc4pac.parseModule(variantId.substring(0, i2)).toOption
+      }
+    }
+  }
+
+  /** If `variantId` is not local to `mod`, fetch package JSON of actual package
+    * this variant is local to (if any).
+    */
+  def fetchFallbackVariantInfo(variantId: String, mod: BareModule): RIO[ResolutionContext, Option[JD.VariantInfo]] = {
+    val orgName = mod.orgName
+    if (variantId.startsWith(orgName) && variantId.startsWith(":", orgName.length)) {
+      // no fallback needed, as variantId is prefixed by mod
+      ZIO.succeed(None)
+    } else {
+      packageLocalVariantToModule(variantId) match
+        case Some(mod2) =>
+          Find.concreteVersion(mod2, Constants.versionLatestRelease)
+            .flatMap(Find.packageData[JD.Package](mod2, _))
+            .map(_.flatMap(_.upgradeVariantInfo.variantInfo.get(variantId)))
+        case None => ZIO.succeed(None)
+    }
+  }
+
   /** Prompts for missing variant keys, so that the result allows to pick a unique variant of the package. */
-  def refineFor(pkgData: JD.Package): RIO[Prompter, VariantSelection] = {
+  def refineFor(pkgData: JD.Package): RIO[Prompter & ResolutionContext, VariantSelection] = {
     val mod = pkgData.toBareDep
-    lazy val variantInfo = pkgData.upgradeVariantInfo.variantInfo
+    lazy val variantInfos = pkgData.upgradeVariantInfo.variantInfo
     import VariantSelection.{DecisionTree, Node, Empty}
     DecisionTree.fromVariants(pkgData.variants.map(_.variant)) match {
       case Left(err) => ZIO.fail(new error.UnsatisfiableVariantConstraints(
         s"Unable to choose variants as the metadata of ${mod.orgName} seems incomplete", err.toString))
       case Right(decisionTree) =>
         type Key = String; type Value = String
-        def choose[T](key: Key, choices: Seq[(Value, T)]): RIO[Prompter, (Value, T)] = {
+        def choose[T](key: Key, choices: Seq[(Value, T)]): RIO[Prompter & ResolutionContext, (Value, T)] = {
           getSelectedValue(key) match
             case Right(selectedValue) => choices.find(_._1 == selectedValue) match
               case Some(choice) => ZIO.succeed(choice)
@@ -96,14 +129,18 @@ class VariantSelection private (
                 s"""None of the variants ${choices.map(_._1).mkString(", ")} of ${mod.orgName} match the configured variant $key=$selectedValue.""",
                 s"""The package metadata seems incorrect, but resetting the configured variant in the GUI Dashboard may resolve the problem (CLI command: `sc4pac variant reset "$key"`)."""))
             case Left((initialValueOpt, importedValues)) =>  // variant for key has not been selected or is ambiguous, so choose it interactively
-              ZIO.serviceWithZIO[Prompter](_.promptForVariant(
-                module = mod,
-                variantId = key,
-                values = choices.map(_._1),
-                info = variantInfo.get(key).getOrElse(JD.VariantInfo.empty),
-                previouslySelectedValue = initialValueOpt,
-                importedValues = importedValues,
-              ).map(selectedValue => choices.find(_._1 == selectedValue).get))  // prompter is guaranteed to return a matching value
+              for {
+                variantInfo    <- ZIO.succeed(variantInfos.get(key))
+                                    .someOrElseZIO(fetchFallbackVariantInfo(key, mod).someOrElse(JD.VariantInfo.empty))
+                selectedValue  <- ZIO.serviceWithZIO[Prompter](_.promptForVariant(
+                                    module = mod,
+                                    variantId = key,
+                                    values = choices.map(_._1),
+                                    info = variantInfo,
+                                    previouslySelectedValue = initialValueOpt,
+                                    importedValues = importedValues,
+                                  ))
+              } yield choices.find(_._1 == selectedValue).get  // prompter is guaranteed to return a matching value
         }
 
         ZIO.iterate(decisionTree, Seq.newBuilder[(Key, Value)])(_._1 != Empty) {

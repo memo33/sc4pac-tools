@@ -470,11 +470,11 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) {  // TODO d
       logger.publishing(removalOnly = plan.toInstall.isEmpty)(task.uninterruptible)
     }
 
-    def doPromptingForVariant[R, A](variantSelection: VariantSelection)(task: VariantSelection => RIO[R, A]): RIO[Prompter & R, (A, VariantSelection)] = {
+    def doPromptingForVariant[R, A](variantSelection: VariantSelection)(task: VariantSelection => RIO[R, A]): RIO[Prompter & ResolutionContext & R, (A, VariantSelection)] = {
       ZIO.iterate(Left(variantSelection): Either[VariantSelection, (A, VariantSelection)])(_.isLeft) {
         case Right(_) => throw new AssertionError
         case Left(variantSelection) =>
-          val handler: PartialFunction[Throwable, RIO[Prompter, Either[VariantSelection, (A, VariantSelection)]]] = {
+          val handler: PartialFunction[Throwable, RIO[Prompter & ResolutionContext, Either[VariantSelection, (A, VariantSelection)]]] = {
             case e: Sc4pacMissingVariant => variantSelection.refineFor(e.packageData).map(Left(_))
           }
           task(variantSelection)
