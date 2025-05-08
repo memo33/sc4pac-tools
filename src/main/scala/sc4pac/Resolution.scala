@@ -27,13 +27,13 @@ object Resolution {
   }
 
   object Dep {
-    /** Given a package dependency without specified variant, use globalVariant
+    /** Given a package dependency without specified variant, use variantSelection
       * information to pick a concrete variant for the dependency, if dependency
       * supports multiple variants;
       * Given an asset reference dependency, look up its url and lastModified
       * attributes.
       */
-    private[Resolution] def fromBareDependency(dependency: BareDep, globalVariant: Variant): RIO[ResolutionContext, Dep] = dependency match {
+    private[Resolution] def fromBareDependency(dependency: BareDep, variantSelection: VariantSelection): RIO[ResolutionContext, Dep] = dependency match {
       case bareAsset: BareAsset =>
         // assets do not have variants
         Find.concreteVersion(bareAsset, Constants.versionLatestRelease)
@@ -46,7 +46,7 @@ object Resolution {
       case bareMod @ BareModule(group, name) =>
         for {
           concreteVersion  <- Find.concreteVersion(bareMod, Constants.versionLatestRelease)
-          (_, variantData) <- Find.matchingVariant(bareMod, concreteVersion, globalVariant)
+          (_, variantData) <- Find.matchingVariant(bareMod, concreteVersion, variantSelection)
         } yield DepModule(group = group, name = name, version = concreteVersion, variant = variantData.variant)
     }
   }
@@ -102,13 +102,13 @@ object Resolution {
     * implicitly always take the latest version. That way, we do not need to
     * worry about reconciliation strategies or dependency cycles.
     */
-  def resolve(initialDependencies: Seq[BareDep], globalVariant: Variant): RIO[ResolutionContext, Resolution] = {
+  def resolve(initialDependencies: Seq[BareDep], variantSelection: VariantSelection): RIO[ResolutionContext, Resolution] = {
 
     // TODO avoid looking up variants and packageData multiple times
     def lookupDependencyLinks(dep: BareDep): RIO[ResolutionContext, Links] = dep match {
       case dep: BareAsset => ZIO.succeed(Links(Seq.empty, Seq.empty))
       case mod: BareModule => {
-        Find.matchingVariant(mod, Constants.versionLatestRelease, globalVariant)
+        Find.matchingVariant(mod, Constants.versionLatestRelease, variantSelection)
           .map { (pkgData, variantData) => Links(dependencies = variantData.bareDependencies, conflicts = variantData.conflictingPackages) }
       }
     }
@@ -173,7 +173,7 @@ object Resolution {
                             explicitPackages2 = pkgs2,
                           )
                         }
-      nonbareDeps    <- ZIO.foreach(reachableDeps.keySet) { d => Dep.fromBareDependency(d, globalVariant).map(d -> _) }
+      nonbareDeps    <- ZIO.foreach(reachableDeps.keySet) { d => Dep.fromBareDependency(d, variantSelection).map(d -> _) }
     } yield Resolution(reachableDeps, nonbareDeps.toMap, reverseDeps)
 
   }

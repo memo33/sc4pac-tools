@@ -142,40 +142,46 @@ class WebSocketPrompter(wsChannel: zio.http.WebSocketChannel, logger: WebSocketL
     } yield response
   }
 
-  private def promptUntil(message: PromptMessage, acceptResponse: String => Boolean): Task[String] = {
-    ZIO.iterate(Option.empty[String])(_.isEmpty) { _ =>
-      for (response <- sendPrompt(message)) yield {
-        if (acceptResponse(response.body)) Some(response.body)
-        else None
-      }
-    }.map(_.get)
+  // private def promptUntil(message: PromptMessage, acceptResponse: String => Boolean): Task[String] = {
+  //   ZIO.iterate(Option.empty[String])(_.isEmpty) { _ =>
+  //     for (response <- sendPrompt(message)) yield {
+  //       if (acceptResponse(response.body)) Some(response.body)
+  //       else None
+  //     }
+  //   }.map(_.get)
+  // }
+
+  def promptForInitialArguments(): Task[PromptMessage.InitialArgumentsForUpdate.Args] = {
+    sendPrompt(PromptMessage.InitialArgumentsForUpdate())
+      .flatMap(resp => JsonIo.read[PromptMessage.InitialArgumentsForUpdate.Args](resp.body.toString))
   }
 
-  def promptForVariant(module: BareModule, variantId: String, values: Seq[String], info: JD.VariantInfo): Task[String] = {
-    sendPrompt(PromptMessage.ChooseVariant(module, variantId, values, info)).map(_.body)
+  def promptForVariant(module: BareModule, variantId: String, values: Seq[String], info: JD.VariantInfo, previouslySelectedValue: Option[String], importedValues: Seq[String]): Task[String] = {
+    sendPrompt(PromptMessage.ChooseVariant(module, variantId, values, info, previouslySelectedValue, importedValues)).map(_.body.str)
   }
 
   def confirmRemovingUnresolvableExplicitPackages(modules: Seq[BareModule]): Task[Boolean] = {
-    sendPrompt(PromptMessage.ConfirmRemoveUnresolvablePackages(packages = modules)).map(_.body == yes)
+    sendPrompt(PromptMessage.ConfirmRemoveUnresolvablePackages(packages = modules)).map(_.body.str == yes)
   }
 
   def chooseToRemoveConflictingExplicitPackages(conflict: (BareModule, BareModule), explicitPackages: (Seq[BareModule], Seq[BareModule])): Task[Option[Seq[BareModule]]] = {
     sendPrompt(PromptMessage.ChooseToRemoveConflictingPackages(conflict, explicitPackages))
-      .map {
-        case resp if resp.body == oneTwoCancel(0) => Some(explicitPackages._1)
-        case resp if resp.body == oneTwoCancel(1) => Some(explicitPackages._2)
-        case _ => None
+      .map { resp =>
+        val bodyStr = resp.body.str
+        if (bodyStr == oneTwoCancel(0)) Some(explicitPackages._1)
+        else if (bodyStr == oneTwoCancel(1)) Some(explicitPackages._2)
+        else None
       }
   }
 
   def confirmUpdatePlan(plan: Sc4pac.UpdatePlan): zio.Task[Boolean] = {
     val toRemove = plan.toRemove.toSeq.collect { case dep: DepModule => PromptMessage.ConfirmUpdatePlan.Pkg(dep.toBareDep, dep.version, dep.variant) }
     val toInstall = plan.toInstall.toSeq.collect { case dep: DepModule => PromptMessage.ConfirmUpdatePlan.Pkg(dep.toBareDep, dep.version, dep.variant) }
-    sendPrompt(PromptMessage.ConfirmUpdatePlan(toRemove = toRemove, toInstall = toInstall)).map(_.body == yes)
+    sendPrompt(PromptMessage.ConfirmUpdatePlan(toRemove = toRemove, toInstall = toInstall)).map(_.body.str == yes)
   }
 
   def confirmInstallationWarnings(warnings: Seq[(BareModule, Seq[String])]): zio.Task[Boolean] = {
-    sendPrompt(PromptMessage.ConfirmInstallation(warnings.toMap)).map(_.body == yes)
+    sendPrompt(PromptMessage.ConfirmInstallation(warnings.toMap)).map(_.body.str == yes)
   }
 
 }

@@ -132,7 +132,8 @@ object Commands {
         pac          <- Sc4pac.init(pluginsSpec.config)
         pluginsRoot  <- pluginsSpec.config.pluginsRootAbs
         fs           <- ZIO.service[service.FileSystem]
-        flag         <- pac.update(pluginsSpec.explicit, globalVariant0 = pluginsSpec.config.variant, pluginsRoot = pluginsRoot)
+        variantSelection = VariantSelection(currentSelections = Map.empty, initialSelections = pluginsSpec.config.variant, importedSelections = Nil)  // importedSelections supported by API/GUI only
+        flag         <- pac.update(pluginsSpec.explicit, variantSelection, pluginsRoot = pluginsRoot)
                           .provideSomeLayer(zio.ZLayer.succeed(Downloader.Credentials(simtropolisToken = fs.env.simtropolisToken)))
       } yield ()
       runMainExit(task.provideLayer(cliLayer.map(_.update((_: CliPrompter).withAutoYes(options.yes)))), exit)

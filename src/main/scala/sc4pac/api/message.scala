@@ -12,7 +12,7 @@ sealed trait Message derives UP.ReadWriter
 sealed trait PromptMessage extends Message derives UP.ReadWriter {
   def token: String
   def choices: Seq[String]
-  def accept(response: ResponseMessage): Boolean = response.token == token && choices.contains(response.body)
+  def accept(response: ResponseMessage): Boolean = response.token == token && choices.contains(response.body.str)
 }
 object PromptMessage {
 
@@ -26,13 +26,15 @@ object PromptMessage {
     variantId: String,
     choices: Seq[String],
     info: JD.VariantInfo,
+    previouslySelectedValue: Option[String],
+    importedValues: Seq[String],
     token: String,
     responses: Map[String, ResponseMessage]
   ) extends PromptMessage
   object ChooseVariant {
-    def apply(`package`: BareModule, variantId: String, choices: Seq[String], info: JD.VariantInfo): ChooseVariant = {
+    def apply(`package`: BareModule, variantId: String, choices: Seq[String], info: JD.VariantInfo, previouslySelectedValue: Option[String], importedValues: Seq[String]): ChooseVariant = {
       val token = scala.util.Random.nextInt().toHexString
-      ChooseVariant(`package`, variantId, choices, info, token, responsesFromChoices(choices, token))
+      ChooseVariant(`package`, variantId, choices, info, previouslySelectedValue, importedValues, token, responsesFromChoices(choices, token))
     }
     given chooseVariantRw: UP.ReadWriter[ChooseVariant] = UP.stringKeyRW(UP.macroRW)
   }
@@ -102,10 +104,33 @@ object PromptMessage {
     }
     given confirmInstallation: UP.ReadWriter[ConfirmInstallation] = UP.stringKeyRW(UP.macroRW)
   }
+
+  @upickle.implicits.key("/prompt/json/update/initial-arguments")
+  case class InitialArgumentsForUpdate(
+    choices: Seq[String],  // = "Default"
+    token: String,
+    responses: Map[String, ResponseMessage],
+  ) extends PromptMessage {
+    override def accept(response: ResponseMessage): Boolean = response.token == token
+  }
+  object InitialArgumentsForUpdate {
+    def apply(): InitialArgumentsForUpdate = {
+      val token = scala.util.Random.nextInt().toHexString
+      InitialArgumentsForUpdate(
+        choices = Seq("Default"),
+        token = token,
+        responses = Map("Default" -> ResponseMessage(token, ujson.Obj() /* empty Args() as json */)),
+      )
+    }
+
+    case class Args(
+      importedSelections: Seq[Variant] = Seq.empty,
+    ) derives UP.ReadWriter
+  }
 }
 
 @upickle.implicits.key("/prompt/response")
-case class ResponseMessage(token: String, body: String) extends Message derives UP.ReadWriter
+case class ResponseMessage(token: String, body: ujson.Value) extends Message derives UP.ReadWriter
 
 // externalIds are not really needed for this interface, as there's no limit on
 // the number of packages (unlike the limit for custom sc4pac:// URLs)
