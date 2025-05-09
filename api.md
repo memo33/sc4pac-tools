@@ -473,6 +473,7 @@ Messages sent:
 - `/prompt/choice/update/remove-conflicting-packages` to resolve a potential package conflict
 - `/prompt/confirmation/update/remove-unresolvable-packages` if explicit packages cannot be found (e.g. if renamed in channel)
 - `/prompt/confirmation/update/plan` once (even if everything is up-to-date, in which case you can accept without user input)
+- `/prompt/json/update/download-failed-select-mirror` to provide a fallback in case a download fails
 - for each download (in parallel):
   - `/progress/download/started` once
   - `/progress/download/length` at most once (if the file size is known)

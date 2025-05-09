@@ -525,6 +525,22 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) {  // TODO d
                      )(ZIO.succeed(()))
     } yield ()
 
+    def doDownloadWithMirror(resolution: Resolution, depsToInstall: Seq[Dep]): RIO[Prompter & ResolutionContext & Downloader.Credentials, Seq[(DepAsset, Artifact, java.io.File)]] = {
+      ZIO.iterate(Left(Map.empty): Either[Map[String, os.Path], Seq[(DepAsset, Artifact, java.io.File)]])(_.isLeft) {
+        case Left(urlFallbacks) =>
+          resolution.fetchArtifactsOf(depsToInstall, urlFallbacks)
+            .map(Right(_))
+            .catchSome { case e: error.DownloadFailed if e.url.isDefined && !urlFallbacks.contains(e.url.get) =>
+              ZIO.serviceWithZIO[Prompter](_.promptForDownloadMirror(e.url.get, e))
+                .flatMap {
+                  case Right(fallback) => ZIO.succeed(Left(urlFallbacks + (e.url.get -> fallback)))
+                  case Left(retry) => if (retry) ZIO.succeed(Left(urlFallbacks)) else ZIO.fail(e)
+                }
+            }
+        case Right(_) => throw new AssertionError
+      }.map(_.toOption.get)
+    }
+
     // TODO catch coursier.error.ResolutionError$CantDownloadModule (e.g. when json files have syntax issues)
     val updateTask = for {
       pluginsLockData1 <- JD.PluginsLock.readOrInit
@@ -536,7 +552,7 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) {  // TODO d
                            .filterOrFail(_ == true)(error.Sc4pacAbort())
       _               <- ZIO.unless(!continue || finalSelections == variantSelection0.initialSelections && modules == modules0)(storeUpdatedSpec(finalSelections, modules))  // only store something after confirmation
       flagOpt         <- ZIO.unless(!continue || plan.isUpToDate)(for {
-        assetsToInstall <- resolution.fetchArtifactsOf(resolution.transitiveDependencies.filter(plan.toInstall).reverse)  // we start by fetching artifacts in reverse as those have fewest dependencies of their own
+        assetsToInstall <- doDownloadWithMirror(resolution, resolution.transitiveDependencies.filter(plan.toInstall).reverse)  // we start by fetching artifacts in reverse as those have fewest dependencies of their own
         // TODO if some artifacts fail to be fetched, fall back to installing remaining packages (maybe not(?), as this leads to missing dependencies,
         // but there needs to be a manual workaround in case of permanently missing artifacts)
         depsToStage     =  plan.toInstall.collect{ case d: DepModule => d }.toSeq  // keep only non-assets

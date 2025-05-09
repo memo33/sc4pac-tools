@@ -28,7 +28,7 @@ final class UnsatisfiableVariantConstraints(val title: String, val detail: Strin
 
 final class ExtractionFailed(val title: String, val detail: String) extends java.io.IOException(s"$title $detail") with Sc4pacErr
 
-final class DownloadFailed(val title: String, val detail: String) extends java.io.IOException(s"$title $detail") with Sc4pacErr
+final class DownloadFailed(val title: String, val detail: String, val url: Option[String]) extends java.io.IOException(s"$title $detail") with Sc4pacErr
 
 final class ChecksumError(val title: String, val detail: String) extends java.io.IOException(s"$title $detail") with Sc4pacErr
 
@@ -52,7 +52,7 @@ final class ObtainingUserDirsFailed(val title: String, val detail: String) exten
 sealed abstract class Artifact2Error(val message: String, val parentOpt: Option[Throwable]) extends Exception(message, parentOpt.orNull)
 object Artifact2Error {
   final class RateLimited(val url: String) extends Artifact2Error(s"Rate limited: $url", None)
-  final class NotFound(val url: String) extends Artifact2Error(s"Note found: $url", None)
+  final class NotFound(val url: String) extends Artifact2Error(s"Not found: $url", None)
   final class Forbidden(val url: String) extends Artifact2Error(s"Forbidden: $url", None)
   final class Unauthorized(val url: String) extends Artifact2Error(s"Unauthorized: $url", None)
   final class DownloadError(val reason: String, e: Option[Throwable]) extends Artifact2Error(reason, e)

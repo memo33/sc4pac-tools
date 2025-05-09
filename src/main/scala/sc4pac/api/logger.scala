@@ -180,6 +180,19 @@ class WebSocketPrompter(wsChannel: zio.http.WebSocketChannel, logger: WebSocketL
     sendPrompt(PromptMessage.ConfirmUpdatePlan(toRemove = toRemove, toInstall = toInstall)).map(_.body.str == yes)
   }
 
+  def promptForDownloadMirror(url: String, reason: error.DownloadFailed): Task[Either[Boolean, os.Path]] = {
+    for {
+      resp <- sendPrompt(PromptMessage.DownloadFailedSelectMirror(
+                url = url,
+                reason = ErrorMessage.DownloadFailed(reason.title, reason.detail),
+              ))
+      data <- JsonIo.read[PromptMessage.DownloadFailedSelectMirror.ResponseData](resp.body.toString)
+    } yield {
+      if (data.retry && data.localMirror.isDefined) Right(os.Path(data.localMirror.get, os.pwd))  // should usually be absolute already
+      else Left(data.retry)
+    }
+  }
+
   def confirmInstallationWarnings(warnings: Seq[(BareModule, Seq[String])]): zio.Task[Boolean] = {
     sendPrompt(PromptMessage.ConfirmInstallation(warnings.toMap)).map(_.body.str == yes)
   }

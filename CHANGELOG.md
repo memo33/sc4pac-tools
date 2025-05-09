@@ -4,6 +4,7 @@
 ### Added
 - new `conflicting` attribute in YAML files, a list of conflicting packages (#11). Packages that are in conflict with each other cannot be installed at the same time.
 - support for searching by author name (#20)
+- support for selecting a local file from disk as fallback if the download of an asset failed (e.g. when a file was rehosted at a different URL)
 
 ### Fixed
 - a problem with handling version numbers containing spaces.

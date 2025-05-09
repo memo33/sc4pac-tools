@@ -31,10 +31,10 @@ object Find {
         e.getMessage))
     case e: (Artifact2Error.DownloadError | Artifact2Error.WrongLength | Artifact2Error.NotFound) =>
       ZIO.fail(new error.DownloadFailed("Failed to download some metadata files. Check your internet connection.",
-        e.getMessage))
+        e.getMessage, url = None))
     case e: Artifact2Error =>
       context.logger.debugPrintStackTrace(e)
-      ZIO.fail(new error.DownloadFailed("Unexpected download error.", e.getMessage))
+      ZIO.fail(new error.DownloadFailed("Unexpected download error.", e.getMessage, url = None))
   }
 
   /** Find the JD.Package or JD.Asset corresponding to module and version,

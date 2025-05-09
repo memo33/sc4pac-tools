@@ -171,12 +171,12 @@ and do not require any build step.
 
 - [x] Basic functionality
 - [x] Command-line interface (CLI) with all important commands
-- [ ] Improve resilience of downloads
+- [x] Improve resilience of downloads
   - [x] missing content-length (ST)
-  - [x] authentication (ST), [partially implemented](https://github.com/memo33/sc4pac-tools/blob/main/src/scripts/sc4pac.bat#L13-L32)
+  - [x] authentication (ST)
   - [x] incomplete downloads (SC4E)
-  - [ ] non-persistent URLs (Moddb)
-  - [ ] handling servers that have gone offline (e.g. version pinning)
+  - [ ] ~non-persistent URLs (Moddb)~
+  - [x] handling servers that have gone offline ~(e.g. version pinning)~ (local files can be used as fallback)
 - [x] Collaborative central [metadata channel](https://github.com/memo33/sc4pac)
 - [x] [Website and online documentation](https://memo33.github.io/sc4pac/)
 - [x] Server API (backend): https://memo33.github.io/sc4pac/#/api or [api.md](api.md)

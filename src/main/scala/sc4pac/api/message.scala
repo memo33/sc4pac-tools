@@ -127,6 +127,39 @@ object PromptMessage {
       importedSelections: Seq[Variant] = Seq.empty,
     ) derives UP.ReadWriter
   }
+
+  @upickle.implicits.key("/prompt/json/update/download-failed-select-mirror")
+  case class DownloadFailedSelectMirror(
+    url: String,
+    reason: ErrorMessage.DownloadFailed,
+    choices: Seq[String],
+    token: String,
+    responses: Map[String, ResponseMessage],
+  ) extends PromptMessage {
+    override def accept(response: ResponseMessage): Boolean = response.token == token
+  }
+  object DownloadFailedSelectMirror {
+    def apply(url: String, reason: ErrorMessage.DownloadFailed): DownloadFailedSelectMirror = {
+      val token = scala.util.Random.nextInt().toHexString
+      DownloadFailedSelectMirror(
+        url = url,
+        reason = reason,
+        choices = Seq("Retry", "Cancel"),
+        token = token,
+        responses = Map(
+          "Retry" -> ResponseMessage(token, ujson.Obj("retry" -> true, "localMirror" -> ujson.Arr())),
+          // Select mirror -> retry=true, localMirror=[path]  (must be constructed manually)
+          "Cancel" -> ResponseMessage(token, ujson.Obj("retry" -> false)),
+        ),
+      )
+    }
+
+    case class ResponseData(
+      retry: Boolean,
+      localMirror: Option[java.nio.file.Path] = None,
+    ) derives UP.ReadWriter
+  }
+
 }
 
 @upickle.implicits.key("/prompt/response")

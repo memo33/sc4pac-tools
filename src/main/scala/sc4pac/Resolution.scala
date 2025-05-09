@@ -203,7 +203,7 @@ class Resolution(reachableDeps: TreeSeqMap[BareDep, Links], nonbareDeps: Map[Bar
   /** Download artifacts of a subset of the dependency set of the resolution, or
     * take files from cache in case they are still up-to-date.
     */
-  def fetchArtifactsOf(subset: Seq[Dep]): RIO[ResolutionContext & Downloader.Credentials, Seq[(DepAsset, Artifact, java.io.File)]] = {
+  def fetchArtifactsOf(subset: Seq[Dep], urlFallbacks: Map[String, os.Path]): RIO[ResolutionContext & Downloader.Credentials, Seq[(DepAsset, Artifact, java.io.File)]] = {
     val assetsArtifacts = subset.collect{ case d: DepAsset =>
       (d, Artifact(
         d.url,
@@ -211,6 +211,7 @@ class Resolution(reachableDeps: TreeSeqMap[BareDep, Links], nonbareDeps: Map[Bar
         lastModified = d.lastModified,  // non-changing assets should have lastModified defined and vice versa
         checksum = d.checksum,
         redownloadOnChecksumError = false,
+        localMirror = urlFallbacks.get(d.url),
       ))
     }
     def fetchTask(context: ResolutionContext) =
@@ -234,7 +235,7 @@ class Resolution(reachableDeps: TreeSeqMap[BareDep, Links], nonbareDeps: Map[Bar
                 } else {
                   "Failed to download some assets from Simtropolis due to lack of authorization. Set up a personal Simtropolis authentication token and try again."
                 }
-                ZIO.fail(new error.DownloadFailed(msg, e.getMessage))
+                ZIO.fail(new error.DownloadFailed(msg, e.getMessage, url = Some(art.url)))
               }
             case e: Artifact2Error.RateLimited =>  // 429
               ZIO.serviceWithZIO[Downloader.Credentials] { credentials =>
@@ -246,7 +247,7 @@ class Resolution(reachableDeps: TreeSeqMap[BareDep, Links], nonbareDeps: Map[Bar
                   "Failed to download some assets (rate-limited). " +
                   "The file exchange server has blocked your download, as you have sent too many download requests in a short time."
                 }
-                ZIO.fail(new error.DownloadFailed(msg, e.getMessage))
+                ZIO.fail(new error.DownloadFailed(msg, e.getMessage, url = Some(art.url)))
               }
             case e: Artifact2Error.Forbidden =>  // 403
               ZIO.serviceWithZIO[Downloader.Credentials] { credentials =>
@@ -259,14 +260,14 @@ class Resolution(reachableDeps: TreeSeqMap[BareDep, Links], nonbareDeps: Map[Bar
                   "Your download request has been blocked by the file exchange server. " +
                   "For example, this can happen when using a public VPN or a suspicious IP address, or when a file has been locked."
                 }
-                ZIO.fail(new error.DownloadFailed(msg, e.getMessage))
+                ZIO.fail(new error.DownloadFailed(msg, e.getMessage, url = Some(art.url)))
               }
             case e: (Artifact2Error.DownloadError | Artifact2Error.WrongLength | Artifact2Error.NotFound) =>  // e.g. 500, 404 or other issues
               val msg = "Failed to download some assets. Maybe the file exchange server is currently unavailable. Also check your internet connection."
-              ZIO.fail(new error.DownloadFailed(msg, e.getMessage))
+              ZIO.fail(new error.DownloadFailed(msg, e.getMessage, url = Some(art.url)))
             case e: Artifact2Error =>  // e.g. 500 or other issues
               context.logger.debugPrintStackTrace(e)
-              ZIO.fail(new error.DownloadFailed("Unexpected download error.", e.getMessage))
+              ZIO.fail(new error.DownloadFailed("Unexpected download error.", e.getMessage, url = Some(art.url)))
           }
       }
       .provideSomeLayer(zio.ZLayer.succeed(context.logger))

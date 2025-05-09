@@ -16,6 +16,8 @@ trait Prompter {
 
   def confirmUpdatePlan(plan: Sc4pac.UpdatePlan): Task[Boolean]
 
+  def promptForDownloadMirror(url: String, reason: error.DownloadFailed): Task[Either[Boolean, os.Path]]
+
   def confirmInstallationWarnings(warnings: Seq[(BareModule, Seq[String])]): Task[Boolean]
 }
 
@@ -98,6 +100,30 @@ class CliPrompter(logger: CliLogger, autoYes: Boolean) extends Prompter {
         onTrue = Prompt.yesNo("Continue?"),
         onFalse = ZIO.succeed(true))  // in non-interactive mode, always continue
     }
+  }
+
+  /** Returns either retry=true/false or a local fallback file. */
+  def promptForDownloadMirror(url: String, reason: error.DownloadFailed): Task[Either[Boolean, os.Path]] = {
+    logger.warn(reason.getMessage)
+    val choices = Seq("Retry", "Select a file from disk to use instead", "Cancel")
+    val pretext = f"%n  $url%n%nThe download of this file failed. Choose what to do."
+    Prompt.ifInteractive(
+      onFalse = ZIO.succeed(Left(false)),  // error out
+      onTrue = Prompt.numbered(pretext, choices, default = Some(choices.last))
+        .flatMap { s =>
+          if (s == choices(1))
+            Prompt.pathInput("Enter a path: ")
+              .flatMap { path =>
+                ZIO.ifZIO(ZIO.attemptBlockingIO(os.exists(path)))(
+                  onTrue = ZIO.succeed(Some(path)),
+                  onFalse = ZIO.succeed { logger.log("File does not exist."); None },
+                )
+              }
+              .repeatWhile(_.isEmpty)
+              .map(pathOpt => Right(pathOpt.get))
+          else ZIO.succeed(Left(s == choices(0)))
+        },
+    )
   }
 
   def confirmInstallationWarnings(warnings: Seq[(BareModule, Seq[String])]): Task[Boolean] = {

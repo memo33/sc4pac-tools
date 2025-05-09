@@ -34,13 +34,30 @@ class Downloader(
     val url = artifact.url
     logger.checkingArtifact(url, artifact)
     if (url.startsWith("file:/")) {
+      // use local file directly
       ZIO.attemptBlocking {
         if (localFile.exists()) Right(localFile)
         else Left(new Artifact2Error.NotFound(localFile.toString))
       }.catchSome {
         case scala.util.control.NonFatal(e) => ZIO.succeed(Left(wrapDownloadError(e, url)))
       }.orDie.absolve
+    } else if (artifact.localMirror.isDefined) {
+      // download has previously failed, so copy local mirror of file instead
+      val mirrorPath = artifact.localMirror.get
+      ZIO.attemptBlocking {
+        val localFilePath = os.Path(localFile.getAbsolutePath())
+        if (localFilePath != mirrorPath) {
+          os.copy.over(mirrorPath, localFilePath, replaceExisting = true, createFolders = true, followLinks = true)
+        }
+        doTouchCheckFile(localFile, url = url, filename = mirrorPath.lastOpt, sha256 = Downloader.computeChecksum(localFile))
+        Right(localFile)
+      }.catchSome {
+        case e: java.io.FileNotFoundException if e.getMessage != null => ZIO.succeed(Left(new Artifact2Error.NotFound(e.getMessage)))
+        case e: java.nio.file.NoSuchFileException if e.getMessage != null => ZIO.succeed(Left(new Artifact2Error.NotFound(e.getMessage)))
+        case scala.util.control.NonFatal(e) => ZIO.succeed(Left(wrapDownloadError(e, url)))
+      }.orDie.absolve
     } else {
+      // download remote file
       remote(localFile, url).map(_ => localFile)
     }
   }
