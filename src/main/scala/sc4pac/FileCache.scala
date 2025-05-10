@@ -13,7 +13,7 @@ import sc4pac.error.Artifact2Error
   */
 class FileCache private (
   csCache: CC.FileCache[Task],
-  runningTasks: ConcurrentHashMap[String, Promise[Artifact2Error, java.io.File]]
+  runningTasks: ConcurrentHashMap[java.net.URI, Promise[Artifact2Error, java.io.File]]
 ) {
 
   def location: java.io.File = csCache.location
@@ -33,11 +33,11 @@ class FileCache private (
   /** The cache location corresponding to the URL, regardless of whether the
     * file already exists or not.
     */
-  def localFile(url: String): java.io.File =
-    csCache.localFile(url, user = None)
+  def localFile(url: java.net.URI): java.io.File =
+    csCache.localFile(url.toString, user = None)
 
-  private def isManagedByCache(url: String, file: java.io.File): Boolean = {
-    if (url.startsWith("file:/")) false
+  private def isManagedByCache(url: java.net.URI, file: java.io.File): Boolean = {
+    if (url.getScheme == "file") false
     else true  // TODO as a safeguard, verify that local file is inside cache folder
   }
 
@@ -159,7 +159,7 @@ class FileCache private (
     def helper(artifact: Artifact): ZIO[Logger, Artifact2Error, A] =
       fetchText(artifact)
         .flatMap { (jsonStr: String) =>
-          JsonIo.read[A](jsonStr, errMsg = artifact.url)
+          JsonIo.read[A](jsonStr, errMsg = artifact.url.toString)
             .mapError(e => Artifact2Error.JsonFormatError(
               reason = s"Json format error in file ${localFile(artifact.url)}. If the problem persists, try to manually delete the file from the cache.",
               e,

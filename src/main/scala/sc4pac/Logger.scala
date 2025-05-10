@@ -22,7 +22,7 @@ trait Logger {
   def gettingLength(url: String): Unit = {}
   def gettingLengthResult(url: String, length: Option[Long]): Unit = {}
 
-  def concurrentCacheAccess(url: String): Unit = debug(s"concurrentCacheAccess $url")
+  def concurrentCacheAccess(url: java.net.URI): Unit = debug(s"concurrentCacheAccess $url")
 
   def extractingArchiveEntry(entry: os.SubPath, include: Boolean): Unit
 

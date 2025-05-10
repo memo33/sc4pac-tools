@@ -28,7 +28,7 @@ final class UnsatisfiableVariantConstraints(val title: String, val detail: Strin
 
 final class ExtractionFailed(val title: String, val detail: String) extends java.io.IOException(s"$title $detail") with Sc4pacErr
 
-final class DownloadFailed(val title: String, val detail: String, val url: Option[String]) extends java.io.IOException(s"$title $detail") with Sc4pacErr
+final class DownloadFailed(val title: String, val detail: String, val url: Option[java.net.URI]) extends java.io.IOException(s"$title $detail") with Sc4pacErr
 
 final class ChecksumError(val title: String, val detail: String) extends java.io.IOException(s"$title $detail") with Sc4pacErr
 

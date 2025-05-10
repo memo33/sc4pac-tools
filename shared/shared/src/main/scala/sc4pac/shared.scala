@@ -105,7 +105,7 @@ abstract class SharedData {
   case class Asset(
     assetId: String,
     version: String,
-    url: String,
+    url: Uri,
     lastModified: Instant = null.asInstanceOf[Instant],
     archiveType: Option[ArchiveType] = None,
     requiredBy: Seq[BareModule] = Seq.empty,  // optional and only informative (mangles all variants and versions)

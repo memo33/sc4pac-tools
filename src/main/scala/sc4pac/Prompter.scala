@@ -16,7 +16,7 @@ trait Prompter {
 
   def confirmUpdatePlan(plan: Sc4pac.UpdatePlan): Task[Boolean]
 
-  def promptForDownloadMirror(url: String, reason: error.DownloadFailed): Task[Either[Boolean, os.Path]]
+  def promptForDownloadMirror(url: java.net.URI, reason: error.DownloadFailed): Task[Either[Boolean, os.Path]]
 
   def confirmInstallationWarnings(warnings: Seq[(BareModule, Seq[String])]): Task[Boolean]
 }
@@ -103,7 +103,7 @@ class CliPrompter(logger: CliLogger, autoYes: Boolean) extends Prompter {
   }
 
   /** Returns either retry=true/false or a local fallback file. */
-  def promptForDownloadMirror(url: String, reason: error.DownloadFailed): Task[Either[Boolean, os.Path]] = {
+  def promptForDownloadMirror(url: java.net.URI, reason: error.DownloadFailed): Task[Either[Boolean, os.Path]] = {
     logger.warn(reason.getMessage)
     val choices = Seq("Retry", "Select a file from disk to use instead", "Cancel")
     val pretext = f"%n  $url%n%nThe download of this file failed. Choose what to do."

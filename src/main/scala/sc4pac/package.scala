@@ -72,7 +72,7 @@ package object sc4pac {
   class ProfilesDir(val path: os.Path)
 
   class Artifact(
-    val url: String,
+    val url: java.net.URI,
     val changing: Boolean = false,  // if true, redownload local artifact after exceeding time-to-live (ttl)
     val lastModified: Option[java.time.Instant] = None,  // redownload local artifact if older than that
     val checksum: JsonData.Checksum = JsonData.Checksum.empty,  // redownload local artifact if remote checksum does not match anymore
@@ -81,7 +81,10 @@ package object sc4pac {
     val localMirror: Option[os.Path] = None,  // used when download failed and user supplied a fallback
   ) {
     /** for diagnostic purposes only, so does not need to be 100% accurate */
-    def isFromSimtropolis = url.contains("simtropolis.com/")
+    def isFromSimtropolis = {
+      val host = url.getHost
+      host == "simtropolis.com" || host.endsWith(".simtropolis.com")
+    }
 
     def withForceRedownload(forceRedownload: Boolean): Artifact =
       Artifact(

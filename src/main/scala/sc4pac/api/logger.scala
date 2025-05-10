@@ -180,7 +180,7 @@ class WebSocketPrompter(wsChannel: zio.http.WebSocketChannel, logger: WebSocketL
     sendPrompt(PromptMessage.ConfirmUpdatePlan(toRemove = toRemove, toInstall = toInstall)).map(_.body.str == yes)
   }
 
-  def promptForDownloadMirror(url: String, reason: error.DownloadFailed): Task[Either[Boolean, os.Path]] = {
+  def promptForDownloadMirror(url: java.net.URI, reason: error.DownloadFailed): Task[Either[Boolean, os.Path]] = {
     for {
       resp <- sendPrompt(PromptMessage.DownloadFailedSelectMirror(
                 url = url,

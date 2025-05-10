@@ -526,7 +526,7 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) {  // TODO d
     } yield ()
 
     def doDownloadWithMirror(resolution: Resolution, depsToInstall: Seq[Dep]): RIO[Prompter & ResolutionContext & Downloader.Credentials, Seq[(DepAsset, Artifact, java.io.File)]] = {
-      ZIO.iterate(Left(Map.empty): Either[Map[String, os.Path], Seq[(DepAsset, Artifact, java.io.File)]])(_.isLeft) {
+      ZIO.iterate(Left(Map.empty): Either[Map[java.net.URI, os.Path], Seq[(DepAsset, Artifact, java.io.File)]])(_.isLeft) {
         case Left(urlFallbacks) =>
           resolution.fetchArtifactsOf(depsToInstall, urlFallbacks)
             .map(Right(_))
@@ -645,7 +645,7 @@ object Sc4pac {
 
 
   private def fetchChannelData(repoUri: java.net.URI, cache: FileCache, channelContentsTtl: scala.concurrent.duration.Duration): ZIO[ProfileRoot & Logger, error.ChannelsNotAvailable, MetadataRepository] = {
-    val contentsUrl = MetadataRepository.channelContentsUrl(repoUri).toString
+    val contentsUrl = MetadataRepository.channelContentsUrl(repoUri)
     val artifact = Artifact(contentsUrl, changing = true)  // changing as the remote file is updated whenever any remote package is added or updated
     for {
       channelContentsFile <- cache

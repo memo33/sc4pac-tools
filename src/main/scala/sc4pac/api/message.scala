@@ -5,7 +5,7 @@ package api
 import upickle.default as UP
 
 import sc4pac.JsonData as JD
-import JD.{bareModuleRw, instantRw, pathRw}
+import JD.{bareModuleRw, instantRw, pathRw, uriRw}
 
 sealed trait Message derives UP.ReadWriter
 
@@ -130,7 +130,7 @@ object PromptMessage {
 
   @upickle.implicits.key("/prompt/json/update/download-failed-select-mirror")
   case class DownloadFailedSelectMirror(
-    url: String,
+    url: java.net.URI,
     reason: ErrorMessage.DownloadFailed,
     choices: Seq[String],
     token: String,
@@ -139,7 +139,7 @@ object PromptMessage {
     override def accept(response: ResponseMessage): Boolean = response.token == token
   }
   object DownloadFailedSelectMirror {
-    def apply(url: String, reason: ErrorMessage.DownloadFailed): DownloadFailedSelectMirror = {
+    def apply(url: java.net.URI, reason: ErrorMessage.DownloadFailed): DownloadFailedSelectMirror = {
       val token = scala.util.Random.nextInt().toHexString
       DownloadFailedSelectMirror(
         url = url,

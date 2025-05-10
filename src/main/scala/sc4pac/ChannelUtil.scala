@@ -6,7 +6,7 @@ import upickle.default.{Reader, ReadWriter, writeTo}
 import zio.{ZIO, IO, Task, RIO}
 
 import sc4pac.JsonData as JD
-import sc4pac.JsonData.{subPathRw, instantRw, bareModuleRw}
+import sc4pac.JsonData.{subPathRw, instantRw, bareModuleRw, uriRw}
 import sc4pac.MetadataRepository.resolveUriWithSubPath
 
 object ChannelUtil {
@@ -100,7 +100,7 @@ object ChannelUtil {
   case class YamlAsset(
     assetId: String,
     version: String,
-    url: String,
+    url: java.net.URI,
     lastModified: java.time.Instant = null,
     archiveType: JD.ArchiveType = null,
     checksum: JD.Checksum = JD.Checksum.empty,
