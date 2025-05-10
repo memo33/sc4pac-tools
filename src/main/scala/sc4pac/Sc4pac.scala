@@ -264,7 +264,8 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) {  // TODO d
     dependency: DepModule,
     artifactsById: Map[BareAsset, (Artifact, java.io.File, DepAsset)],
     stagingRoot: os.Path,
-    progress: Sc4pac.Progress
+    progress: Sc4pac.Progress,
+    resolution: Resolution,
   ): RIO[ResolutionContext, StageResult.Item] = {
     def extract(assetData: JD.AssetReference, pkgFolder: os.SubPath): Task[Seq[Warning]] = {
       // Given an AssetReference, we look up the corresponding artifact file
@@ -337,12 +338,10 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) {  // TODO d
         .toSeq
     }
 
-    // Since dependency is of type DepModule, we have already looked up the
-    // variant successfully, but have lost the JsonData.Package, so we reconstruct it
-    // here a second time.
+    // Since dependency is of type DepModule, we have already resolved the variant successfully, so it must already exist.
+    val (pkgData, variant) = resolution.metadata(dependency.toBareDep).toOption.get
+    val pkgFolder = pkgData.subfolder / packageFolderName(dependency)
     for {
-      (pkgData, variant, pkgJsonUrl) <- Find.matchingVariant(dependency.toBareDep, dependency.version, VariantSelection(currentSelections = dependency.variant, initialSelections = Map.empty, importedSelections = Seq.empty))
-      pkgFolder          =  pkgData.subfolder / packageFolderName(dependency)
       artifactWarnings   <- logger.extractingPackage(dependency, progress)(for {
                               _  <- ZIO.attemptBlocking(os.makeDir.all(tempPluginsRoot / pkgFolder))  // create folder even if package does not have any assets or files
                               ws <- ZIO.foreach(variant.assets)(extract(_, pkgFolder))
@@ -390,14 +389,14 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) {  // TODO d
       * If everything is properly extracted, the files are later moved to the
       * actual plugins folder in the publication step.
       */
-    def stageAll(deps: Seq[DepModule], artifactsById: Map[BareAsset, (Artifact, java.io.File, DepAsset)]): RIO[Scope & Prompter & ResolutionContext, StageResult] = {
+    def stageAll(deps: Seq[DepModule], artifactsById: Map[BareAsset, (Artifact, java.io.File, DepAsset)], resolution: Resolution): RIO[Scope & Prompter & ResolutionContext, StageResult] = {
       for {
         stagingRoot             <- Sc4pac.makeTempStagingDir(tempRoot, logger)
         tempPluginsRoot         =  stagingRoot / "plugins"
         _                       <- ZIO.attemptBlocking(os.makeDir(tempPluginsRoot))
         numDeps                 =  deps.length
         stagedItems             <- ZIO.foreach(deps.zipWithIndex) { case (dep, idx) =>   // sequentially stages each package
-                                     stage(tempPluginsRoot, dep, artifactsById, stagingRoot, Sc4pac.Progress(idx+1, numDeps))
+                                     stage(tempPluginsRoot, dep, artifactsById, stagingRoot, Sc4pac.Progress(idx+1, numDeps), resolution)
                                    }
         pkgWarnings             =  stagedItems.collect { case item if item.warnings.nonEmpty => (item.dep.toBareDep, item.warnings) }
         _                       <- ZIO.serviceWithZIO[Prompter](_.confirmInstallationWarnings(pkgWarnings))
@@ -558,7 +557,7 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) {  // TODO d
         depsToStage     =  plan.toInstall.collect{ case d: DepModule => d }.toSeq  // keep only non-assets
         artifactsById   =  assetsToInstall.map((dep, art, file) => dep.toBareDep -> (art, file, dep)).toMap
         _               =  require(artifactsById.size == assetsToInstall.size, s"artifactsById is not 1-to-1: $assetsToInstall")
-        flag            <- ZIO.scoped(stageAll(depsToStage, artifactsById)
+        flag            <- ZIO.scoped(stageAll(depsToStage, artifactsById, resolution)
                                       .flatMap(publishToPlugins(_, pluginsLockData, pluginsLockData1, plan)))
         _               <- ZIO.attempt(logger.log("Done."))
       } yield flag)
