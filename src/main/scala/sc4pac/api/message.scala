@@ -5,7 +5,7 @@ package api
 import upickle.default as UP
 
 import sc4pac.JsonData as JD
-import JD.{bareModuleRw, instantRw, pathRw, uriRw}
+import JD.{bareModuleRw, instantRw, pathRw, subPathRw, uriRw}
 
 sealed trait Message derives UP.ReadWriter
 
@@ -104,6 +104,31 @@ object PromptMessage {
     }
     given confirmInstallation: UP.ReadWriter[ConfirmInstallation] = UP.stringKeyRW(UP.macroRW)
   }
+
+  @upickle.implicits.key("/prompt/confirmation/update/installing-dlls")
+  case class ConfirmInstallingDlls(
+    description: String,
+    dllsInstalled: Seq[ConfirmInstallingDlls.Item],
+    choices: Seq[String], // = yesNo,
+    token: String,
+    responses: Map[String, ResponseMessage]
+  ) extends PromptMessage derives UP.ReadWriter
+  object ConfirmInstallingDlls {
+    def apply(description: String, dllsInstalled: Seq[Item]): ConfirmInstallingDlls = {
+      val token = scala.util.Random.nextInt().toHexString
+      ConfirmInstallingDlls(description = description, dllsInstalled = dllsInstalled, choices = yesNo, token, responses = responsesFromChoices(yesNo, token))
+    }
+
+    case class Item(
+      dll: os.SubPath,
+      url: java.net.URI,
+      `package`: BareModule,
+      packageVersion: String,
+      assetMetadataUrl: java.net.URI,
+      packageMetadataUrl: java.net.URI,
+    ) derives UP.ReadWriter
+  }
+
 
   @upickle.implicits.key("/prompt/json/update/initial-arguments")
   case class InitialArgumentsForUpdate(

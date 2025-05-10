@@ -481,6 +481,7 @@ Messages sent:
   - `/progress/download/finished` once
 - `/progress/update/extraction` for each package installed
 - `/prompt/confirmation/update/warnings` once (if the warnings are empty, you can accept without user input)
+- `/prompt/confirmation/update/installing-dlls` at most once
 - final message: either an error message or `{"$type": "/result", "ok": true}`.
   Afterwards the websocket is closed.
 

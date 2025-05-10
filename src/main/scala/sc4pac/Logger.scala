@@ -96,6 +96,19 @@ class CliLogger private (out: java.io.PrintStream, useColor: Boolean, isInteract
     log(module.formattedDisplayString(gray) + (if (explicit) " " + cyanBold("[explicit]") else ""))
   }
 
+  def logDllsInstalled(dllsInstalled: Seq[Sc4pac.StageResult.DllInstalled]): Unit = {
+    for ((dll, idx) <- dllsInstalled.zipWithIndex) {
+      val bullet = s"(${idx+1})"
+      val indent = " " * bullet.length
+      if (idx != 0) log("")
+      log(s"$bullet DLL file: ${bold(dll.dll.toString)}")
+      log(s"$indent Downloaded from: ${cyan(dll.asset.url.toString)}")
+      log(s"$indent Installed by: ${dll.module.formattedDisplayString(gray)}")
+      log(s"$indent DLL metadata from: ${gray(dll.assetMetadataUrl.toString)}")
+      log(s"$indent Package metadata from: ${gray(dll.pkgMetadataUrl.toString)}")
+    }
+  }
+
   // private val spinnerSymbols = collection.immutable.ArraySeq("⡿", "⣟", "⣯", "⣷", "⣾", "⣽", "⣻", "⢿").reverse
   private val spinnerSymbols = {
     val n = 6

@@ -193,8 +193,22 @@ class WebSocketPrompter(wsChannel: zio.http.WebSocketChannel, logger: WebSocketL
     }
   }
 
-  def confirmInstallationWarnings(warnings: Seq[(BareModule, Seq[String])]): zio.Task[Boolean] = {
+  def confirmInstallationWarnings(warnings: Seq[(BareModule, Seq[String])]): Task[Boolean] = {
     sendPrompt(PromptMessage.ConfirmInstallation(warnings.toMap)).map(_.body.str == yes)
+  }
+
+  def confirmDllsInstalled(dllsInstalled: Seq[Sc4pac.StageResult.DllInstalled]): Task[Boolean] = {
+    sendPrompt(PromptMessage.ConfirmInstallingDlls(
+      description = confirmDllsInstalledPretext(dllsInstalled.length),
+      dllsInstalled.map(dll => PromptMessage.ConfirmInstallingDlls.Item(
+        dll = dll.dll,
+        url = dll.asset.url,
+        `package` = dll.module.toBareDep,
+        packageVersion = dll.module.version,
+        assetMetadataUrl = dll.assetMetadataUrl,
+        packageMetadataUrl = dll.pkgMetadataUrl,
+      ))
+    )).map(_.body.str == yes)
   }
 
 }

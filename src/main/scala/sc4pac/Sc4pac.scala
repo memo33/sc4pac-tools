@@ -316,10 +316,8 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) {  // TODO d
 
     /** Creates links for dll files from plugins root folder to package subfolder.
       * If link creation fails, this moves the DLL files from package subfolder to plugins root. */
-    def linkDlls(pkgFolder: os.SubPath): Task[Seq[os.SubPath]] = ZIO.attemptBlockingIO {
-      os.walk.stream(tempPluginsRoot / pkgFolder)
-        .filter(isDll)
-        .map { dll =>
+    def linkDll(dll: os.Path): Task[os.SubPath] =
+      ZIO.attemptBlockingIO {
           val dllLink = tempPluginsRoot / dll.last
           if (os.isLink(dllLink) || os.exists(dllLink)) {  // (note that `dllLink` may be an actual file on Windows)
             // This should not usually happen as it means two packages contain
@@ -338,12 +336,11 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) {  // TODO d
             os.move(dll, dllLink)
           }
           dllLink.subRelativeTo(tempPluginsRoot)
-        }
-        .toSeq
-    }
+      }
 
+    val module: BareModule = dependency.toBareDep
     // Since dependency is of type DepModule, we have already resolved the variant successfully, so it must already exist.
-    val (pkgData, variant) = resolution.metadata(dependency.toBareDep).toOption.get
+    val (pkgData, variant) = resolution.metadata(module).toOption.get
     val pkgFolder = pkgData.subfolder / packageFolderName(dependency)
     for {
       extractions        <- logger.extractingPackage(dependency, progress)(for {
@@ -352,10 +349,17 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) {  // TODO d
                             } yield extracted)  // (asset, files, warnings)
       artifactWarnings   =  extractions.flatMap(_._3)
       _                  <- ZIO.foreach(artifactWarnings)(w => ZIO.attempt(logger.warn(w)))  // to avoid conflicts with spinner animation, we print warnings after extraction already finished
-      dlls               <- linkDlls(pkgFolder)
-      warnings           <- if (pkgData.info.warning.nonEmpty) ZIO.attempt { val w = pkgData.info.warning; logger.warn(w); Seq(w) }
-                            else ZIO.succeed(Seq.empty)
-    } yield StageResult.Item(dependency, Seq(pkgFolder) ++ dlls, pkgData, warnings ++ artifactWarnings)
+      dlls               <- ZIO.foreach(extractions.flatMap { case (id, files, _) => files.filter(isDll).map((id, _)) }) {
+                              case (id: BareAsset, dllAbs) => for {
+                                dll <- linkDll(dllAbs)
+                              } yield StageResult.DllInstalled(
+                                dll, dependency, artifactsById(id)._3,
+                                pkgMetadataUrl = resolution.metadataUrls(module),
+                                assetMetadataUrl = resolution.metadataUrls(id),
+                              )
+                            }
+      warningOpt         <- ZIO.when(pkgData.info.warning.nonEmpty)(ZIO.attempt { val w = pkgData.info.warning; logger.warn(w); w })
+    } yield StageResult.Item(dependency, Seq(pkgFolder) ++ dlls.map(_.dll), pkgData, warningOpt.toSeq ++ artifactWarnings, dlls)
   }
 
   private def remove(toRemove: Set[Dep], installed: Seq[JD.InstalledData], pluginsRoot: os.Path): Task[Unit] = {
@@ -406,6 +410,11 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) {  // TODO d
         pkgWarnings             =  stagedItems.collect { case item if item.warnings.nonEmpty => (item.dep.toBareDep, item.warnings) }
         _                       <- ZIO.serviceWithZIO[Prompter](_.confirmInstallationWarnings(pkgWarnings))
                                      .filterOrFail(_ == true)(error.Sc4pacAbort())
+        dllsInstalled           =  stagedItems.flatMap(_.dlls)
+        _                       <- ZIO.whenDiscard(dllsInstalled.nonEmpty) {
+                                     ZIO.serviceWithZIO[Prompter](_.confirmDllsInstalled(dllsInstalled))
+                                       .filterOrFail(_ == true)(error.Sc4pacAbort())
+                                   }
       } yield StageResult(tempPluginsRoot, stagedItems, stagingRoot)
     }
 
@@ -644,7 +653,8 @@ object Sc4pac {
 
   case class StageResult(tempPluginsRoot: os.Path, items: Seq[StageResult.Item], stagingRoot: os.Path)
   object StageResult {
-    class Item(val dep: DepModule, val files: Seq[os.SubPath], val pkgData: JD.Package, val warnings: Seq[Warning])
+    class Item(val dep: DepModule, val files: Seq[os.SubPath], val pkgData: JD.Package, val warnings: Seq[Warning], val dlls: Seq[DllInstalled])
+    class DllInstalled(val dll: os.SubPath, val module: DepModule, val asset: DepAsset, val pkgMetadataUrl: java.net.URI, val assetMetadataUrl: java.net.URI)
   }
 
 

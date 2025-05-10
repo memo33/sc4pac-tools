@@ -19,6 +19,15 @@ trait Prompter {
   def promptForDownloadMirror(url: java.net.URI, reason: error.DownloadFailed): Task[Either[Boolean, os.Path]]
 
   def confirmInstallationWarnings(warnings: Seq[(BareModule, Seq[String])]): Task[Boolean]
+
+  def confirmDllsInstalled(dllsInstalled: Seq[Sc4pac.StageResult.DllInstalled]): Task[Boolean]
+
+  protected def confirmDllsInstalledPretext(numDlls: Int): String =
+    s"""You are about to install ${if (numDlls == 1) "a DLL file" else s"$numDlls DLL files"}.""" +
+    """ DLL files are game extensions that modify the core functionality of the game.""" +
+    f""" They have the ability to execute arbitrary code on your system once the game is started.%n%n""" +
+    s"""Only continue if you consider ${if (numDlls == 1) "this DLL file" else "these DLL files"} to be trustworthy."""
+
 }
 
 class CliPrompter(logger: CliLogger, autoYes: Boolean) extends Prompter {
@@ -131,5 +140,20 @@ class CliPrompter(logger: CliLogger, autoYes: Boolean) extends Prompter {
     else Prompt.ifInteractive(
       onTrue = Prompt.yesNo("Continue despite warnings?"),
       onFalse = ZIO.succeed(true))  // in non-interactive mode, we continue despite warnings
+  }
+
+  def confirmDllsInstalled(dllsInstalled: Seq[Sc4pac.StageResult.DllInstalled]): Task[Boolean] = {
+    if (dllsInstalled.isEmpty) ZIO.succeed(true)
+    else {
+      logger.warn(confirmDllsInstalledPretext(dllsInstalled.length))
+      logger.log("")
+      logger.logDllsInstalled(dllsInstalled)
+      logger.log("")
+      if (autoYes) ZIO.succeed(true)
+      else Prompt.ifInteractive(
+        onFalse = ZIO.succeed(true),
+        onTrue = Prompt.yesNo("Continue with installation of DLL files?"),
+      )
+    }
   }
 }
