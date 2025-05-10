@@ -552,7 +552,7 @@ object Commands {
             stagingRoot <- Sc4pac.makeTempStagingDir(destination, logger)
             assetData = JD.AssetReference(assetId = "dummy-asset", include = options.include, exclude = options.exclude)
             (recipe, regexWarnings) = Extractor.InstallRecipe.fromAssetReference(assetData)
-            usedPatterns <- ZIO.attemptBlocking {
+            (_, usedPatterns) <- ZIO.attemptBlocking {
               Extractor(logger).extract(
                 archive = archive,
                 fallbackFilename = None,

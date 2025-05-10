@@ -7,6 +7,7 @@ import org.apache.commons.compress.utils.IOUtils
 import java.nio.file.StandardOpenOption
 import java.util.regex.Pattern
 import scala.collection.mutable.Builder
+import zio.Chunk
 
 import sc4pac.JsonData as JD
 import sc4pac.error.{ExtractionFailed, ChecksumError, NotADbpfFile}
@@ -189,7 +190,7 @@ object Extractor {
       *
       * Usually calls extractEntry as implementation.
       */
-    def extractSelectedEntries(entries: Seq[(A, os.Path, Validator)], overwrite: Boolean): Unit =
+    def extractSelectedEntries(entries: Chunk[(A, os.Path, Validator)], overwrite: Boolean): Unit =
       for ((entry, target, validator) <- entries) {
         extractEntry(entry, target, overwrite = overwrite)
         validator.validate(target)
@@ -207,9 +208,9 @@ object Extractor {
       overwrite: Boolean,
       flatten: Boolean,
       logger: Logger,
-    ): Seq[os.Path] = {
+    ): Chunk[os.Path] = {
       // first we read the acceptable file names contained in the zip file
-      val entries: Seq[(A, os.SubPath, Validator)] = iterateEntries
+      val entries: Chunk[(A, os.SubPath, Validator)] = iterateEntries
         .flatMap { entry =>
           val relativePathString = getEntryPath(entry)
           val subPathOpt =  // sanitized entry path
@@ -236,10 +237,10 @@ object Extractor {
             validatorOpt.map((entry, path, _))
           }
         }
-        .toSeq
+        .to(Chunk)
 
       if (entries.isEmpty) {
-        Seq.empty  // nothing to extract
+        Chunk.empty  // nothing to extract
       } else {
         // map zip entry names to file names (within destination directory)
         val mapper: os.SubPath => os.SubPath = if (flatten) {
@@ -253,14 +254,14 @@ object Extractor {
         }
 
         os.makeDir.all(destination)
-        val extracted: Seq[os.Path] = entries.map((_, subpath, _) => destination / mapper(subpath))
-        val selected = entries.zip(extracted).flatMap { case ((entry, _, validator), target) =>
+        val extracted: Chunk[os.Path] = entries.map((_, subpath, _) => destination / mapper(subpath))
+        val selected = entries.zipWith(extracted) { case ((entry, _, validator), target) =>
             if (!overwrite && os.exists(target))
               assert(validator == NoopValidator)  // important since we do not validate these
               None  // do nothing, as file has already been extracted previously (this avoids re-extracting large nested archives)
             else
-              Some(entry, target, validator)
-          }
+              Some((entry, target, validator))
+          }.flatten
         extractSelectedEntries(selected, overwrite)
         extracted  // Note that this includes some pre-existing files not in `selected`, but only files accepted by predicate
       }
@@ -352,7 +353,7 @@ object Extractor {
       def isUnixSymlink(entry: Int) = archive.getProperty(entry, SZ.PropID.SYM_LINK).asInstanceOf[Boolean]
       protected def extractEntry(entry: Int, target: os.Path, overwrite: Boolean): Unit = throw new AssertionError
 
-      override def extractSelectedEntries(entries: Seq[(Int, os.Path, Validator)], overwrite: Boolean) = try {
+      override def extractSelectedEntries(entries: Chunk[(Int, os.Path, Validator)], overwrite: Boolean) = try {
         val entriesMap: Map[Int, (Int, os.Path, Validator)] = entries.iterator.map(t => t._1 -> t).toMap  // TODO this does not have linear complexity
         val getPath: Int => os.Path = entriesMap(_)._2
 
@@ -469,7 +470,7 @@ object Extractor {
 class Extractor(logger: Logger) {
 
   /** Extracts files from the archive that match the inclusion/exclusion recipe, including one level of nested archives.
-    * Returns the patterns that have matched. */
+    * Returns the files that have been extracted and the patterns that have matched. */
   def extract(
     archive: java.io.File,
     fallbackFilename: Option[String],
@@ -479,11 +480,12 @@ class Extractor(logger: Logger) {
     hints: Option[JD.ArchiveType],
     stagingRoot: os.Path,
     validate: Boolean,
-  ): Set[Pattern] = try {
+  ): (Chunk[os.Path], Set[Pattern]) = try {
     val (usedPatternsBuilder, predicate, predicateNested) = recipe.makeAcceptancePredicates(validate = validate)  // tracks used patterns to warn about unused patterns
+    val extractedFilesBuilder = Chunk.newBuilder[os.Path]
     scala.util.Using.resource(Extractor.WrappedArchive(archive, fallbackFilename, stagingRoot, logger, hints)) { wrappedArchive =>
       // first extract just the main files
-      wrappedArchive.extractByPredicate(destination, predicate, overwrite = true, flatten = false, logger)
+      extractedFilesBuilder ++= wrappedArchive.extractByPredicate(destination, predicate, overwrite = true, flatten = false, logger)
       // additionally, extract jar files/nested archives contained in the zip file to a temporary location
       for (Extractor.JarExtraction(jarsDir) <- jarExtractionOpt) {
         logger.debug(s"Searching for nested archives:")
@@ -491,12 +493,13 @@ class Extractor(logger: Logger) {
         // finally extract the jar files themselves (without recursively extracting jars contained inside)
         for (jarFile <- jarFiles) {
           logger.debug(s"Extracting nested archive ${jarFile.last}")
-          usedPatternsBuilder ++=
-            extract(jarFile.toIO, fallbackFilename = None, destination, recipe, jarExtractionOpt = None, hints, stagingRoot = stagingRoot, validate = validate)
+          val (fs, ps) = extract(jarFile.toIO, fallbackFilename = None, destination, recipe, jarExtractionOpt = None, hints, stagingRoot = stagingRoot, validate = validate)
+          extractedFilesBuilder ++= fs
+          usedPatternsBuilder ++= ps
         }
       }
     }
-    usedPatternsBuilder.result()
+    (extractedFilesBuilder.result(), usedPatternsBuilder.result())
   } catch {
     case e: ExtractionFailed => throw e
     case e: (NotADbpfFile | ChecksumError) => throw new ExtractionFailed(s"Failed to extract $archive.", e.getMessage)

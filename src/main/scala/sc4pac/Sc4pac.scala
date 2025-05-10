@@ -3,7 +3,7 @@ package sc4pac
 
 import scala.collection.immutable.{Set, Seq}
 import coursier.core.{Organization, ModuleName}
-import zio.{IO, ZIO, Task, Scope, RIO, Ref}
+import zio.{IO, ZIO, Task, Scope, RIO, Ref, Chunk}
 import upickle.default as UP
 
 import sc4pac.error.*
@@ -267,15 +267,19 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) {  // TODO d
     progress: Sc4pac.Progress,
     resolution: Resolution,
   ): RIO[ResolutionContext, StageResult.Item] = {
-    def extract(assetData: JD.AssetReference, pkgFolder: os.SubPath): Task[Seq[Warning]] = {
+    def extract(assetData: JD.AssetReference, pkgFolder: os.SubPath): Task[(BareAsset, Chunk[os.Path], Seq[Warning])] = {
       // Given an AssetReference, we look up the corresponding artifact file
       // by ID. This relies on the 1-to-1-correspondence between sc4pacAssets
       // and artifact files.
       val id = BareAsset(ModuleName(assetData.assetId))
       artifactsById.get(id) match {
         case None =>
-          ZIO.succeed(Seq(s"An asset is missing and has been skipped, so it needs to be installed manually: ${id.orgName}. " +
-                           "Please report this to the maintainers of the package metadata."))
+          ZIO.succeed((
+            id,
+            Chunk.empty,
+            Seq(s"An asset is missing and has been skipped, so it needs to be installed manually: ${id.orgName}. " +
+                "Please report this to the maintainers of the package metadata."),
+          ))
         case Some(art, archive, depAsset) =>
           val (recipe, regexWarnings) = Extractor.InstallRecipe.fromAssetReference(assetData)
           val extractor = new Extractor(logger)
@@ -296,7 +300,7 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) {  // TODO d
           for {
             fallbackFilename <- context.cache.getFallbackFilename(archive).provideSomeLayer(zio.ZLayer.succeed(logger))
             archiveSize      <- ZIO.attemptBlockingIO(archive.length())
-            usedPatterns     <- if (archiveSize >= Constants.largeArchiveSizeInterruptible) {
+            (files, patterns)<- if (archiveSize >= Constants.largeArchiveSizeInterruptible) {
                                   logger.debug(s"(Interruptible extraction of ${assetData.assetId})")
                                   // comes at a performance cost, so we only make extraction interruptible for large files
                                   ZIO.attemptBlockingInterrupt(doExtract(fallbackFilename))
@@ -305,7 +309,7 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) {  // TODO d
                                 }
           } yield {
             // TODO catch IOExceptions
-            regexWarnings ++ recipe.usedPatternWarnings(usedPatterns, id, short = false)
+            (id, files, regexWarnings ++ recipe.usedPatternWarnings(patterns, id, short = false))
           }
       }
     }
@@ -342,10 +346,11 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) {  // TODO d
     val (pkgData, variant) = resolution.metadata(dependency.toBareDep).toOption.get
     val pkgFolder = pkgData.subfolder / packageFolderName(dependency)
     for {
-      artifactWarnings   <- logger.extractingPackage(dependency, progress)(for {
+      extractions        <- logger.extractingPackage(dependency, progress)(for {
                               _  <- ZIO.attemptBlocking(os.makeDir.all(tempPluginsRoot / pkgFolder))  // create folder even if package does not have any assets or files
-                              ws <- ZIO.foreach(variant.assets)(extract(_, pkgFolder))
-                            } yield ws.flatten)
+                              extracted <- ZIO.foreach(variant.assets)(extract(_, pkgFolder))
+                            } yield extracted)  // (asset, files, warnings)
+      artifactWarnings   =  extractions.flatMap(_._3)
       _                  <- ZIO.foreach(artifactWarnings)(w => ZIO.attempt(logger.warn(w)))  // to avoid conflicts with spinner animation, we print warnings after extraction already finished
       dlls               <- linkDlls(pkgFolder)
       warnings           <- if (pkgData.info.warning.nonEmpty) ZIO.attempt { val w = pkgData.info.warning; logger.warn(w); Seq(w) }
