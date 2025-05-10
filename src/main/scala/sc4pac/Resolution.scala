@@ -41,12 +41,12 @@ object Resolution {
           .flatMap {
             case None => ZIO.fail(new Sc4pacAssetNotFound(s"Could not find metadata of asset ${bareAsset.assetId.value}.",
               "Most likely this is due to incorrect or incomplete metadata in the corresponding channel."))
-            case Some(data) => ZIO.succeed(DepAsset.fromAsset(data))
+            case Some((data, url)) => ZIO.succeed(DepAsset.fromAsset(data))
           }
       case bareMod @ BareModule(group, name) =>
         for {
-          concreteVersion  <- Find.concreteVersion(bareMod, Constants.versionLatestRelease)
-          (_, variantData) <- Find.matchingVariant(bareMod, concreteVersion, variantSelection)
+          concreteVersion        <- Find.concreteVersion(bareMod, Constants.versionLatestRelease)
+          (_, variantData, url)  <- Find.matchingVariant(bareMod, concreteVersion, variantSelection)
         } yield DepModule(group = group, name = name, version = concreteVersion, variant = variantData.variant)
     }
   }
@@ -109,7 +109,7 @@ object Resolution {
       case dep: BareAsset => ZIO.succeed(Links(Seq.empty, Seq.empty))
       case mod: BareModule => {
         Find.matchingVariant(mod, Constants.versionLatestRelease, variantSelection)
-          .map { (pkgData, variantData) => Links(dependencies = variantData.bareDependencies, conflicts = variantData.conflictingPackages) }
+          .map { (pkgData, variantData, _) => Links(dependencies = variantData.bareDependencies, conflicts = variantData.conflictingPackages) }
       }
     }
 

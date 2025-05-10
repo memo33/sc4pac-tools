@@ -181,7 +181,7 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) {  // TODO d
     Find.concreteVersion(module, Constants.versionLatestRelease)
       .flatMap(Find.packageData[JD.Package](module, _))
       .zipWithPar(Find.requiredByExternal(module)) {  // In addition to existing intra-channel dependencies, add inter-channel dependency relations to `requiredBy` and `reverseConflictingPackages` fields.
-        case (Some(pkg), relations) =>
+        case (Some((pkg, url)), relations) =>
           Some(pkg.copy(info = pkg.info.copy(
             requiredBy = (pkg.info.requiredBy.iterator ++ relations.iterator.flatMap(_._2._1)).toSeq.distinct.sorted,
             reverseConflictingPackages = (pkg.info.reverseConflictingPackages.iterator ++ relations.iterator.flatMap(_._2._2)).toSeq.distinct.sorted,
@@ -341,7 +341,7 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) {  // TODO d
     // variant successfully, but have lost the JsonData.Package, so we reconstruct it
     // here a second time.
     for {
-      (pkgData, variant) <- Find.matchingVariant(dependency.toBareDep, dependency.version, VariantSelection(currentSelections = dependency.variant, initialSelections = Map.empty, importedSelections = Seq.empty))
+      (pkgData, variant, pkgJsonUrl) <- Find.matchingVariant(dependency.toBareDep, dependency.version, VariantSelection(currentSelections = dependency.variant, initialSelections = Map.empty, importedSelections = Seq.empty))
       pkgFolder          =  pkgData.subfolder / packageFolderName(dependency)
       artifactWarnings   <- logger.extractingPackage(dependency, progress)(for {
                               _  <- ZIO.attemptBlocking(os.makeDir.all(tempPluginsRoot / pkgFolder))  // create folder even if package does not have any assets or files

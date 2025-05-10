@@ -44,9 +44,9 @@ class VariantSelection private (
       }
     }
 
-  def pickVariant(pkgData: JD.Package): Task[(JD.Package, JD.VariantData)] = {
+  def pickVariant(pkgData: JD.Package): Task[JD.VariantData] = {
     pkgData.variants.find(vd => isMatchingVariant(vd.variant)) match {
-      case Some(vd) => ZIO.succeed((pkgData, vd))
+      case Some(vd) => ZIO.succeed(vd)
       case None =>
         // Either the variant has not been fully selected yet (user needs to choose),
         // or there is a conflict between a variant and currentSelections
@@ -106,7 +106,7 @@ class VariantSelection private (
         case Some(mod2) =>
           Find.concreteVersion(mod2, Constants.versionLatestRelease)
             .flatMap(Find.packageData[JD.Package](mod2, _))
-            .map(_.flatMap(_.upgradeVariantInfo.variantInfo.get(variantId)))
+            .map(_.flatMap(_._1.upgradeVariantInfo.variantInfo.get(variantId)))
         case None => ZIO.succeed(None)
     }
   }
