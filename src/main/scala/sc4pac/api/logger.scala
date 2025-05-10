@@ -202,6 +202,7 @@ class WebSocketPrompter(wsChannel: zio.http.WebSocketChannel, logger: WebSocketL
       description = confirmDllsInstalledPretext(dllsInstalled.length),
       dllsInstalled.map(dll => PromptMessage.ConfirmInstallingDlls.Item(
         dll = dll.dll,
+        checksum = JD.Checksum(sha256 = Some(dll.validatedSha256)),
         url = dll.asset.url,
         `package` = dll.module.toBareDep,
         packageVersion = dll.module.version,

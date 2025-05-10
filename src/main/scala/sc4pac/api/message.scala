@@ -5,7 +5,7 @@ package api
 import upickle.default as UP
 
 import sc4pac.JsonData as JD
-import JD.{bareModuleRw, instantRw, pathRw, subPathRw, uriRw}
+import JD.{bareModuleRw, instantRw, pathRw, subPathRw, uriRw, checksumRw}
 
 sealed trait Message derives UP.ReadWriter
 
@@ -121,6 +121,7 @@ object PromptMessage {
 
     case class Item(
       dll: os.SubPath,
+      checksum: JD.Checksum,
       url: java.net.URI,
       `package`: BareModule,
       packageVersion: String,

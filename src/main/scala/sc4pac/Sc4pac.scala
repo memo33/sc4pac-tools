@@ -267,7 +267,7 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) {  // TODO d
     progress: Sc4pac.Progress,
     resolution: Resolution,
   ): RIO[ResolutionContext, StageResult.Item] = {
-    def extract(assetData: JD.AssetReference, pkgFolder: os.SubPath): Task[(BareAsset, Chunk[os.Path], Seq[Warning])] = {
+    def extract(assetData: JD.AssetReference, pkgFolder: os.SubPath): Task[(BareAsset, Chunk[Extractor.ExtractedItem], Seq[Warning])] = {
       // Given an AssetReference, we look up the corresponding artifact file
       // by ID. This relies on the 1-to-1-correspondence between sc4pacAssets
       // and artifact files.
@@ -349,14 +349,21 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) {  // TODO d
                             } yield extracted)  // (asset, files, warnings)
       artifactWarnings   =  extractions.flatMap(_._3)
       _                  <- ZIO.foreach(artifactWarnings)(w => ZIO.attempt(logger.warn(w)))  // to avoid conflicts with spinner animation, we print warnings after extraction already finished
-      dlls               <- ZIO.foreach(extractions.flatMap { case (id, files, _) => files.filter(isDll).map((id, _)) }) {
-                              case (id: BareAsset, dllAbs) => for {
-                                dll <- linkDll(dllAbs)
-                              } yield StageResult.DllInstalled(
-                                dll, dependency, artifactsById(id)._3,
-                                pkgMetadataUrl = resolution.metadataUrls(module),
-                                assetMetadataUrl = resolution.metadataUrls(id),
-                              )
+      dlls               <- ZIO.foreach(extractions.flatMap { case (id, files, _) =>
+                              files.filter(f => isDll(f.path)).map((id, _))
+                            }) {
+                              case (id: BareAsset, item: Extractor.ExtractedItem) =>
+                                for {
+                                  dll <- linkDll(item.path)
+                                } yield {
+                                  assert(item.validatedSha256.isDefined, s"Checksum of DLL ${item.path} (${id.assetId}) should have been verified")
+                                  StageResult.DllInstalled(
+                                    dll, dependency, artifactsById(id)._3,
+                                    pkgMetadataUrl = resolution.metadataUrls(module),
+                                    assetMetadataUrl = resolution.metadataUrls(id),
+                                    validatedSha256 = item.validatedSha256.get,
+                                  )
+                                }
                             }
       warningOpt         <- ZIO.when(pkgData.info.warning.nonEmpty)(ZIO.attempt { val w = pkgData.info.warning; logger.warn(w); w })
     } yield StageResult.Item(dependency, Seq(pkgFolder) ++ dlls.map(_.dll), pkgData, warningOpt.toSeq ++ artifactWarnings, dlls)
@@ -654,9 +661,15 @@ object Sc4pac {
   case class StageResult(tempPluginsRoot: os.Path, items: Seq[StageResult.Item], stagingRoot: os.Path)
   object StageResult {
     class Item(val dep: DepModule, val files: Seq[os.SubPath], val pkgData: JD.Package, val warnings: Seq[Warning], val dlls: Seq[DllInstalled])
-    class DllInstalled(val dll: os.SubPath, val module: DepModule, val asset: DepAsset, val pkgMetadataUrl: java.net.URI, val assetMetadataUrl: java.net.URI)
+    class DllInstalled(
+      val dll: os.SubPath,
+      val module: DepModule,
+      val asset: DepAsset,
+      val pkgMetadataUrl: java.net.URI,
+      val assetMetadataUrl: java.net.URI,
+      val validatedSha256: collection.immutable.ArraySeq[Byte],
+    )
   }
-
 
   private def fetchChannelData(repoUri: java.net.URI, cache: FileCache, channelContentsTtl: scala.concurrent.duration.Duration): ZIO[ProfileRoot & Logger, error.ChannelsNotAvailable, MetadataRepository] = {
     val contentsUrl = MetadataRepository.channelContentsUrl(repoUri)
