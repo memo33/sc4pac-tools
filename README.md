@@ -70,8 +70,11 @@ The GUI is located in the <a href="https://github.com/memo33/sc4pac-gui/releases
 
 ```
 050-load-first
+060-config
 075-my-plugins         (your existing manually installed plugins)
 100-props-textures
+110-resources
+140-ordinances
 150-mods
 170-terrain
 180-flora
