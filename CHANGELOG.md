@@ -19,6 +19,7 @@
 - API upgraded to 2.5:
   - added a new `/prompt/choice/update/remove-conflicting-packages` message to `/update`
   - added a new `/prompt/json/update/initial-arguments` message to `/update`
+  - added a new `/prompt/json/update/download-failed-select-mirror` message to `/update`
   - added a new `/prompt/confirmation/update/installing-dlls` message to `/update` (#18)
   - added support for `externalIds` in `/packages.search.id` ([#26][gui26])
   - output format changes in `/packages.search` and `/packages.search.id`
