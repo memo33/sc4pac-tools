@@ -1,6 +1,9 @@
 # Changelog
 
 ## [Unreleased]
+
+
+## [0.7.0] - 2025-05-11
 ### Added
 - new `conflicting` attribute in YAML files, a list of conflicting packages (#11). Packages that are in conflict with each other cannot be installed at the same time.
 - support for searching by author name (#20)
@@ -283,7 +286,8 @@
 ## [0.1.5] - 2023-09-26
 …
 
-[Unreleased]: https://github.com/memo33/sc4pac-tools/compare/0.6.1...HEAD
+[Unreleased]: https://github.com/memo33/sc4pac-tools/compare/0.7.0...HEAD
+[0.7.0]: https://github.com/memo33/sc4pac-tools/compare/0.6.1...0.7.0
 [0.6.1]: https://github.com/memo33/sc4pac-tools/compare/0.6.0...0.6.1
 [0.6.0]: https://github.com/memo33/sc4pac-tools/compare/0.5.4...0.6.0
 [0.5.4]: https://github.com/memo33/sc4pac-tools/compare/0.5.3...0.5.4
