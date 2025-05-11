@@ -7,6 +7,7 @@ import org.apache.commons.compress.utils.IOUtils
 import java.nio.file.StandardOpenOption
 import java.util.regex.Pattern
 import scala.collection.mutable.Builder
+import zio.Chunk
 
 import sc4pac.JsonData as JD
 import sc4pac.error.{ExtractionFailed, ChecksumError, NotADbpfFile}
@@ -189,8 +190,8 @@ object Extractor {
       *
       * Usually calls extractEntry as implementation.
       */
-    def extractSelectedEntries(entries: Seq[(A, os.Path, Validator)], overwrite: Boolean): Unit =
-      for ((entry, target, validator) <- entries) {
+    def extractSelectedEntries(entries: Chunk[(A, os.Path, Validator)], overwrite: Boolean): Chunk[ExtractedItem] =
+      entries.map { case (entry, target, validator) =>
         extractEntry(entry, target, overwrite = overwrite)
         validator.validate(target)
       }
@@ -207,9 +208,9 @@ object Extractor {
       overwrite: Boolean,
       flatten: Boolean,
       logger: Logger,
-    ): Seq[os.Path] = {
+    ): Chunk[ExtractedItem] = {
       // first we read the acceptable file names contained in the zip file
-      val entries: Seq[(A, os.SubPath, Validator)] = iterateEntries
+      val entries: Chunk[(A, os.SubPath, Validator)] = iterateEntries
         .flatMap { entry =>
           val relativePathString = getEntryPath(entry)
           val subPathOpt =  // sanitized entry path
@@ -236,10 +237,10 @@ object Extractor {
             validatorOpt.map((entry, path, _))
           }
         }
-        .toSeq
+        .to(Chunk)
 
       if (entries.isEmpty) {
-        Seq.empty  // nothing to extract
+        Chunk.empty  // nothing to extract
       } else {
         // map zip entry names to file names (within destination directory)
         val mapper: os.SubPath => os.SubPath = if (flatten) {
@@ -253,16 +254,16 @@ object Extractor {
         }
 
         os.makeDir.all(destination)
-        val extracted: Seq[os.Path] = entries.map((_, subpath, _) => destination / mapper(subpath))
-        val selected = entries.zip(extracted).flatMap { case ((entry, _, validator), target) =>
+        val (preexisting, selected) =
+          entries.partitionMap { case (entry, subpath, validator) =>
+            val target = destination / mapper(subpath)
             if (!overwrite && os.exists(target))
-              assert(validator == NoopValidator)  // important since we do not validate these
-              None  // do nothing, as file has already been extracted previously (this avoids re-extracting large nested archives)
+              Left(validator.validate(target))  // file has already been extracted previously (this avoids re-extracting large nested archives)
             else
-              Some(entry, target, validator)
+              Right((entry, target, validator))
           }
-        extractSelectedEntries(selected, overwrite)
-        extracted  // Note that this includes some pre-existing files not in `selected`, but only files accepted by predicate
+        val extracted = extractSelectedEntries(selected, overwrite)
+        extracted ++ preexisting
       }
     }
   }
@@ -352,9 +353,10 @@ object Extractor {
       def isUnixSymlink(entry: Int) = archive.getProperty(entry, SZ.PropID.SYM_LINK).asInstanceOf[Boolean]
       protected def extractEntry(entry: Int, target: os.Path, overwrite: Boolean): Unit = throw new AssertionError
 
-      override def extractSelectedEntries(entries: Seq[(Int, os.Path, Validator)], overwrite: Boolean) = try {
+      override def extractSelectedEntries(entries: Chunk[(Int, os.Path, Validator)], overwrite: Boolean): Chunk[ExtractedItem] = try {
         val entriesMap: Map[Int, (Int, os.Path, Validator)] = entries.iterator.map(t => t._1 -> t).toMap  // TODO this does not have linear complexity
         val getPath: Int => os.Path = entriesMap(_)._2
+        val validated = Chunk.newBuilder[ExtractedItem]
 
         archive.extract(entries.toArray.map(_._1), false, new SZ.IArchiveExtractCallback {
           var index: Int = 0
@@ -388,13 +390,14 @@ object Extractor {
               throw new SZ.SevenZipException(s"Extraction of archive entry failed: ${getPath(index)}.")
             }
             val (_, target, validator) = entriesMap(index)
-            validator.validate(target)
+            validated += validator.validate(target)
           }
 
           def setCompleted(complete: Long): Unit = {}  // TODO logging of progress
           def setTotal(total: Long): Unit = {}
-
         })
+
+        validated.result()
       } catch {
         case e: SZ.SevenZipException => throw new ExtractionFailed("7z-extraction failed.", e.getMessage)
       }
@@ -406,11 +409,11 @@ object Extractor {
     */
   case class JarExtraction(jarsDir: os.Path)
   object JarExtraction {
-    def fromUrl[F[_]](archiveUrl: String, jarsRoot: os.Path): JarExtraction = {
+    def fromUrl[F[_]](archiveUrl: java.net.URI, jarsRoot: os.Path): JarExtraction = {
       // we hash the the URL to find a deterministic and short storage path
       val hash = JD.Checksum.bytesToString(
         java.security.MessageDigest.getInstance("SHA-1")
-          .digest(archiveUrl.getBytes("UTF-8"))
+          .digest(archiveUrl.toString.getBytes("UTF-8"))
           .take(4).to(collection.immutable.ArraySeq)  // 4 bytes = 8 hex characters
       )
       JarExtraction(jarsRoot / hash)
@@ -425,19 +428,25 @@ object Extractor {
     os.SubPath(p.segments0.take(i).toIndexedSeq)
   }
 
+  /** A certificate to keep track of files whose checksums have been validated. */
+  class ExtractedItem private[Extractor] (val path: os.Path, val validatedSha256: Option[collection.immutable.ArraySeq[Byte]])
+
   sealed trait Validator {
-    def validate(path: os.Path): Unit
+    def validate(path: os.Path): ExtractedItem
   }
 
   class ChecksumValidator(includeWithChecksum: JD.IncludeWithChecksum) extends Validator {
-    def validate(path: os.Path): Unit = {
+    def validate(path: os.Path): ExtractedItem = {
       val sha256Actual = Downloader.computeChecksum(path.toIO)
-      if (includeWithChecksum.sha256 != sha256Actual)
+      if (includeWithChecksum.sha256 != sha256Actual) {
         throw ChecksumError("Extracted file has wrong sha256 checksum. " +
           "Usually, this means the uploaded file was modified after the channel metadata was last updated, " +
           "so the integrity of the file cannot be verified by sc4pac. " +
           "Report this to the maintainers of the metadata.",
           s"File: $path, got: ${JD.Checksum.bytesToString(sha256Actual)}, expected: ${JD.Checksum.bytesToString(includeWithChecksum.sha256)}")
+      } else {
+        ExtractedItem(path, validatedSha256 = Some(sha256Actual))
+      }
     }
   }
 
@@ -449,19 +458,20 @@ object Extractor {
       signature.sameElements(dbpfSignature)
     }
 
-    def validate(path: os.Path): Unit = {
+    def validate(path: os.Path): ExtractedItem = {
       if (!isDbpf(path))
         throw NotADbpfFile("Extracted file is not a DBPF file. " +
           "If this error is caused by a malformed DBPF file, report this to the original author of the file. " +
           "Otherwise, if it is a DLL file, the channel metadata must include a checksum for verifying file integrity. " +
           "Report this to the maintainers of the metadata.",
           s"File: $path")
+      else ExtractedItem(path, validatedSha256 = None)
     }
   }
 
   // Nested archives currently do not use checksums for validation. If desired, the outer archive should use a checksum instead.
   object NoopValidator extends Validator {
-    def validate(path: os.Path): Unit = {}
+    def validate(path: os.Path): ExtractedItem = ExtractedItem(path, validatedSha256 = None)
   }
 
 }
@@ -469,7 +479,7 @@ object Extractor {
 class Extractor(logger: Logger) {
 
   /** Extracts files from the archive that match the inclusion/exclusion recipe, including one level of nested archives.
-    * Returns the patterns that have matched. */
+    * Returns the files that have been extracted and the patterns that have matched. */
   def extract(
     archive: java.io.File,
     fallbackFilename: Option[String],
@@ -479,24 +489,26 @@ class Extractor(logger: Logger) {
     hints: Option[JD.ArchiveType],
     stagingRoot: os.Path,
     validate: Boolean,
-  ): Set[Pattern] = try {
+  ): (Chunk[Extractor.ExtractedItem], Set[Pattern]) = try {
     val (usedPatternsBuilder, predicate, predicateNested) = recipe.makeAcceptancePredicates(validate = validate)  // tracks used patterns to warn about unused patterns
+    val extractedFilesBuilder = Chunk.newBuilder[Extractor.ExtractedItem]
     scala.util.Using.resource(Extractor.WrappedArchive(archive, fallbackFilename, stagingRoot, logger, hints)) { wrappedArchive =>
       // first extract just the main files
-      wrappedArchive.extractByPredicate(destination, predicate, overwrite = true, flatten = false, logger)
+      extractedFilesBuilder ++= wrappedArchive.extractByPredicate(destination, predicate, overwrite = true, flatten = false, logger)
       // additionally, extract jar files/nested archives contained in the zip file to a temporary location
       for (Extractor.JarExtraction(jarsDir) <- jarExtractionOpt) {
         logger.debug(s"Searching for nested archives:")
         val jarFiles = wrappedArchive.extractByPredicate(jarsDir, predicateNested, overwrite = false, flatten = true, logger)  // overwrite=false, as we want to extract any given jar only once per staging process
         // finally extract the jar files themselves (without recursively extracting jars contained inside)
         for (jarFile <- jarFiles) {
-          logger.debug(s"Extracting nested archive ${jarFile.last}")
-          usedPatternsBuilder ++=
-            extract(jarFile.toIO, fallbackFilename = None, destination, recipe, jarExtractionOpt = None, hints, stagingRoot = stagingRoot, validate = validate)
+          logger.debug(s"Extracting nested archive ${jarFile.path.last}")
+          val (fs, ps) = extract(jarFile.path.toIO, fallbackFilename = None, destination, recipe, jarExtractionOpt = None, hints, stagingRoot = stagingRoot, validate = validate)
+          extractedFilesBuilder ++= fs
+          usedPatternsBuilder ++= ps
         }
       }
     }
-    usedPatternsBuilder.result()
+    (extractedFilesBuilder.result(), usedPatternsBuilder.result())
   } catch {
     case e: ExtractionFailed => throw e
     case e: (NotADbpfFile | ChecksumError) => throw new ExtractionFailed(s"Failed to extract $archive.", e.getMessage)

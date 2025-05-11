@@ -26,29 +26,23 @@ object Resolution {
     def orgName: String = toBareDep.orgName
   }
 
-  object Dep {
-    /** Given a package dependency without specified variant, use variantSelection
-      * information to pick a concrete variant for the dependency, if dependency
-      * supports multiple variants;
-      * Given an asset reference dependency, look up its url and lastModified
-      * attributes.
-      */
-    private[Resolution] def fromBareDependency(dependency: BareDep, variantSelection: VariantSelection): RIO[ResolutionContext, Dep] = dependency match {
-      case bareAsset: BareAsset =>
-        // assets do not have variants
-        Find.concreteVersion(bareAsset, Constants.versionLatestRelease)
-          .flatMap(Find.packageData[JD.Asset](bareAsset, _))
-          .flatMap {
-            case None => ZIO.fail(new Sc4pacAssetNotFound(s"Could not find metadata of asset ${bareAsset.assetId.value}.",
-              "Most likely this is due to incorrect or incomplete metadata in the corresponding channel."))
-            case Some(data) => ZIO.succeed(DepAsset.fromAsset(data))
-          }
-      case bareMod @ BareModule(group, name) =>
-        for {
-          concreteVersion  <- Find.concreteVersion(bareMod, Constants.versionLatestRelease)
-          (_, variantData) <- Find.matchingVariant(bareMod, concreteVersion, variantSelection)
-        } yield DepModule(group = group, name = name, version = concreteVersion, variant = variantData.variant)
-    }
+  /** Lookup the metadata of a BareDep (without caching). The function should be
+    * memoized where it is used. */
+  private def findMetadataImpl(variantSelection: VariantSelection)(dep: BareDep): RIO[ResolutionContext, Either[(JD.Asset, java.net.URI), (JD.Package, JD.VariantData, java.net.URI)]] = dep match {
+    case bareAsset: BareAsset =>
+      // assets do not have variants
+      Find.concreteVersion(bareAsset, Constants.versionLatestRelease)
+        .flatMap(Find.packageData[JD.Asset](bareAsset, _))
+        .flatMap {
+          case None => ZIO.fail(new Sc4pacAssetNotFound(s"Could not find metadata of asset ${bareAsset.assetId.value}.",
+            "Most likely this is due to incorrect or incomplete metadata in the corresponding channel."))
+          case Some(data) => ZIO.succeed(Left(data))
+        }
+    case bareMod @ BareModule(group, name) =>
+      for {
+        concreteVersion  <- Find.concreteVersion(bareMod, Constants.versionLatestRelease)
+        data             <- Find.matchingVariant(bareMod, concreteVersion, variantSelection)
+      } yield Right(data)
   }
 
   /** An sc4pac asset dependency: a leaf in the dependency tree.
@@ -62,7 +56,7 @@ object Resolution {
   final case class DepAsset(
     assetId: C.ModuleName,
     version: String,
-    url: String,
+    url: java.net.URI,
     lastModified: Option[java.time.Instant],
     archiveType: Option[JD.ArchiveType],
     checksum: JD.Checksum,
@@ -102,15 +96,16 @@ object Resolution {
     * implicitly always take the latest version. That way, we do not need to
     * worry about reconciliation strategies or dependency cycles.
     */
-  def resolve(initialDependencies: Seq[BareDep], variantSelection: VariantSelection): RIO[ResolutionContext, Resolution] = {
+  def resolve(initialDependencies: Seq[BareDep], variantSelection: VariantSelection): RIO[ResolutionContext, Resolution] = ZIO.memoize(findMetadataImpl(variantSelection)).flatMap { findMetadataMemo =>
 
-    // TODO avoid looking up variants and packageData multiple times
     def lookupDependencyLinks(dep: BareDep): RIO[ResolutionContext, Links] = dep match {
       case dep: BareAsset => ZIO.succeed(Links(Seq.empty, Seq.empty))
-      case mod: BareModule => {
-        Find.matchingVariant(mod, Constants.versionLatestRelease, variantSelection)
-          .map { (pkgData, variantData) => Links(dependencies = variantData.bareDependencies, conflicts = variantData.conflictingPackages) }
-      }
+      case mod: BareModule =>
+        findMetadataMemo(dep).map {
+          case Right((_, variantData, _)) =>
+            Links(dependencies = variantData.bareDependencies, conflicts = variantData.conflictingPackages)
+          case Left(_) => throw new AssertionError
+        }
     }
 
     // Here we iteratively compute transitive dependencies.
@@ -173,14 +168,33 @@ object Resolution {
                             explicitPackages2 = pkgs2,
                           )
                         }
-      nonbareDeps    <- ZIO.foreach(reachableDeps.keySet) { d => Dep.fromBareDependency(d, variantSelection).map(d -> _) }
-    } yield Resolution(reachableDeps, nonbareDeps.toMap, reverseDeps)
+      resolvedData   <- ZIO.foreach(reachableDeps.keySet) { (d: BareDep) =>
+                          findMetadataMemo(d).map {
+                            case Left((assetData, url)) =>
+                              d -> (DepAsset.fromAsset(assetData), Left(assetData), url)
+                            case Right((pkgData, variantData, url)) =>
+                              val depModule = DepModule(
+                                group = d.asInstanceOf[BareModule].group,
+                                name = d.asInstanceOf[BareModule].name,
+                                version = pkgData.version,
+                                variant = variantData.variant
+                              )
+                              d -> (depModule, Right((pkgData, variantData)), url)
+                          }
+                        }
+    } yield Resolution(reachableDeps, resolvedData.toMap, reverseDeps)
 
   }
 
 }
 
-class Resolution(reachableDeps: TreeSeqMap[BareDep, Links], nonbareDeps: Map[BareDep, Dep], reverseDeps: Map[BareDep, Seq[BareDep]]) {
+class Resolution(reachableDeps: TreeSeqMap[BareDep, Links], resolvedData: Map[BareDep, (Dep, Either[JD.Asset, (JD.Package, JD.VariantData)], java.net.URI)], reverseDeps: Map[BareDep, Seq[BareDep]]) {
+
+  private val nonbareDeps: collection.MapView[BareDep, Dep] = resolvedData.view.mapValues(_._1)
+
+  val metadata: collection.MapView[BareDep, Either[JD.Asset, (JD.Package, JD.VariantData)]] = resolvedData.view.mapValues(_._2)
+
+  val metadataUrls: collection.MapView[BareDep, java.net.URI] = resolvedData.view.mapValues(_._3)
 
   /** Since `TreeSeqMap` preserves insertion order, this sequence should contain
     * all reachable dependencies such that, if you take any number from the
@@ -203,7 +217,7 @@ class Resolution(reachableDeps: TreeSeqMap[BareDep, Links], nonbareDeps: Map[Bar
   /** Download artifacts of a subset of the dependency set of the resolution, or
     * take files from cache in case they are still up-to-date.
     */
-  def fetchArtifactsOf(subset: Seq[Dep], urlFallbacks: Map[String, os.Path]): RIO[ResolutionContext & Downloader.Credentials, Seq[(DepAsset, Artifact, java.io.File)]] = {
+  def fetchArtifactsOf(subset: Seq[Dep], urlFallbacks: Map[java.net.URI, os.Path]): RIO[ResolutionContext & Downloader.Credentials, Seq[(DepAsset, Artifact, java.io.File)]] = {
     val assetsArtifacts = subset.collect{ case d: DepAsset =>
       (d, Artifact(
         d.url,

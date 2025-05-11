@@ -3,6 +3,7 @@ package sc4pac
 
 import zio.{ZIO, Task, RIO}
 import sc4pac.Resolution.DepModule
+import sc4pac.JsonData as JD
 import org.fusesource.jansi.Ansi
 
 
@@ -22,7 +23,7 @@ trait Logger {
   def gettingLength(url: String): Unit = {}
   def gettingLengthResult(url: String, length: Option[Long]): Unit = {}
 
-  def concurrentCacheAccess(url: String): Unit = debug(s"concurrentCacheAccess $url")
+  def concurrentCacheAccess(url: java.net.URI): Unit = debug(s"concurrentCacheAccess $url")
 
   def extractingArchiveEntry(entry: os.SubPath, include: Boolean): Unit
 
@@ -44,6 +45,7 @@ trait Logger {
   */
 class CliLogger private (out: java.io.PrintStream, useColor: Boolean, isInteractive: Boolean) extends Logger {
 
+  private def green(msg: String): String = if (useColor) Console.GREEN + msg + Console.RESET else msg
   private def cyan(msg: String): String = if (useColor) Console.CYAN + msg + Console.RESET else msg
   def cyanBold(msg: String): String = if (useColor) Console.CYAN + Console.BOLD + msg + Console.RESET else msg
   private def yellowBold(msg: String): String = if (useColor) Console.YELLOW + Console.BOLD + msg + Console.RESET else msg
@@ -94,6 +96,20 @@ class CliLogger private (out: java.io.PrintStream, useColor: Boolean, isInteract
 
   def logInstalled(module: DepModule, explicit: Boolean): Unit = {
     log(module.formattedDisplayString(gray) + (if (explicit) " " + cyanBold("[explicit]") else ""))
+  }
+
+  def logDllsInstalled(dllsInstalled: Seq[Sc4pac.StageResult.DllInstalled]): Unit = {
+    for ((dll, idx) <- dllsInstalled.zipWithIndex) {
+      val bullet = s"(${idx+1})"
+      val indent = " " * bullet.length
+      if (idx != 0) log("")
+      log(s"$bullet DLL file: ${bold(dll.dll.toString)}")
+      log(s"$indent SHA-256 is valid: ${green(JD.Checksum.bytesToString(dll.validatedSha256))}")
+      log(s"$indent Downloaded from: ${cyan(dll.asset.url.toString)}")
+      log(s"$indent Installed by: ${dll.module.formattedDisplayString(gray)}")
+      log(s"$indent DLL metadata from: ${gray(dll.assetMetadataUrl.toString)}")
+      log(s"$indent Package metadata from: ${gray(dll.pkgMetadataUrl.toString)}")
+    }
   }
 
   // private val spinnerSymbols = collection.immutable.ArraySeq("⡿", "⣟", "⣯", "⣷", "⣾", "⣽", "⣻", "⢿").reverse

@@ -458,6 +458,16 @@ object ApiSpecZIO extends ZIOSpecDefault {
                                     msg.choices == Seq("Yes", "No"),
                                   ))
                           } yield msg.responses("Yes")
+                        case msg: api.PromptMessage.ConfirmInstallingDlls =>
+                          for {
+                            _  <- addTestResult(assertTrue(
+                                    msg.dllsInstalled.size == 1,
+                                    msg.dllsInstalled.head.url.toString == "http://localhost:8090/files/package-bFile.dll",
+                                    msg.dllsInstalled.head.assetMetadataUrl.toString == "http://localhost:8090/metadata/sc4pacAsset/memo-demo-package-file-b-dll/1.0/pkg.json",
+                                    msg.dllsInstalled.head.packageMetadataUrl.toString == "http://localhost:8090/metadata/memo/demo-package/1.0/pkg.json",
+                                    msg.choices == Seq("Yes", "No"),
+                                  ))
+                          } yield msg.responses("Yes")
                       },
                       checkMessages = queue => (for {
                         _    <- queue.take.flatMap(f => addTestResult(assertTrue(f.json("$type").str == "/prompt/json/update/initial-arguments")))
@@ -503,6 +513,7 @@ object ApiSpecZIO extends ZIOSpecDefault {
                         _    <- queue.take.flatMap(f => addTestResult(assertTrue(f.json("$type").str == "/progress/update/extraction")))
                         _    <- queue.take.flatMap(f => addTestResult(assertTrue(f.json("$type").str == "/progress/update/extraction")))
                         _    <- queue.take.flatMap(f => addTestResult(assertTrue(f.json("$type").str == "/prompt/confirmation/update/warnings")))
+                        _    <- queue.take.flatMap(f => addTestResult(assertTrue(f.json("$type").str == "/prompt/confirmation/update/installing-dlls")))
                         _    <- queue.take.flatMap(f => addTestResult(assertTrue(f.json == jsonOk)))
                       } yield ()),
                     )

@@ -31,7 +31,7 @@ class Downloader(
 ) {
 
   def download: IO[Artifact2Error, java.io.File] = {
-    val url = artifact.url
+    val url = artifact.url.toString
     logger.checkingArtifact(url, artifact)
     if (url.startsWith("file:/")) {
       // use local file directly

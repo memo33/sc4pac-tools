@@ -5,6 +5,7 @@
 - new `conflicting` attribute in YAML files, a list of conflicting packages (#11). Packages that are in conflict with each other cannot be installed at the same time.
 - support for searching by author name (#20)
 - support for selecting a local file from disk as fallback if the download of an asset failed (e.g. when a file was rehosted at a different URL)
+- When DLL files are installed, a new dialog now informs about the origin of the DLLs (#18).
 
 ### Fixed
 - a problem with handling version numbers containing spaces.
@@ -15,6 +16,7 @@
 - API upgraded to 2.5:
   - added a new `/prompt/choice/update/remove-conflicting-packages` message to `/update`
   - added a new `/prompt/json/update/initial-arguments` message to `/update`
+  - added a new `/prompt/confirmation/update/installing-dlls` message to `/update` (#18)
   - added support for `externalIds` in `/packages.search.id` ([#26][gui26])
   - output format changes in `/packages.search` and `/packages.search.id`
   - message `/prompt/choice/update/variant` now informs about `previouslySelectedValue` and `importedValues` if applicable

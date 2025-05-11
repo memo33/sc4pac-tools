@@ -25,6 +25,7 @@ object JsonIo {
             | _: ujson.ParseException
             | _: java.nio.file.NoSuchFileException
             | _: IllegalArgumentException
+            | _: java.net.URISyntaxException
             | _: java.time.format.DateTimeParseException) =>
       Left(s"failed to read $errMsg: ${e.getMessage()}")
   }

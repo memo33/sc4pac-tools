@@ -5,7 +5,7 @@ package api
 import upickle.default as UP
 
 import sc4pac.JsonData as JD
-import JD.{bareModuleRw, instantRw, pathRw}
+import JD.{bareModuleRw, instantRw, pathRw, subPathRw, uriRw, checksumRw}
 
 sealed trait Message derives UP.ReadWriter
 
@@ -105,6 +105,32 @@ object PromptMessage {
     given confirmInstallation: UP.ReadWriter[ConfirmInstallation] = UP.stringKeyRW(UP.macroRW)
   }
 
+  @upickle.implicits.key("/prompt/confirmation/update/installing-dlls")
+  case class ConfirmInstallingDlls(
+    description: String,
+    dllsInstalled: Seq[ConfirmInstallingDlls.Item],
+    choices: Seq[String], // = yesNo,
+    token: String,
+    responses: Map[String, ResponseMessage]
+  ) extends PromptMessage derives UP.ReadWriter
+  object ConfirmInstallingDlls {
+    def apply(description: String, dllsInstalled: Seq[Item]): ConfirmInstallingDlls = {
+      val token = scala.util.Random.nextInt().toHexString
+      ConfirmInstallingDlls(description = description, dllsInstalled = dllsInstalled, choices = yesNo, token, responses = responsesFromChoices(yesNo, token))
+    }
+
+    case class Item(
+      dll: os.SubPath,
+      checksum: JD.Checksum,
+      url: java.net.URI,
+      `package`: BareModule,
+      packageVersion: String,
+      assetMetadataUrl: java.net.URI,
+      packageMetadataUrl: java.net.URI,
+    ) derives UP.ReadWriter
+  }
+
+
   @upickle.implicits.key("/prompt/json/update/initial-arguments")
   case class InitialArgumentsForUpdate(
     choices: Seq[String],  // = "Default"
@@ -130,7 +156,7 @@ object PromptMessage {
 
   @upickle.implicits.key("/prompt/json/update/download-failed-select-mirror")
   case class DownloadFailedSelectMirror(
-    url: String,
+    url: java.net.URI,
     reason: ErrorMessage.DownloadFailed,
     choices: Seq[String],
     token: String,
@@ -139,7 +165,7 @@ object PromptMessage {
     override def accept(response: ResponseMessage): Boolean = response.token == token
   }
   object DownloadFailedSelectMirror {
-    def apply(url: String, reason: ErrorMessage.DownloadFailed): DownloadFailedSelectMirror = {
+    def apply(url: java.net.URI, reason: ErrorMessage.DownloadFailed): DownloadFailedSelectMirror = {
       val token = scala.util.Random.nextInt().toHexString
       DownloadFailedSelectMirror(
         url = url,

@@ -43,7 +43,7 @@ sealed abstract class MetadataRepository(val baseUri: java.net.URI) {
   /** For a package or asset (no variant) of a given version, fetch the
     * corresponding `JD.Package` or `JD.Asset` contained in its json file.
     */
-  def fetchModuleJson[R, A <: JD.PackageAsset : Reader](dep: BareDep, version: String, fetch: MetadataRepository.Fetch[R]): RIO[R, A]
+  def fetchModuleJson[R, A <: JD.PackageAsset : Reader](dep: BareDep, version: String, fetch: MetadataRepository.Fetch[R]): RIO[R, (A, java.net.URI)]
 
   def fetchExternalPackage[R](module: BareModule, fetch: MetadataRepository.Fetch[R]): RIO[R, Option[JD.ExternalPackage]]
 
@@ -140,7 +140,7 @@ private class JsonRepository(
   /** For a module (no asset, no variant) of a given version, fetch the
     * corresponding `JD.Package` contained in its json file.
     */
-  def fetchModuleJson[R, A <: JD.PackageAsset : Reader](dep: BareDep, version: String, fetch: MetadataRepository.Fetch[R]): RIO[R, A] = {
+  def fetchModuleJson[R, A <: JD.PackageAsset : Reader](dep: BareDep, version: String, fetch: MetadataRepository.Fetch[R]): RIO[R, (A, java.net.URI)] = {
     channel.versions.get(dep).flatMap(_.find(_._1 == version)) match
       // This only works for concrete versions (so not for "latest.release").
       // The assumption is that all methods of MetadataRepository are only called with concrete versions.
@@ -148,7 +148,7 @@ private class JsonRepository(
         ZIO.fail(new Sc4pacVersionNotFound(s"No versions of ${dep.orgName} found in repository $baseUri.",
           "Either the package name is spelled incorrectly or the metadata stored in the corresponding channel is incorrect or incomplete.", dep))
       case Some((_, checksum)) =>
-        val remoteUrl = MetadataRepository.resolveUriWithSubPath(baseUri, MetadataRepository.jsonSubPath(dep, version)).toString
+        val remoteUrl = MetadataRepository.resolveUriWithSubPath(baseUri, MetadataRepository.jsonSubPath(dep, version))
         // We have complete control over the json metadata files. Usually, they
         // do not functionally change for a fixed version, but info fields like
         // `requiredBy` can change, so we redownload them once the checksum stops matching.
@@ -156,14 +156,14 @@ private class JsonRepository(
         // channel files are always up-to-date and Downloader .checked files do not exist.)
         val jsonArtifact = Artifact(remoteUrl, changing = false, checksum = checksum, redownloadOnChecksumError = true)
 
-        fetch[A](jsonArtifact)
+        fetch[A](jsonArtifact).map((_, remoteUrl))
   }
 
   def fetchExternalPackage[R](module: BareModule, fetch: MetadataRepository.Fetch[R]): RIO[R, Option[JD.ExternalPackage]] = {
     externalPackages.get(module) match {
       case None => ZIO.succeed(None)
       case Some(extPkg) =>
-        val remoteUrl = MetadataRepository.resolveUriWithSubPath(baseUri, MetadataRepository.extPkgJsonSubPath(module)).toString
+        val remoteUrl = MetadataRepository.resolveUriWithSubPath(baseUri, MetadataRepository.extPkgJsonSubPath(module))
         val jsonArtifact = Artifact(remoteUrl, changing = false, checksum = extPkg.checksum)
         fetch[JD.ExternalPackage](jsonArtifact)
           .map(Some(_))
@@ -187,13 +187,13 @@ private class YamlRepository(
     channelData.get(dep).map(_.keys.toSeq).getOrElse(Seq.empty)
   }
 
-  def fetchModuleJson[R, A <: JD.PackageAsset : Reader](dep: BareDep, version: String, fetch: MetadataRepository.Fetch[R]): RIO[R, A] = {
+  def fetchModuleJson[R, A <: JD.PackageAsset : Reader](dep: BareDep, version: String, fetch: MetadataRepository.Fetch[R]): RIO[R, (A, java.net.URI)] = {
     channelData.get(dep).flatMap(_.get(version)) match {
       case None =>
         ZIO.fail(new Sc4pacVersionNotFound(s"No versions of ${dep.orgName} found in repository $baseUri.",
           "Either the package name is spelled incorrectly or the metadata stored in the corresponding channel is incorrect or incomplete.", dep))
       case Some(pkgData: JD.PackageAsset) =>
-        ZIO.succeed(pkgData.asInstanceOf[A])  // as long as we do not mix up Assets and Packages, casting should not be an issue (could be fixed using type classes)
+        ZIO.succeed((pkgData.asInstanceOf[A], baseUri))  // as long as we do not mix up Assets and Packages, casting should not be an issue (could be fixed using type classes)
     }
   }
 

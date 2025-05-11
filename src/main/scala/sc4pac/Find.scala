@@ -40,8 +40,8 @@ object Find {
   /** Find the JD.Package or JD.Asset corresponding to module and version,
     * across all repositories. If not found at all, try a second time with the
     * repository channel contents updated. */
-  def packageData[A <: JD.Package | JD.Asset : Reader](dep: BareDep, version: String): RIO[ResolutionContext, Option[A]] = {
-    def tryAllRepos(repos: Seq[MetadataRepository], context: ResolutionContext): Task[Option[A]] = ZIO.collectFirst(repos) { repo =>
+  def packageData[A <: JD.Package | JD.Asset : Reader](dep: BareDep, version: String): RIO[ResolutionContext, Option[(A, java.net.URI)]] = {
+    def tryAllRepos(repos: Seq[MetadataRepository], context: ResolutionContext): Task[Option[(A, java.net.URI)]] = ZIO.collectFirst(repos) { repo =>
         repo.fetchModuleJson[Logger, A](dep, version, context.cache.fetchJson)
           .uninterruptible  // uninterruptile to avoid incomplete-download error messages when resolving is interrupted to prompt for a variant selection (downloading json should be fairly quick anyway)
           .map(Some(_))
@@ -52,7 +52,7 @@ object Find {
     ZIO.service[ResolutionContext].flatMap { context =>
       tryAllRepos(context.repositories, context)
         .flatMap {
-          case result: Some[A] => ZIO.succeed(result)
+          case result: Some[(A, java.net.URI)] => ZIO.succeed(result)
           case None =>
             // None of the repositories contains the package, so we re-initialize
             // the repositories to make sure the channel-contents are up-to-date.
@@ -76,15 +76,17 @@ object Find {
   private[sc4pac] def isSubMap[A, B](small: Map[A, B], large: Map[A, B]): Boolean = small.keysIterator.forall(a => small.get(a) == large.get(a))
 
   /** Given a module without specific variant, find a variant that matches variantSelection. */
-  def matchingVariant(module: BareModule, version: String, variantSelection: VariantSelection): RIO[ResolutionContext, (JD.Package, JD.VariantData)] = {
-    concreteVersion(module, version)
-      .flatMap(packageData[JD.Package](module, _))
-      .someOrFail(new Sc4pacVersionNotFound(
-        s"Could not find metadata of ${module.orgName} or suitable variant.",
-        "Either the package name is spelled incorrectly or the metadata stored in the corresponding channel is incorrect or incomplete.",
-        module,
-      ))
-      .flatMap(variantSelection.pickVariant)
+  def matchingVariant(module: BareModule, version: String, variantSelection: VariantSelection): RIO[ResolutionContext, (JD.Package, JD.VariantData, java.net.URI)] = {
+    for {
+      (pkg, url)   <- concreteVersion(module, version)
+                        .flatMap(packageData[JD.Package](module, _))
+                        .someOrFail(new Sc4pacVersionNotFound(
+                          s"Could not find metadata of ${module.orgName} or suitable variant.",
+                          "Either the package name is spelled incorrectly or the metadata stored in the corresponding channel is incorrect or incomplete.",
+                          module,
+                        ))
+      variantData  <- variantSelection.pickVariant(pkg)
+    } yield (pkg, variantData, url)
   }
 
   /** Find all external packages that depend on or conflict with this module. This searches

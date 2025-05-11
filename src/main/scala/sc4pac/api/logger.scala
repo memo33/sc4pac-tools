@@ -180,7 +180,7 @@ class WebSocketPrompter(wsChannel: zio.http.WebSocketChannel, logger: WebSocketL
     sendPrompt(PromptMessage.ConfirmUpdatePlan(toRemove = toRemove, toInstall = toInstall)).map(_.body.str == yes)
   }
 
-  def promptForDownloadMirror(url: String, reason: error.DownloadFailed): Task[Either[Boolean, os.Path]] = {
+  def promptForDownloadMirror(url: java.net.URI, reason: error.DownloadFailed): Task[Either[Boolean, os.Path]] = {
     for {
       resp <- sendPrompt(PromptMessage.DownloadFailedSelectMirror(
                 url = url,
@@ -193,8 +193,23 @@ class WebSocketPrompter(wsChannel: zio.http.WebSocketChannel, logger: WebSocketL
     }
   }
 
-  def confirmInstallationWarnings(warnings: Seq[(BareModule, Seq[String])]): zio.Task[Boolean] = {
+  def confirmInstallationWarnings(warnings: Seq[(BareModule, Seq[String])]): Task[Boolean] = {
     sendPrompt(PromptMessage.ConfirmInstallation(warnings.toMap)).map(_.body.str == yes)
+  }
+
+  def confirmDllsInstalled(dllsInstalled: Seq[Sc4pac.StageResult.DllInstalled]): Task[Boolean] = {
+    sendPrompt(PromptMessage.ConfirmInstallingDlls(
+      description = confirmDllsInstalledPretext(dllsInstalled.length),
+      dllsInstalled.map(dll => PromptMessage.ConfirmInstallingDlls.Item(
+        dll = dll.dll,
+        checksum = JD.Checksum(sha256 = Some(dll.validatedSha256)),
+        url = dll.asset.url,
+        `package` = dll.module.toBareDep,
+        packageVersion = dll.module.version,
+        assetMetadataUrl = dll.assetMetadataUrl,
+        packageMetadataUrl = dll.pkgMetadataUrl,
+      ))
+    )).map(_.body.str == yes)
   }
 
 }
