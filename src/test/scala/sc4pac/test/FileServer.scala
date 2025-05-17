@@ -13,6 +13,7 @@ object FileServer {
     Method.GET / trailing -> Handler.fromFunctionHandler[(zio.http.Path, Request)] { case (path: zio.http.Path, _: Request) =>
       val fileZio =
         for {
+          _ <- ZIO.sleep(zio.Duration.fromMillis(10))  // an attempt to avoid the http race conditions in zio-http/netty, see https://github.com/zio/zio-http/issues/3395
           subpath <- ZIO.fromTry(scala.util.Try(os.SubPath("." + path.encode)))
         } yield (staticDir / subpath).toIO
       Handler.fromFileZIO(fileZio).orElse(Handler.notFound).contramap(_._2)
