@@ -22,11 +22,12 @@ object JsonIo {
   } catch {
     case e @ (_: upickle.core.AbortException
             | _: upickle.core.Abort
-            | _: ujson.ParseException
+            | _: ujson.ParsingFailedException
             | _: java.nio.file.NoSuchFileException
             | _: IllegalArgumentException
             | _: java.net.URISyntaxException
-            | _: java.time.format.DateTimeParseException) =>
+            | _: java.time.format.DateTimeParseException
+            | scala.util.control.NonFatal(_)) =>  // catch all
       Left(s"failed to read $errMsg: ${e.getMessage()}")
   }
 
@@ -53,10 +54,9 @@ object JsonIo {
     import java.nio.file.StandardOpenOption
     import zio.nio.channels.AsynchronousFileChannel
 
-    def write0(channel: AsynchronousFileChannel): ZIO[zio.Scope, Throwable, Unit] = {
+    def write0(arr: Array[Byte], channel: AsynchronousFileChannel): ZIO[zio.Scope, Throwable, Unit] = {
       for {
         _      <- channel.truncate(size = 0)
-        arr    =  UP.writeToByteArray[S](newState, indent = 2)
         unit   <- channel.writeChunk(zio.Chunk.fromArray(arr), position = 0)
       } yield unit
     }
@@ -82,13 +82,14 @@ object JsonIo {
     // Be careful to just read and write from the channel, as the channel is holding the lock.
     ZIO.scoped {
       for {
+        arr     <- ZIO.attempt(UP.writeToByteArray[S](newState, indent = 2))  // encode before touching the file to avoid data loss on errors
         channel <- scopedChannel
         lock    <- ZIO.acquireRelease(channel.tryLock(shared = false))(releaseLock)
                       .filterOrFail(lock => lock != null)(new Sc4pacIoException(s"Json file $jsonPath is locked by another program and cannot be modified; if the problem persists, close any relevant program and release the file lock in your OS"))
         _       <- if (origState.isEmpty) ZIO.succeed(())
                    else read0(channel).filterOrFail(_ == origState.get)(new Sc4pacIoException(s"Cannot write data since json file has been modified in the meantime: $jsonPath"))
         result  <- action
-        _       <- write0(channel)
+        _       <- write0(arr, channel)
       } yield result
     }  // Finally the lock is released and channel is closed when leaving the scope.
   }

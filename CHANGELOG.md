@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+### Fixed
+- improved error handling while reading or writing JSON files
+
 
 ## [0.7.0] - 2025-05-11
 ### Added
