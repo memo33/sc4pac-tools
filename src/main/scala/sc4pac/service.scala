@@ -25,6 +25,8 @@ trait FileSystem {
     lazy val simtropolisToken: Option[String] = readEnvVar("SC4PAC_SIMTROPOLIS_TOKEN")
   }
 
+  def injectErrorInTest: zio.Task[Unit] = zio.ZIO.unit
+
 }
 object FileSystem {
   val live: zio.ULayer[FileSystem] = zio.ZLayer.succeed(new FileSystem {})

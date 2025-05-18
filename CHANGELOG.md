@@ -4,6 +4,7 @@
 
 ### Fixed
 - improved error handling while reading or writing JSON files
+- improved error handling in API websocket communication
 
 
 ## [0.7.0] - 2025-05-11

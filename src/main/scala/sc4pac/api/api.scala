@@ -253,6 +253,7 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
             val updateTask: zio.RIO[ProfileRoot & service.FileSystem & Ref[Option[FileCache]] & WebSocketLogger, Message] =
               for {
                 fs           <- ZIO.service[service.FileSystem]
+                _            <- fs.injectErrorInTest
                 credentials  =  Downloader.Credentials(
                                   simtropolisToken = req.url.queryParams.getAll("simtropolisToken").headOption.orElse(fs.env.simtropolisToken),
                                 )
@@ -281,7 +282,10 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
                 for {
                   finalMsg <- updateTask.catchAll {
                                 case err: cli.Commands.ExpectedFailure => ZIO.succeed(expectedFailureMessage(err))
-                                case err => ZIO.succeed(ErrorMessage.ServerError("Unexpected error during Update. This looks like a bug. Please report it.", err.toString))
+                                case err => ZIO.succeed(ErrorMessage.ServerError("Unexpected error during Update. This looks like a bug. Please report it.", Logger.stackTraceToString(err)))
+                              }
+                              .catchAllDefect {
+                                case err => ZIO.succeed(ErrorMessage.ServerError("Unexpected error during Update (defect). This looks like a bug. Please report it.", Logger.stackTraceToString(err)))
                               }
                   unit     <- ZIO.serviceWithZIO[WebSocketLogger](_.sendMessageAwait(finalMsg))
                 } yield unit

@@ -23,6 +23,12 @@ object ApiSpecZIO extends ZIOSpecDefault {
       }.orDie)
     )
 
+  private var injectError: Task[Unit] = ZIO.unit
+  val testFileSystemLayer: ZLayer[Any, Throwable, service.FileSystem] =
+    ZLayer.succeed(new service.FileSystem {
+      override def injectErrorInTest = injectError
+    })
+
   /** Launches an API server for the duration of the Scope. */
   val serverLayer: zio.ZLayer[ProfilesDir & service.FileSystem, Throwable, ServerOptions] =
     zio.ZLayer.scoped(
@@ -204,7 +210,7 @@ object ApiSpecZIO extends ZIOSpecDefault {
                   ).zipRight(queue.shutdown)
     } yield resp
 
-  def spec = suite("ApiSpecZIO")(
+  def spec = suite[Spec[ProfilesDir & ServerOptions & Client, Throwable]]("ApiSpecZIO")(
     test("/server.status") {
       for {
         resp <- getEndpoint("server.status")
@@ -703,13 +709,56 @@ object ApiSpecZIO extends ZIOSpecDefault {
               } yield ()
             })
           },
+          test("/update (error injected)") {
+            withTestResultRef(ZIO.scoped {
+              for {
+                _  <- ZIO.acquireRelease(ZIO.succeed { injectError = ZIO.fail(new Exception("injected error")) })(_ => ZIO.succeed { injectError = ZIO.unit })
+                _  <- wsEndpoint(s"update?profile=$profileId",
+                        respond = { case _ => throw new AssertionError },
+                        filter = msg => !msg.json("$type").str.startsWith("/progress/"),
+                        checkMessages = queue => (for {
+                          _  <- queue.take.flatMap(f => addTestResult(assertTrue(
+                                  f.json("$type").str == "/error/server-error",
+                                  f.json("title").str.startsWith("Unexpected error during Update."),
+                                  f.json("detail").str.contains("injected error"),
+                          )))
+                        } yield ()),
+                      )
+              } yield ()
+            })
+          },
+          test("/update (defect injected)") {
+            withTestResultRef(
+              ZIO.foreachDiscard(Seq(
+                ZIO.die(new Exception("injected defect")),
+                ZIO.die(new OutOfMemoryError("injected defect")),
+              )) { injectErr0 =>
+                ZIO.scoped {
+                  for {
+                    _  <- ZIO.acquireRelease(ZIO.succeed { injectError = injectErr0 })(_ => ZIO.succeed { injectError = ZIO.unit })
+                    _  <- wsEndpoint(s"update?profile=$profileId",
+                            respond = { case _ => throw new AssertionError },
+                            filter = msg => !msg.json("$type").str.startsWith("/progress/"),
+                            checkMessages = queue => (for {
+                              _  <- queue.take.flatMap(f => addTestResult(assertTrue(
+                                      f.json("$type").str == "/error/server-error",
+                                      f.json("title").str.startsWith("Unexpected error during Update (defect)."),
+                                      f.json("detail").str.contains("injected defect"),
+                              )))
+                            } yield ()),
+                          )
+                  } yield ()
+                }
+              }
+            )
+          },
         ),
 
       )
     }).provideSomeLayerShared(fileServerLayer)  // shared across all tests
       .provideSomeLayer(currentProfileLayer),
 
-  ).provideShared(profilesDirLayer, service.FileSystem.live, serverLayer, Client.default)  // shared across all tests
+  ).provideShared(profilesDirLayer, testFileSystemLayer, serverLayer, Client.default)  // shared across all tests
     @@ TestAspect.sequential @@ TestAspect.withLiveClock @@ TestAspect.timeout(30.seconds)
 
 }

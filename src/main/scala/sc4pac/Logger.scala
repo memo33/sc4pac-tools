@@ -33,11 +33,14 @@ trait Logger {
 
   def fetchingAssets[R, A](fetching: RIO[R, A]): RIO[R, A]
 
-  def debugPrintStackTrace(exception: Throwable): Unit = debug({
+  def debugPrintStackTrace(exception: Throwable): Unit = debug(Logger.stackTraceToString(exception))
+}
+object Logger {
+  def stackTraceToString(exception: Throwable): String = {
     val sw = java.io.StringWriter()
     exception.printStackTrace(new java.io.PrintWriter(sw))
     sw.toString()
-  })
+  }
 }
 
 /** A plain Coursier logger, since Coursier's RefreshLogger results in dropped
