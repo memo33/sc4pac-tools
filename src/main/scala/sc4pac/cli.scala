@@ -551,7 +551,7 @@ object Commands {
             destination = os.Path(java.nio.file.Paths.get(options.output), os.pwd)
             stagingRoot <- Sc4pac.makeTempStagingDir(destination, logger)
             assetData = JD.AssetReference(assetId = "dummy-asset", include = options.include, exclude = options.exclude)
-            (recipe, regexWarnings) = Extractor.InstallRecipe.fromAssetReference(assetData)
+            (recipe, regexWarnings) = Extractor.InstallRecipe.fromAssetReference(assetData, variant = Map.empty)  // variant is not needed, as there aren't any conditionals in our dummy asset
             (_, usedPatterns) <- ZIO.attemptBlocking {
               Extractor(logger).extract(
                 archive = archive,

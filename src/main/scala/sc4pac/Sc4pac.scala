@@ -267,7 +267,7 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) {  // TODO d
     progress: Sc4pac.Progress,
     resolution: Resolution,
   ): RIO[ResolutionContext, StageResult.Item] = {
-    def extract(assetData: JD.AssetReference, pkgFolder: os.SubPath): Task[(BareAsset, Chunk[Extractor.ExtractedItem], Seq[Warning])] = {
+    def extract(assetData: JD.AssetReference, pkgFolder: os.SubPath, variant: Variant): Task[(BareAsset, Chunk[Extractor.ExtractedItem], Seq[Warning])] = {
       // Given an AssetReference, we look up the corresponding artifact file
       // by ID. This relies on the 1-to-1-correspondence between sc4pacAssets
       // and artifact files.
@@ -281,7 +281,7 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) {  // TODO d
                 "Please report this to the maintainers of the package metadata."),
           ))
         case Some(art, archive, depAsset) =>
-          val (recipe, regexWarnings) = Extractor.InstallRecipe.fromAssetReference(assetData)
+          val (recipe, regexWarnings) = Extractor.InstallRecipe.fromAssetReference(assetData, variant)
           val extractor = new Extractor(logger)
           val jarsRoot = stagingRoot / "jars"
 
@@ -340,12 +340,12 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) {  // TODO d
 
     val module: BareModule = dependency.toBareDep
     // Since dependency is of type DepModule, we have already resolved the variant successfully, so it must already exist.
-    val (pkgData, variant) = resolution.metadata(module).toOption.get
+    val (pkgData, variantData) = resolution.metadata(module).toOption.get
     val pkgFolder = pkgData.subfolder / packageFolderName(dependency)
     for {
       extractions        <- logger.extractingPackage(dependency, progress)(for {
                               _  <- ZIO.attemptBlocking(os.makeDir.all(tempPluginsRoot / pkgFolder))  // create folder even if package does not have any assets or files
-                              extracted <- ZIO.foreach(variant.assets)(extract(_, pkgFolder))
+                              extracted <- ZIO.foreach(variantData.assets)(extract(_, pkgFolder, variant = variantData.variant))
                             } yield extracted)  // (asset, files, warnings)
       artifactWarnings   =  extractions.flatMap(_._3)
       _                  <- ZIO.foreach(artifactWarnings)(w => ZIO.attempt(logger.warn(w)))  // to avoid conflicts with spinner animation, we print warnings after extraction already finished

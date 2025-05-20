@@ -134,6 +134,50 @@ class VariantsSpec extends AnyWordSpec with Matchers {
         Map("a" -> "a2")
       )) shouldBe a [Left[?, ?]]
     }
+
+    "be picked per cartesian decision tree for conditional variants" in {
+
+      def checkCartesian(tree: DT[String, String, Unit]): List[(String, Seq[String])] = {
+        tree match {
+          case Leaf(_) => Nil
+          case Node(key, choices) =>
+            choices.foreach((c, subtree) => (subtree eq choices.head._2).shouldBe(true))
+            (key, choices.map(_._1)) :: checkCartesian(choices.head._2)
+        }
+      }
+
+      checkCartesian(DT.fromVariantsCartesian(Seq(
+        Map("nightmode" -> "standard"),
+        Map("nightmode" -> "dark"),
+        Map("driveside" -> "right"),
+        Map("CAM" -> "yes"),
+        Map("CAM" -> "no"),
+        Map("driveside" -> "left"),
+      ))).shouldBe(Seq(
+        "nightmode" -> Seq("standard", "dark"),
+        "driveside" -> Seq("right", "left"),
+        "CAM" -> Seq("yes", "no"),
+      ))
+
+      checkCartesian(DT.fromVariantsCartesian(Seq(
+        Map("nightmode" -> "standard"),
+        Map("nightmode" -> "dark", "style" -> "style1"),
+        Map("nightmode" -> "dark", "style" -> "style2"),
+        Map("driveside" -> "right", "style" -> "style1"),
+        Map("driveside" -> "right", "style" -> "style2"),
+        Map("driveside" -> "left", "capacity" -> "standard"),
+        Map("driveside" -> "left", "capacity" -> "quadrupled"),
+        Map("CAM" -> "yes"),
+        Map("CAM" -> "no"),
+      ))).shouldBe(Seq(
+        "nightmode" -> Seq("standard", "dark"),
+        "style" -> Seq("style1", "style2"),
+        "driveside" -> Seq("right", "left"),
+        "capacity" -> Seq("standard", "quadrupled"),
+        "CAM" -> Seq("yes", "no"),
+      ))
+
+    }
   }
 
 }

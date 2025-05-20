@@ -71,6 +71,14 @@ abstract class SharedData {
     include: Seq[String] = Seq.empty,
     exclude: Seq[String] = Seq.empty,
     withChecksum: Seq[IncludeWithChecksum] = Seq.empty,
+    withConditions: Seq[IncludeWithConditions] = Seq.empty,
+  ) derives ReadWriter
+
+  case class IncludeWithConditions(
+    ifVariant: Variant,
+    include: Seq[String] = Seq.empty,
+    exclude: Seq[String] = Seq.empty,
+    withChecksum: Seq[IncludeWithChecksum] = Seq.empty,
   ) derives ReadWriter
 
   case class VariantData(
@@ -81,6 +89,7 @@ abstract class SharedData {
   ) derives ReadWriter {
     def bareModules: Seq[BareModule] = dependencies.map(d => BareModule(Organization(d.group), ModuleName(d.name)))
     def bareDependencies: Seq[BareDep] = bareModules ++ assets.map(a => BareAsset(ModuleName(a.assetId)))
+    def conditionalVariantsIterator: Iterator[Variant] = assets.iterator.flatMap(_.withConditions.iterator.map(_.ifVariant))
   }
   object VariantData {
     def variantString(variant: Variant): String = variant.toSeq.sorted.map((k, v) => s"$k=$v").mkString(", ")
