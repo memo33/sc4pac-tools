@@ -7,7 +7,7 @@
   "metadataSourceUrl": []
  },
  "stats": {
-  "totalPackageCount": 4,
+  "totalPackageCount": 5,
   "categories": [
    {
     "category": "100-props-textures",
@@ -15,7 +15,7 @@
    },
    {
     "category": "150-mods",
-    "count": 2
+    "count": 3
    }
   ]
  },
@@ -75,6 +75,21 @@
    "checksums": {
     "1.0": {
      "sha256": "9bac059e4be3fa415a06e652ee7b73c9acbd418f8a247899cb9c0d794372f21f"
+    }
+   },
+   "category": [
+    "150-mods"
+   ]
+  },
+  {
+   "group": "test",
+   "name": "conditional-variants",
+   "versions": [
+    "1.0"
+   ],
+   "checksums": {
+    "1.0": {
+     "sha256": "e9f0d62cf27c682a488218a298166220aad40fa42a9726ab1ae3ec689a805727"
     }
    },
    "category": [
@@ -152,6 +167,18 @@
    "checksums": {
     "1.0": {
      "sha256": "8c6872a06da1bbb11ae4d4efd7d853a88440cecaa0fddbe7ae121f2e256e30bc"
+    }
+   }
+  },
+  {
+   "group": "sc4pacAsset",
+   "name": "test-conditional-variants",
+   "versions": [
+    "1.0"
+   ],
+   "checksums": {
+    "1.0": {
+     "sha256": "abaf0ad4fc2371b768b4a1f34371943b58ee52f322b671ce62bd0532176765b9"
     }
    }
   }

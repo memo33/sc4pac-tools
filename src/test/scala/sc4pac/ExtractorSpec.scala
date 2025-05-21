@@ -214,5 +214,36 @@ class ExtractorSpec extends AnyWordSpec with Matchers {
       // this is a property of the FileCache/Downloader, not the Extractor, so needs to be tested elsewhere
     }
 
+    "handle conditional variants" in {
+      val assetRef = JD.AssetReference("dummy", include = Seq("always.dat"), withConditions = Seq(
+        JD.IncludeWithConditions(ifVariant = Map("nightmode" -> "standard"), include = Seq("MN.SC4Model")),
+        JD.IncludeWithConditions(ifVariant = Map("nightmode" -> "dark", "style" -> "style1"), include = Seq("DN.SC4Model")),
+        JD.IncludeWithConditions(ifVariant = Map("nightmode" -> "dark", "style" -> "style2"), include = Seq("DN2.SC4Model")),
+        JD.IncludeWithConditions(ifVariant = Map("driveside" -> "right", "style" -> "style1"), include = Seq("RHD.dat")),
+        JD.IncludeWithConditions(ifVariant = Map("driveside" -> "right", "style" -> "style2"), include = Seq("RHD2.dat")),
+        JD.IncludeWithConditions(ifVariant = Map("driveside" -> "left", "capacity" -> "standard"), include = Seq("LHD.dat")),
+        JD.IncludeWithConditions(ifVariant = Map("driveside" -> "left", "capacity" -> "quadrupled"), include = Seq("LHD4.dat")),
+      ))
+      for (_ <- 1 to 5) {
+        val randomVariant = scala.util.Random.shuffle(assetRef.withConditions.flatMap(_.ifVariant.iterator)).toMap
+        val recipe = Extractor.InstallRecipe.fromAssetReference(assetRef, variant = randomVariant)._1
+        val accepts: Extractor.Predicate = recipe.makeAcceptancePredicates(validate = false)._2
+        def check(filename: String, condition: Boolean) = {
+          withClue(s"$randomVariant $filename") {
+            accepts(os.SubPath(filename)).isDefined.shouldBe(condition)
+          }
+        }
+        check("always.dat", true)
+        check("never.dat", false)
+        check("MN.SC4Model", randomVariant("nightmode") == "standard")
+        check("DN.SC4Model", randomVariant("nightmode") == "dark" && randomVariant("style") == "style1")
+        check("DN2.SC4Model", randomVariant("nightmode") == "dark" && randomVariant("style") == "style2")
+        check("RHD.dat", randomVariant("driveside") == "right" && randomVariant("style") == "style1")
+        check("RHD2.dat", randomVariant("driveside") == "right" && randomVariant("style") == "style2")
+        check("LHD.dat", randomVariant("driveside") == "left" && randomVariant("capacity") == "standard")
+        check("LHD4.dat", randomVariant("driveside") == "left" && randomVariant("capacity") == "quadrupled")
+      }
+    }
+
   }
 }

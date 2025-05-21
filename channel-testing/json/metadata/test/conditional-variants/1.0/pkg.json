@@ -1,0 +1,227 @@
+{
+ "$type": "Package",
+ "group": "test",
+ "name": "conditional-variants",
+ "version": "1.0",
+ "subfolder": "150-mods",
+ "variants": [
+  {
+   "variant": {
+    "driveside": "right"
+   },
+   "assets": [
+    {
+     "assetId": "test-conditional-variants",
+     "withConditions": [
+      {
+       "ifVariant": {
+        "nightmode": "standard"
+       },
+       "include": [
+        "MN.SC4Model"
+       ]
+      },
+      {
+       "ifVariant": {
+        "nightmode": "dark"
+       },
+       "include": [
+        "DN.SC4Model"
+       ]
+      },
+      {
+       "ifVariant": {
+        "driveside": "right",
+        "style": "style1"
+       },
+       "include": [
+        "RHD.dat"
+       ]
+      },
+      {
+       "ifVariant": {
+        "driveside": "right",
+        "style": "style2"
+       },
+       "include": [
+        "RHD2.dat"
+       ]
+      },
+      {
+       "ifVariant": {
+        "driveside": "left",
+        "capacity": "standard"
+       },
+       "include": [
+        "LHD.dat"
+       ]
+      },
+      {
+       "ifVariant": {
+        "driveside": "left",
+        "capacity": "quadrupled"
+       },
+       "include": [
+        "LHD4.dat"
+       ]
+      }
+     ]
+    },
+    {
+     "assetId": "test-conditional-variants",
+     "withConditions": [
+      {
+       "ifVariant": {
+        "CAM": "yes"
+       },
+       "include": [
+        "file-CAM.dat"
+       ]
+      },
+      {
+       "ifVariant": {
+        "CAM": "no"
+       },
+       "include": [
+        "file-no-CAM.dat"
+       ]
+      }
+     ]
+    },
+    {
+     "assetId": "test-conditional-variants",
+     "withConditions": [
+      {
+       "ifVariant": {
+        "roadstyle": "US"
+       },
+       "include": [
+        "RHD-US.dat"
+       ]
+      },
+      {
+       "ifVariant": {
+        "roadstyle": "EU"
+       },
+       "include": [
+        "RHD-EU.dat"
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "variant": {
+    "driveside": "left"
+   },
+   "assets": [
+    {
+     "assetId": "test-conditional-variants",
+     "withConditions": [
+      {
+       "ifVariant": {
+        "nightmode": "standard"
+       },
+       "include": [
+        "MN.SC4Model"
+       ]
+      },
+      {
+       "ifVariant": {
+        "nightmode": "dark"
+       },
+       "include": [
+        "DN.SC4Model"
+       ]
+      },
+      {
+       "ifVariant": {
+        "driveside": "right",
+        "style": "style1"
+       },
+       "include": [
+        "RHD.dat"
+       ]
+      },
+      {
+       "ifVariant": {
+        "driveside": "right",
+        "style": "style2"
+       },
+       "include": [
+        "RHD2.dat"
+       ]
+      },
+      {
+       "ifVariant": {
+        "driveside": "left",
+        "capacity": "standard"
+       },
+       "include": [
+        "LHD.dat"
+       ]
+      },
+      {
+       "ifVariant": {
+        "driveside": "left",
+        "capacity": "quadrupled"
+       },
+       "include": [
+        "LHD4.dat"
+       ]
+      }
+     ]
+    },
+    {
+     "assetId": "test-conditional-variants",
+     "withConditions": [
+      {
+       "ifVariant": {
+        "CAM": "yes"
+       },
+       "include": [
+        "file-CAM.dat"
+       ]
+      },
+      {
+       "ifVariant": {
+        "CAM": "no"
+       },
+       "include": [
+        "file-no-CAM.dat"
+       ]
+      }
+     ]
+    },
+    {
+     "assetId": "test-conditional-variants",
+     "withConditions": [
+      {
+       "ifVariant": {
+        "roadstyle": "US"
+       },
+       "include": [
+        "LHD-US.dat"
+       ]
+      },
+      {
+       "ifVariant": {
+        "roadstyle": "EU"
+       },
+       "include": [
+        "LHD-EU.dat"
+       ]
+      }
+     ]
+    }
+   ]
+  }
+ ],
+ "metadataSource": [
+  "memo/conditional-variants.yaml"
+ ],
+ "channelLabel": [
+  "Test-Local"
+ ]
+}

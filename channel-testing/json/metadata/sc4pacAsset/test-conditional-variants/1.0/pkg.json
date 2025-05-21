@@ -1,0 +1,10 @@
+{
+ "$type": "Asset",
+ "assetId": "test-conditional-variants",
+ "version": "1.0",
+ "url": "http://localhost:8090/files/conditional-variants.zip",
+ "lastModified": "2025-05-21T19:00:00Z",
+ "requiredBy": [
+  "test:conditional-variants"
+ ]
+}
