@@ -115,8 +115,8 @@ class VariantSelection private (
   def refineFor(pkgData: JD.Package): RIO[Prompter & ResolutionContext, VariantSelection] = {
     val mod = pkgData.toBareDep
     lazy val variantInfos = pkgData.upgradeVariantInfo.variantInfo
-    import VariantSelection.{DecisionTree, Node, Empty}
-    DecisionTree.fromVariants(pkgData.variants.map(_.variant)) match {
+    import VariantSelection.{DecisionTree, Node, Leaf}
+    DecisionTree.fromVariants(pkgData.variants.map(_.variant).zipWithIndex) match {
       case Left(err) => ZIO.fail(new error.UnsatisfiableVariantConstraints(
         s"Unable to choose variants as the metadata of ${mod.orgName} seems incomplete", err.toString))
       case Right(decisionTree) =>
@@ -143,9 +143,9 @@ class VariantSelection private (
               } yield choices.find(_._1 == selectedValue).get  // prompter is guaranteed to return a matching value
         }
 
-        ZIO.iterate(decisionTree, Seq.newBuilder[(Key, Value)])(_._1 != Empty) {
+        ZIO.iterate(decisionTree, Seq.newBuilder[(Key, Value)])(!_._1.isLeaf) {
           case (Node(key, choices), builder) => choose(key, choices).map { case (value, subtree) => (subtree, builder += key -> value) }
-          case (Empty, builder) => throw new AssertionError
+          case (Leaf(_), builder) => throw new AssertionError
         }.map(_._2.result())
           .map(addSelections)
     }
@@ -161,31 +161,33 @@ object VariantSelection {
       importedSelections = importedSelections.flatMap(_.iterator).groupMap(_._1)(_._2).view.mapValues(_.distinct).toMap,
     )
 
-  sealed trait DecisionTree[+A, +B]
-  case class Node[+A, +B](key: A, choices: Seq[(B, DecisionTree[A, B])]) extends DecisionTree[A, B] {
+  sealed trait DecisionTree[+A, +B, C] {
+    def isLeaf: Boolean = this.isInstanceOf[Leaf[C]]
+  }
+  case class Node[+A, +B, C](key: A, choices: Seq[(B, DecisionTree[A, B, C])]) extends DecisionTree[A, B, C] {
     require(choices.nonEmpty, "decision tree must not have empty choices")
   }
-  case object Empty extends DecisionTree[Nothing, Nothing]
+  case class Leaf[C](data: C) extends DecisionTree[Nothing, Nothing, C]
 
   object DecisionTree {
     private class NoCommonKeys(val msg: String) extends scala.util.control.ControlThrowable
 
-    def fromVariants[A, B](variants: Seq[Map[A, B]]): Either[ErrStr, DecisionTree[A, B]] = {
+    def fromVariants[A, B, C](variants: Seq[(Map[A, B], C)]): Either[ErrStr, DecisionTree[A, B, C]] = {
 
-      def helper(variants: Seq[Map[A, B]], remainingKeys: Set[A]): DecisionTree[A, B] = {
-        remainingKeys.find(key => variants.forall(_.contains(key))) match
+      def helper(variants: Seq[(Map[A, B], C)], remainingKeys: Set[A]): DecisionTree[A, B, C] = {
+        remainingKeys.find(key => variants.forall(_._1.contains(key))) match
           case None => variants match
-            case Seq(singleVariant) => Empty  // if there is just a single variant left, all its keys have already been chosen validly
+            case Seq(singleVariant) => Leaf(singleVariant._2)  // if there is just a single variant left, all its keys have already been chosen validly
             case _ => throw new NoCommonKeys(s"Variants do not have a key in common: $variants")  // our choices of keys left an ambiguity
           case Some(key) =>  // this key allows partitioning
             val remainingKeys2 = remainingKeys - key  // strictly smaller, so recursion is well-founded
-            val parts: Map[B, Seq[Map[A, B]]] = variants.groupBy(_(key))
-            val values: Seq[B] = variants.map(_(key)).distinct  // note that this preserves order
+            val parts: Map[B, Seq[(Map[A, B], C)]] = variants.groupBy(_._1(key))
+            val values: Seq[B] = variants.map(_._1(key)).distinct  // note that this preserves order
             val choices = values.map { value => value -> helper(parts(value), remainingKeys2) }
             Node(key, choices)
       }
 
-      val allKeys = variants.flatMap(_.keysIterator).toSet
+      val allKeys = variants.flatMap(_._1.keysIterator).toSet
       try Right(helper(variants, allKeys)) catch { case e: NoCommonKeys => Left(e.msg) }
     }
   }

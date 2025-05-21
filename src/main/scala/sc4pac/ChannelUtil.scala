@@ -66,7 +66,7 @@ object ChannelUtil {
     def toPackageData(metadataSource: Option[os.SubPath]): ZIO[JD.Channel.Info, ErrStr, JD.Package] = {
       val variants2 = (if (variants.isEmpty) Seq(YamlVariantData(Map.empty)) else variants).map(_.toVariantData(dependencies, assets, conflicting))
       // validate that variants form a DecisionTree
-      VariantSelection.DecisionTree.fromVariants(variants2.map(_.variant)) match {
+      VariantSelection.DecisionTree.fromVariants(variants2.map(_.variant).zipWithIndex) match {
         case Left(errStr) => ZIO.fail(errStr)
         case Right(_) => ZIO.serviceWith[JD.Channel.Info] { channelInfo =>
           val metadataSourceUrl =
