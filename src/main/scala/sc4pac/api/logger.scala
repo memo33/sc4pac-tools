@@ -156,8 +156,8 @@ class WebSocketPrompter(wsChannel: zio.http.WebSocketChannel, logger: WebSocketL
       .flatMap(resp => JsonIo.read[PromptMessage.InitialArgumentsForUpdate.Args](resp.body.toString))
   }
 
-  def promptForVariant(module: BareModule, variantId: String, values: Seq[String], info: JD.VariantInfo, previouslySelectedValue: Option[String], importedValues: Seq[String]): Task[String] = {
-    sendPrompt(PromptMessage.ChooseVariant(module, variantId, values, info, previouslySelectedValue, importedValues)).map(_.body.str)
+  def promptForVariant(message: PromptMessage.ChooseVariant): Task[String] = {
+    sendPrompt(message).map(_.body.str)
   }
 
   def confirmRemovingUnresolvableExplicitPackages(modules: Seq[BareModule]): Task[Boolean] = {

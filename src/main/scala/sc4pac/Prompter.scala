@@ -8,7 +8,7 @@ import JsonData as JD
 trait Prompter {
 
   /** Returns the selected variant value. */
-  def promptForVariant(module: BareModule, variantId: String, values: Seq[String], info: JD.VariantInfo, previouslySelectedValue: Option[String], importedValues: Seq[String]): Task[String]
+  def promptForVariant(message: api.PromptMessage.ChooseVariant): Task[String]
 
   def confirmRemovingUnresolvableExplicitPackages(modules: Seq[BareModule]): Task[Boolean]
 
@@ -34,14 +34,14 @@ class CliPrompter(logger: CliLogger, autoYes: Boolean) extends Prompter {
 
   def withAutoYes(yes: Boolean): CliPrompter = CliPrompter(logger, yes)
 
-  def promptForVariant(module: BareModule, variantId: String, values: Seq[String], info: JD.VariantInfo, previouslySelectedValue: Option[String], importedValues: Seq[String]): Task[String] = {
-    val prefix = s"${variantId} = "
-    val columnWidth = values.map(_.length).max + 8  // including some whitespace for separation, excluding prefix
+  def promptForVariant(message: api.PromptMessage.ChooseVariant): Task[String] = {
+    val prefix = s"${message.variantId} = "
+    val columnWidth = message.choices.map(_.length).max + 8  // including some whitespace for separation, excluding prefix
     def renderDesc(value: String): String = {
       val desc: String = Seq[Option[String]](
-        previouslySelectedValue.filter(_ == value).map(_ => logger.cyanBold("[previous]")),
-        Option.when(importedValues.contains(value))(logger.cyanBold("[imported]")),
-        info.valueDescriptions.get(value),
+        message.previouslySelectedValue.filter(_ == value).map(_ => logger.cyanBold("[previous]")),
+        Option.when(message.importedValues.contains(value))(logger.cyanBold("[imported]")),
+        message.info.valueDescriptions.get(value),
       ).flatten.mkString(" ")
       if (desc.nonEmpty) {
         prefix + value + (" " * ((columnWidth - value.length) max 0)) + desc
@@ -49,15 +49,15 @@ class CliPrompter(logger: CliLogger, autoYes: Boolean) extends Prompter {
         prefix + value
       }
     }
-    val pretext = if (info.description.nonEmpty) f"%n%n${logger.applyMarkdown(info.description)}" else ""
+    val pretext = if (message.info.description.nonEmpty) f"%n%n${logger.applyMarkdown(message.info.description)}" else ""
     Prompt.ifInteractive(
       onTrue = Prompt.numbered(
-        s"""Choose a variant for ${module.formattedDisplayString(logger.gray, logger.bold)}:$pretext""",
-        values,
+        s"""Choose a variant for ${message.`package`.formattedDisplayString(logger.gray, logger.bold)}:$pretext""",
+        message.choices,
         render = renderDesc,
-        default = info.default,
+        default = message.info.default,
       ),
-      onFalse = ZIO.fail(new error.Sc4pacNotInteractive(s"""Configure a "${variantId}" variant for ${module.orgName}: ${values.mkString(", ")}""")))
+      onFalse = ZIO.fail(new error.Sc4pacNotInteractive(s"""Configure a "${message.variantId}" variant for ${message.`package`.orgName}: ${message.choices.mkString(", ")}""")))
   }
 
   private def logPackages(msg: String, dependencies: Iterable[DepModule | BareModule]): Unit = {

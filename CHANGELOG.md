@@ -13,6 +13,7 @@
 ### Changed
 - API upgraded to 2.6:
   - added `variantChoices` to `/packages.info` output
+  - added new `/variants.choices` and `/variants.set` endpoints
 
 
 ## [0.7.0] - 2025-05-11

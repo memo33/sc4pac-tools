@@ -177,6 +177,14 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) {  // TODO d
     }
   }
 
+  def variantChoices(module: BareModule, variantId: String, variants: Variant): Task[Option[api.PromptMessage.ChooseVariant]] = {
+    val variantSelection = VariantSelection(currentSelections = Map.empty, initialSelections = variants, importedSelections = Seq.empty)
+    for {
+      pkgDataOpt <- infoJson(module)
+      msgOptOpt  <- ZIO.foreach(pkgDataOpt)(variantSelection.selectMessageFor(_, variantId))
+    } yield msgOptOpt.flatten
+  }.provideSomeLayer(zio.ZLayer.succeed(context))
+
   def infoJson(module: BareModule): Task[Option[JD.Package]] = {
     Find.concreteVersion(module, Constants.versionLatestRelease)
       .flatMap(Find.packageData[JD.Package](module, _))

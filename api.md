@@ -23,6 +23,8 @@ POST /plugins.export?profile=id      ["<pkg1>", "<pkg2>", …]
 
 GET  /variants.list?profile=id
 POST /variants.reset?profile=id      ["<variantId1>", "<variantId2>", …]
+POST /variants.set?profile=id        {"<variantId1>": "<value1>", …}
+GET  /variants.choices?profile=id&pkg=<pkg>&variantId=<variantId>
 
 GET  /channels.list?profile=id
 POST /channels.set?profile=id        ["<url1>", "<url2>", …]
@@ -410,6 +412,43 @@ Returns:
 Example:
 ```sh
 curl -X POST -d '["nightmode"]' http://localhost:51515/variants.reset?profile=1
+```
+
+## variants.set
+
+Set some variant selections.
+
+Synopsis: `POST /variants.set?profile=id {"<variantId1>": "<value1>", …}`
+
+- 400 `/error/bad-request` if request body is malformed
+- 200 `{"$type": "/result", "ok": true}`
+
+Example:
+```sh
+curl -X POST -d '{"roadstyle": "EU"}' http://localhost:51515/variants.set?profile=1
+```
+
+## variants.choices
+
+Get the choices for a given variant ID, including additional information such as descriptions and previous selections.
+
+Synopsis: `GET  /variants.choices?profile=id&pkg=<pkg>&variantId=<variantId>`
+
+Returns:
+- 404 `/error/package-not-found` if package or variant does not exist.
+- 200 on success
+
+```json
+{
+  "package": "<pkg>",
+  "variantId": "<variantId>",
+  "choices": ["<value1>", …],
+  "info": {
+    "description": "...",
+    "valueDescriptions": {...}
+  },
+  "previouslySelectedValue": ["<value>"]  // or []
+}
 ```
 
 ## channels.list

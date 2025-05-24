@@ -129,6 +129,10 @@ class VariantSelection private (
     }
   }
 
+  private def getVariantInfoOrFallback(variantId: Key, mod: BareModule, variantInfos: => Map[String, JD.VariantInfo]) =
+    ZIO.succeed(variantInfos.get(variantId))
+      .someOrElseZIO(fetchFallbackVariantInfo(variantId, mod).someOrElse(JD.VariantInfo.empty))
+
   private type Key = String
   private type Value = String
   /** Choose a variant for the given key; prompt if necessary. */
@@ -141,16 +145,15 @@ class VariantSelection private (
           s"""The package metadata seems incorrect, but resetting the configured variant in the GUI Dashboard may resolve the problem (CLI command: `sc4pac variant reset "$key"`)."""))
       case Left((initialValueOpt, importedValues)) =>  // variant for key has not been selected or is ambiguous, so choose it interactively
         for {
-          variantInfo    <- ZIO.succeed(variantInfos.get(key))
-                              .someOrElseZIO(fetchFallbackVariantInfo(key, mod).someOrElse(JD.VariantInfo.empty))
-          selectedValue  <- ZIO.serviceWithZIO[Prompter](_.promptForVariant(
-                              module = mod,
+          variantInfo    <- getVariantInfoOrFallback(key, mod, variantInfos)
+          selectedValue  <- ZIO.serviceWithZIO[Prompter](_.promptForVariant(api.PromptMessage.ChooseVariant(
+                              mod,
                               variantId = key,
-                              values = choices.map(_._1),
+                              choices = choices.map(_._1),
                               info = variantInfo,
                               previouslySelectedValue = initialValueOpt,
                               importedValues = importedValues,
-                            ))
+                            )))
         } yield choices.find(_._1 == selectedValue).get  // prompter is guaranteed to return a matching value
   }
 
@@ -179,6 +182,23 @@ class VariantSelection private (
           conditionalDecisionTree    =  DecisionTree.fromVariantsCartesian(pkgData.variants(variantIdx).conditionalVariantsIterator)
           ((), finalSelection)       <- tmpSelection.selectionsFromTree(conditionalDecisionTree, mod, variantInfos)
         } yield finalSelection
+    }
+  }
+
+  def selectMessageFor(pkgData: JD.Package, variantId: Key): RIO[ResolutionContext, Option[api.PromptMessage.ChooseVariant]] = {
+    val mod = pkgData.toBareDep
+    ZIO.foreach(JD.Package.buildVariantChoices(pkgData.variants).find(_.variantId == variantId)) { vc =>
+      for {
+        variantInfo <- getVariantInfoOrFallback(variantId, mod, pkgData.upgradeVariantInfo.variantInfo)
+        (initialValueOpt, importedValues) = getSelectedValue(variantId).map(Some(_) -> Nil).merge
+      } yield api.PromptMessage.ChooseVariant(
+        mod,
+        variantId = variantId,
+        choices = vc.choices,
+        info = variantInfo,
+        previouslySelectedValue = initialValueOpt,
+        importedValues = importedValues,
+      )
     }
   }
 
