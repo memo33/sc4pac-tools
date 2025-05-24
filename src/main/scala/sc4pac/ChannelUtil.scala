@@ -78,6 +78,7 @@ object ChannelUtil {
             group = group, name = name, version = version, subfolder = subfolder, info = info.upgradeWebsites,
             variants = variants2,
             variantDescriptions = variantDescriptions, variantInfo = variantInfo.iterator.map(_.toVariantInfo).toMap,
+            variantChoices = JD.Package.buildVariantChoices(variants2),
             metadataSource = metadataSource,  // kept for backward compatibility
             metadataSourceUrl = metadataSourceUrl,
             metadataIssueUrl = channelInfo.metadataIssueUrl.filter(_.getHost == "github.com").map(newIssueUrl(_, metadataSourceUrl)),

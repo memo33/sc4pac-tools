@@ -10,6 +10,10 @@
 - improved error handling while reading or writing JSON files
 - improved error handling in API websocket communication
 
+### Changed
+- API upgraded to 2.6:
+  - added `variantChoices` to `/packages.info` output
+
 
 ## [0.7.0] - 2025-05-11
 ### Added
