@@ -594,7 +594,10 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
       // 200
       Method.GET / "server.status" -> handler {
         wrapHttpEndpoint {
-          ZIO.succeed(jsonResponse(ServerStatus(sc4pacVersion = cli.BuildInfo.version)))
+          ZIO.attempt(jsonResponse(ServerStatus(
+            sc4pacVersion = cli.BuildInfo.version,
+            osVersion = Seq("os.name", "os.version", "os.arch").map(System.getProperty).mkString(" "),
+          )))
         }
       },
 

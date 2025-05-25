@@ -608,7 +608,7 @@ Test if the server is running.
 
 Synopsis: `GET  /server.status`
 
-Returns: `{"sc4pacVersion": "0.4.x"}`
+Returns: `{"sc4pacVersion": "0.4.x", "osVersion": "..."}`
 
 ## server.connect
 
