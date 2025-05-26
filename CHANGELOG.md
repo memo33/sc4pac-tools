@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+### Added
+- new `packages` and `assets` attributes for YAML files, which allows using YAML anchors, aliases and overrides across multiple packages in the same document (#35)
+
 ### Fixed
 - improved error handling while reading or writing JSON files
 - improved error handling in API websocket communication

@@ -46,6 +46,9 @@ object ChannelUtil {
     ) derives ReadWriter
   }
 
+  // `packages` does not have a default to avoid matching on empty json files or on single packages
+  case class YamlPackageDataArray(packages: Seq[YamlPackageData], assets: Seq[YamlAsset] = Seq.empty) derives ReadWriter
+
   case class YamlPackageData(
     group: String,
     name: String,
@@ -109,15 +112,21 @@ object ChannelUtil {
       archiveType = Option(archiveType), requiredBy = Nil, checksum = checksum)
   }
 
-  private def parseCirceJson[A : Reader](j: Json): IO[upickle.core.Abort | IllegalArgumentException, A] = {
-    ZIO.attempt(ujson.circe.CirceJson.transform(j, upickle.default.reader[A])).refineToOrDie
+  private def parseCirceJson[A : Reader](json: Json): IO[upickle.core.Abort | IllegalArgumentException, A] = {
+    ZIO.attempt(ujson.circe.CirceJson.transform(json, upickle.default.reader[A])).refineToOrDie
   }
 
-  private def parsePkgData(j: Json, metadataSource: Option[os.SubPath]): ZIO[JD.Channel.Info, ErrStr, JD.PackageAsset] = {
+  private def parsePkgData(json: Json, metadataSource: Option[os.SubPath]): ZIO[JD.Channel.Info, ErrStr, Seq[JD.PackageAsset]] = {
     ZIO.validateFirst(Seq(  // we use ZIO validate for error accumulation
-      parseCirceJson[YamlPackageData](_: Json).flatMap(_.toPackageData(metadataSource)),
-      parseCirceJson[YamlAsset](_: Json).map(_.toAsset)
-    ))(parse => parse(j))
+      parseCirceJson[YamlPackageData](_: Json).flatMap(_.toPackageData(metadataSource).map(_ :: Nil)),
+      parseCirceJson[YamlAsset](_: Json).map(_.toAsset :: Nil),
+      parseCirceJson[YamlPackageDataArray](_: Json).flatMap { data =>
+        for {
+          pkgs <- ZIO.foreach(data.packages)(_.toPackageData(metadataSource))
+          assets = data.assets.map(_.toAsset)
+        } yield pkgs ++ assets
+      },
+    ))(parse => parse(json))
       .mapError(errs => errs.mkString("(", " | ", ")"))
   }
 
@@ -136,6 +145,7 @@ object ChannelUtil {
     ZIO.validatePar(docs) { doc =>
       ZIO.fromEither(doc).flatMap(parsePkgData(_, metadataSource))
     }.mapError(errs => s"Format error in $path: ${errs.mkString(", ")}")
+      .map(_.flatten)
   }
 
   /** This function reads the yaml package metadata and writes

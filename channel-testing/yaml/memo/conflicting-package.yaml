@@ -1,6 +1,9 @@
-group: "memo"
-name: "conflicting-package"
-version: "1.0"
-subfolder: "150-mods"
-conflicting:
-- "memo:package-template-variants"
+assets: []
+
+packages:
+- group: "memo"
+  name: "conflicting-package"
+  version: "1.0"
+  subfolder: "150-mods"
+  conflicting:
+  - "memo:package-template-variants"
