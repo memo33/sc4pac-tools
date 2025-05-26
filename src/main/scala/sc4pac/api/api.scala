@@ -113,6 +113,11 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
       .mapError(failedLabels => jsonResponse(errMsg(failedLabels)).status(Status.BadRequest))
   }
 
+  private def getInfoJsonOr404(pac: Sc4pac, module: BareModule): IO[Throwable | Response, JD.Package] =
+    pac.infoJson(module).someOrFail(  // TODO avoid decoding/encoding json
+      jsonResponse(ErrorMessage.PackageNotFound("Package not found in any of your channels.", module.orgName)).status(Status.NotFound)
+    )
+
   private def searchParams(req: Request): IO[Response, (String, Int)] = for {
     searchText <- ZIO.fromOption(req.url.queryParams.getAll("q").headOption).orElseFail(jsonResponse(ErrorMessage.BadRequest(
                     """Query parameter "q" is required.""", "Pass the search string as query."
@@ -382,9 +387,7 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
           mod           <- parseModuleOr400(pkg)
           pluginsSpec   <- readPluginsSpecOr409
           pac           <- Sc4pac.init(pluginsSpec.config)
-          remoteData    <- pac.infoJson(mod).someOrFail(  // TODO avoid decoding/encoding json
-                             jsonResponse(ErrorMessage.PackageNotFound("Package not found in any of your channels.", pkg)).status(Status.NotFound)
-                           )
+          remoteData    <- getInfoJsonOr404(pac, mod)
           explicit      =  pluginsSpec.explicit.toSet
           installed     <- JD.PluginsLock.listInstalled2
         } yield {
@@ -475,6 +478,38 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
         } yield jsonOk
       }
     },
+
+    // 200, 400, 409
+    Method.POST / "variants.set" -> handler((req: Request) => wrapHttpEndpoint {
+      for {
+        selections   <- parseOr400[Map[String, String]](req.body, ErrorMessage.BadRequest("Malformed variant selections.", "Pass variants as a mapping of strings."))
+        pluginsSpec  <- readPluginsSpecOr409
+        pluginsSpec2 =  pluginsSpec.copy(config = pluginsSpec.config.copy(
+                          variant = pluginsSpec.config.variant ++ selections,
+                        ))
+        path         <- JD.PluginsSpec.pathURIO
+        _            <- JsonIo.write(path, pluginsSpec2, None)(ZIO.succeed(()))
+      } yield jsonOk
+    }),
+
+    // 200, 400, 404, 409
+    Method.GET / "variants.choices" -> handler((req: Request) => wrapHttpEndpoint {
+      for {
+        pkg          <- ZIO.fromOption(req.url.queryParams.getAll("pkg").headOption).orElseFail(jsonResponse(ErrorMessage.BadRequest(
+                          """Query parameter "pkg" is required.""", "Pass the package identifier as query."
+                        )).status(Status.BadRequest))
+        variantId    <- ZIO.fromOption(req.url.queryParams.getAll("variantId").headOption).orElseFail(jsonResponse(ErrorMessage.BadRequest(
+                          """Query parameter "variantId" is required.""", "Pass the variant identifier as query."
+                        )).status(Status.BadRequest))
+        mod          <- parseModuleOr400(pkg)
+        pluginsSpec  <- readPluginsSpecOr409
+        pac          <- Sc4pac.init(pluginsSpec.config)
+        msg          <- pac.variantChoices(mod, variantId, pluginsSpec.config.variant)
+                          .someOrFail(jsonResponse(ErrorMessage.PackageNotFound(
+                            s"Variant ID $variantId not found for package.", mod.orgName,
+                          )).status(Status.NotFound))
+      } yield jsonResponse(msg.copy(responses = Map.empty))
+    }),
 
     // 200, 409
     Method.GET / "channels.list" -> handler {

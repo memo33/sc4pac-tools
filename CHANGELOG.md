@@ -4,10 +4,16 @@
 
 ### Added
 - new `packages` and `assets` attributes for YAML files, which allows using YAML anchors, aliases and overrides across multiple packages in the same document (#35)
+- new `withConditions` attribute for includes/excludes that conditionally depend on variants. This is a new way to define variants, useful for complex packages with many different variant IDs (#36).
 
 ### Fixed
 - improved error handling while reading or writing JSON files
 - improved error handling in API websocket communication
+
+### Changed
+- API upgraded to 2.6:
+  - added `variantChoices` to `/packages.info` output
+  - added new `/variants.choices` and `/variants.set` endpoints
 
 
 ## [0.7.0] - 2025-05-11

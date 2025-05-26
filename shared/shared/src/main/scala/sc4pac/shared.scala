@@ -71,6 +71,14 @@ abstract class SharedData {
     include: Seq[String] = Seq.empty,
     exclude: Seq[String] = Seq.empty,
     withChecksum: Seq[IncludeWithChecksum] = Seq.empty,
+    withConditions: Seq[IncludeWithConditions] = Seq.empty,
+  ) derives ReadWriter
+
+  case class IncludeWithConditions(
+    ifVariant: Variant,
+    include: Seq[String] = Seq.empty,
+    exclude: Seq[String] = Seq.empty,
+    withChecksum: Seq[IncludeWithChecksum] = Seq.empty,
   ) derives ReadWriter
 
   case class VariantData(
@@ -81,6 +89,7 @@ abstract class SharedData {
   ) derives ReadWriter {
     def bareModules: Seq[BareModule] = dependencies.map(d => BareModule(Organization(d.group), ModuleName(d.name)))
     def bareDependencies: Seq[BareDep] = bareModules ++ assets.map(a => BareAsset(ModuleName(a.assetId)))
+    def conditionalVariantsIterator: Iterator[Variant] = assets.iterator.flatMap(_.withConditions.iterator.map(_.ifVariant))
   }
   object VariantData {
     def variantString(variant: Variant): String = variant.toSeq.sorted.map((k, v) => s"$k=$v").mkString(", ")
@@ -137,6 +146,7 @@ abstract class SharedData {
     @deprecated("use variantInfo instead", since = "0.5.4")
     variantDescriptions: Map[String, Map[String, String]] = Map.empty,  // variantId -> variantValue -> description
     variantInfo: Map[String, VariantInfo] = Map.empty,  // variantId -> variantInfo
+    variantChoices: Seq[VariantChoice] = Seq.empty,
     metadataSource: Option[SubPath] = None,  // path to yaml file
     metadataSourceUrl: Option[Uri] = None,  // full URL to yaml file
     metadataIssueUrl: Option[Uri] = None,  // URL to create new issue for this package
@@ -145,18 +155,33 @@ abstract class SharedData {
 
     def toBareDep: BareModule = BareModule(Organization(group), ModuleName(name))
 
-    def upgradeVariantInfo: Package =
+    def upgradeVariantInfo: Package = {
+      val addVariantChoices = variantChoices.isEmpty && (variants.lengthCompare(1) > 0 || variants.exists(_.variant.nonEmpty))
       if (variantInfo.isEmpty && variantDescriptions.nonEmpty)
         copy(
           variantDescriptions = Map.empty,
           variantInfo = variantDescriptions.mapValues { descs =>
             VariantInfo(valueDescriptions = descs)
           }.toMap,
+          variantChoices = if (addVariantChoices) Package.buildVariantChoices(variants) else variantChoices,
         )
-      else this
+      else if (addVariantChoices)
+        copy(variantChoices = Package.buildVariantChoices(variants))
+      else
+        this
+    }
   }
   object Package {
     implicit val packageRw: ReadWriter[Package] = macroRW
+
+    def buildVariantChoices(variants: Seq[VariantData]): Seq[VariantChoice] = {
+      val entries: Seq[(String, String)] = variants.iterator.flatMap { vd =>
+        vd.variant.iterator ++ vd.assets.iterator.flatMap(_.withConditions.flatMap(_.ifVariant.iterator))
+      }.toSeq  // collects all possible keys and values (possibly with duplicates)
+      val valuesById = entries.groupMap(_._1)(_._2)
+      entries.map(_._1).distinct  // order-preserving
+        .map(variantId => VariantChoice(variantId, valuesById(variantId).distinct))
+    }
   }
 
   case class Info(
@@ -186,6 +211,8 @@ abstract class SharedData {
   object VariantInfo {
     val empty = VariantInfo()
   }
+
+  case class VariantChoice(variantId: String, choices: Seq[String]) derives ReadWriter
 
   case class ExternalPackage(
     group: String,

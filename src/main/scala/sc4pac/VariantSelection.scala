@@ -5,6 +5,7 @@ import zio.{ZIO, Task, RIO}
 
 import sc4pac.JsonData as JD
 import sc4pac.error.Sc4pacMissingVariant
+import VariantSelection.{DecisionTree, Node, Leaf}
 
 /** Encodes the variant selections from different sources, for an Update run.
   *
@@ -26,7 +27,8 @@ class VariantSelection private (
 ) {
 
   def addSelections(additionalChoices: Seq[(String, String)]): VariantSelection =
-    new VariantSelection(
+    if (additionalChoices.isEmpty) this
+    else new VariantSelection(
       currentSelections = currentSelections ++ additionalChoices,
       initialSelections = initialSelections,
       importedSelections = importedSelections,
@@ -44,9 +46,10 @@ class VariantSelection private (
       }
     }
 
+  /** Pick a variant from package variants array, but also refine it so that any
+    * conditional variants are fully selected as well. */
   def pickVariant(pkgData: JD.Package): Task[JD.VariantData] = {
     pkgData.variants.find(vd => isMatchingVariant(vd.variant)) match {
-      case Some(vd) => ZIO.succeed(vd)
       case None =>
         // Either the variant has not been fully selected yet (user needs to choose),
         // or there is a conflict between a variant and currentSelections
@@ -59,6 +62,21 @@ class VariantSelection private (
           pkgData,
           s"could not find variant for ${pkgData.toBareDep.orgName} matching [${JD.VariantData.variantString(currentSelections)}]",
         ))
+      case Some(vd) =>  // step 1: found ordinary variant
+        val condVariantIds = vd.conditionalVariantsIterator.flatMap(_.iterator).map(_._1).toSet  // order does not matter here
+        ZIO.foreach(condVariantIds) { variantId =>
+          getSelectedValue(variantId) match
+            case Left(_) =>
+              ZIO.fail(new Sc4pacMissingVariant(
+                pkgData,
+                s"could not find variant for ${pkgData.toBareDep.orgName} matching [${JD.VariantData.variantString(currentSelections)}] and $variantId=None",
+              ))
+            case Right(value) => ZIO.succeed(variantId -> value)
+        }.map { conditionalSelections =>  // step 2: no unselected variants exist anymore, so we can select any matching "conditional" variants and store this in `vd`
+          vd.copy(
+            variant = vd.variant ++ conditionalSelections,  // we keep all the variant IDs from conditions (even if some combination is not needed)
+          )
+        }
     }
   }
 
@@ -111,43 +129,76 @@ class VariantSelection private (
     }
   }
 
+  private def getVariantInfoOrFallback(variantId: Key, mod: BareModule, variantInfos: => Map[String, JD.VariantInfo]) =
+    ZIO.succeed(variantInfos.get(variantId))
+      .someOrElseZIO(fetchFallbackVariantInfo(variantId, mod).someOrElse(JD.VariantInfo.empty))
+
+  private type Key = String
+  private type Value = String
+  /** Choose a variant for the given key; prompt if necessary. */
+  private def choose[T](key: Key, choices: Seq[(Value, T)], mod: BareModule, variantInfos: => Map[String, JD.VariantInfo]): RIO[Prompter & ResolutionContext, (Value, T)] = {
+    getSelectedValue(key) match
+      case Right(selectedValue) => choices.find(_._1 == selectedValue) match
+        case Some(choice) => ZIO.succeed(choice)
+        case None => ZIO.fail(new error.UnsatisfiableVariantConstraints(
+          s"""None of the variants ${choices.map(_._1).mkString(", ")} of ${mod.orgName} match the configured variant $key=$selectedValue.""",
+          s"""The package metadata seems incorrect, but resetting the configured variant in the GUI Dashboard may resolve the problem (CLI command: `sc4pac variant reset "$key"`)."""))
+      case Left((initialValueOpt, importedValues)) =>  // variant for key has not been selected or is ambiguous, so choose it interactively
+        for {
+          variantInfo    <- getVariantInfoOrFallback(key, mod, variantInfos)
+          selectedValue  <- ZIO.serviceWithZIO[Prompter](_.promptForVariant(api.PromptMessage.ChooseVariant(
+                              mod,
+                              variantId = key,
+                              choices = choices.map(_._1),
+                              info = variantInfo,
+                              previouslySelectedValue = initialValueOpt,
+                              importedValues = importedValues,
+                            )))
+        } yield choices.find(_._1 == selectedValue).get  // prompter is guaranteed to return a matching value
+  }
+
+  /** Select all variants by following a path in the decision tree; prompt if necessary. */
+  private def selectionsFromTree[C](decisionTree: DecisionTree[Key, Value, C], mod: BareModule, variantInfos: => Map[String, JD.VariantInfo]): RIO[Prompter & ResolutionContext, (C, VariantSelection)] = {
+    ZIO.iterate(decisionTree, Seq.newBuilder[(Key, Value)])(!_._1.isLeaf) {
+      case (Node(key, choices), builder) => choose(key, choices, mod, variantInfos).map { case (value, subtree) => (subtree, builder += key -> value) }
+      case (Leaf(_), builder) => throw new AssertionError
+    }.map {
+      case (Leaf(data), builder) => (data, addSelections(builder.result()))
+      case (Node(_, _), _) => throw new AssertionError
+    }
+  }
+
   /** Prompts for missing variant keys, so that the result allows to pick a unique variant of the package. */
   def refineFor(pkgData: JD.Package): RIO[Prompter & ResolutionContext, VariantSelection] = {
     val mod = pkgData.toBareDep
     lazy val variantInfos = pkgData.upgradeVariantInfo.variantInfo
-    import VariantSelection.{DecisionTree, Node, Empty}
-    DecisionTree.fromVariants(pkgData.variants.map(_.variant)) match {
+    DecisionTree.fromVariants(pkgData.variants.map(_.variant).zipWithIndex) match {
       case Left(err) => ZIO.fail(new error.UnsatisfiableVariantConstraints(
         s"Unable to choose variants as the metadata of ${mod.orgName} seems incomplete", err.toString))
       case Right(decisionTree) =>
-        type Key = String; type Value = String
-        def choose[T](key: Key, choices: Seq[(Value, T)]): RIO[Prompter & ResolutionContext, (Value, T)] = {
-          getSelectedValue(key) match
-            case Right(selectedValue) => choices.find(_._1 == selectedValue) match
-              case Some(choice) => ZIO.succeed(choice)
-              case None => ZIO.fail(new error.UnsatisfiableVariantConstraints(
-                s"""None of the variants ${choices.map(_._1).mkString(", ")} of ${mod.orgName} match the configured variant $key=$selectedValue.""",
-                s"""The package metadata seems incorrect, but resetting the configured variant in the GUI Dashboard may resolve the problem (CLI command: `sc4pac variant reset "$key"`)."""))
-            case Left((initialValueOpt, importedValues)) =>  // variant for key has not been selected or is ambiguous, so choose it interactively
-              for {
-                variantInfo    <- ZIO.succeed(variantInfos.get(key))
-                                    .someOrElseZIO(fetchFallbackVariantInfo(key, mod).someOrElse(JD.VariantInfo.empty))
-                selectedValue  <- ZIO.serviceWithZIO[Prompter](_.promptForVariant(
-                                    module = mod,
-                                    variantId = key,
-                                    values = choices.map(_._1),
-                                    info = variantInfo,
-                                    previouslySelectedValue = initialValueOpt,
-                                    importedValues = importedValues,
-                                  ))
-              } yield choices.find(_._1 == selectedValue).get  // prompter is guaranteed to return a matching value
-        }
+        // 2-step process: first choose ordinary variant, then conditional variant
+        for {
+          (variantIdx, tmpSelection) <- selectionsFromTree(decisionTree, mod, variantInfos)
+          conditionalDecisionTree    =  DecisionTree.fromVariantsCartesian(pkgData.variants(variantIdx).conditionalVariantsIterator)
+          ((), finalSelection)       <- tmpSelection.selectionsFromTree(conditionalDecisionTree, mod, variantInfos)
+        } yield finalSelection
+    }
+  }
 
-        ZIO.iterate(decisionTree, Seq.newBuilder[(Key, Value)])(_._1 != Empty) {
-          case (Node(key, choices), builder) => choose(key, choices).map { case (value, subtree) => (subtree, builder += key -> value) }
-          case (Empty, builder) => throw new AssertionError
-        }.map(_._2.result())
-          .map(addSelections)
+  def selectMessageFor(pkgData: JD.Package, variantId: Key): RIO[ResolutionContext, Option[api.PromptMessage.ChooseVariant]] = {
+    val mod = pkgData.toBareDep
+    ZIO.foreach(JD.Package.buildVariantChoices(pkgData.variants).find(_.variantId == variantId)) { vc =>
+      for {
+        variantInfo <- getVariantInfoOrFallback(variantId, mod, pkgData.upgradeVariantInfo.variantInfo)
+        (initialValueOpt, importedValues) = getSelectedValue(variantId).map(Some(_) -> Nil).merge
+      } yield api.PromptMessage.ChooseVariant(
+        mod,
+        variantId = variantId,
+        choices = vc.choices,
+        info = variantInfo,
+        previouslySelectedValue = initialValueOpt,
+        importedValues = importedValues,
+      )
     }
   }
 
@@ -161,33 +212,51 @@ object VariantSelection {
       importedSelections = importedSelections.flatMap(_.iterator).groupMap(_._1)(_._2).view.mapValues(_.distinct).toMap,
     )
 
-  sealed trait DecisionTree[+A, +B]
-  case class Node[+A, +B](key: A, choices: Seq[(B, DecisionTree[A, B])]) extends DecisionTree[A, B] {
+  sealed trait DecisionTree[+A, +B, C] {
+    def isLeaf: Boolean = this.isInstanceOf[Leaf[C]]
+  }
+  case class Node[+A, +B, C](key: A, choices: Seq[(B, DecisionTree[A, B, C])]) extends DecisionTree[A, B, C] {
     require(choices.nonEmpty, "decision tree must not have empty choices")
   }
-  case object Empty extends DecisionTree[Nothing, Nothing]
+  case class Leaf[C](data: C) extends DecisionTree[Nothing, Nothing, C]
 
   object DecisionTree {
     private class NoCommonKeys(val msg: String) extends scala.util.control.ControlThrowable
 
-    def fromVariants[A, B](variants: Seq[Map[A, B]]): Either[ErrStr, DecisionTree[A, B]] = {
+    def fromVariants[A, B, C](variants: Seq[(Map[A, B], C)]): Either[ErrStr, DecisionTree[A, B, C]] = {
 
-      def helper(variants: Seq[Map[A, B]], remainingKeys: Set[A]): DecisionTree[A, B] = {
-        remainingKeys.find(key => variants.forall(_.contains(key))) match
+      def helper(variants: Seq[(Map[A, B], C)], remainingKeys: Set[A]): DecisionTree[A, B, C] = {
+        remainingKeys.find(key => variants.forall(_._1.contains(key))) match
           case None => variants match
-            case Seq(singleVariant) => Empty  // if there is just a single variant left, all its keys have already been chosen validly
+            case Seq(singleVariant) => Leaf(singleVariant._2)  // if there is just a single variant left, all its keys have already been chosen validly
             case _ => throw new NoCommonKeys(s"Variants do not have a key in common: $variants")  // our choices of keys left an ambiguity
           case Some(key) =>  // this key allows partitioning
             val remainingKeys2 = remainingKeys - key  // strictly smaller, so recursion is well-founded
-            val parts: Map[B, Seq[Map[A, B]]] = variants.groupBy(_(key))
-            val values: Seq[B] = variants.map(_(key)).distinct  // note that this preserves order
+            val parts: Map[B, Seq[(Map[A, B], C)]] = variants.groupBy(_._1(key))
+            val values: Seq[B] = variants.map(_._1(key)).distinct  // note that this preserves order
             val choices = values.map { value => value -> helper(parts(value), remainingKeys2) }
             Node(key, choices)
       }
 
-      val allKeys = variants.flatMap(_.keysIterator).toSet
+      val allKeys = variants.flatMap(_._1.keysIterator).toSet
       try Right(helper(variants, allKeys)) catch { case e: NoCommonKeys => Left(e.msg) }
     }
-  }
 
+    /** The difference here is that `variants` might not have a key in common, in
+      * which case the different variants are combined.
+      * For simplicity, we assume that all variant IDs are orthogonal to each
+      * other, so order does not matter, but we need to choose all of them (even
+      * if occasionally some choices wouldn't matter).
+      * Conceptually, for each node, every child is the same, so the result is a
+      * sequential structure.
+      */
+    def fromVariantsCartesian[A, B](variants: IterableOnce[Map[A, B]]): DecisionTree[A, B, Unit] = {
+      val entries: Seq[(A, B)] = variants.iterator.flatMap(_.iterator).toSeq  // collects all possible keys and values (possibly with duplicates)
+      val valuesById = entries.groupMap(_._1)(_._2)
+      entries.map(_._1).distinct  // order-preserving
+        .foldRight(Leaf(()): DecisionTree[A, B, Unit]) { (key, subtree) =>
+          Node(key, choices = valuesById(key).distinct.map(_ -> subtree))  // each child subtree is identical (avoids combinatorial explosion)
+        }
+    }
+  }
 }

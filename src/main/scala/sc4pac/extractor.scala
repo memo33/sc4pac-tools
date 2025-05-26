@@ -87,7 +87,7 @@ object Extractor {
     }
   }
   object InstallRecipe {
-    def fromAssetReference(data: JD.AssetReference): (InstallRecipe, Seq[Warning]) = {
+    def fromAssetReference(data: JD.AssetReference, variant: Variant): (InstallRecipe, Seq[Warning]) = {
       val warnings = Seq.newBuilder[Warning]
       def toRegex(s: String): Option[Pattern] = try {
         Some(Pattern.compile(s, Pattern.CASE_INSENSITIVE))
@@ -96,9 +96,14 @@ object Extractor {
           warnings += s"The package metadata contains a malformed regex: $e"
           None
       }
-      val include = data.include.flatMap(toRegex)
-      val exclude = data.exclude.flatMap(toRegex)
-      val includeWithChecksum = data.withChecksum.flatMap(item => toRegex(item.include).map(_ -> item))
+      val matchingConditions =
+        data.withConditions.filter(_.ifVariant.forall { (key, value) => variant.get(key) match
+          case Some(selectedValue) => selectedValue == value
+          case None => throw new AssertionError(s"During extraction, conditional variants should have already been fully selected: $key")
+        })
+      val include = (data.include ++ matchingConditions.flatMap(_.include)).flatMap(toRegex)
+      val exclude = (data.exclude ++ matchingConditions.flatMap(_.exclude)).flatMap(toRegex)
+      val includeWithChecksum = (data.withChecksum ++ matchingConditions.flatMap(_.withChecksum)).flatMap(item => toRegex(item.include).map(_ -> item))
       (InstallRecipe(
         include = if (include.isEmpty) Seq(Constants.defaultIncludePattern) else include,
         exclude = if (exclude.isEmpty) Seq(Constants.defaultExcludePattern) else exclude,

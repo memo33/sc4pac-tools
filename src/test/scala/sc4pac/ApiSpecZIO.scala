@@ -343,7 +343,7 @@ object ApiSpecZIO extends ZIOSpecDefault {
               _    <- setFileServerChannel
               data <- getEndpoint(s"channels.stats?profile=$profileId").flatMap(getBody200[api.ChannelStatsAll])
               _    <- addTestResult(assertTrue(
-                        data.combined.totalPackageCount == 4,
+                        data.combined.totalPackageCount == 5,
                         data.channels.length == 1,
                         data.channels(0).url.startsWith("http://localhost:"),
                       ))
@@ -598,6 +598,48 @@ object ApiSpecZIO extends ZIOSpecDefault {
                               _ <- queue.take.flatMap(f => addTestResult(assertTrue(f.json == jsonOk)))
                             } yield ()),
                           )
+              } yield ()
+            })
+          },
+          test("/update (conditional variants)") {
+            withTestResultRef(ZIO.scoped {
+              for {
+                _    <- postEndpoint(s"plugins.add?profile=$profileId", jsonBody(Seq("test:conditional-variants"))).flatMap(isOk200)
+                _    <- wsEndpoint(s"update?profile=$profileId",
+                          respond = {
+                            case msg: api.PromptMessage.InitialArgumentsForUpdate => ZIO.succeed(msg.responses("Default"))
+                            case msg: api.PromptMessage.ChooseVariant =>
+                              val testChoices = Map(
+                                "nightmode" -> "standard",
+                                "driveside" -> "left",
+                                "style" -> "style1",
+                                "capacity" -> "standard",
+                                "CAM" -> "no",
+                                "roadstyle" -> "US",
+                              )
+                              for {
+                                _  <- addTestResult(assertTrue(
+                                        testChoices.contains(msg.variantId),
+                                      ))
+                              } yield msg.responses(testChoices(msg.variantId))
+                            case msg: api.PromptMessage.ConfirmUpdatePlan =>
+                              for {
+                                _ <- addTestResult(assertTrue(msg.toRemove.length == 0, msg.toInstall.length == 1))
+                              } yield msg.responses("No")
+                          },
+                          filter = msg => !msg.json("$type").str.startsWith("/progress/"),
+                          checkMessages = queue => (for {
+                            _ <- queue.take.flatMap(f => addTestResult(assertTrue(f.json("$type").str == "/prompt/json/update/initial-arguments")))
+                            _ <- queue.take.flatMap(f => addTestResult(assertTrue(f.json("$type").str == "/prompt/choice/update/variant")))
+                            _ <- queue.take.flatMap(f => addTestResult(assertTrue(f.json("$type").str == "/prompt/choice/update/variant")))
+                            _ <- queue.take.flatMap(f => addTestResult(assertTrue(f.json("$type").str == "/prompt/choice/update/variant")))
+                            _ <- queue.take.flatMap(f => addTestResult(assertTrue(f.json("$type").str == "/prompt/choice/update/variant")))
+                            _ <- queue.take.flatMap(f => addTestResult(assertTrue(f.json("$type").str == "/prompt/choice/update/variant")))
+                            _ <- queue.take.flatMap(f => addTestResult(assertTrue(f.json("$type").str == "/prompt/confirmation/update/plan")))
+                            _ <- queue.take.flatMap(f => addTestResult(assertTrue(f.json("$type").str == "/error/aborted")))
+                          } yield ()),
+                        )
+                _    <- postEndpoint(s"plugins.remove?profile=$profileId", jsonBody(Seq("test:conditional-variants"))).flatMap(isOk200)
               } yield ()
             })
           },
