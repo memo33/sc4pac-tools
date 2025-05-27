@@ -262,150 +262,122 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) {  // TODO d
     s"${dependency.group.value}.${dependency.name.value}$variantLabel.${dependency.version}.sc4pac"
   }
 
-  /** Stage a single package into the temp plugins folder and return a list of
-    * files or folders containing the files belonging to the package,
-    * the JD.Package info containing metadata relevant for the lock file,
-    * and any warnings.
-    */
-  private def stage(
-    tempPluginsRoot: os.Path,
-    dependency: DepModule,
-    artifactsById: Map[BareAsset, (Artifact, java.io.File, DepAsset)],
-    stagingRoot: os.Path,
-    progress: Sc4pac.Progress,
-    resolution: Resolution,
-  ): RIO[ResolutionContext, StageResult.Item] = {
-    def extract(assetData: JD.AssetReference, pkgFolder: os.SubPath, variant: Variant): Task[(BareAsset, Chunk[Extractor.ExtractedItem], Seq[Warning])] = {
-      // Given an AssetReference, we look up the corresponding artifact file
-      // by ID. This relies on the 1-to-1-correspondence between sc4pacAssets
-      // and artifact files.
-      val id = BareAsset(ModuleName(assetData.assetId))
-      artifactsById.get(id) match {
-        case None =>
-          ZIO.succeed((
-            id,
-            Chunk.empty,
-            Seq(s"An asset is missing and has been skipped, so it needs to be installed manually: ${id.orgName}. " +
-                "Please report this to the maintainers of the package metadata."),
-          ))
-        case Some(art, archive, depAsset) =>
-          val (recipe, regexWarnings) = Extractor.InstallRecipe.fromAssetReference(assetData, variant)
-          val extractor = new Extractor(logger)
-          val jarsRoot = stagingRoot / "jars"
+  object update {
 
-          def doExtract(fallbackFilename: Option[String]) =
-            extractor.extract(
-              archive,
-              fallbackFilename,
-              tempPluginsRoot / pkgFolder,
-              recipe,
-              Some(Extractor.JarExtraction.fromUrl(art.url, jarsRoot = jarsRoot)),
-              hints = depAsset.archiveType,
-              stagingRoot,
-              validate = true,
-            )
+    /** Stage a single package into the temp plugins folder and return a list of
+      * files or folders containing the files belonging to the package,
+      * the JD.Package info containing metadata relevant for the lock file,
+      * and any warnings.
+      */
+    private def stage(
+      tempPluginsRoot: os.Path,
+      dependency: DepModule,
+      artifactsById: Map[BareAsset, (Artifact, java.io.File, DepAsset)],
+      stagingRoot: os.Path,
+      progress: Sc4pac.Progress,
+      resolution: Resolution,
+    ): RIO[ResolutionContext, StageResult.Item] = {
+      def extract(assetData: JD.AssetReference, pkgFolder: os.SubPath, variant: Variant): Task[(BareAsset, Chunk[Extractor.ExtractedItem], Seq[Warning])] = {
+        // Given an AssetReference, we look up the corresponding artifact file
+        // by ID. This relies on the 1-to-1-correspondence between sc4pacAssets
+        // and artifact files.
+        val id = BareAsset(ModuleName(assetData.assetId))
+        artifactsById.get(id) match {
+          case None =>
+            ZIO.succeed((
+              id,
+              Chunk.empty,
+              Seq(s"An asset is missing and has been skipped, so it needs to be installed manually: ${id.orgName}. " +
+                  "Please report this to the maintainers of the package metadata."),
+            ))
+          case Some(art, archive, depAsset) =>
+            val (recipe, regexWarnings) = Extractor.InstallRecipe.fromAssetReference(assetData, variant)
+            val extractor = new Extractor(logger)
+            val jarsRoot = stagingRoot / "jars"
 
-          for {
-            fallbackFilename <- context.cache.getFallbackFilename(archive).provideSomeLayer(zio.ZLayer.succeed(logger))
-            archiveSize      <- ZIO.attemptBlockingIO(archive.length())
-            (files, patterns)<- if (archiveSize >= Constants.largeArchiveSizeInterruptible) {
-                                  logger.debug(s"(Interruptible extraction of ${assetData.assetId})")
-                                  // comes at a performance cost, so we only make extraction interruptible for large files
-                                  ZIO.attemptBlockingInterrupt(doExtract(fallbackFilename))
-                                } else {
-                                  ZIO.attemptBlocking(doExtract(fallbackFilename))
-                                }
-          } yield {
-            // TODO catch IOExceptions
-            (id, files, regexWarnings ++ recipe.usedPatternWarnings(patterns, id, short = false))
-          }
-      }
-    }
+            def doExtract(fallbackFilename: Option[String]) =
+              extractor.extract(
+                archive,
+                fallbackFilename,
+                tempPluginsRoot / pkgFolder,
+                recipe,
+                Some(Extractor.JarExtraction.fromUrl(art.url, jarsRoot = jarsRoot)),
+                hints = depAsset.archiveType,
+                stagingRoot,
+                validate = true,
+              )
 
-    /** Creates links for dll files from plugins root folder to package subfolder.
-      * If link creation fails, this moves the DLL files from package subfolder to plugins root. */
-    def linkDll(dll: os.Path): Task[os.SubPath] =
-      ZIO.attemptBlockingIO {
-          val dllLink = tempPluginsRoot / dll.last
-          if (os.isLink(dllLink) || os.exists(dllLink)) {  // (note that `dllLink` may be an actual file on Windows)
-            // This should not usually happen as it means two packages contain
-            // the same DLL and are installed during the same `update` process.
-            // If the DLL already exists in the actual plugins, we don't even catch that.
-            val _ = os.remove(dllLink, checkExists = false)  // ignoring result for now
-          }
-          val linkTarget = dll.subRelativeTo(tempPluginsRoot)
-          try {
-            os.symlink(dllLink, linkTarget)
-          } catch { case _: java.io.IOException =>
-            // On Windows, symbolic link creation usually fails without elevated privileges
-            // (see documentation of channel-build command), so instead of using a link,
-            // we just move the DLL file to the plugins root as a fallback.
-            logger.debug(s"Failed to create symbolic link $dllLink -> $linkTarget. Moving file to plugins root instead.")
-            os.move(dll, dllLink)
-          }
-          dllLink.subRelativeTo(tempPluginsRoot)
-      }
-
-    val module: BareModule = dependency.toBareDep
-    // Since dependency is of type DepModule, we have already resolved the variant successfully, so it must already exist.
-    val (pkgData, variantData) = resolution.metadata(module).toOption.get
-    val pkgFolder = pkgData.subfolder / packageFolderName(dependency)
-    for {
-      extractions        <- logger.extractingPackage(dependency, progress)(for {
-                              _  <- ZIO.attemptBlocking(os.makeDir.all(tempPluginsRoot / pkgFolder))  // create folder even if package does not have any assets or files
-                              extracted <- ZIO.foreach(variantData.assets)(extract(_, pkgFolder, variant = variantData.variant))
-                            } yield extracted)  // (asset, files, warnings)
-      artifactWarnings   =  extractions.flatMap(_._3)
-      _                  <- ZIO.foreach(artifactWarnings)(w => ZIO.attempt(logger.warn(w)))  // to avoid conflicts with spinner animation, we print warnings after extraction already finished
-      dlls               <- ZIO.foreach(extractions.flatMap { case (id, files, _) =>
-                              files.filter(f => isDll(f.path)).map((id, _))
-                            }) {
-                              case (id: BareAsset, item: Extractor.ExtractedItem) =>
-                                for {
-                                  dll <- linkDll(item.path)
-                                } yield {
-                                  assert(item.validatedSha256.isDefined, s"Checksum of DLL ${item.path} (${id.assetId}) should have been verified")
-                                  StageResult.DllInstalled(
-                                    dll, dependency, artifactsById(id)._3,
-                                    pkgMetadataUrl = resolution.metadataUrls(module),
-                                    assetMetadataUrl = resolution.metadataUrls(id),
-                                    validatedSha256 = item.validatedSha256.get,
-                                  )
-                                }
-                            }
-      warningOpt         <- ZIO.when(pkgData.info.warning.nonEmpty)(ZIO.attempt { val w = pkgData.info.warning; logger.warn(w); w })
-    } yield StageResult.Item(dependency, Seq(pkgFolder) ++ dlls.map(_.dll), pkgData, warningOpt.toSeq ++ artifactWarnings, dlls)
-  }
-
-  private def remove(toRemove: Set[Dep], installed: Seq[JD.InstalledData], pluginsRoot: os.Path): Task[Unit] = {
-    // removing files is synchronous but can be blocking a while, so we wrap it in Task (TODO should use zio blocking)
-    val files = installed
-      .filter(item => toRemove.contains(item.toDepModule))
-      .flatMap(_.files)  // all files of packages to remove
-    ZIO.foreachDiscard(files) { (sub: os.SubPath) =>  // this runs sequentially
-      val path = pluginsRoot / sub
-      ZIO.attemptBlocking {
-        require(path != pluginsRoot, "subpath must not be empty")  // sanity check to avoid accidental deletion of entire plugins folder
-        if (isDll(path) && os.isLink(path)) {
-          os.remove(path, checkExists = false)
-        } else if (os.exists(path)) {
-          os.remove.all(path)
-        } else {
-          logger.warn(s"removal failed as file did not exist: $path")
+            for {
+              fallbackFilename <- context.cache.getFallbackFilename(archive).provideSomeLayer(zio.ZLayer.succeed(logger))
+              archiveSize      <- ZIO.attemptBlockingIO(archive.length())
+              (files, patterns)<- if (archiveSize >= Constants.largeArchiveSizeInterruptible) {
+                                    logger.debug(s"(Interruptible extraction of ${assetData.assetId})")
+                                    // comes at a performance cost, so we only make extraction interruptible for large files
+                                    ZIO.attemptBlockingInterrupt(doExtract(fallbackFilename))
+                                  } else {
+                                    ZIO.attemptBlocking(doExtract(fallbackFilename))
+                                  }
+            } yield {
+              // TODO catch IOExceptions
+              (id, files, regexWarnings ++ recipe.usedPatternWarnings(patterns, id, short = false))
+            }
         }
       }
+
+      /** Creates links for dll files from plugins root folder to package subfolder.
+        * If link creation fails, this moves the DLL files from package subfolder to plugins root. */
+      def linkDll(dll: os.Path): Task[os.SubPath] =
+        ZIO.attemptBlockingIO {
+            val dllLink = tempPluginsRoot / dll.last
+            if (os.isLink(dllLink) || os.exists(dllLink)) {  // (note that `dllLink` may be an actual file on Windows)
+              // This should not usually happen as it means two packages contain
+              // the same DLL and are installed during the same `update` process.
+              // If the DLL already exists in the actual plugins, we don't even catch that.
+              val _ = os.remove(dllLink, checkExists = false)  // ignoring result for now
+            }
+            val linkTarget = dll.subRelativeTo(tempPluginsRoot)
+            try {
+              os.symlink(dllLink, linkTarget)
+            } catch { case _: java.io.IOException =>
+              // On Windows, symbolic link creation usually fails without elevated privileges
+              // (see documentation of channel-build command), so instead of using a link,
+              // we just move the DLL file to the plugins root as a fallback.
+              logger.debug(s"Failed to create symbolic link $dllLink -> $linkTarget. Moving file to plugins root instead.")
+              os.move(dll, dllLink)
+            }
+            dllLink.subRelativeTo(tempPluginsRoot)
+        }
+
+      val module: BareModule = dependency.toBareDep
+      // Since dependency is of type DepModule, we have already resolved the variant successfully, so it must already exist.
+      val (pkgData, variantData) = resolution.metadata(module).toOption.get
+      val pkgFolder = pkgData.subfolder / packageFolderName(dependency)
+      for {
+        extractions        <- logger.extractingPackage(dependency, progress)(for {
+                                _  <- ZIO.attemptBlocking(os.makeDir.all(tempPluginsRoot / pkgFolder))  // create folder even if package does not have any assets or files
+                                extracted <- ZIO.foreach(variantData.assets)(extract(_, pkgFolder, variant = variantData.variant))
+                              } yield extracted)  // (asset, files, warnings)
+        artifactWarnings   =  extractions.flatMap(_._3)
+        _                  <- ZIO.foreach(artifactWarnings)(w => ZIO.attempt(logger.warn(w)))  // to avoid conflicts with spinner animation, we print warnings after extraction already finished
+        dlls               <- ZIO.foreach(extractions.flatMap { case (id, files, _) =>
+                                files.filter(f => isDll(f.path)).map((id, _))
+                              }) {
+                                case (id: BareAsset, item: Extractor.ExtractedItem) =>
+                                  for {
+                                    dll <- linkDll(item.path)
+                                  } yield {
+                                    assert(item.validatedSha256.isDefined, s"Checksum of DLL ${item.path} (${id.assetId}) should have been verified")
+                                    StageResult.DllInstalled(
+                                      dll, dependency, artifactsById(id)._3,
+                                      pkgMetadataUrl = resolution.metadataUrls(module),
+                                      assetMetadataUrl = resolution.metadataUrls(id),
+                                      validatedSha256 = item.validatedSha256.get,
+                                    )
+                                  }
+                              }
+        warningOpt         <- ZIO.when(pkgData.info.warning.nonEmpty)(ZIO.attempt { val w = pkgData.info.warning; logger.warn(w); w })
+      } yield StageResult.Item(dependency, Seq(pkgFolder) ++ dlls.map(_.dll), pkgData, warningOpt.toSeq ++ artifactWarnings, dlls)
     }
-  }
-
-  /** Update all installed packages from modules (the list of explicitly added packages). */
-  def update(modules0: Seq[BareModule], variantSelection0: VariantSelection, pluginsRoot: os.Path): RIO[ProfileRoot & Prompter & Downloader.Credentials, Boolean] = {
-
-    // - before starting to remove anything, we download and extract everything
-    //   to install into temp folders (staging)
-    // - then lock the json database
-    // - remove old packages
-    // - copy new packages into plugins folder
-    // - write the json database
 
     /** For the list of non-asset packages to install, extract all of them
       * into a temporary staging plugins folder and for each package, return the
@@ -413,7 +385,7 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) {  // TODO d
       * If everything is properly extracted, the files are later moved to the
       * actual plugins folder in the publication step.
       */
-    def stageAll(deps: Seq[DepModule], artifactsById: Map[BareAsset, (Artifact, java.io.File, DepAsset)], resolution: Resolution): RIO[Scope & Prompter & ResolutionContext, StageResult] = {
+    private def stageAll(deps: Seq[DepModule], artifactsById: Map[BareAsset, (Artifact, java.io.File, DepAsset)], resolution: Resolution): RIO[Scope & Prompter & ResolutionContext, StageResult] = {
       for {
         stagingRoot             <- Sc4pac.makeTempStagingDir(tempRoot, logger)
         tempPluginsRoot         =  stagingRoot / "plugins"
@@ -433,10 +405,30 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) {  // TODO d
       } yield StageResult(tempPluginsRoot, stagedItems, stagingRoot)
     }
 
+    private def removeInstalledFiles(toRemove: Set[Dep], installed: Seq[JD.InstalledData], pluginsRoot: os.Path): Task[Unit] = {
+      // removing files is synchronous but can be blocking a while, so we wrap it in Task (TODO should use zio blocking)
+      val files = installed
+        .filter(item => toRemove.contains(item.toDepModule))
+        .flatMap(_.files)  // all files of packages to remove
+      ZIO.foreachDiscard(files) { (sub: os.SubPath) =>  // this runs sequentially
+        val path = pluginsRoot / sub
+        ZIO.attemptBlocking {
+          require(path != pluginsRoot, "subpath must not be empty")  // sanity check to avoid accidental deletion of entire plugins folder
+          if (isDll(path) && os.isLink(path)) {
+            os.remove(path, checkExists = false)
+          } else if (os.exists(path)) {
+            os.remove.all(path)
+          } else {
+            logger.warn(s"removal failed as file did not exist: $path")
+          }
+        }
+      }
+    }
+
     /** Moves staged files from temp plugins to actual plugins. This effect has
       * no expected failures, but only potentially unexpected defects.
       */
-    def movePackagesToPlugins(staged: StageResult): IO[Sc4pacPublishIncomplete, Unit] = {
+    private def movePackagesToPlugins(staged: StageResult, pluginsRoot: os.Path): IO[Sc4pacPublishIncomplete, Unit] = {
       ZIO.validateDiscard(staged.items) { item =>
         ZIO.foreachDiscard(item.files) { subPath =>
           val src = staged.tempPluginsRoot / subPath
@@ -481,16 +473,16 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) {  // TODO d
     /** Remove old files from plugins and move staged files and folders into
       * plugins folder. Also update the json database of installed files.
       */
-    def publishToPlugins(staged: StageResult, pluginsLockData: JD.PluginsLock, pluginsLockDataOrig: JD.PluginsLock, plan: UpdatePlan): Task[Boolean] = {
+    private def publishToPlugins(staged: StageResult, pluginsRoot: os.Path, pluginsLockData: JD.PluginsLock, pluginsLockDataOrig: JD.PluginsLock, plan: UpdatePlan): Task[Boolean] = {
       // - lock the json database using file lock
       // - remove old packages
       // - move new packages into plugins folder
       // - write json database and release lock
       val task = (JsonIo.write(JD.PluginsLock.path(context.profileRoot), pluginsLockData.updateTo(plan, staged.items), Some(pluginsLockDataOrig)) {
         for {
-          _ <- remove(plan.toRemove, pluginsLockData.installed, pluginsRoot)
+          _ <- removeInstalledFiles(plan.toRemove, pluginsLockData.installed, pluginsRoot)
                  // .catchAll(???)  // TODO catch exceptions
-          result <- movePackagesToPlugins(staged).map(_ => true).either  // switch to Either so that PluginsLock file can be written despite Sc4pacPublishIncomplete warning
+          result <- movePackagesToPlugins(staged, pluginsRoot).map(_ => true).either  // switch to Either so that PluginsLock file can be written despite Sc4pacPublishIncomplete warning
         } yield result
       }).absolve
       // As this task alters the actual plugins, we make it uninterruptible to ensure completion in case the update is canceled.
@@ -498,7 +490,7 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) {  // TODO d
       logger.publishing(removalOnly = plan.toInstall.isEmpty)(task.uninterruptible)
     }
 
-    def doPromptingForVariant[R, A](variantSelection: VariantSelection)(task: VariantSelection => RIO[R, A]): RIO[Prompter & ResolutionContext & R, (A, VariantSelection)] = {
+    private def doPromptingForVariant[R, A](variantSelection: VariantSelection)(task: VariantSelection => RIO[R, A]): RIO[Prompter & ResolutionContext & R, (A, VariantSelection)] = {
       ZIO.iterate(Left(variantSelection): Either[VariantSelection, (A, VariantSelection)])(_.isLeft) {
         case Right(_) => throw new AssertionError
         case Left(variantSelection) =>
@@ -512,7 +504,7 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) {  // TODO d
       }.map(_.toOption.get)
     }
 
-    def doResolveHandleUnresolvable(explicitModules: Seq[BareModule], variantSelection: VariantSelection): RIO[Prompter & ResolutionContext, (Resolution, Seq[BareModule], VariantSelection)] = {
+    private def doResolveHandleUnresolvable(explicitModules: Seq[BareModule], variantSelection: VariantSelection): RIO[Prompter & ResolutionContext, (Resolution, Seq[BareModule], VariantSelection)] = {
       ZIO.iterate(Left(explicitModules): Either[Seq[BareModule], (Resolution, Seq[BareModule], VariantSelection)])(_.isLeft) {
         case Right(_) => throw new AssertionError
         case Left(explicitModules) =>
@@ -544,7 +536,7 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) {  // TODO d
       }.map(_.toOption.get)
     }
 
-    def storeUpdatedSpec(selections: Variant, explicitModules: Seq[BareModule]): Task[Unit] = for {
+    private def storeUpdatedSpec(selections: Variant, explicitModules: Seq[BareModule]): Task[Unit] = for {
       pluginsSpec <- JsonIo.read[JD.PluginsSpec](JD.PluginsSpec.path(context.profileRoot))  // json file should exist already
       _           <- JsonIo.write(
                        JD.PluginsSpec.path(context.profileRoot),
@@ -553,7 +545,7 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) {  // TODO d
                      )(ZIO.succeed(()))
     } yield ()
 
-    def doDownloadWithMirror(resolution: Resolution, depsToInstall: Seq[Dep]): RIO[Prompter & ResolutionContext & Downloader.Credentials, Seq[(DepAsset, Artifact, java.io.File)]] = {
+    private def doDownloadWithMirror(resolution: Resolution, depsToInstall: Seq[Dep]): RIO[Prompter & ResolutionContext & Downloader.Credentials, Seq[(DepAsset, Artifact, java.io.File)]] = {
       ZIO.iterate(Left(Map.empty): Either[Map[java.net.URI, os.Path], Seq[(DepAsset, Artifact, java.io.File)]])(_.isLeft) {
         case Left(urlFallbacks) =>
           resolution.fetchArtifactsOf(depsToInstall, urlFallbacks)
@@ -569,31 +561,43 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) {  // TODO d
       }.map(_.toOption.get)
     }
 
-    // TODO catch coursier.error.ResolutionError$CantDownloadModule (e.g. when json files have syntax issues)
-    val updateTask = for {
-      pluginsLockData1 <- JD.PluginsLock.readOrInit
-      pluginsLockData <- JD.PluginsLock.upgradeFromScheme1(pluginsLockData1, iterateAllChannelPackages(channelUrl = None), logger, pluginsRoot)
-      (resolution, modules, variantSelection) <- doResolveHandleUnresolvable(modules0, variantSelection0)
-      finalSelections =  variantSelection.buildFinalSelections()
-      plan            =  UpdatePlan.fromResolution(resolution, installed = pluginsLockData.dependenciesWithAssets)
-      continue        <- ZIO.serviceWithZIO[Prompter](_.confirmUpdatePlan(plan))
-                           .filterOrFail(_ == true)(error.Sc4pacAbort())
-      _               <- ZIO.unless(!continue || finalSelections == variantSelection0.initialSelections && modules == modules0)(storeUpdatedSpec(finalSelections, modules))  // only store something after confirmation
-      flagOpt         <- ZIO.unless(!continue || plan.isUpToDate)(for {
-        assetsToInstall <- doDownloadWithMirror(resolution, resolution.transitiveDependencies.filter(plan.toInstall).reverse)  // we start by fetching artifacts in reverse as those have fewest dependencies of their own
-        // TODO if some artifacts fail to be fetched, fall back to installing remaining packages (maybe not(?), as this leads to missing dependencies,
-        // but there needs to be a manual workaround in case of permanently missing artifacts)
-        depsToStage     =  plan.toInstall.collect{ case d: DepModule => d }.toSeq  // keep only non-assets
-        artifactsById   =  assetsToInstall.map((dep, art, file) => dep.toBareDep -> (art, file, dep)).toMap
-        _               =  require(artifactsById.size == assetsToInstall.size, s"artifactsById is not 1-to-1: $assetsToInstall")
-        flag            <- ZIO.scoped(stageAll(depsToStage, artifactsById, resolution)
-                                      .flatMap(publishToPlugins(_, pluginsLockData, pluginsLockData1, plan)))
-        _               <- ZIO.attempt(logger.log("Done."))
-      } yield flag)
-    } yield flagOpt.getOrElse(false)  // TODO decide what flag means
+    /** `def update`: Update all installed packages from modules (the list of explicitly added packages). */
+    def apply(modules0: Seq[BareModule], variantSelection0: VariantSelection, pluginsRoot: os.Path): RIO[ProfileRoot & Prompter & Downloader.Credentials, Boolean] = {
 
-    updateTask.provideSomeLayer(zio.ZLayer.succeed(context))
-  }
+      // - before starting to remove anything, we download and extract everything
+      //   to install into temp folders (staging)
+      // - then lock the json database
+      // - remove old packages
+      // - copy new packages into plugins folder
+      // - write the json database
+
+      // TODO catch coursier.error.ResolutionError$CantDownloadModule (e.g. when json files have syntax issues)
+      val updateTask = for {
+        pluginsLockData1 <- JD.PluginsLock.readOrInit
+        pluginsLockData <- JD.PluginsLock.upgradeFromScheme1(pluginsLockData1, iterateAllChannelPackages(channelUrl = None), logger, pluginsRoot)
+        (resolution, modules, variantSelection) <- doResolveHandleUnresolvable(modules0, variantSelection0)
+        finalSelections =  variantSelection.buildFinalSelections()
+        plan            =  UpdatePlan.fromResolution(resolution, installed = pluginsLockData.dependenciesWithAssets)
+        continue        <- ZIO.serviceWithZIO[Prompter](_.confirmUpdatePlan(plan))
+                             .filterOrFail(_ == true)(error.Sc4pacAbort())
+        _               <- ZIO.unless(!continue || finalSelections == variantSelection0.initialSelections && modules == modules0)(storeUpdatedSpec(finalSelections, modules))  // only store something after confirmation
+        flagOpt         <- ZIO.unless(!continue || plan.isUpToDate)(for {
+          assetsToInstall <- doDownloadWithMirror(resolution, resolution.transitiveDependencies.filter(plan.toInstall).reverse)  // we start by fetching artifacts in reverse as those have fewest dependencies of their own
+          // TODO if some artifacts fail to be fetched, fall back to installing remaining packages (maybe not(?), as this leads to missing dependencies,
+          // but there needs to be a manual workaround in case of permanently missing artifacts)
+          depsToStage     =  plan.toInstall.collect{ case d: DepModule => d }.toSeq  // keep only non-assets
+          artifactsById   =  assetsToInstall.map((dep, art, file) => dep.toBareDep -> (art, file, dep)).toMap
+          _               =  require(artifactsById.size == assetsToInstall.size, s"artifactsById is not 1-to-1: $assetsToInstall")
+          flag            <- ZIO.scoped(stageAll(depsToStage, artifactsById, resolution)
+                                        .flatMap(publishToPlugins(_, pluginsRoot, pluginsLockData, pluginsLockData1, plan)))
+          _               <- ZIO.attempt(logger.log("Done."))
+        } yield flag)
+      } yield flagOpt.getOrElse(false)  // TODO decide what flag means
+
+      updateTask.provideSomeLayer(zio.ZLayer.succeed(context))
+    }
+
+  }  // end of update
 
   /** Trims down variants and channels to what is relevant for the transitive
     * dependencies of passed modules. */
