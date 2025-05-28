@@ -26,9 +26,11 @@ object Resolution {
     def orgName: String = toBareDep.orgName
   }
 
+  private type FindMetadataResult = Either[(JD.Asset, java.net.URI), (JD.Package, JD.VariantData, java.net.URI)]
+
   /** Lookup the metadata of a BareDep (without caching). The function should be
     * memoized where it is used. */
-  private def findMetadataImpl(variantSelection: VariantSelection)(dep: BareDep): RIO[ResolutionContext, Either[(JD.Asset, java.net.URI), (JD.Package, JD.VariantData, java.net.URI)]] = dep match {
+  private def findMetadataImpl(variantSelection: VariantSelection)(dep: BareDep): RIO[ResolutionContext, FindMetadataResult] = dep match {
     case bareAsset: BareAsset =>
       // assets do not have variants
       Find.concreteVersion(bareAsset, Constants.versionLatestRelease)
@@ -168,29 +170,46 @@ object Resolution {
                             explicitPackages2 = pkgs2,
                           )
                         }
-      resolvedData   <- ZIO.foreach(reachableDeps.keySet) { (d: BareDep) =>
-                          findMetadataMemo(d).map {
-                            case Left((assetData, url)) =>
-                              d -> (DepAsset.fromAsset(assetData), Left(assetData), url)
-                            case Right((pkgData, variantData, url)) =>
-                              val depModule = DepModule(
-                                group = d.asInstanceOf[BareModule].group,
-                                name = d.asInstanceOf[BareModule].name,
-                                version = pkgData.version,
-                                variant = variantData.variant
-                              )
-                              d -> (depModule, Right((pkgData, variantData)), url)
-                          }
-                        }
-    } yield Resolution(reachableDeps, resolvedData.toMap, reverseDeps)
+      resolvedData   <- createResolvedData(findMetadataMemo)(reachableDeps.keySet)
+    } yield Resolution(reachableDeps, resolvedData, reverseDeps)
 
   }
+
+  private def createResolvedData(findMetadataMemo: BareDep => RIO[ResolutionContext, FindMetadataResult])(deps: Set[BareDep]): RIO[ResolutionContext, Map[BareDep, (Dep, Either[JD.Asset, (JD.Package, JD.VariantData)], java.net.URI)]] =
+    ZIO.foreach(deps) { (d: BareDep) =>
+      findMetadataMemo(d).map {
+        case Left((assetData, url)) =>
+          d -> (DepAsset.fromAsset(assetData), Left(assetData), url)
+        case Right((pkgData, variantData, url)) =>
+          val depModule = DepModule(
+            group = d.asInstanceOf[BareModule].group,
+            name = d.asInstanceOf[BareModule].name,
+            version = pkgData.version,
+            variant = variantData.variant
+          )
+          d -> (depModule, Right((pkgData, variantData)), url)
+      }
+    }.map(_.toMap)
+
+  /** Create an incomplete resolution for a single module, containing only directly referenced assets, not following any dependency links.
+    * This is used for test-installing a single package. */
+  def resolveAssetsNoDependencies(module: BareModule, variantSelection: VariantSelection): RIO[ResolutionContext, Resolution] =
+    for {
+      findMetadataMemo <- ZIO.memoize(findMetadataImpl(variantSelection))
+      variantData      <- findMetadataMemo(module).map(_.toOption.get._2)
+      assets           =  variantData.bareDependencies.collect { case a: BareAsset => a }
+      links            =  Links(dependencies = assets, conflicts = Seq.empty)  // conflicts can be ignored
+      incompleteDeps   =  TreeSeqMap(module -> links) ++ assets.map(_ -> Links(Seq.empty, Seq.empty))
+      resolvedData     <- createResolvedData(findMetadataMemo)(incompleteDeps.keySet)
+    } yield Resolution(incompleteDeps, resolvedData, reverseDeps = Map.empty)
 
 }
 
 class Resolution(reachableDeps: TreeSeqMap[BareDep, Links], resolvedData: Map[BareDep, (Dep, Either[JD.Asset, (JD.Package, JD.VariantData)], java.net.URI)], reverseDeps: Map[BareDep, Seq[BareDep]]) {
 
   private val nonbareDeps: collection.MapView[BareDep, Dep] = resolvedData.view.mapValues(_._1)
+
+  def depModuleOf(module: BareModule): Resolution.DepModule = nonbareDeps(module).asInstanceOf[Resolution.DepModule]
 
   val metadata: collection.MapView[BareDep, Either[JD.Asset, (JD.Package, JD.VariantData)]] = resolvedData.view.mapValues(_._2)
 

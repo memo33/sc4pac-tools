@@ -30,7 +30,7 @@ trait Prompter {
 
 }
 
-class CliPrompter(logger: CliLogger, autoYes: Boolean) extends Prompter {
+class CliPrompter(val logger: CliLogger, autoYes: Boolean) extends Prompter {
 
   def withAutoYes(yes: Boolean): CliPrompter = CliPrompter(logger, yes)
 
@@ -155,5 +155,13 @@ class CliPrompter(logger: CliLogger, autoYes: Boolean) extends Prompter {
         onTrue = Prompt.yesNo("Continue with installation of DLL files?"),
       )
     }
+  }
+
+  def confirmDeletionOfStagedFiles(): Task[Unit] = {
+    if (autoYes) ZIO.succeed(logger.log("Deleting staged files."))
+    else Prompt.ifInteractive(
+      onFalse = ZIO.succeed(logger.log("Deleting staged files.")),
+      onTrue = Prompt.choice("Delete staged files?", Seq("Yes"), default = Some("Yes")).map(_ == "Yes").unit,
+    )
   }
 }

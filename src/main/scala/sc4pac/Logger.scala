@@ -34,6 +34,8 @@ trait Logger {
   def fetchingAssets[R, A](fetching: RIO[R, A]): RIO[R, A]
 
   def debugPrintStackTrace(exception: Throwable): Unit = debug(Logger.stackTraceToString(exception))
+
+  def logTestStep(module: DepModule, failure: Option[Throwable]): Unit = {}
 }
 object Logger {
   def stackTraceToString(exception: Throwable): String = {
@@ -48,7 +50,8 @@ object Logger {
   */
 class CliLogger private (out: java.io.PrintStream, useColor: Boolean, isInteractive: Boolean) extends Logger {
 
-  private def green(msg: String): String = if (useColor) Console.GREEN + msg + Console.RESET else msg
+  def green(msg: String): String = if (useColor) Console.GREEN + msg + Console.RESET else msg
+  def red(msg: String): String = if (useColor) Console.RED + msg + Console.RESET else msg
   private def cyan(msg: String): String = if (useColor) Console.CYAN + msg + Console.RESET else msg
   def cyanBold(msg: String): String = if (useColor) Console.CYAN + Console.BOLD + msg + Console.RESET else msg
   private def yellowBold(msg: String): String = if (useColor) Console.YELLOW + Console.BOLD + msg + Console.RESET else msg
@@ -171,6 +174,24 @@ class CliLogger private (out: java.io.PrintStream, useColor: Boolean, isInteract
   def fetchingAssets[R, A](fetching: RIO[R, A]): RIO[R, A] = {
     withSpinner(None, sameLine = true, cyan = true, duration = java.time.Duration.ofMillis(160))(fetching)
   }
+
+  override def logTestStep(module: DepModule, failure: Option[Throwable]): Unit = {
+    failure.foreach(err => log(red(err.getMessage)))
+    log((if (failure.isEmpty) green("(Pass) ") else red("(Fail) ")) + module.formattedDisplayString(gray))
+  }
+
+  def reportTestResults(testResults: Seq[Either[Throwable, Unit]], outputDir: os.Path): Unit = {
+    val errs = testResults.filter(_.isLeft)
+    log(s"Staged files at:")
+    log("")
+    log(s"  $outputDir")
+    log("")
+    if (errs.isEmpty) {
+      log(green(s"All ${testResults.length} packages installed successfully."))
+    } else {
+      log(red(s"Failed to install ${errs.length} of ${testResults.length} packages."))
+    }
+  }
 }
 
 object CliLogger {
@@ -187,4 +208,3 @@ object CliLogger {
     }
   }
 }
-
