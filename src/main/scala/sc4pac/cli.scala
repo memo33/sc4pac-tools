@@ -564,7 +564,7 @@ object Commands {
                 validate = false,  // to allow extracting non-DBPF files such as DLL files
               )
             }
-            _ <- ZIO.foreachDiscard(regexWarnings ++ recipe.usedPatternWarnings(usedPatterns, BareAsset(ModuleName(assetData.assetId)), short = true)) { msg => ZIO.succeed(logger.warn(msg)) }
+            _ <- ZIO.foreachDiscard(regexWarnings ++ recipe.usedPatternWarnings(usedPatterns, BareAsset(ModuleName(assetData.assetId)), short = true)) { msg => ZIO.succeed(logger.warn(msg.value)) }
           } yield ())
           runMainExit(task.provideSomeLayer(zio.ZLayer.succeed(CliLogger())), exit)
         case _ => error(caseapp.core.Error.Other("A single argument is needed: input-archive-file"))

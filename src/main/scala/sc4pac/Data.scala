@@ -369,4 +369,8 @@ object JsonData extends SharedData {
     channels: Seq[Uri] = Seq.empty,
   ) derives ReadWriter
 
+  sealed trait Warning { def value: String }
+  class InformativeWarning(val value: String) extends Warning
+  class UnexpectedWarning(val value: String) extends Warning
+
 }

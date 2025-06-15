@@ -9,6 +9,7 @@ import upickle.default as UP
 import sc4pac.error.*
 import sc4pac.Constants.isDll
 import sc4pac.JsonData as JD
+import JD.Warning
 import sc4pac.Sc4pac.{StageResult, UpdatePlan}
 import sc4pac.Resolution.{Dep, DepModule, DepAsset}
 
@@ -287,8 +288,10 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) {  // TODO d
             ZIO.succeed((
               id,
               Chunk.empty,
-              Seq(s"An asset is missing and has been skipped, so it needs to be installed manually: ${id.orgName}. " +
-                  "Please report this to the maintainers of the package metadata."),
+              Seq(JD.UnexpectedWarning(
+                s"An asset is missing and has been skipped, so it needs to be installed manually: ${id.orgName}. " +
+                "Please report this to the maintainers of the package metadata."
+              )),
             ))
           case Some(art, archive, depAsset) =>
             val (recipe, regexWarnings) = Extractor.InstallRecipe.fromAssetReference(assetData, variant)
@@ -358,7 +361,7 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) {  // TODO d
                                 extracted <- ZIO.foreach(variantData.assets)(extract(_, pkgFolder, variant = variantData.variant))
                               } yield extracted)  // (asset, files, warnings)
         artifactWarnings   =  extractions.flatMap(_._3)
-        _                  <- ZIO.foreach(artifactWarnings)(w => ZIO.attempt(logger.warn(w)))  // to avoid conflicts with spinner animation, we print warnings after extraction already finished
+        _                  <- ZIO.foreach(artifactWarnings)(w => ZIO.attempt(logger.warn(w.value)))  // to avoid conflicts with spinner animation, we print warnings after extraction already finished
         dlls               <- ZIO.foreach(extractions.flatMap { case (id, files, _) =>
                                 files.filter(f => isDll(f.path)).map((id, _))
                               }) {
@@ -375,7 +378,7 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) {  // TODO d
                                     )
                                   }
                               }
-        warningOpt         <- ZIO.when(pkgData.info.warning.nonEmpty)(ZIO.attempt { val w = pkgData.info.warning; logger.warn(w); w })
+        warningOpt         <- ZIO.when(pkgData.info.warning.nonEmpty)(ZIO.attempt { val w = pkgData.info.warning; logger.warn(w); JD.InformativeWarning(w) })
       } yield StageResult.Item(dependency, Seq(pkgFolder) ++ dlls.map(_.dll), pkgData, warningOpt.toSeq ++ artifactWarnings, dlls)
     }
 

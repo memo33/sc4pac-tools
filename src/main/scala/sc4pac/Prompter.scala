@@ -18,7 +18,7 @@ trait Prompter {
 
   def promptForDownloadMirror(url: java.net.URI, reason: error.DownloadFailed): Task[Either[Boolean, os.Path]]
 
-  def confirmInstallationWarnings(warnings: Seq[(BareModule, Seq[String])]): Task[Boolean]
+  def confirmInstallationWarnings(warnings: Seq[(BareModule, Seq[JD.Warning])]): Task[Boolean]
 
   def confirmDllsInstalled(dllsInstalled: Seq[Sc4pac.StageResult.DllInstalled]): Task[Boolean]
 
@@ -135,7 +135,7 @@ class CliPrompter(logger: CliLogger, autoYes: Boolean) extends Prompter {
     )
   }
 
-  def confirmInstallationWarnings(warnings: Seq[(BareModule, Seq[String])]): Task[Boolean] = {
+  def confirmInstallationWarnings(warnings: Seq[(BareModule, Seq[JD.Warning])]): Task[Boolean] = {
     if (warnings.isEmpty || autoYes) ZIO.succeed(true)  // if --yes flag is present, always continue
     else Prompt.ifInteractive(
       onTrue = Prompt.yesNo("Continue despite warnings?"),

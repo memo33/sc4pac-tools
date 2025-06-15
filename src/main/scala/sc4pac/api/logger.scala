@@ -193,8 +193,8 @@ class WebSocketPrompter(wsChannel: zio.http.WebSocketChannel, logger: WebSocketL
     }
   }
 
-  def confirmInstallationWarnings(warnings: Seq[(BareModule, Seq[String])]): Task[Boolean] = {
-    sendPrompt(PromptMessage.ConfirmInstallation(warnings.toMap)).map(_.body.str == yes)
+  def confirmInstallationWarnings(warnings: Seq[(BareModule, Seq[JD.Warning])]): Task[Boolean] = {
+    sendPrompt(PromptMessage.ConfirmInstallation(warnings.map { case (pkg, ws) => (pkg, ws.map(_.value)) }.toMap)).map(_.body.str == yes)
   }
 
   def confirmDllsInstalled(dllsInstalled: Seq[Sc4pac.StageResult.DllInstalled]): Task[Boolean] = {
