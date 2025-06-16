@@ -271,10 +271,9 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) {  // TODO d
       * and any warnings.
       */
     private def stage(
-      tempPluginsRoot: os.Path,
+      stagingDirs: Sc4pac.StagingDirs,
       dependency: DepModule,
       artifactsById: Map[BareAsset, (Artifact, java.io.File, DepAsset)],
-      stagingRoot: os.Path,
       progress: Sc4pac.Progress,
       resolution: Resolution,
     ): RIO[ResolutionContext, StageResult.Item] = {
@@ -296,17 +295,16 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) {  // TODO d
           case Some(art, archive, depAsset) =>
             val (recipe, regexWarnings) = Extractor.InstallRecipe.fromAssetReference(assetData, variant)
             val extractor = new Extractor(logger)
-            val jarsRoot = stagingRoot / "jars"
 
             def doExtract(fallbackFilename: Option[String]) =
               extractor.extract(
                 archive,
                 fallbackFilename,
-                tempPluginsRoot / pkgFolder,
+                stagingDirs.plugins / pkgFolder,
                 recipe,
-                Some(Extractor.JarExtraction.fromUrl(art.url, jarsRoot = jarsRoot)),
+                Some(Extractor.JarExtraction.fromUrl(art.url, jarsRoot = stagingDirs.nested)),
                 hints = depAsset.archiveType,
-                stagingRoot,
+                stagingDirs.root,
                 validate = true,
               )
 
@@ -331,14 +329,14 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) {  // TODO d
         * If link creation fails, this moves the DLL files from package subfolder to plugins root. */
       def linkDll(dll: os.Path): Task[os.SubPath] =
         ZIO.attemptBlockingIO {
-            val dllLink = tempPluginsRoot / dll.last
+            val dllLink = stagingDirs.plugins / dll.last
             if (os.isLink(dllLink) || os.exists(dllLink)) {  // (note that `dllLink` may be an actual file on Windows)
               // This should not usually happen as it means two packages contain
               // the same DLL and are installed during the same `update` process.
               // If the DLL already exists in the actual plugins, we don't even catch that.
               val _ = os.remove(dllLink, checkExists = false)  // ignoring result for now
             }
-            val linkTarget = dll.subRelativeTo(tempPluginsRoot)
+            val linkTarget = dll.subRelativeTo(stagingDirs.plugins)
             try {
               os.symlink(dllLink, linkTarget)
             } catch { case _: java.io.IOException =>
@@ -348,7 +346,7 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) {  // TODO d
               logger.debug(s"Failed to create symbolic link $dllLink -> $linkTarget. Moving file to plugins root instead.")
               os.move(dll, dllLink)
             }
-            dllLink.subRelativeTo(tempPluginsRoot)
+            dllLink.subRelativeTo(stagingDirs.plugins)
         }
 
       val module: BareModule = dependency.toBareDep
@@ -357,7 +355,7 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) {  // TODO d
       val pkgFolder = pkgData.subfolder / packageFolderName(dependency)
       for {
         extractions        <- logger.extractingPackage(dependency, progress)(for {
-                                _  <- ZIO.attemptBlocking(os.makeDir.all(tempPluginsRoot / pkgFolder))  // create folder even if package does not have any assets or files
+                                _  <- ZIO.attemptBlocking(os.makeDir.all(stagingDirs.plugins / pkgFolder))  // create folder even if package does not have any assets or files
                                 extracted <- ZIO.foreach(variantData.assets)(extract(_, pkgFolder, variant = variantData.variant))
                               } yield extracted)  // (asset, files, warnings)
         artifactWarnings   =  extractions.flatMap(_._3)
@@ -390,12 +388,10 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) {  // TODO d
       */
     private def stageAll(deps: Seq[DepModule], artifactsById: Map[BareAsset, (Artifact, java.io.File, DepAsset)], resolution: Resolution): RIO[Scope & Prompter & ResolutionContext, StageResult] = {
       for {
-        stagingRoot             <- Sc4pac.makeTempStagingDir(tempRoot, logger)
-        tempPluginsRoot         =  stagingRoot / "plugins"
-        _                       <- ZIO.attemptBlocking(os.makeDir(tempPluginsRoot))
+        stagingDirs             <- Sc4pac.makeStagingDirs(tempRoot, logger)
         numDeps                 =  deps.length
         stagedItems             <- ZIO.foreach(deps.zipWithIndex) { case (dep, idx) =>   // sequentially stages each package
-                                     stage(tempPluginsRoot, dep, artifactsById, stagingRoot, Sc4pac.Progress(idx+1, numDeps), resolution)
+                                     stage(stagingDirs, dep, artifactsById, Sc4pac.Progress(idx+1, numDeps), resolution)
                                    }
         pkgWarnings             =  stagedItems.collect { case item if item.warnings.nonEmpty => (item.dep.toBareDep, item.warnings) }
         _                       <- ZIO.serviceWithZIO[Prompter](_.confirmInstallationWarnings(pkgWarnings))
@@ -405,7 +401,7 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) {  // TODO d
                                      ZIO.serviceWithZIO[Prompter](_.confirmDllsInstalled(dllsInstalled))
                                        .filterOrFail(_ == true)(error.Sc4pacAbort())
                                    }
-      } yield StageResult(tempPluginsRoot, stagedItems, stagingRoot)
+      } yield StageResult(stagingDirs, stagedItems)
     }
 
     private def removeInstalledFiles(toRemove: Set[Dep], installed: Seq[JD.InstalledData], pluginsRoot: os.Path): Task[Unit] = {
@@ -434,7 +430,7 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) {  // TODO d
     private def movePackagesToPlugins(staged: StageResult, pluginsRoot: os.Path): IO[Sc4pacPublishIncomplete, Unit] = {
       ZIO.validateDiscard(staged.items) { item =>
         ZIO.foreachDiscard(item.files) { subPath =>
-          val src = staged.tempPluginsRoot / subPath
+          val src = staged.dirs.plugins / subPath
           val dest = pluginsRoot / subPath
           ZIO.attemptBlockingIO {
             os.move.over(src, dest, replaceExisting = true, createFolders = true)
@@ -673,7 +669,7 @@ object Sc4pac {
     override def toString = s"($numerator/$denominator)"
   }
 
-  case class StageResult(tempPluginsRoot: os.Path, items: Seq[StageResult.Item], stagingRoot: os.Path)
+  case class StageResult(dirs: Sc4pac.StagingDirs, items: Seq[StageResult.Item])
   object StageResult {
     class Item(val dep: DepModule, val files: Seq[os.SubPath], val pkgData: JD.Package, val warnings: Seq[Warning], val dlls: Seq[DllInstalled])
     class DllInstalled(
@@ -784,20 +780,28 @@ object Sc4pac {
     }
   }
 
-  private[sc4pac] def makeTempStagingDir(tempRoot: os.Path, logger: Logger): ZIO[Scope, java.io.IOException, os.Path] =
+  class StagingDirs(
+    val root: os.Path,
+    val plugins: os.Path,
+    val nested: os.Path,  // created only on demand
+  )
+
+  private[sc4pac] def makeStagingDirs(tempRoot: os.Path, logger: Logger): ZIO[Scope, java.io.IOException, StagingDirs] =
     ZIO.acquireRelease(
       acquire = ZIO.attemptBlockingIO {
         os.makeDir.all(tempRoot)
-        val res = os.temp.dir(tempRoot, prefix = "staging-process", deleteOnExit = false)  // deleteOnExit does not seem to work reliably, so explicitly delete temp folder
-        logger.debug(s"Creating temp staging dir: $res")
-        res
+        val stagingRoot = os.temp.dir(tempRoot, prefix = "staging-process", deleteOnExit = false)  // deleteOnExit does not seem to work reliably, so explicitly delete temp folder
+        logger.debug(s"Creating temp staging dir: $stagingRoot")
+        val plugins = stagingRoot / "plugins"
+        os.makeDir.all(plugins)
+        StagingDirs(root = stagingRoot, plugins = plugins, nested = stagingRoot / "nested")
       }
     )(
-      release = (stagingRoot: os.Path) => ZIO.attemptBlockingIO {  // TODO not executed in case of interrupt, so consider cleaning up temp dir from previous runs regularly.
-        logger.debug(s"Deleting temp staging dir: $stagingRoot")
-        os.remove.all(stagingRoot)
+      release = (stagingDirs: StagingDirs) => ZIO.attemptBlockingIO {  // TODO not executed in case of interrupt, so consider cleaning up temp dir from previous runs regularly.
+        logger.debug(s"Deleting temp staging dir: ${stagingDirs.root}")
+        os.remove.all(stagingDirs.root)
       }.catchAll {
-        case e => ZIO.succeed(logger.warn(s"Failed to remove temp folder $stagingRoot: ${e.getMessage}"))
+        case e => ZIO.succeed(logger.warn(s"Failed to remove temp folder ${stagingDirs.root}: ${e.getMessage}"))
       }
     )
 

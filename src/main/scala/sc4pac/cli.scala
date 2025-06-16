@@ -549,7 +549,7 @@ object Commands {
             logger <- ZIO.service[Logger]
             archive = java.io.File(input)
             destination = os.Path(java.nio.file.Paths.get(options.output), os.pwd)
-            stagingRoot <- Sc4pac.makeTempStagingDir(destination, logger)
+            stagingDirs <- Sc4pac.makeStagingDirs(destination, logger)
             assetData = JD.AssetReference(assetId = "dummy-asset", include = options.include, exclude = options.exclude)
             (recipe, regexWarnings) = Extractor.InstallRecipe.fromAssetReference(assetData, variant = Map.empty)  // variant is not needed, as there aren't any conditionals in our dummy asset
             (_, usedPatterns) <- ZIO.attemptBlocking {
@@ -558,9 +558,9 @@ object Commands {
                 fallbackFilename = None,
                 destination = destination,
                 recipe = recipe,
-                jarExtractionOpt = Some(Extractor.JarExtraction(stagingRoot / "nested")),
+                jarExtractionOpt = Some(Extractor.JarExtraction(stagingDirs.nested)),
                 hints = Option(options.clickteamVersion).filter(_.nonEmpty).map(v => JD.ArchiveType(format = JD.ArchiveType.clickteamFormat, version = v)),
-                stagingRoot = stagingRoot,
+                stagingRoot = stagingDirs.root,
                 validate = false,  // to allow extracting non-DBPF files such as DLL files
               )
             }
