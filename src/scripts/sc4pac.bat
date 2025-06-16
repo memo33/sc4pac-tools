@@ -32,6 +32,13 @@ REM Uncomment to enable debug mode:
 REM SET "SC4PAC_DEBUG=1"
 
 REM ------------------------------------------------------------
+REM Uncomment when using Java 24+ to avoid some deprecation warnings caused by Scala and Jansi libraries.
+REM See https://github.com/scala/scala3/issues/9013
+REM and https://github.com/fusesource/jansi/issues/301
+REM
+REM SET "SC4PAC_JAVA_OPTIONS=--sun-misc-unsafe-memory-access=allow --enable-native-access=ALL-UNNAMED"
+
+REM ------------------------------------------------------------
 REM Custom command for invoking the cicdec program
 IF "%SC4PAC_CICDEC_CMD%"=="" SET "SC4PAC_CICDEC_CMD=%SCRIPTDIR%\cicdec\cicdec.exe"
 
@@ -43,4 +50,4 @@ if %errorlevel%==1 (
     exit 55
 )
 
-java -jar "%SCRIPTDIR%\sc4pac-cli.jar" %*
+java %SC4PAC_JAVA_OPTIONS% -jar "%SCRIPTDIR%\sc4pac-cli.jar" %*

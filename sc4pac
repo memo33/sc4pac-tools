@@ -30,6 +30,13 @@ SCRIPTDIR="$( cd -P "$( dirname "$(readlink -f "${BASH_SOURCE[0]}")" )" >/dev/nu
 # export SC4PAC_DEBUG=1
 
 #------------------------------------------------------------
+# Uncomment when using Java 24+ to avoid some deprecation warnings caused by Scala and Jansi libraries.
+# See https://github.com/scala/scala3/issues/9013
+# and https://github.com/fusesource/jansi/issues/301
+#
+# export SC4PAC_JAVA_OPTIONS='--sun-misc-unsafe-memory-access=allow --enable-native-access=ALL-UNNAMED'
+
+#------------------------------------------------------------
 # We set defaults for environment variables if they are not defined.
 # The environment variable `SC4PAC_MONO_CMD` is only needed on Linux and macOS.
 # If you happen to run this script on Windows without Mono installed, remove the environment variable.
@@ -44,4 +51,4 @@ then
     exit 55
 fi
 
-java -jar "${SCRIPTDIR}/target/scala-3.4.2/sc4pac-cli.jar" "$@"
+java $SC4PAC_JAVA_OPTIONS -jar "${SCRIPTDIR}/target/scala-3.4.2/sc4pac-cli.jar" "$@"
