@@ -59,6 +59,7 @@ object Commands {
     val PortOccupied = 56
     val AccessDenied = 57
     val PublishIncomplete = 58
+    val TestsFailed = 59
   }
 
   private def runMainExit(task: Task[Unit], exit: Int => Nothing): Nothing = {
@@ -549,7 +550,7 @@ object Commands {
             logger <- ZIO.service[Logger]
             archive = java.io.File(input)
             destination = os.Path(java.nio.file.Paths.get(options.output), os.pwd)
-            stagingRoot <- Sc4pac.makeTempStagingDir(destination, logger)
+            stagingDirs <- Sc4pac.makeStagingDirs(destination, logger)
             assetData = JD.AssetReference(assetId = "dummy-asset", include = options.include, exclude = options.exclude)
             (recipe, regexWarnings) = Extractor.InstallRecipe.fromAssetReference(assetData, variant = Map.empty)  // variant is not needed, as there aren't any conditionals in our dummy asset
             (_, usedPatterns) <- ZIO.attemptBlocking {
@@ -558,17 +559,77 @@ object Commands {
                 fallbackFilename = None,
                 destination = destination,
                 recipe = recipe,
-                jarExtractionOpt = Some(Extractor.JarExtraction(stagingRoot / "nested")),
+                jarExtractionOpt = Some(Extractor.JarExtraction(stagingDirs.nested)),
                 hints = Option(options.clickteamVersion).filter(_.nonEmpty).map(v => JD.ArchiveType(format = JD.ArchiveType.clickteamFormat, version = v)),
-                stagingRoot = stagingRoot,
+                stagingRoot = stagingDirs.root,
                 validate = false,  // to allow extracting non-DBPF files such as DLL files
               )
             }
-            _ <- ZIO.foreachDiscard(regexWarnings ++ recipe.usedPatternWarnings(usedPatterns, BareAsset(ModuleName(assetData.assetId)), short = true)) { msg => ZIO.succeed(logger.warn(msg)) }
+            _ <- ZIO.foreachDiscard(regexWarnings ++ recipe.usedPatternWarnings(usedPatterns, BareAsset(ModuleName(assetData.assetId)), short = true)) { msg => ZIO.succeed(logger.warn(msg.value)) }
           } yield ())
           runMainExit(task.provideSomeLayer(zio.ZLayer.succeed(CliLogger())), exit)
         case _ => error(caseapp.core.Error.Other("A single argument is needed: input-archive-file"))
       }
+    }
+  }
+
+  @ArgsName("packages...")
+  @HelpMessage(s"""
+    |Test whether packages can be installed successfully.
+    |
+    |This command downloads and installs a given package (temporarily), without any of its dependencies.
+    |If the package has variants, many different variants are tested simultaneously (pairwise coverage of combinations).
+    |
+    |Typical errors detected:
+    |
+    |  - some include/exclude patterns do not match any files (e.g. after updating to a new version of an asset)
+    |  - checksum errors
+    |  - extraction failures (e.g. if an asset is lacking a Clickteam installer designation)
+    |  - errors affecting some but not all variants
+    |
+    |Examples:
+    |
+    |  sc4pac test memo:submenus-dll memo:3d-camera-dll
+    |  ${gray(">>>")} (Pass) memo:submenus-dll 1.1.4-1
+    |  ${gray(">>>")} (Pass) memo:3d-camera-dll 1.0.0-1
+    |  ${gray(">>>")} ...
+    |  ${gray(">>>")} All 2 packages installed successfully.
+    |
+    |  sc4pac test --quick jasoncw:cecil-hotel
+    |  ${gray(">>>")} (Pass) jasoncw:cecil-hotel 1.0.0 [CAM=no, nightmode=standard]
+    |  ${gray(">>>")} (Pass) jasoncw:cecil-hotel 1.0.0 [CAM=yes, nightmode=dark]
+    |  ${gray(">>>")} ...
+    |  ${gray(">>>")} All 1 packages installed successfully.
+    |
+    |Use this command together with a locally built channel (see ${emph("sc4pac channel build")}) in order to test your new or modified YAML files.
+    """.stripMargin.trim)
+  final case class TestOptions(
+    @ExtraName("o") @ValueDescription("dir") @HelpMessage("Optional output directory to keep extracted files") @Group("Main") @Tag("Main")
+    output: String = "",
+    @ExtraName("q") @HelpMessage("Test fewer variants (only first and last)") @Group("Main") @Tag("Main")
+    quick: Boolean = false,
+    @ExtraName("y") @HelpMessage("""Accept some default answers without asking, usually "yes"""") @Group("Main") @Tag("Main")
+    yes: Boolean = false,
+  ) extends Sc4pacCommandOptions
+
+  case object Test extends Command[TestOptions] {
+    def run(options: TestOptions, args: RemainingArgs): Unit = {
+      if (args.all.isEmpty) {
+        fullHelpAsked(commandName)
+      }
+      val outputDir = Option.when(options.output.nonEmpty)(os.Path(java.nio.file.Paths.get(options.output), os.pwd))
+      val task = for {
+        mods   <- ZIO.fromEither(Sc4pac.parseModules(args.all)).catchAll { (err: ErrStr) =>
+                    error(caseapp.core.Error.Other(s"Package format is <group>:<package-name> ($err)"))
+                  }
+        config <- JD.PluginsSpec.readOrInit.map(_.config)
+        fs     <- ZIO.service[service.FileSystem]
+        pac    <- Sc4pac.init(config)
+        passed <- pac.update.testInstall(mods, outputDir = outputDir, quick = options.quick)
+                    .provideSomeLayer(zio.ZLayer.succeed(Downloader.Credentials(simtropolisToken = fs.env.simtropolisToken)))
+        _      <- ZIO.unlessDiscard(passed)(exit(ExitCodes.TestsFailed))
+      } yield ()
+      runMainExit(task.provideLayer(cliLayer.map(_.update((_: CliPrompter).withAutoYes(options.yes)))), exit)
     }
   }
 
@@ -741,6 +802,7 @@ object CliMain extends caseapp.core.app.CommandsEntryPoint {
     Commands.ChannelList,
     Commands.ChannelBuild,
     Commands.Extract,
+    Commands.Test,
     Commands.Server)
 
   val progName = BuildInfo.name

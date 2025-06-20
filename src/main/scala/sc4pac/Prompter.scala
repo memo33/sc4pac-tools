@@ -18,7 +18,7 @@ trait Prompter {
 
   def promptForDownloadMirror(url: java.net.URI, reason: error.DownloadFailed): Task[Either[Boolean, os.Path]]
 
-  def confirmInstallationWarnings(warnings: Seq[(BareModule, Seq[String])]): Task[Boolean]
+  def confirmInstallationWarnings(warnings: Seq[(BareModule, Seq[JD.Warning])]): Task[Boolean]
 
   def confirmDllsInstalled(dllsInstalled: Seq[Sc4pac.StageResult.DllInstalled]): Task[Boolean]
 
@@ -30,7 +30,7 @@ trait Prompter {
 
 }
 
-class CliPrompter(logger: CliLogger, autoYes: Boolean) extends Prompter {
+class CliPrompter(val logger: CliLogger, autoYes: Boolean) extends Prompter {
 
   def withAutoYes(yes: Boolean): CliPrompter = CliPrompter(logger, yes)
 
@@ -135,7 +135,7 @@ class CliPrompter(logger: CliLogger, autoYes: Boolean) extends Prompter {
     )
   }
 
-  def confirmInstallationWarnings(warnings: Seq[(BareModule, Seq[String])]): Task[Boolean] = {
+  def confirmInstallationWarnings(warnings: Seq[(BareModule, Seq[JD.Warning])]): Task[Boolean] = {
     if (warnings.isEmpty || autoYes) ZIO.succeed(true)  // if --yes flag is present, always continue
     else Prompt.ifInteractive(
       onTrue = Prompt.yesNo("Continue despite warnings?"),
@@ -155,5 +155,13 @@ class CliPrompter(logger: CliLogger, autoYes: Boolean) extends Prompter {
         onTrue = Prompt.yesNo("Continue with installation of DLL files?"),
       )
     }
+  }
+
+  def confirmDeletionOfStagedFiles(): Task[Unit] = {
+    if (autoYes) ZIO.succeed(logger.log("Deleting staged files."))
+    else Prompt.ifInteractive(
+      onFalse = ZIO.succeed(logger.log("Deleting staged files.")),
+      onTrue = Prompt.choice("Delete staged files?", Seq("Yes"), default = Some("Yes")).map(_ == "Yes").unit,
+    )
   }
 }

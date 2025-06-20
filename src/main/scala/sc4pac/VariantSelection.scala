@@ -205,7 +205,7 @@ class VariantSelection private (
 }
 
 object VariantSelection {
-  def apply(currentSelections: Variant, initialSelections: Variant, importedSelections: Seq[Variant]): VariantSelection =
+  def apply(currentSelections: Variant, initialSelections: Variant, importedSelections: Seq[Variant] = Seq.empty): VariantSelection =
     new VariantSelection(
       currentSelections = currentSelections,
       initialSelections = initialSelections,
@@ -259,4 +259,44 @@ object VariantSelection {
         }
     }
   }
+
+  /** Generate combinations that cover all pairs of choices. */
+  private[sc4pac] def pairwiseTestingCombinations(variantChoices: Seq[JD.VariantChoice]): Seq[Variant] = {
+    if (variantChoices.isEmpty) {
+      Seq(Map.empty)
+    } else if (variantChoices.lengthCompare(1) == 0) {  // one variant, so pick all choices
+      val vc = variantChoices.head
+      vc.choices.map(value => Map(vc.variantId -> value))
+    } else {
+      import io.github.pavelicii.allpairs4j.{AllPairs, Parameter}
+      val builder = AllPairs.AllPairsBuilder()
+      for (vc <- variantChoices) {
+        builder.withParameter(new Parameter(vc.variantId, vc.choices*))
+      }
+      val allPairs = builder.build()
+      import scala.jdk.CollectionConverters.*
+      allPairs.iterator.asScala.map(_.asScala.toMap.asInstanceOf[Map[String, String]]).toSeq
+    }
+  }
+
+  /** Generate combinations that
+    * - fully cover all regular choices, and
+    * - cover all pairs of conditional choices
+    * (or, if quick, only first and last variant). */
+  def generateTestingVariants(pkgData: JD.Package, quick: Boolean): Seq[Variant] = {
+    if (pkgData.variantChoices.isEmpty) {
+      Seq(Map.empty)
+    } else if (quick) {
+      val first = pkgData.variantChoices.map(vc => (vc.variantId, vc.choices.head)).toMap
+      val last = pkgData.variantChoices.map(vc => (vc.variantId, vc.choices.last)).toMap
+      Seq(first, last)
+    } else {
+      pkgData.variants.flatMap { variantData =>
+        // all regular variants + pairwise testing combinations of conditional variants
+        val conditionalVariantChoices = pkgData.variantChoices.filter(vc => !variantData.variant.contains(vc.variantId))
+        pairwiseTestingCombinations(conditionalVariantChoices).map(_ ++ variantData.variant)
+      }
+    }
+  }
+
 }

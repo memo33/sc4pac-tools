@@ -5,6 +5,7 @@ import org.scalatest.wordspec.AnyWordSpec
 
 import VariantSelection.DecisionTree as DT
 import VariantSelection.{Node, Leaf}
+import JsonData as JD
 
 class VariantsSpec extends AnyWordSpec with Matchers {
   val leaf = Leaf(())
@@ -178,6 +179,19 @@ class VariantsSpec extends AnyWordSpec with Matchers {
       ))
 
     }
-  }
 
+    "be picked in pairwise combinations during test" in {
+      val n = 4
+      val variantChoices = Seq("a", "b", "c", "d").map(id => JD.VariantChoice(id, (1 to n).map(i => s"$id$i")))
+      VariantSelection.pairwiseTestingCombinations(variantChoices.take(1)) should have length n
+      VariantSelection.pairwiseTestingCombinations(variantChoices.take(2)) should have length (n*n)
+      val combos = VariantSelection.pairwiseTestingCombinations(variantChoices)
+      combos.length should (be >= n*n and be < n*n*2)
+      for (Seq(vc1, vc2) <- variantChoices.combinations(2)) {
+        vc1.choices.forall(c1 => vc2.choices.forall(c2 => combos.exists { variant =>
+          variant.get(vc1.variantId).contains(c1) && variant.get(vc2.variantId).contains(c2)
+        }))
+      }
+    }
+  }
 }

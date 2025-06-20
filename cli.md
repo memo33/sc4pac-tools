@@ -53,6 +53,7 @@ channel remove  Select channels to remove.
 channel list    List the channel URLs.
 channel build   Build a channel locally by converting YAML files to JSON.
 extract         Extract a downloaded archive file.
+test            Test whether packages can be installed successfully.
 server          Start a local server to use the HTTP API.
 ```
 
@@ -286,6 +287,46 @@ sc4pac extract -o out --clickteam-version 40 asset.zip                          
 - `--include <pattern>`            Include patterns
 - `--exclude <pattern>`            Exclude patterns
 - `--clickteam-version <version>`  Optional version for extracting Clickteam installers (40, 35, 30, 24, 20)
+
+
+---
+## test
+
+**Usage:** `sc4pac test [options] [packages...]`
+
+Test whether packages can be installed successfully.
+
+This command downloads and installs a given package (temporarily), without any of its dependencies.
+If the package has variants, many different variants are tested simultaneously (pairwise coverage of combinations).
+
+Typical errors detected:
+
+- some include/exclude patterns do not match any files (e.g. after updating to a new version of an asset)
+- checksum errors
+- extraction failures (e.g. if an asset is lacking a Clickteam installer designation)
+- errors affecting some but not all variants
+
+**Examples:**
+```sh
+sc4pac test memo:submenus-dll memo:3d-camera-dll
+>>> (Pass) memo:submenus-dll 1.1.4-1
+>>> (Pass) memo:3d-camera-dll 1.0.0-1
+>>> ...
+>>> All 2 packages installed successfully.
+
+sc4pac test --quick jasoncw:cecil-hotel
+>>> (Pass) jasoncw:cecil-hotel 1.0.0 [CAM=no, nightmode=standard]
+>>> (Pass) jasoncw:cecil-hotel 1.0.0 [CAM=yes, nightmode=dark]
+>>> ...
+>>> All 1 packages installed successfully.
+```
+
+Use this command together with a locally built channel (see `sc4pac channel build`) in order to test your new or modified YAML files.
+
+**Options:**
+- `-o, --output <dir>`  Optional output directory to keep extracted files
+- `-q, --quick`         Test fewer variants (only first and last)
+- `-y, --yes`           Accept some default answers without asking, usually "yes"
 
 
 ---

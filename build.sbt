@@ -118,6 +118,8 @@ libraryDependencies += "dev.zio" %% "izumi-reflect" % "3.0.1"  // includes fix f
 
 libraryDependencies += "org.slf4j" % "slf4j-nop" % "2.0.7"  // ignore logging in zio-http/netty
 
+libraryDependencies += "io.github.pavelicii" % "allpairs4j" % "1.0.1"
+
 libraryDependencies += "org.scalatest" %% "scalatest" % "3.2.17" % Test exclude("org.scala-lang.modules", "scala-xml_3")
 
 libraryDependencies ++= Seq(

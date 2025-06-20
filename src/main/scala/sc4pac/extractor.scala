@@ -10,6 +10,7 @@ import scala.collection.mutable.Builder
 import zio.Chunk
 
 import sc4pac.JsonData as JD
+import JD.Warning
 import sc4pac.error.{ExtractionFailed, ChecksumError, NotADbpfFile}
 
 object Extractor {
@@ -77,12 +78,12 @@ object Extractor {
         Seq.empty
       } else {
         val msg = s"These inclusion/exclusion patterns did not match any files in the asset ${asset.assetId.value}: " + unused.mkString(" ")
-        Seq(
+        Seq(JD.UnexpectedWarning(
           if (!short)
             "The package metadata seems to be out-of-date, so the installed plugin files might be incomplete. " +
             "Please report this to the maintainers of the package metadata. " + msg
           else msg
-        )
+        ))
       }
     }
   }
@@ -93,7 +94,7 @@ object Extractor {
         Some(Pattern.compile(s, Pattern.CASE_INSENSITIVE))
       } catch {
         case e: java.util.regex.PatternSyntaxException =>
-          warnings += s"The package metadata contains a malformed regex: $e"
+          warnings += JD.UnexpectedWarning(s"The package metadata contains a malformed regex: $e")
           None
       }
       val matchingConditions =

@@ -6,6 +6,7 @@
 - new `packages` and `assets` attributes for YAML files, which allows using YAML anchors, aliases and overrides across multiple packages in the same document (#35)
 - new `withConditions` attribute for includes/excludes that conditionally depend on variants. This is a new way to define variants, useful for complex packages with many different variant IDs (#36).
 - new environment variable `SC4PAC_JAVA_OPTIONS` (optional, see `sc4pac.bat`) to configure Java command line options, allowing to avoid some deprecation warnings caused by Java 24+.
+- new experimental `sc4pac test` command for testing whether packages can be installed without issues (#37)
 
 ### Fixed
 - improved error handling while reading or writing JSON files

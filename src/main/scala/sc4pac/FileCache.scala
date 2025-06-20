@@ -177,8 +177,8 @@ class FileCache private (
   }
 
   /** If artifact has an expected checksum, check that it matches the cached
-    * file. This is merely used for checking whether certain cached files are
-    * out-of-date, not for ensuring overall data integrity. */
+    * file. This is mainly used for checking whether certain cached json files are
+    * out-of-date, and for ensuring data integrity of assets that define a checksum in their metadata. */
   def verifyChecksum(file: java.io.File, artifact: Artifact): ZIO[Logger, java.io.IOException, Either[Artifact2Error, Unit]] = {
     if (!isManagedByCache(artifact.url, file))
       // For local channels, there's no need to verify checksums as the local
