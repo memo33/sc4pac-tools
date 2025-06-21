@@ -388,9 +388,9 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) {  // TODO d
       */
     private def stageAll(stagingDirs: Sc4pac.StagingDirs, deps: Seq[DepModule], assetsToInstall: Seq[(DepAsset, Artifact, java.io.File)], resolution: Resolution): RIO[ResolutionContext, StageResult] = {
       val artifactsById = assetsToInstall.map((dep, art, file) => dep.toBareDep -> (art, file, dep)).toMap
-      require(artifactsById.size == assetsToInstall.size, s"artifactsById is not 1-to-1: $assetsToInstall")
       val numDeps = deps.length
       for {
+        _           <- ZIO.attempt(require(artifactsById.size == assetsToInstall.size, s"artifactsById is not 1-to-1: $assetsToInstall"))
         stagedItems <- ZIO.foreach(deps.zipWithIndex) { case (dep, idx) =>   // sequentially stages each package
                          stage(stagingDirs, dep, artifactsById, Sc4pac.Progress(idx+1, numDeps), resolution)
                        }
