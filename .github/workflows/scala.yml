@@ -31,3 +31,43 @@ jobs:
         retention-days: 7
     - name: Test
       run: sbt test
+
+  # platform-specific tests, mainly checking the launch scripts
+  test:
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            platform: linux
+          - os: windows-latest
+            platform: windows
+    needs: [ build ]
+    runs-on: ${{ matrix.os }}
+    name: test.${{ matrix.platform }}
+    steps:
+      - uses: actions/download-artifact@v4  # downloads all artifacts uploaded during this run
+        with:
+          merge-multiple: true  # downloads artifacts into same directory .
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+          java-package: 'jre'
+          # cache: 'sbt'  # not needed
+      - name: Extract
+        shell: bash
+        run: |
+          unzip -d . sc4pac*.zip
+      - name: Test (Windows)
+        if: ${{ matrix.platform == 'windows' }}
+        shell: pwsh
+        run: |
+          .\sc4pac --version
+          .\sc4pac --help
+      - name: Test (Linux)
+        if: ${{ matrix.platform == 'linux' }}
+        shell: bash
+        run: |
+          ./sc4pac --version
+          ./sc4pac --help
