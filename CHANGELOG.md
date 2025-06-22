@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+
+## [0.8.0] - 2025-06-22
 ### Added
 - new `packages` and `assets` attributes for YAML files, which allows using YAML anchors, aliases and overrides across multiple packages in the same document (#35)
 - new `withConditions` attribute for includes/excludes that conditionally depend on variants. This is a new way to define variants, useful for complex packages with many different variant IDs (#36).
@@ -303,7 +305,8 @@
 ## [0.1.5] - 2023-09-26
 …
 
-[Unreleased]: https://github.com/memo33/sc4pac-tools/compare/0.7.0...HEAD
+[Unreleased]: https://github.com/memo33/sc4pac-tools/compare/0.8.0...HEAD
+[0.8.0]: https://github.com/memo33/sc4pac-tools/compare/0.7.0...0.8.0
 [0.7.0]: https://github.com/memo33/sc4pac-tools/compare/0.6.1...0.7.0
 [0.6.1]: https://github.com/memo33/sc4pac-tools/compare/0.6.0...0.6.1
 [0.6.0]: https://github.com/memo33/sc4pac-tools/compare/0.5.4...0.6.0

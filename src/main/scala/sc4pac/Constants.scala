@@ -16,22 +16,24 @@ object Constants {
     MetadataRepository.parseChannelUrl("https://sc4pac.simtropolis.com/").toOption.get,
   )
 
-  // Channels are built with the maximum version.
-  // When incrementing the maximum, older sc4pac clients become incompatible
-  // with newer channels, forcing users to upgrade their clients.
-  //
-  // When incrementing the minimum, older channels become incompatible with
-  // newer sc4pac clients, forcing channel maintainers to rebuild the channels.
-  // The minimum must be incremented when introducing backward-incompatible changes.
-  //
-  // Scheme version history:
-  // 1: initial version
-  // 2: DLL support and single-file assets
-  // 3: rar support
-  // 4: Clickteam installer support
-  // 5: channel stats, external packages, replacement of `contents`
-  // 6: variantInfo
-  val channelSchemeVersions: Range = 1 to 6  // supported versions
+  /** Channels are built with the maximum version.
+    * When incrementing the maximum, older sc4pac clients become incompatible
+    * with newer channels, forcing users to upgrade their clients.
+    *
+    * When incrementing the minimum, older channels become incompatible with
+    * newer sc4pac clients, forcing channel maintainers to rebuild the channels.
+    * The minimum must be incremented when introducing backward-incompatible changes.
+    *
+    * Scheme version history:
+    * - 1: initial version
+    * - 2: DLL support and single-file assets
+    * - 3: rar support
+    * - 4: Clickteam installer support
+    * - 5: channel stats, external packages, replacement of `contents`
+    * - 6: variantInfo
+    * - 7: conditional variants
+    */
+  val channelSchemeVersions: Range = 1 to 7  // supported versions
 
   val pluginsLockScheme = 2
   val bufferSizeExtract = 64 * 1024  // 64 kiB, bounded by disk speed

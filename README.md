@@ -92,7 +92,7 @@ The GUI is located in the <a href="https://github.com/memo33/sc4pac-gui/releases
 660-parks
 700-transit
 710-automata
-777-network-addon-mod  (installed manually)
+770-network-addon-mod
 895-my-overrides       (your manually installed zzz-folders)
 900-overrides
 ```
