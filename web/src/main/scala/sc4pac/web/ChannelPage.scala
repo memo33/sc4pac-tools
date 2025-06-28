@@ -36,7 +36,7 @@ object JsonData extends SharedData {
   def parseModule(pkgName: String): Either[String, BareModule] =
     pkgName match {
       case regexModule(group, name) => Right(BareModule(group = Organization(group), name = ModuleName(name)))
-      case _ => Left("Malformed package name: <group>:<name>")
+      case _ => Left(s"Malformed package name: <group>:<name> ($pkgName)")
     }
 
   val bareModuleRw: UP.ReadWriter[BareModule] = UP.readwriter[String].bimap[BareModule](_.orgName,
@@ -304,8 +304,8 @@ object ChannelPage {
   def setupUI(): Unit = {
     Marked.use(js.Dictionary("renderer" -> js.Dictionary("codespan" -> (renderCodespan: js.Function))))
     val urlParams = new dom.URLSearchParams(dom.window.location.search)
-    val pkgName = urlParams.get("pkg")
-    if (pkgName == null) {
+    val pkgNames = urlParams.getAll("pkg")
+    if (pkgNames.isEmpty) {
       val output = H.p("Loading channel packages…").render
       document.body.appendChild(output)
       fetchChannel() foreach {
@@ -315,7 +315,7 @@ object ChannelPage {
           val displayCategory = Option(urlParams.get("category"))
           output.replaceWith(channelContentsFrag(channel, displayCategory).render)
       }
-    } else JsonData.parseModule(pkgName) match {
+    } else pkgNames.foreach { pkgName => JsonData.parseModule(pkgName) match {
       case Left(err) =>
         document.body.appendChild(H.p(err).render)
         ()
@@ -328,13 +328,13 @@ object ChannelPage {
         fetchPackage(module, channelUrl) foreach {
           case None =>
             val hintFrag = channelUrl match {
-              case None => H.p("Package not found")
-              case Some(url) => H.p("Package not found in channel ", H.a(H.href := channelUrl.get)(channelUrl.get), ".")
+              case None => H.p(s"Package $pkgName not found")
+              case Some(url) => H.p(s"Package $pkgName not found in channel ", H.a(H.href := channelUrl.get)(channelUrl.get), ".")
             }
-            document.body.appendChild(hintFrag.render)
+            output.replaceWith(hintFrag.render)
           case Some(pkg) =>
             output.replaceWith(pkgInfoFrag(pkg, channelUrl).render)
         }
-    }
+    }}
   }
 }
