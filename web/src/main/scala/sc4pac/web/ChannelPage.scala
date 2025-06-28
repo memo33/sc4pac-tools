@@ -98,13 +98,18 @@ object ChannelPage {
     }
   }
 
-  def variantFrag(variant: JsonData.Variant, info: Map[String, JsonData.VariantInfo]) =
-    variant.toSeq.sorted.map { (k, v) =>
-      info.get(k).flatMap(_.valueDescriptions.get(v)) match {
-        case None => H.code(s"$k = $v")
-        case Some(tooltipText) => H.code(H.div(H.cls := "tooltip")(s"$k = $v", H.span(H.cls := "tooltiptext")(tooltipText)))
-      }
-    }.zipWithIndex.flatMap((elem, idx) => if (idx == 0) Seq[H.Frag](elem) else Seq[H.Frag](", ", elem))
+  def variantFrag(variantChoice: JsonData.VariantChoice, info: Map[String, JsonData.VariantInfo]) =
+    Seq[H.Frag](
+      variantChoice.variantId,
+      " = ",
+    ) ++ (
+      variantChoice.choices.map { value =>
+        info.get(variantChoice.variantId).flatMap(_.valueDescriptions.get(value)) match {
+          case None => H.code(s"$value")
+          case Some(tooltipText) => H.code(H.div(H.cls := "tooltip")(s"$value", H.span(H.cls := "tooltiptext")(tooltipText)))
+        }
+      }.zipWithIndex.flatMap((elem, idx) => if (idx == 0) Seq[H.Frag](elem) else Seq[H.Frag](", ", elem))
+    )
 
   // TODO make all selectable
   def pkgNameFrag(module: BareModule, link: Boolean = true) =
@@ -201,12 +206,12 @@ object ChannelPage {
     add("Subfolder", H.code(pkg.subfolder.toString))
 
     add("Variants",
-      if (pkg.variants.length == 1 && pkg.variants.head.variant.isEmpty)
+      if (pkg.variantChoices.isEmpty)
         "None"
       else
         H.ul(H.cls := "unstyled-list")(
-          pkg.variants.map { vd =>
-            H.li(variantFrag(vd.variant, pkg.variantInfo))
+          pkg.variantChoices.map { vc =>
+            H.li(variantFrag(vc, pkg.variantInfo))
           }
         )
     )
