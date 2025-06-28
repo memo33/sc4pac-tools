@@ -78,18 +78,23 @@ object ChannelPage {
     document.addEventListener("DOMContentLoaded", (e: dom.Event) => setupUI())
   }
 
-  def fetchPackage(module: BareModule, channelUrl: Option[String]): Future[Option[JsonData.Package]] = {
-    val url = sttp.model.Uri(java.net.URI.create(s"${channelUrl.getOrElse(channelUrlMainRelative)}${JsonRepoUtil.packageSubPath(module, version = "latest")}"))
-    for {
-      response <- basicRequest.get(url).response(asJson[JsonData.Package]).send(backend)
-    } yield {
-      if (!response.is200) None
-      else response.body.toOption
-    }
+  def fetchPackage(module: BareModule, channelUrls: Seq[String]): Future[Option[(JsonData.Package, Option[String])]] = {
+    val responsesLazy =
+      (if (channelUrls.isEmpty) LazyList(channelUrlMainRelative) else channelUrls.to(LazyList))
+      .map { channelUrl =>
+        val pkgUrl = sttp.model.Uri(java.net.URI.create(s"$channelUrl${JsonRepoUtil.packageSubPath(module, version = "latest")}"))
+        for {
+          response <- basicRequest.get(pkgUrl).response(asJson[JsonData.Package]).send(backend)
+        } yield {
+          if (!response.is200) None
+          else response.body.toOption.map((_, Option(channelUrl).filter(_ != channelUrlMainRelative)))
+        }
+      }
+    Future.find(responsesLazy)(_.isDefined).map(_.flatten)
   }
 
-  def fetchChannel(): Future[Option[JsonData.Channel]] = {
-    val url = sttp.model.Uri(java.net.URI.create(s"${channelUrlMainRelative}${JsonRepoUtil.channelContentsFilename}"))
+  def fetchChannel(channelUrl: Option[String]): Future[Option[JsonData.Channel]] = {
+    val url = sttp.model.Uri(java.net.URI.create(s"${channelUrl.getOrElse(channelUrlMainRelative)}${JsonRepoUtil.channelContentsFilename}"))
     for {
       response <- basicRequest.get(url).response(asJson[JsonData.Channel]).send(backend)
     } yield {
@@ -305,10 +310,11 @@ object ChannelPage {
     Marked.use(js.Dictionary("renderer" -> js.Dictionary("codespan" -> (renderCodespan: js.Function))))
     val urlParams = new dom.URLSearchParams(dom.window.location.search)
     val pkgNames = urlParams.getAll("pkg")
+    val channelUrls = urlParams.getAll("channel").toSeq
     if (pkgNames.isEmpty) {
       val output = H.p("Loading channel packages…").render
       document.body.appendChild(output)
-      fetchChannel() foreach {
+      fetchChannel(channelUrls.headOption) foreach {
         case None =>
           document.body.appendChild(H.p("Failed to load channel contents.").render)
         case Some(channel) =>
@@ -324,16 +330,21 @@ object ChannelPage {
         document.head.appendChild(metaDescription)
         val output = H.p("Loading package ", pkgNameFrag(module, link = false), "…").render
         document.body.appendChild(output)
-        val channelUrl = Option(urlParams.get("channel"))
-        fetchPackage(module, channelUrl) foreach {
+        fetchPackage(module, channelUrls) foreach {
           case None =>
-            val hintFrag = channelUrl match {
-              case None => H.p(s"Package $pkgName not found")
-              case Some(url) => H.p(s"Package $pkgName not found in channel ", H.a(H.href := channelUrl.get)(channelUrl.get), ".")
-            }
+            val hintFrag =
+              if (channelUrls.isEmpty)
+                H.p(s"Package $pkgName not found")
+              else
+                H.p(
+                  s"Package $pkgName not found in channels:",
+                  H.ul(channelUrls.map(channelUrl =>
+                    H.li(H.a(H.href := channelUrl)(channelUrl)),
+                  ))
+                )
             output.replaceWith(hintFrag.render)
-          case Some(pkg) =>
-            output.replaceWith(pkgInfoFrag(pkg, channelUrl).render)
+          case Some((pkg, channelUrlOpt)) =>
+            output.replaceWith(pkgInfoFrag(pkg, channelUrlOpt).render)
         }
     }}
   }
