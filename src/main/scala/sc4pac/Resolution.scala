@@ -278,7 +278,8 @@ class Resolution(reachableDeps: TreeSeqMap[BareDep, Links], resolvedData: Map[Ba
                   "Go to Settings to set up a personal Simtropolis authentication token and try again."
                 } else {
                   "Failed to download some assets (rate-limited). " +
-                  "The file exchange server has blocked your download, as you have sent too many download requests in a short time."
+                  "The file exchange server has blocked your download, as you have sent too many download requests in a short time. " +
+                  "Try again later."
                 }
                 ZIO.fail(new error.DownloadFailed(msg, e.getMessage, url = Some(art.url)))
               }
