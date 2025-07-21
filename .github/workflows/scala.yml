@@ -71,3 +71,38 @@ jobs:
         run: |
           ./sc4pac --version
           ./sc4pac --help
+
+      - name: Initialize sc4pac
+        # creates "sc4pac-plugins.json"
+        shell: bash
+        run: |
+          cat >sc4pac-plugins.json <<EOL
+          {
+            "config": {
+              "pluginsRoot": "$HOME/Documents/SimCity 4/Plugins",
+              "cacheRoot": "tmp_build/cache",
+              "tempRoot": "tmp_build/temp",
+              "variant": {},
+              "channels": [
+                "https://memo33.github.io/sc4pac/channel/",
+                "https://sc4pac.simtropolis.com/"
+              ]
+            },
+            "explicit": []
+          }
+          EOL
+
+      - name: Install and uninstall a package (Windows)
+        shell: pwsh
+        run: |
+          .\sc4pac add memo:submenus-dll
+          .\sc4pac update -y
+          .\sc4pac remove memo:submenus-dll
+          .\sc4pac update -y
+      - name: Install and uninstall a package (Linux)
+        shell: bash
+        run: |
+          ./sc4pac add memo:submenus-dll
+          ./sc4pac update -y
+          ./sc4pac remove memo:submenus-dll
+          ./sc4pac update -y
