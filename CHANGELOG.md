@@ -1,6 +1,8 @@
 # Changelog
 
 ## [Unreleased]
+### Fixed
+- an issue where an already occupied port was not detected on Windows (#38)
 
 
 ## [0.8.0] - 2025-06-22

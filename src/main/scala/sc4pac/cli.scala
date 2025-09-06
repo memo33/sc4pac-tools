@@ -683,13 +683,18 @@ object Commands {
       //     access-control-allow-origin: http://localhost:12345
       // (e.g. when Flutter-web is hosted on port 12345)
       val app = api.routes(webAppDir) @@ zio.http.Middleware.cors
+      def createPortOccupiedMsg(e: Throwable): sc4pac.error.PortOccupied =
+        sc4pac.error.PortOccupied(s"Failed to run sc4pac server on port ${options.port}. ${e.getMessage}")
 
       val serverTask: RIO[ServerFiber & service.FileSystem, Nothing] =
         zio.http.Server.install(app)
           .catchSomeDefect {
             // usually: "bind(..) failed: Address already in use"
-            case e: io.netty.channel.unix.Errors.NativeIoException if e.getMessage.contains("bind") =>
-              ZIO.fail(sc4pac.error.PortOccupied(s"Failed to run sc4pac server on port ${options.port}. ${e.getMessage}"))
+            // - io.netty.channel.unix.Errors.NativeIoException (on Unix)
+            // - java.net.BindException (on Windows)
+            // (both are subclasses of IOException)
+            case e: java.io.IOException if e.getMessage.toLowerCase(java.util.Locale.ENGLISH).contains("bind") =>
+              ZIO.fail(createPortOccupiedMsg(e))
           }
           .zipRight(ZIO.succeed {
             if (options.startupTag.nonEmpty)
@@ -723,7 +728,7 @@ object Commands {
                 // This branch does not seem to usually catch the error anymore.
                 // Instead it is caught in Server.install(app).catchSomeDefect(...) above.
                 // We defensively keep this branch in case of future zio-http/netty changes.
-                sc4pac.error.PortOccupied(s"Failed to run sc4pac server on port ${options.port}. ${e.getMessage}")
+                createPortOccupiedMsg(e)
               },
             zio.http.Client.default  // for /image.fetch
               .map(_.update[zio.http.Client](_.updateHeaders(_.addHeader("User-Agent", Constants.userAgent)) @@ followRedirects)),
