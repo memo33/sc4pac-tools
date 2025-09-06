@@ -48,13 +48,16 @@ object Commands {
     | java.nio.file.AccessDeniedException
 
   private def handleExpectedFailures(abort: ExpectedFailure, exit: Int => Nothing): Nothing = abort match {
-    case abort: error.Sc4pacAbort => { System.err.println("Operation aborted."); exit(1) }
+    case abort: error.Sc4pacAbort => { System.err.println("Operation aborted."); exit(ExitCodes.ExternalReason) }
     case abort: java.nio.file.AccessDeniedException => { System.err.println(s"Operation aborted. File access denied. Check your permissions to access the file or directory: ${abort.getMessage}"); exit(ExitCodes.AccessDenied) }  // any command that creates directories or files
     case abort: error.Sc4pacPublishIncomplete => { System.err.println(s"Operation finished with warnings. ${abort.getMessage}"); exit(ExitCodes.PublishIncomplete) }  // update (final step)
-    case abort => { System.err.println(s"Operation aborted. ${abort.getMessage}"); exit(1) }
+    case abort => { System.err.println(s"Operation aborted. ${abort.getMessage}"); exit(ExitCodes.ExternalReason) }
   }
 
   object ExitCodes {
+    val Success = 0
+    val ExternalReason = 1
+    val UnknownReason = 2
     val JavaNotFound = 55  // see `sc4pac` and `sc4pac.bat` scripts
     val PortOccupied = 56
     val AccessDenied = 57
@@ -66,15 +69,15 @@ object Commands {
     unsafeRun(task.fold(
       failure = {
         case abort: ExpectedFailure => handleExpectedFailures(abort, exit)  // we do not need the trace for expected failures
-        case abort: error.Sc4pacTimeout => { System.err.println(Array("Operation aborted.", abort.getMessage).mkString(" ")); exit(1) }
-        case abort: error.Sc4pacNotInteractive => { System.err.println(s"Operation aborted as terminal is non-interactive: ${abort.getMessage}"); exit(1) }
-        case abort: error.SymlinkCreationFailed => { System.err.println(s"Operation aborted. ${abort.getMessage}"); exit(1) }  // channel-build command
-        case abort: error.FileOpsFailure => { System.err.println(s"Operation aborted. ${abort.getMessage}"); exit(1) }  // channel-build command
-        case abort: error.YamlFormatIssue => { System.err.println(s"Operation aborted. ${abort.getMessage}"); exit(1) }  // channel-build command
+        case abort: error.Sc4pacTimeout => { System.err.println(Array("Operation aborted.", abort.getMessage).mkString(" ")); exit(ExitCodes.ExternalReason) }
+        case abort: error.Sc4pacNotInteractive => { System.err.println(s"Operation aborted as terminal is non-interactive: ${abort.getMessage}"); exit(ExitCodes.ExternalReason) }
+        case abort: error.SymlinkCreationFailed => { System.err.println(s"Operation aborted. ${abort.getMessage}"); exit(ExitCodes.ExternalReason) }  // channel-build command
+        case abort: error.FileOpsFailure => { System.err.println(s"Operation aborted. ${abort.getMessage}"); exit(ExitCodes.ExternalReason) }  // channel-build command
+        case abort: error.YamlFormatIssue => { System.err.println(s"Operation aborted. ${abort.getMessage}"); exit(ExitCodes.ExternalReason) }  // channel-build command
         case abort: error.PortOccupied => { System.err.println(abort.getMessage); exit(ExitCodes.PortOccupied) }  // server command
-        case e => { e.printStackTrace(); exit(2) }
+        case e => { e.printStackTrace(); exit(ExitCodes.UnknownReason) }
       },
-      success = _ => exit(0)
+      success = _ => exit(ExitCodes.Success)
     ))
   }
 
