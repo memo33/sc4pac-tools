@@ -594,9 +594,18 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
       // 200
       Method.GET / "server.status" -> handler {
         wrapHttpEndpoint {
+          def getPropSafe(prop: String): String = scala.util.Try(System.getProperty(prop)).fold((e) => e.toString, (value) => value)
+          def dedupe(props: String*): String = props.flatMap(p => Option(getPropSafe(p))).distinct.mkString("/")
           ZIO.attempt(jsonResponse(ServerStatus(
             sc4pacVersion = cli.BuildInfo.version,
-            osVersion = Seq("os.name", "os.version", "os.arch").map(System.getProperty).mkString(" "),
+            osVersion = Seq("os.name", "os.version", "os.arch").map(getPropSafe).mkString(" "),
+            javaVersion = s"${Runtime.version.feature()}",
+            javaRuntime = Seq(
+              s"""${getPropSafe("java.vm.name")} ${dedupe("java.vm.version", "java.version")}""",
+              dedupe("java.vm.vendor", "java.vendor"),
+              getPropSafe("java.runtime.name"),
+              getPropSafe("java.home")
+            ).mkString(", "),
           )))
         }
       },

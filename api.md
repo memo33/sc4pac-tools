@@ -1,4 +1,4 @@
-# API - version 2.6
+# API - version 2.7
 
 The API allows other programs to control *sc4pac* in a client-server fashion.
 
@@ -608,7 +608,7 @@ Test if the server is running.
 
 Synopsis: `GET  /server.status`
 
-Returns: `{"sc4pacVersion": "0.4.x", "osVersion": "..."}`
+Returns: `{"sc4pacVersion": "0.8.x", "osVersion": "...", "javaVersion": "...", "javaRuntime": "..."}`
 
 ## server.connect
 

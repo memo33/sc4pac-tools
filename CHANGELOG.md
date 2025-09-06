@@ -11,6 +11,10 @@
 - resolved compatibility issue with OneDrive which prevented updating or uninstalling packages if Plugins were stored on OneDrive (#40)
 - a rare issue in which a profile JSON file could get corrupted, making the profile unusable (#41)
 
+### Changed
+- API upgraded to 2.7:
+  - added `javaVersion` and `javaRuntime` to `/server.status` endpoint
+
 [gui32]: https://github.com/memo33/sc4pac-gui/issues/32
 
 
