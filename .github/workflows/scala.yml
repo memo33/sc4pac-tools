@@ -82,7 +82,7 @@ jobs:
               "pluginsRoot": "$HOME/Documents/SimCity 4/Plugins",
               "cacheRoot": "tmp_build/cache",
               "tempRoot": "tmp_build/temp",
-              "variant": {},
+              "variant": {"config:sc4-edition:edition": "Windows-digital"},
               "channels": [
                 "https://memo33.github.io/sc4pac/channel/",
                 "https://sc4pac.simtropolis.com/"
@@ -93,6 +93,7 @@ jobs:
           EOL
 
       - name: Install and uninstall a package (Windows)
+        if: ${{ matrix.platform == 'windows' }}
         shell: pwsh
         run: |
           .\sc4pac add memo:submenus-dll
@@ -100,9 +101,34 @@ jobs:
           .\sc4pac remove memo:submenus-dll
           .\sc4pac update -y
       - name: Install and uninstall a package (Linux)
+        if: ${{ matrix.platform == 'linux' }}
         shell: bash
         run: |
           ./sc4pac add memo:submenus-dll
           ./sc4pac update -y
           ./sc4pac remove memo:submenus-dll
           ./sc4pac update -y
+
+      - name: Test detection of occupied port
+        shell: bash
+        run: |
+          PORT_OCCUPIED=56
+          ./sc4pac server --port 51500 &
+          PID1="$(echo $!)"
+          echo "==> Started process 1: PID1=$PID1"
+          sleep 10
+          {
+            EXIT_CODE2=0;
+            ./sc4pac server --port 51500 || EXIT_CODE2=$?;
+            [[ "$EXIT_CODE2" == "$PORT_OCCUPIED" ]] && echo "==> successfully detected occupied port" || {
+              echo "==> failed to detect occupied port (exit code $EXIT_CODE2 was not $PORT_OCCUPIED)" && false;
+            }
+          } &
+          PID2="$(echo $!)"
+          echo "==> Started process 2: PID2=$PID2"
+          sleep 10
+          echo "==> Terminating process 2"
+          ! { kill "$PID2" 2&>/dev/null && echo "unexpected timeout: 2nd server command was too slow"; }
+          wait "$PID2"
+          echo "==> Terminating process 1"
+          kill "$PID1"

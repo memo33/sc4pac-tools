@@ -51,4 +51,4 @@ then
     exit 55
 fi
 
-java $SC4PAC_JAVA_OPTIONS -jar "${SCRIPTDIR}/target/scala-3.4.2/sc4pac-cli.jar" "$@"
+exec java $SC4PAC_JAVA_OPTIONS -jar "${SCRIPTDIR}/target/scala-3.4.2/sc4pac-cli.jar" "$@"
