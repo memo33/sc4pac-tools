@@ -1,6 +1,9 @@
 # Changelog
 
 ## [Unreleased]
+### Added
+- The [SC4Evermore Channel](https://github.com/SC4Evermore/sc4pac-channel) has been added to the default channels.
+
 ### Fixed
 - an issue where an already occupied port was not detected on Windows (#38)
 - a problem in which the profiles configuration directory could not be determined on Windows ([#32][gui32])

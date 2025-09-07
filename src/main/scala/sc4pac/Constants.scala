@@ -14,6 +14,7 @@ object Constants {
   val defaultChannelUrls = Seq(
     MetadataRepository.parseChannelUrl("https://memo33.github.io/sc4pac/channel/").toOption.get,
     MetadataRepository.parseChannelUrl("https://sc4pac.simtropolis.com/").toOption.get,
+    MetadataRepository.parseChannelUrl("https://sc4evermore.github.io/sc4pac-channel/channel/").toOption.get,
   )
 
   /** Channels are built with the maximum version.
