@@ -412,22 +412,44 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) {  // TODO d
 
     private def removeInstalledFiles(toRemove: Set[Dep], installed: Seq[JD.InstalledData], pluginsRoot: os.Path): Task[Unit] = {
       // removing files is synchronous but can be blocking a while, so we wrap it in Task (TODO should use zio blocking)
-      val files = installed
+
+      // returns the remaining files that failed to be deleted
+      def tryRemoveOnce(files: Seq[os.Path], ignoreErrors: Boolean): Task[Seq[os.Path]] =
+        ZIO.foreach(files) { (path: os.Path) =>  // this runs sequentially
+          ZIO.attemptBlocking {
+            require(path != pluginsRoot, "subpath must not be empty")  // sanity check to avoid accidental deletion of entire plugins folder
+            try {
+              if (isDll(path) && os.isLink(path)) {
+                os.remove(path, checkExists = false)
+              } else if (os.exists(path)) {
+                os.remove.all(path)  // TODO pass ignoreErrors to os.remove.all ?
+              } else {
+                logger.warn(s"removal failed as file did not exist: $path")
+              }
+              None
+            } catch {
+              case _ if ignoreErrors => Some(path)
+            }
+          }
+        }.map(_.flatten)
+
+      // Attempt at workaround for https://github.com/memo33/sc4pac-tools/issues/40, but unclear if it has an effect
+      // (i.e. removing directories on Windows OneDrive can fail with java.nio.file.AccessDeniedException due to OneDrive blocking the deletion intent)
+      // Retrying the removal repeatedly at least reduces the chance of asynchronous NTFS operations being a problem.
+      def tryRemoveRepeatedly(files: Seq[os.Path], maxReps: Int): Task[Unit] =
+        ZIO.iterate((1, files)) { (rep, files) => rep <= maxReps && files.nonEmpty } { (rep, files) =>
+          for {
+            remaining <- tryRemoveOnce(files, ignoreErrors = rep != maxReps)  // forward errors on last repetition only
+            _         <- ZIO.whenDiscard(remaining.nonEmpty)(ZIO.sleep(zio.Duration.fromMillis(200)))  // defensive pause to wait for potential asynchronous deletes on Windows to finish
+          } yield (rep + 1, remaining)
+        }.unit
+
+      val subPaths = installed
         .filter(item => toRemove.contains(item.toDepModule))
         .flatMap(_.files)  // all files of packages to remove
-      ZIO.foreachDiscard(files) { (sub: os.SubPath) =>  // this runs sequentially
-        val path = pluginsRoot / sub
-        ZIO.attemptBlocking {
-          require(path != pluginsRoot, "subpath must not be empty")  // sanity check to avoid accidental deletion of entire plugins folder
-          if (isDll(path) && os.isLink(path)) {
-            os.remove(path, checkExists = false)
-          } else if (os.exists(path)) {
-            os.remove.all(path)
-          } else {
-            logger.warn(s"removal failed as file did not exist: $path")
-          }
-        }
-      }
+
+      ZIO.attempt(subPaths.map(pluginsRoot / _))
+        .flatMap(tryRemoveRepeatedly(_, maxReps = 4))
     }
 
     /** Moves staged files from temp plugins to actual plugins.
