@@ -81,7 +81,11 @@ object JsonData extends SharedData {
         fs <- ZIO.service[service.FileSystem]
       } yield Seq(
         util.Try(os.Path(java.nio.file.Paths.get(fs.projectCacheDir)))
-          .toOption.getOrElse(os.home / "sc4pac" / "cache"),  // safe fallback, see https://github.com/memo33/sc4pac-gui/issues/25
+          .recover {
+            case _ if fs.env.localAppDataWindows.isDefined =>  // attempt at workaround for https://github.com/memo33/sc4pac-gui/issues/32
+              os.Path(java.nio.file.Paths.get(fs.env.localAppDataWindows.get)) / cli.BuildInfo.organization / cli.BuildInfo.name / "cache"  // absolute only
+          }
+          .getOrElse(os.home / "sc4pac" / "cache"),  // safe fallback, see https://github.com/memo33/sc4pac-gui/issues/25
         profileRoot.path / "cache",
       )
 
@@ -324,8 +328,16 @@ object JsonData extends SharedData {
             case None =>
               if (fs.env.sc4pacProfilesDir.isDefined)  // environment variable
                 os.Path(java.nio.file.Paths.get(fs.env.sc4pacProfilesDir.get))  // absolute only
-              else
-                os.Path(java.nio.file.Paths.get(fs.projectConfigDir)) / "profiles"  // absolute only
+              else {
+                val config: os.Path =
+                  try {
+                    os.Path(java.nio.file.Paths.get(fs.projectConfigDir))  // absolute only
+                  } catch {
+                    case _ if fs.env.appDataWindows.isDefined =>  // attempt at workaround for https://github.com/memo33/sc4pac-gui/issues/32
+                      os.Path(java.nio.file.Paths.get(fs.env.appDataWindows.get)) / cli.BuildInfo.organization / cli.BuildInfo.name / "config"  // absolute only
+                  }
+                config / "profiles"
+              }
             case Some(p) =>
               os.Path(java.nio.file.Paths.get(p), os.pwd)  // relative allowed
           }

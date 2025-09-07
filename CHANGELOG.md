@@ -3,6 +3,10 @@
 ## [Unreleased]
 ### Fixed
 - an issue where an already occupied port was not detected on Windows (#38)
+- a problem in which the profiles configuration directory could not be determined on Windows ([#32][gui32])
+  (As a result of this change, in rare cases the default cache location can change from `%USERPROFILE%\sc4pac\cache` to `%LOCALAPPDATA%\io.github.memo33\sc4pac\cache`.)
+
+[gui32]: https://github.com/memo33/sc4pac-gui/issues/32
 
 
 ## [0.8.0] - 2025-06-22

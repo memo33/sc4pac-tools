@@ -61,19 +61,25 @@ object JsonDataSpecZIO extends ZIOSpecDefault {
           p3 <- JD.Profiles.parseProfilesRoot(None)
             .provideSomeLayer(dummyFileSystem(overrideDirs = true, env = customEnv))
           p4 <- JD.Profiles.parseProfilesRoot(None).either
+          p5 <- JD.Profiles.parseProfilesRoot(None)
+            .provideSomeLayer(dummyFileSystem(overrideDirs = true, env = Map("APPDATA" -> (os.pwd / "target" / "appdata-roaming").toString)))
         } yield assertTrue(
           p1 == os.pwd / "target" / "profiles",
           p2 == os.pwd / "target" / "profiles",
           p3 == os.pwd / "target" / "profiles2",
           p4.isLeft, p4.left.toOption.exists(_.isInstanceOf[error.ObtainingUserDirsFailed]),
+          p5 == os.pwd / "target" / "appdata-roaming" / "io.github.memo33" / "sc4pac" / "config" / "profiles",
         )
       },
       test("cache dir") {
         for {
           p1 <- JD.PluginsSpec.defaultCacheRoot.map(_.head)
+          p2 <- JD.PluginsSpec.defaultCacheRoot.map(_.head)
+            .provideSomeLayer(dummyFileSystem(overrideDirs = true, env = Map("LOCALAPPDATA" -> (os.pwd / "target" / "appdata-local").toString)))
         } yield assertTrue(
           p1.isInstanceOf[os.Path],
           p1 == os.home / "sc4pac" / "cache",
+          p2 == os.pwd / "target" / "appdata-local" / "io.github.memo33" / "sc4pac" / "cache",
         )
       }.provideSomeLayer(profileLayer),
     ).provideSomeLayer(dummyFileSystem(overrideDirs = true)),
