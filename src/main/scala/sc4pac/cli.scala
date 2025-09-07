@@ -56,8 +56,8 @@ object Commands {
 
   object ExitCodes {
     val Success = 0
-    val ExternalReason = 1
-    val UnknownReason = 2
+    val ExternalReason = 21
+    val UnknownReason = 22
     val JavaNotFound = 55  // see `sc4pac` and `sc4pac.bat` scripts
     val PortOccupied = 56
     val AccessDenied = 57
