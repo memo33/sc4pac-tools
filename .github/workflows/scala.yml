@@ -79,7 +79,7 @@ jobs:
           cat >sc4pac-plugins.json <<EOL
           {
             "config": {
-              "pluginsRoot": "$GITHUB_WORKSPACE/Documents/SimCity 4/Plugins",
+              "pluginsRoot": "$(echo "$GITHUB_WORKSPACE" | tr '\\' '/')/Documents/SimCity 4/Plugins",
               "cacheRoot": "tmp_build/cache",
               "tempRoot": "tmp_build/temp",
               "variant": {"config:sc4-edition:edition": "Windows-digital"},
