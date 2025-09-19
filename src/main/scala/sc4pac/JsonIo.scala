@@ -45,54 +45,56 @@ object JsonIo {
   }
 
   // steps:
-  // - lock file for writing
   // - optionally read json and compare with previous json `origState` to ensure file is up-to-date
   // - do some potentially destructive action
   // - if action successful, write json file
-
+  // The json file is not locked, but the modification timestamps are checked
+  // just before over-writing to guard against concurrent modifications.
   def write[S : ReadWriter, A](jsonPath: os.Path, newState: S, origState: Option[S])(action: zio.Task[A]): zio.Task[A] = {
-    import java.nio.file.StandardOpenOption
-    import zio.nio.channels.AsynchronousFileChannel
+    val preparationSteps =
+      ZIO.attemptBlocking {
+        val mtimeOpt =
+          try Some(os.mtime(jsonPath))
+          catch { case _: java.nio.file.NoSuchFileException => None }
 
-    def write0(arr: Array[Byte], channel: AsynchronousFileChannel): ZIO[zio.Scope, Throwable, Unit] = {
-      for {
-        _      <- channel.truncate(size = 0)
-        unit   <- channel.writeChunk(zio.Chunk.fromArray(arr), position = 0)
-        _      <- channel.force(metaData = false)
-      } yield unit
-    }
+        // check that file has expected contents
+        if (origState.isDefined) {
+          if (mtimeOpt.isEmpty) {
+            throw new Sc4pacIoException(s"Cannot write data since, unexpectedly, original json file does not exist: $jsonPath")
+          }
+          readBlocking[S](jsonPath) match
+            case Left(errStr) => throw new Sc4pacIoException(errStr)
+            case Right(data) =>
+              if (data != origState.get) {
+                throw new Sc4pacIoException(s"Cannot write data since existing json file has unexpected contents: $jsonPath")
+              }
+        }
+        mtimeOpt
+      }
 
-    def read0(channel: AsynchronousFileChannel): ZIO[zio.Scope, Throwable, S] = {
-      for {
-        chunk <- channel.stream(position = 0).runCollect
-        state <- read[S](chunk.asString(java.nio.charset.StandardCharsets.UTF_8): String)
-      } yield state
-    }
-
-    // the file channel used for locking
-    val scopedChannel: ZIO[zio.Scope, java.io.IOException, AsynchronousFileChannel] = AsynchronousFileChannel.open(
-      zio.nio.file.Path.fromJava(jsonPath.toNIO),
-      StandardOpenOption.READ,
-      StandardOpenOption.WRITE,
-      StandardOpenOption.CREATE)  // TODO decide what to do if file does not exist
-
-    val releaseLock = (lock: zio.nio.channels.FileLock) => if (lock != null) lock.release.ignore else ZIO.succeed(())
-
-    // Acquire file lock, check if file was locked, otherwise perform read-write:
-    // First read, then write only if the read result is still the original state.
-    // Be careful to just read and write from the channel, as the channel is holding the lock.
-    ZIO.scoped {
-      for {
-        arr     <- ZIO.attempt(UP.writeToByteArray[S](newState, indent = 2))  // encode before touching the file to avoid data loss on errors
-        channel <- scopedChannel
-        lock    <- ZIO.acquireRelease(channel.tryLock(shared = false))(releaseLock)
-                      .filterOrFail(lock => lock != null)(new Sc4pacIoException(s"Json file $jsonPath is locked by another program and cannot be modified; if the problem persists, close any relevant program and release the file lock in your OS"))
-        _       <- if (origState.isEmpty) ZIO.succeed(())
-                   else read0(channel).filterOrFail(_ == origState.get)(new Sc4pacIoException(s"Cannot write data since json file has been modified in the meantime: $jsonPath"))
-        result  <- action
-        _       <- write0(arr, channel)
-      } yield result
-    }  // Finally the lock is released and channel is closed when leaving the scope.
+    for {
+      arr      <- ZIO.attempt(UP.writeToByteArray[S](newState, indent = 2))  // encode before touching the file to avoid data loss on errors
+      mtimeOpt <- preparationSteps
+      result   <- action
+      _        <- ZIO.attemptBlocking {
+                    // write to temporary file as pre-caution against file corruption
+                    val jsonPathTmp = os.temp(
+                      contents = arr,
+                      dir = jsonPath / os.up,
+                      prefix = s"${jsonPath.last}.",
+                      perms = 6<<6 | 4<<3 | 4,  // 644 octal
+                    )
+                    // (a) Ensure that file hasn't been modified concurrently and (b) replace existing file.
+                    // The combination of both steps is not atomic, but delay should be negligible.
+                    if (mtimeOpt.isEmpty && os.exists(jsonPath, followLinks = false)) {
+                      throw new Sc4pacIoException(s"Cannot write data since json file has been concurrently created in the meantime: $jsonPath")
+                    } else if (mtimeOpt.exists(_ != os.mtime(jsonPath))) {
+                      throw new Sc4pacIoException(s"Cannot write data since json file has been concurrently modified in the meantime: $jsonPath")
+                    } else {
+                      os.move.over(jsonPathTmp, jsonPath)
+                    }
+                  }
+    } yield result
   }
 
 }
