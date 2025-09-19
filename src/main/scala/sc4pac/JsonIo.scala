@@ -78,12 +78,13 @@ object JsonIo {
       result   <- action
       _        <- ZIO.attemptBlocking {
                     // write to temporary file as pre-caution against file corruption
-                    val jsonPathTmp = os.temp(
-                      contents = arr,
-                      dir = jsonPath / os.up,
-                      prefix = s"${jsonPath.last}.",
-                      perms = 6<<6 | 4<<3 | 4,  // 644 octal
-                    )
+                    val prefix = s"${jsonPath.last}."
+                    val perms: os.PermSet = if (!Constants.isPosix) null else 6<<6 | 4<<3 | 4  // 644 octal
+                    val jsonPathTmp =
+                      try os.temp(contents = arr, dir = jsonPath / os.up, prefix = prefix, perms = perms)
+                      catch { case _: UnsupportedOperationException if perms != null =>
+                        os.temp(contents = arr, dir = jsonPath / os.up, prefix = prefix)  // retry with default permissions in case file system containing jsonPath is not posix
+                      }
                     // (a) Ensure that file hasn't been modified concurrently and (b) replace existing file.
                     // The combination of both steps is not atomic, but delay should be negligible.
                     if (mtimeOpt.isEmpty && os.exists(jsonPath, followLinks = false)) {
