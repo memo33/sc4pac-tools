@@ -58,6 +58,7 @@ object JsonIo {
       for {
         _      <- channel.truncate(size = 0)
         unit   <- channel.writeChunk(zio.Chunk.fromArray(arr), position = 0)
+        _      <- channel.force(metaData = false)
       } yield unit
     }
 
