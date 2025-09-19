@@ -230,7 +230,7 @@ object ChannelUtil {
           os.temp.dir(outputDir, prefix = "json", deleteOnExit = true)  // tempJsonDir
         }
       )(  /*release*/  // deleteOnExit does not seem to work reliably, so explicitly delete temp folder after use
-        tempJsonDir => ZIO.succeed(os.remove.all(tempJsonDir))
+        tempJsonDir => ZIO.succeed(Sc4pac.removeAllForcibly(tempJsonDir))
       ){ tempJsonDir =>  /*use*/
         packagesTask.flatMap(writeChannel(_, tempJsonDir))
       }

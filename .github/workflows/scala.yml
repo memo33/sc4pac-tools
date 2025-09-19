@@ -79,7 +79,7 @@ jobs:
           cat >sc4pac-plugins.json <<EOL
           {
             "config": {
-              "pluginsRoot": "$HOME/Documents/SimCity 4/Plugins",
+              "pluginsRoot": "$(echo "$GITHUB_WORKSPACE" | tr '\\' '/')/Documents/SimCity 4/Plugins",
               "cacheRoot": "tmp_build/cache",
               "tempRoot": "tmp_build/temp",
               "variant": {"config:sc4-edition:edition": "Windows-digital"},
@@ -98,6 +98,8 @@ jobs:
         run: |
           .\sc4pac add memo:submenus-dll
           .\sc4pac update -y
+          # set installed folders as read-only to test against https://github.com/memo33/sc4pac-tools/issues/40
+          Get-ChildItem -Path "$env:GITHUB_WORKSPACE\Documents\SimCity 4\Plugins" -Recurse -Directory | % { $_.Attributes += 'ReadOnly' }
           .\sc4pac remove memo:submenus-dll
           .\sc4pac update -y
       - name: Install and uninstall a package (Linux)

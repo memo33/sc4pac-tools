@@ -422,7 +422,7 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) {  // TODO d
           if (isDll(path) && os.isLink(path)) {
             os.remove(path, checkExists = false)
           } else if (os.exists(path)) {
-            os.remove.all(path)
+            Sc4pac.removeAllForcibly(path)
           } else {
             logger.warn(s"removal failed as file did not exist: $path")
           }
@@ -851,10 +851,43 @@ object Sc4pac {
     )(
       release = (stagingDirs: StagingDirs) => ZIO.attemptBlockingIO {  // TODO not executed in case of interrupt, so consider cleaning up temp dir from previous runs regularly.
         logger.debug(s"Deleting temp staging dir: ${stagingDirs.root}")
-        os.remove.all(stagingDirs.root)
+        Sc4pac.removeAllForcibly(stagingDirs.root)
       }.catchAll {
         case e => ZIO.succeed(logger.warn(s"Failed to remove temp folder ${stagingDirs.root}: ${e.getMessage}"))
       }
     )
+
+  /** Remove a file or potentially non-empty directory, taking into account that
+    * directories on OneDrive are typically marked as read-only.
+    */
+  private[sc4pac] def removeAllForcibly(target: os.Path): Unit = {
+    // re-implementation of os.remove.all, see https://github.com/com-lihaoyi/os-lib/blob/72605235899b65e144ffe48821c63085cb9062ad/os/src/FileOps.scala#L333-L350
+    import java.nio.file.{Files, LinkOption}
+    require(target.segmentCount != 0, s"Cannot remove a root directory: $target")
+    if (Files.exists(target.wrapped, LinkOption.NOFOLLOW_LINKS)) {
+      val paths =
+        if (Files.isDirectory(target.wrapped, LinkOption.NOFOLLOW_LINKS))
+          os.walk.stream(target, preOrder = false) ++ Seq(target)
+        else
+          geny.Generator[os.Path](target)
+      for (p <- paths) {
+        try {
+          val _ = Files.deleteIfExists(p.wrapped)
+        } catch { case e: java.io.IOException =>  // typically java.nio.file.AccessDeniedException when folders are read-only, e.g. on OneDrive on Windows, see https://github.com/memo33/sc4pac-tools/issues/40
+          try {
+            // Attempt to clear problematic flags. See https://github.com/PowerShell/PowerShell/blob/v7.5.3/src/System.Management.Automation/namespaces/FileSystemProvider.cs#L3221
+            val dos = Files.getFileAttributeView(p.wrapped, classOf[java.nio.file.attribute.DosFileAttributeView], LinkOption.NOFOLLOW_LINKS)
+            if (dos != null) {
+              dos.setReadOnly(false)
+              try dos.setHidden(false) catch { case _: Throwable => /*ignore*/ }
+              val _ = Files.deleteIfExists(p.wrapped)  // second attempt
+            } else {
+              throw e
+            }
+          } catch { case ignore: Throwable => throw e }
+        }
+      }
+    }
+  }
 
 }
