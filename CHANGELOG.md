@@ -9,6 +9,7 @@
 - a problem in which the profiles configuration directory could not be determined on Windows ([#32][gui32])
   (As a result of this change, in rare cases the default cache location can change from `%USERPROFILE%\sc4pac\cache` to `%LOCALAPPDATA%\io.github.memo33\sc4pac\cache`.)
 - resolved compatibility issue with OneDrive which prevented updating or uninstalling packages if Plugins were stored on OneDrive (#40)
+- a rare issue in which a profile JSON file could get corrupted, making the profile unusable (#41)
 
 [gui32]: https://github.com/memo33/sc4pac-gui/issues/32
 
