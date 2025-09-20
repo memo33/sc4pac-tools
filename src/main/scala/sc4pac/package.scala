@@ -79,11 +79,8 @@ package object sc4pac {
     val forceRedownload: Boolean = false,  // used when downloaded file seems corrupted
     val localMirror: Option[os.Path] = None,  // used when download failed and user supplied a fallback
   ) {
-    /** for diagnostic purposes only, so does not need to be 100% accurate */
-    def isFromSimtropolis = {
-      val host = url.getHost
-      host == "simtropolis.com" || host.endsWith(".simtropolis.com")
-    }
+    /** for diagnostic purposes */
+    def isFromSimtropolis = Downloader.isFromSimtropolis(url)
 
     def withForceRedownload(forceRedownload: Boolean): Artifact =
       Artifact(

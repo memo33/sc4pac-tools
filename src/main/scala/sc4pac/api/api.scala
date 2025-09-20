@@ -728,6 +728,7 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
           url    <- ZIO.fromEither(zio.http.URL.decode(rawUrl).left.map(malformedUrl => jsonResponse(ErrorMessage.BadRequest(
                       "Malformed url", malformedUrl.getMessage
                     )).status(Status.BadRequest)))
+          // TODO use credentials.addAuthorizationToMatchingRequest(Request.get(url))
           // TODO handle retrys
           resp   <- zio.http.ZClient.batched(Request.get(url))  // TODO this first downloads the entire response body before forwarding the response
                                                                 // Using `ZClient.streaming` instead is blocked on https://github.com/zio/zio-http/issues/3197

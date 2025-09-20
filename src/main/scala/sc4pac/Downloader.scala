@@ -268,7 +268,26 @@ class Downloader(
 
 object Downloader {
 
-  class Credentials(val simtropolisToken: Option[String])
+  def isFromSimtropolis(url: java.net.URI | java.net.URL | zio.http.URL): Boolean = {
+    (url match {
+      case u: java.net.URI => Some(u.getHost)
+      case u: java.net.URL => Some(u.getHost)
+      case u: zio.http.URL => u.host
+    }).exists(host => host == "simtropolis.com" || host.endsWith(".simtropolis.com"))
+  }
+
+  class Credentials(val simtropolisToken: Option[String]) {
+    def addAuthorizationToMatchingConnection(conn: java.net.HttpURLConnection): Unit = {
+      if (simtropolisToken.isDefined && isFromSimtropolis(conn.getURL())) {
+        conn.addRequestProperty("Authorization", s"""SC4PAC-TOKEN-ST userkey="${simtropolisToken.get}"""")
+      }
+    }
+    // def addAuthorizationToMatchingRequest(req: zio.http.Request): zio.http.Request = {
+    //   if (simtropolisToken.isDefined && isFromSimtropolis(req.url)) {
+    //     req.updateHeaders(_.addHeader("Authorization", s"""SC4PAC-TOKEN-ST userkey="${simtropolisToken.get}""""))
+    //   } else req
+    // }
+  }
   val emptyCredentialsLayer = zio.ZLayer.succeed(Credentials(simtropolisToken = None))
 
   /** Returns true on success, false if data transfer was canceled. */
@@ -396,13 +415,7 @@ object Downloader {
             conn0.setRequestProperty("Accept", "*/*")
             conn0.setConnectTimeout(Constants.urlConnectTimeout.toMillis.toInt)  // timeout for establishing a connection
             conn0.setReadTimeout(Constants.urlReadTimeout.toMillis.toInt)  // timeout in case of internet outage while downloading a file
-
-            val host = conn0.getURL().getHost()
-            if (host == "simtropolis.com" || host.endsWith(".simtropolis.com")) {
-              if (credentials.simtropolisToken.isDefined) {
-                conn0.addRequestProperty("Authorization", s"""SC4PAC-TOKEN-ST userkey="${credentials.simtropolisToken.get}"""")
-              }
-            }
+            credentials.addAuthorizationToMatchingConnection(conn0)
           case _ =>
         }
 
