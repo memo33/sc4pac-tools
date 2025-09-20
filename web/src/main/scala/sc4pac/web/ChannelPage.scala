@@ -36,7 +36,7 @@ object JsonData extends SharedData {
   def parseModule(pkgName: String): Either[String, BareModule] =
     pkgName match {
       case regexModule(group, name) => Right(BareModule(group = Organization(group), name = ModuleName(name)))
-      case _ => Left("Malformed package name: <group>:<name>")
+      case _ => Left(s"Malformed package name: <group>:<name> ($pkgName)")
     }
 
   val bareModuleRw: UP.ReadWriter[BareModule] = UP.readwriter[String].bimap[BareModule](_.orgName,
@@ -78,18 +78,23 @@ object ChannelPage {
     document.addEventListener("DOMContentLoaded", (e: dom.Event) => setupUI())
   }
 
-  def fetchPackage(module: BareModule, channelUrl: Option[String]): Future[Option[JsonData.Package]] = {
-    val url = sttp.model.Uri(java.net.URI.create(s"${channelUrl.getOrElse(channelUrlMainRelative)}${JsonRepoUtil.packageSubPath(module, version = "latest")}"))
-    for {
-      response <- basicRequest.get(url).response(asJson[JsonData.Package]).send(backend)
-    } yield {
-      if (!response.is200) None
-      else response.body.toOption
-    }
+  def fetchPackage(module: BareModule, channelUrls: Seq[String]): Future[Option[(JsonData.Package, Option[String])]] = {
+    val responsesLazy =
+      (if (channelUrls.isEmpty) LazyList(channelUrlMainRelative) else channelUrls.to(LazyList))
+      .map { channelUrl =>
+        val pkgUrl = sttp.model.Uri(java.net.URI.create(s"$channelUrl${JsonRepoUtil.packageSubPath(module, version = "latest")}"))
+        for {
+          response <- basicRequest.get(pkgUrl).response(asJson[JsonData.Package]).send(backend)
+        } yield {
+          if (!response.is200) None
+          else response.body.toOption.map((_, Option(channelUrl).filter(_ != channelUrlMainRelative)))
+        }
+      }
+    Future.find(responsesLazy)(_.isDefined).map(_.flatten)
   }
 
-  def fetchChannel(): Future[Option[JsonData.Channel]] = {
-    val url = sttp.model.Uri(java.net.URI.create(s"${channelUrlMainRelative}${JsonRepoUtil.channelContentsFilename}"))
+  def fetchChannel(channelUrl: Option[String]): Future[Option[JsonData.Channel]] = {
+    val url = sttp.model.Uri(java.net.URI.create(s"${channelUrl.getOrElse(channelUrlMainRelative)}${JsonRepoUtil.channelContentsFilename}"))
     for {
       response <- basicRequest.get(url).response(asJson[JsonData.Channel]).send(backend)
     } yield {
@@ -98,13 +103,18 @@ object ChannelPage {
     }
   }
 
-  def variantFrag(variant: JsonData.Variant, info: Map[String, JsonData.VariantInfo]) =
-    variant.toSeq.sorted.map { (k, v) =>
-      info.get(k).flatMap(_.valueDescriptions.get(v)) match {
-        case None => H.code(s"$k = $v")
-        case Some(tooltipText) => H.code(H.div(H.cls := "tooltip")(s"$k = $v", H.span(H.cls := "tooltiptext")(tooltipText)))
-      }
-    }.zipWithIndex.flatMap((elem, idx) => if (idx == 0) Seq[H.Frag](elem) else Seq[H.Frag](", ", elem))
+  def variantFrag(variantChoice: JsonData.VariantChoice, info: Map[String, JsonData.VariantInfo]) =
+    Seq[H.Frag](
+      variantChoice.variantId,
+      " = ",
+    ) ++ (
+      variantChoice.choices.map { value =>
+        info.get(variantChoice.variantId).flatMap(_.valueDescriptions.get(value)) match {
+          case None => H.code(s"$value")
+          case Some(tooltipText) => H.code(H.div(H.cls := "tooltip")(s"$value", H.span(H.cls := "tooltiptext")(tooltipText)))
+        }
+      }.zipWithIndex.flatMap((elem, idx) => if (idx == 0) Seq[H.Frag](elem) else Seq[H.Frag](", ", elem))
+    )
 
   // TODO make all selectable
   def pkgNameFrag(module: BareModule, link: Boolean = true) =
@@ -201,12 +211,12 @@ object ChannelPage {
     add("Subfolder", H.code(pkg.subfolder.toString))
 
     add("Variants",
-      if (pkg.variants.length == 1 && pkg.variants.head.variant.isEmpty)
+      if (pkg.variantChoices.isEmpty)
         "None"
       else
         H.ul(H.cls := "unstyled-list")(
-          pkg.variants.map { vd =>
-            H.li(variantFrag(vd.variant, pkg.variantInfo))
+          pkg.variantChoices.map { vc =>
+            H.li(variantFrag(vc, pkg.variantInfo))
           }
         )
     )
@@ -299,18 +309,19 @@ object ChannelPage {
   def setupUI(): Unit = {
     Marked.use(js.Dictionary("renderer" -> js.Dictionary("codespan" -> (renderCodespan: js.Function))))
     val urlParams = new dom.URLSearchParams(dom.window.location.search)
-    val pkgName = urlParams.get("pkg")
-    if (pkgName == null) {
+    val pkgNames = urlParams.getAll("pkg")
+    val channelUrls = urlParams.getAll("channel").toSeq
+    if (pkgNames.isEmpty) {
       val output = H.p("Loading channel packages…").render
       document.body.appendChild(output)
-      fetchChannel() foreach {
+      fetchChannel(channelUrls.headOption) foreach {
         case None =>
           document.body.appendChild(H.p("Failed to load channel contents.").render)
         case Some(channel) =>
           val displayCategory = Option(urlParams.get("category"))
           output.replaceWith(channelContentsFrag(channel, displayCategory).render)
       }
-    } else JsonData.parseModule(pkgName) match {
+    } else pkgNames.foreach { pkgName => JsonData.parseModule(pkgName) match {
       case Left(err) =>
         document.body.appendChild(H.p(err).render)
         ()
@@ -319,17 +330,22 @@ object ChannelPage {
         document.head.appendChild(metaDescription)
         val output = H.p("Loading package ", pkgNameFrag(module, link = false), "…").render
         document.body.appendChild(output)
-        val channelUrl = Option(urlParams.get("channel"))
-        fetchPackage(module, channelUrl) foreach {
+        fetchPackage(module, channelUrls) foreach {
           case None =>
-            val hintFrag = channelUrl match {
-              case None => H.p("Package not found")
-              case Some(url) => H.p("Package not found in channel ", H.a(H.href := channelUrl.get)(channelUrl.get), ".")
-            }
-            document.body.appendChild(hintFrag.render)
-          case Some(pkg) =>
-            output.replaceWith(pkgInfoFrag(pkg, channelUrl).render)
+            val hintFrag =
+              if (channelUrls.isEmpty)
+                H.p(s"Package $pkgName not found")
+              else
+                H.p(
+                  s"Package $pkgName not found in channels:",
+                  H.ul(channelUrls.map(channelUrl =>
+                    H.li(H.a(H.href := channelUrl)(channelUrl)),
+                  ))
+                )
+            output.replaceWith(hintFrag.render)
+          case Some((pkg, channelUrlOpt)) =>
+            output.replaceWith(pkgInfoFrag(pkg, channelUrlOpt).render)
         }
-    }
+    }}
   }
 }

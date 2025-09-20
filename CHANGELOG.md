@@ -12,6 +12,7 @@
 - a rare issue in which a profile JSON file could get corrupted, making the profile unusable (#41)
 
 ### Changed
+- The sc4pac website can now display the details of multiple packages simultaneously, by passing more than one `pkg` URL parameter.
 - API upgraded to 2.7:
   - added `javaVersion` and `javaRuntime` to `/server.status` endpoint
 
