@@ -1,6 +1,9 @@
 # Changelog
 
 ## [Unreleased]
+
+
+## [0.8.1] - 2025-09-20
 ### Added
 - The [SC4Evermore Channel](https://github.com/SC4Evermore/sc4pac-channel) has been added to the default channels.
 
@@ -321,7 +324,8 @@
 ## [0.1.5] - 2023-09-26
 …
 
-[Unreleased]: https://github.com/memo33/sc4pac-tools/compare/0.8.0...HEAD
+[Unreleased]: https://github.com/memo33/sc4pac-tools/compare/0.8.1...HEAD
+[0.8.1]: https://github.com/memo33/sc4pac-tools/compare/0.8.0...0.8.1
 [0.8.0]: https://github.com/memo33/sc4pac-tools/compare/0.7.0...0.8.0
 [0.7.0]: https://github.com/memo33/sc4pac-tools/compare/0.6.1...0.7.0
 [0.6.1]: https://github.com/memo33/sc4pac-tools/compare/0.6.0...0.6.1
