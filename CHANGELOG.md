@@ -1,6 +1,10 @@
 # Changelog
 
 ## [Unreleased]
+### Fixed
+- an issue preventing the import and export of JSON mod sets if the JSON file was too large ([#39][gui39])
+
+[gui39]: https://github.com/memo33/sc4pac-gui/issues/39
 
 
 ## [0.8.1] - 2025-09-20

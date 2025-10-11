@@ -726,7 +726,9 @@ object Commands {
           )
           .zipRight(ZIO.never)  // keep server running indefinitely unless interrupted
           .provideSome[ServerFiber & service.FileSystem](
-            zio.http.Server.defaultWithPort(options.port)
+            zio.http.Server.defaultWith(config => config.port(options.port)
+                .requestStreaming(zio.http.Server.RequestStreaming.Enabled)  // enabling request streaming to avoid 413 "content too large" on large POST requests
+              )
               .mapError { e =>  // usually: "bind(..) failed: Address already in use"
                 // This branch does not seem to usually catch the error anymore.
                 // Instead it is caught in Server.install(app).catchSomeDefect(...) above.
