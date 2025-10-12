@@ -6,6 +6,10 @@
 
 [gui39]: https://github.com/memo33/sc4pac-gui/issues/39
 
+### Changed
+- API upgraded to 2.8:
+  - added optional `includePlugins` parameter to `/profiles.list` endpoint
+
 
 ## [0.8.1] - 2025-09-20
 ### Added

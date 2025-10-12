@@ -64,7 +64,7 @@ object ApiSpecZIO extends ZIOSpecDefault {
         profilesList <- getEndpoint("profiles.list").flatMap(resp => parseBody[api.ProfilesList](resp.body))
         id <- ZIO.getOrFail(profilesList.currentProfileId)
         profile <- ZIO.getOrFail(profilesList.profiles.find(_.id == id))
-      } yield profile
+      } yield profile.toProfileData
     )
 
   def withTestResultRef[R](test: RIO[R & Ref[TestResult], Unit]): RIO[R, TestResult] = {
@@ -256,11 +256,11 @@ object ApiSpecZIO extends ZIOSpecDefault {
           profile  <- postEndpoint("profiles.add", jsonBody(Obj("name"-> name))).flatMap(getBody200[JD.ProfileData])
           _        <- addTestResult(assertTrue(profile.id == "1", profile.name == name))
           data     <- getEndpoint("profiles.list").flatMap(getBody200[api.ProfilesList])
-          _        <- addTestResult(assertTrue(data.profiles == Seq(profile), data.currentProfileId.is(_.some) == profile.id))
+          _        <- addTestResult(assertTrue(data.profiles.map(_.toProfileData) == Seq(profile), data.currentProfileId.is(_.some) == profile.id))
           profile2 <- postEndpoint("profiles.add", jsonBody(Obj("name"-> s"$name~"))).flatMap(getBody200[JD.ProfileData])
           _        <- addTestResult(assertTrue(profile2.id == "2", profile2.name == s"$name~"))
           data     <- getEndpoint("profiles.list").flatMap(getBody200[api.ProfilesList])
-          _        <- addTestResult(assertTrue(data.profiles == Seq(profile, profile2), data.currentProfileId.is(_.some) == profile2.id))
+          _        <- addTestResult(assertTrue(data.profiles.map(_.toProfileData) == Seq(profile, profile2), data.currentProfileId.is(_.some) == profile2.id))
         } yield ())
       },
       test("/profiles.switch") {
@@ -278,6 +278,9 @@ object ApiSpecZIO extends ZIOSpecDefault {
           _      <- postEndpoint("profiles.switch", jsonBody(Obj("id" -> "1"))).flatMap(isOk200)
           data   <- getEndpoint("profiles.list").flatMap(getBody200[api.ProfilesList])
           _      <- addTestResult(assertTrue(data.currentProfileId.is(_.some) == "1"))
+          _      <- addTestResult(assertTrue(data.profiles.forall(_.pluginsRoot.isEmpty)))
+          data   <- getEndpoint("profiles.list?includePlugins").flatMap(getBody200[api.ProfilesList])
+          _      <- addTestResult(assertTrue(data.profiles.forall(_.pluginsRoot.isEmpty)))  // as profiles are not initialized yet
         } yield ())
       },
     ),
@@ -308,6 +311,12 @@ object ApiSpecZIO extends ZIOSpecDefault {
             _      <- addTestResult(assertTrue(resp.status.code == 409))  // already initialized
             data2  <- getEndpoint(s"profile.read?profile=$profileId").flatMap(getBody200[ujson.Value])
             _      <- addTestResult(assertTrue(data2 == data))
+          } yield ())
+        },
+        test("/profiles.list?includePlugins") {
+          withTestResultRef(for {
+            data   <- getEndpoint("profiles.list?includePlugins").flatMap(getBody200[api.ProfilesList])
+            _      <- addTestResult(assertTrue(data.profiles.exists(_.pluginsRoot.nonEmpty)))
           } yield ())
         },
 

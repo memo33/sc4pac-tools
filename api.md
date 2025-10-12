@@ -1,4 +1,4 @@
-# API - version 2.7
+# API - version 2.8
 
 The API allows other programs to control *sc4pac* in a client-server fashion.
 
@@ -636,6 +636,15 @@ Returns:
     profiles: [{id: "<id-1>", name: string}, …],
     currentProfileId: ["<id-1>"],
     profilesDir: "<platform-dependent-path>"
+  }
+  ```
+
+Optional parameters:
+- `includePlugins`: parse all profile JSON files (expensive!) to obtain the `pluginsRoot` path for each profile (or `[]` for uninitialized profiles):
+  ```
+  {
+    profiles: [{id: "<id-1>", name: string, pluginsRoot: ["<path>"]}, …],
+    …
   }
   ```
 

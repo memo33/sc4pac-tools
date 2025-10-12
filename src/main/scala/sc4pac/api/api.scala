@@ -589,7 +589,7 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
       })
 
     // profile-independent routes
-    val genericRoutes = Routes[ProfilesDir & ServerFiber & Client & Ref[ServerConnection], Throwable](
+    val genericRoutes = Routes[ProfilesDir & service.FileSystem & ServerFiber & Client & Ref[ServerConnection], Throwable](
 
       // 200
       Method.GET / "server.status" -> handler {
@@ -657,13 +657,23 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
       }),
 
       // 200, 500
-      Method.GET / "profiles.list" -> handler {
+      Method.GET / "profiles.list" -> handler { (req: Request) =>
+        val includePlugins = req.url.queryParams.getAll("includePlugins").nonEmpty
         wrapHttpEndpoint {
           for {
             profilesDir <- ZIO.service[ProfilesDir]
             profiles <- JD.Profiles.readOrInit
+            profilesData <-
+              if (!includePlugins)
+                ZIO.succeed(profiles.profiles.map(p => ProfilesList.ProfileData2(id = p.id, name = p.name)))
+              else
+                ZIO.foreachPar(profiles.profiles) { p =>
+                  for {
+                    pluginsSpecOpt <- JD.PluginsSpec.readMaybe.provideSomeLayer(zio.ZLayer.succeed[ProfileRoot](ProfileRoot(profilesDir.path / p.id)))
+                  } yield ProfilesList.ProfileData2(id = p.id, name = p.name, pluginsRoot = pluginsSpecOpt.map(_.config.pluginsRoot))
+                }
           } yield jsonResponse(ProfilesList(
-            profiles = profiles.profiles,
+            profiles = profilesData,
             currentProfileId = profiles.currentProfileId,
             profilesDir = profilesDir.path.toNIO,
           ))
