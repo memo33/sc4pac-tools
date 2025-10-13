@@ -670,7 +670,7 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
                 ZIO.foreachPar(profiles.profiles) { p =>
                   for {
                     pluginsSpecOpt <- JD.PluginsSpec.readMaybe.provideSomeLayer(zio.ZLayer.succeed[ProfileRoot](ProfileRoot(profilesDir.path / p.id)))
-                  } yield ProfilesList.ProfileData2(id = p.id, name = p.name, pluginsRoot = pluginsSpecOpt.map(_.config.pluginsRoot))
+                  } yield ProfilesList.ProfileData2(id = p.id, name = p.name, pluginsRoot = pluginsSpecOpt.map(_.config.pluginsRoot).orNull)
                 }
           } yield jsonResponse(ProfilesList(
             profiles = profilesData,

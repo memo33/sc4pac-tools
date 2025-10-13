@@ -309,7 +309,7 @@ case class ProfileName(name: String) derives UP.ReadWriter
 case class ProfileIdObj(id: ProfileId) derives UP.ReadWriter
 case class ProfilesList(profiles: Seq[ProfilesList.ProfileData2], currentProfileId: Option[ProfileId], profilesDir: java.nio.file.Path) derives UP.ReadWriter
 object ProfilesList {
-  case class ProfileData2(id: ProfileId, name: String, pluginsRoot: Option[java.nio.file.Path] = None) derives UP.ReadWriter {
+  case class ProfileData2(id: ProfileId, name: String, pluginsRoot: java.nio.file.Path = null) derives UP.ReadWriter {
     def toProfileData: JD.ProfileData = JD.ProfileData(id = id, name = name)
   }
 }

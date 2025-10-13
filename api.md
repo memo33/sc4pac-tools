@@ -640,10 +640,10 @@ Returns:
   ```
 
 Optional parameters:
-- `includePlugins`: parse all profile JSON files (expensive!) to obtain the `pluginsRoot` path for each profile (or `[]` for uninitialized profiles):
+- `includePlugins`: parse all profile JSON files (expensive!) to obtain the `pluginsRoot` path for each profile (or `null` for uninitialized profiles):
   ```
   {
-    profiles: [{id: "<id-1>", name: string, pluginsRoot: ["<path>"]}, …],
+    profiles: [{id: "<id-1>", name: string, pluginsRoot?: "<path>"}, …],
     …
   }
   ```
