@@ -422,22 +422,22 @@ object ApiSpecZIO extends ZIOSpecDefault {
                 _  <- removeAll
                 _  <- wsEndpoint(s"update?profile=$profileId",
                         respond = {
-                        case msg: api.PromptMessage.InitialArgumentsForUpdate => ZIO.succeed(msg.responses("Default"))
-                        case msg: api.PromptMessage.ConfirmUpdatePlan =>
-                          for {
-                            _  <- addTestResult(assertTrue(
-                                    msg.toRemove.isEmpty,
-                                    msg.toInstall.isEmpty,
-                                    msg.choices == Seq("Yes", "No"),
-                                  ))
-                          } yield msg.responses("Yes")
-                      },
-                      checkMessages = queue => (for {
-                        _  <- queue.take.flatMap(f => addTestResult(assertTrue(f.json("$type").str == "/prompt/json/update/initial-arguments")))
-                        _  <- queue.take.flatMap(f => addTestResult(assertTrue(f.json("$type").str == "/prompt/confirmation/update/plan")))
-                        _  <- queue.take.flatMap(f => addTestResult(assertTrue(f.json == jsonOk)))
-                      } yield ()),
-                    )
+                          case msg: api.PromptMessage.InitialArgumentsForUpdate => ZIO.succeed(msg.responses("Default"))
+                          case msg: api.PromptMessage.ConfirmUpdatePlan =>
+                            for {
+                              _  <- addTestResult(assertTrue(
+                                      msg.toRemove.isEmpty,
+                                      msg.toInstall.isEmpty,
+                                      msg.choices == Seq("Yes", "No"),
+                                    ))
+                            } yield msg.responses("Yes")
+                        },
+                        checkMessages = queue => (for {
+                          _  <- queue.take.flatMap(f => addTestResult(assertTrue(f.json("$type").str == "/prompt/json/update/initial-arguments")))
+                          _  <- queue.take.flatMap(f => addTestResult(assertTrue(f.json("$type").str == "/prompt/confirmation/update/plan")))
+                          _  <- queue.take.flatMap(f => addTestResult(assertTrue(f.json == jsonOk)))
+                        } yield ()),
+                      )
               } yield ()
             })
           },
@@ -734,6 +734,40 @@ object ApiSpecZIO extends ZIOSpecDefault {
                         )
                 data <- getEndpoint(s"plugins.added.list?profile=$profileId").flatMap(getBody200[Seq[String]])
                 _    <- addTestResult(assertTrue(!data.contains("memo:conflicting-package")))
+              } yield ()
+            })
+          },
+          test("/update (reinstall)") {
+            withTestResultRef(ZIO.scoped {
+              def respond(upToDate: Boolean): PartialFunction[api.PromptMessage, RIO[Ref[TestResult], api.ResponseMessage]] = {
+                case msg: api.PromptMessage.InitialArgumentsForUpdate => ZIO.succeed(msg.responses("Default"))
+                case msg: api.PromptMessage.ConfirmUpdatePlan =>
+                  for {
+                    _  <- addTestResult(
+                            if (upToDate) assertTrue(msg.toRemove.isEmpty, msg.toInstall.isEmpty)
+                            else assertTrue(
+                              msg.toRemove == msg.toInstall,
+                              msg.toRemove.length == 1,
+                              msg.toRemove.head.`package`.orgName == "memo:demo-package",
+                            )
+                          )
+                  } yield msg.responses("Yes")
+                case msg: api.PromptMessage.ConfirmInstallation => ZIO.succeed(msg.responses("Yes"))
+                case msg: api.PromptMessage.ConfirmInstallingDlls => ZIO.succeed(msg.responses("Yes"))
+              }
+              def doUpdate(upToDate: Boolean) =
+                wsEndpoint(s"update?profile=$profileId",
+                  respond = respond(upToDate = upToDate),
+                  filter = msg => msg.json("$type").str.startsWith("/result"),
+                  checkMessages = queue => (for {
+                    _ <- queue.take.flatMap(f => addTestResult(assertTrue(f.json == jsonOk)))
+                  } yield ()),
+                )
+              for {
+                _  <- doUpdate(upToDate = true)
+                _  <- postEndpoint(s"plugins.reinstall?profile=$profileId", jsonBody(Seq("memo:demo-package"))).flatMap(isOk200)
+                _  <- doUpdate(upToDate = false)
+                _  <- doUpdate(upToDate = true)
               } yield ()
             })
           },

@@ -44,6 +44,7 @@ For most uses, it is recommended to use the *sc4pac* GUI instead.
 add             Add new packages to install explicitly.
 update          Update all installed packages to their latest version and install any missing packages.
 remove          Remove packages that have been installed explicitly.
+reinstall       Mark previously installed packages for re-installation.
 search          Search for the name of a package.
 info            Display more information about a package.
 list            List all installed packages.
@@ -110,6 +111,25 @@ sc4pac remove cyclone-boom:save-warning   # Remove package <group>:<package-name
 
 **Options:**
 - `-i, --interactive` Interactively select packages to remove
+
+
+---
+## reinstall
+
+**Usage:** `sc4pac reinstall [options] [packages...]`
+
+Mark previously installed packages for re-installation, ignoring any dependency relations.
+
+For example, this is useful when you accidentally deleted some files from the package subfolder inside the Plugins folder. Reinstalling the package ensures the missing files are restored, without having to reinstall any packages that depend on it.
+
+Afterwards, run `sc4pac update` for the changes to take effect.
+
+**Example:**
+```sh
+sc4pac reinstall cyclone-boom:save-warning
+```
+
+Packages that are not actually installed will be ignored.
 
 
 ---

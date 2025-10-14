@@ -1,6 +1,9 @@
 # Changelog
 
 ## [Unreleased]
+### Added
+- new `sc4pac reinstall` command to force re-installing individual packages, e.g. to restore missing files
+
 ### Fixed
 - an issue preventing the import and export of JSON mod sets if the JSON file was too large ([#39][gui39])
 
@@ -9,6 +12,7 @@
 ### Changed
 - API upgraded to 2.8:
   - added optional `includePlugins` parameter to `/profiles.list` endpoint
+  - added `/plugins.reinstall` endpoint and corresponding installation status
 
 
 ## [0.8.1] - 2025-09-20

@@ -165,16 +165,19 @@ object JsonData extends SharedData {
     category: Option[String] = None,  // since scheme 2
     installedAt: Instant = installedAtDummy,  // since scheme 2
     updatedAt: Instant = installedAtDummy,  // since scheme 2
+    reinstall: Boolean = false,  // since scheme 2+
   ) derives ReadWriter {
     def toDepModule = DepModule(Organization(group), ModuleName(name), version = version, variant = variant)
     def toBareModule = BareModule(Organization(group), ModuleName(name))
     private[sc4pac] def toSearchString: String = s"$group:$name $summary".toLowerCase(java.util.Locale.ENGLISH)  // copied from ChannelItem.toSearchString
-    def toApiInstalled = api.InstalledStatus.Installed(version = version, variant = variant, installedAt = installedAt, updatedAt = updatedAt)
+    def toApiInstalled = api.InstalledStatus.Installed(version = version, variant = variant, installedAt = installedAt, updatedAt = updatedAt, reinstall = reinstall)
   }
 
   case class PluginsLock(scheme: Int = 1, installed: Seq[InstalledData], assets: Seq[Asset]) derives ReadWriter {
     def dependenciesWithAssets: Set[Resolution.Dep] =
       (installed.map(_.toDepModule) ++ assets.map(DepAsset.fromAsset(_))).toSet
+    def packagesToReinstall: Set[Resolution.Dep] =
+      installed.iterator.filter(_.reinstall).map(_.toDepModule).toSet
 
     def updateTo(plan: Sc4pac.UpdatePlan, stagedItems: Seq[Sc4pac.StageResult.Item]): PluginsLock = {
       val now = java.time.Instant.now().truncatedTo(ChronoUnit.SECONDS)
@@ -201,6 +204,7 @@ object JsonData extends SharedData {
             category = stagedItem.map(item => categoryFromSubPath(item.pkgData.subfolder)).getOrElse(previousPkgs(bareDep).category),
             installedAt = previousPkgs.get(bareDep).map(_.installedAt).getOrElse(now),
             updatedAt = if (stagedItem.isDefined) now else previousPkgs(bareDep).updatedAt,
+            reinstall = false,
           )
         },
         assets = arts.map(dep => Asset(

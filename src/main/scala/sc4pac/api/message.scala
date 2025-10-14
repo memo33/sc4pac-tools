@@ -274,7 +274,7 @@ object InstalledPkg {
 // `installed` may be null
 case class InstalledStatus(explicit: Boolean, installed: InstalledStatus.Installed = null) derives UP.ReadWriter
 object InstalledStatus {
-  case class Installed(version: String, variant: Variant, installedAt: java.time.Instant, updatedAt: java.time.Instant)
+  case class Installed(version: String, variant: Variant, installedAt: java.time.Instant, updatedAt: java.time.Instant, reinstall: Boolean = false)
   given installedRw: UP.ReadWriter[Installed] = UP.stringKeyRW(UP.macroRW)
 }
 

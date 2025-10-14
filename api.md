@@ -19,6 +19,7 @@ GET  /plugins.installed.list?profile=id
 GET  /plugins.search?profile=id&q=<text>&category=<cat>
 POST /plugins.add?profile=id         ["<pkg1>", "<pkg2>", …]
 POST /plugins.remove?profile=id      ["<pkg1>", "<pkg2>", …]
+POST /plugins.reinstall?profile=id   ["<pkg1>", "<pkg2>", …]
 POST /plugins.export?profile=id      ["<pkg1>", "<pkg2>", …]
 
 GET  /variants.list?profile=id
@@ -158,7 +159,8 @@ Returns:
           version: string,
           variant: {"<variantId>": "<value>", …},
           installedAt: "<iso-date>",
-          updatedAt: "<iso-date>"
+          updatedAt: "<iso-date>",
+          reinstall?: boolean
         },
       },
       "<dependency1>": …,
@@ -346,6 +348,20 @@ Returns:
 Example:
 ```sh
 curl -X POST -d '["cyclone-boom:save-warning"]' http://localhost:51515/plugins.remove?profile=1
+```
+
+## plugins.reinstall
+
+Mark previously installed packages for re-installation, e.g. to restore missing files, ignoring any dependency relations.
+Packages that are not actually installed will be ignored.
+
+Synopsis: `POST /plugins.reinstall?profile=id ["<pkg1>", "<pkg2>", …]`
+
+Returns: `{"$type": "/result", "ok": true}`
+
+Example:
+```sh
+curl -X POST -d '["cyclone-boom:save-warning"]' http://localhost:51515/plugins.reinstall?profile=1
 ```
 
 ## plugins.export

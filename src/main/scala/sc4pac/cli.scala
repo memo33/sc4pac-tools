@@ -183,6 +183,38 @@ object Commands {
     }
   }
 
+  @ArgsName("packages...")
+  @HelpMessage(s"""
+    |Mark previously installed packages for re-installation, ignoring any dependency relations.
+    |
+    |For example, this is useful when you accidentally deleted some files from the package subfolder inside the Plugins folder. Reinstalling the package ensures the missing files are restored, without having to reinstall any packages that depend on it.
+    |
+    |Afterwards, run ${emph("sc4pac update")} for the changes to take effect.
+    |
+    |Example:
+    |  sc4pac reinstall cyclone-boom:save-warning   ${gray("# packages of the form <group>:<package-name>")}
+    |
+    |Packages that are not actually installed will be ignored.
+    """.stripMargin.trim)
+  final case class ReinstallOptions() extends Sc4pacCommandOptions
+
+  case object Reinstall extends Command[ReinstallOptions] {
+    def run(options: ReinstallOptions, args: RemainingArgs): Unit = {
+      if (args.all.isEmpty) {
+        fullHelpAsked(commandName)
+      }
+      val task = for {
+        mods   <- ZIO.fromEither(Sc4pac.parseModules(args.all)).catchAll { (err: ErrStr) =>
+                    error(caseapp.core.Error.Other(s"Package format is <group>:<package-name> ($err)"))
+                  }
+        config <- JD.PluginsSpec.readOrInit.map(_.config)
+        pac    <- Sc4pac.init(config)
+        _      <- pac.reinstall(mods.toSet)
+      } yield ()
+      runMainExit(task.provideLayer(cliLayer), exit)
+    }
+  }
+
   @ArgsName("search text...")
   @HelpMessage(s"""
     |Search for the name of a package.
@@ -803,6 +835,7 @@ object CliMain extends caseapp.core.app.CommandsEntryPoint {
     Commands.Add,
     Commands.Update,
     Commands.Remove,
+    Commands.Reinstall,
     Commands.Search,
     Commands.Info,
     Commands.List,

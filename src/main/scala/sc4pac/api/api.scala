@@ -247,6 +247,16 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
       }
     },
 
+    // 200, 400, 409
+    Method.POST / "plugins.reinstall" -> handler((req: Request) => wrapHttpEndpoint {
+      for {
+        mods        <- parseModulesOr400(req.body)
+        pluginsSpec <- readPluginsSpecOr409
+        pac         <- Sc4pac.init(pluginsSpec.config)
+        _           <- pac.reinstall(mods.toSet)  // non-installed packages are ignored (TODO should they raise an error?)
+      } yield jsonOk
+    }),
+
     // Test the websocket using Javascript in webbrowser (messages are also logged in network tab):
     //     let ws = new WebSocket('ws://localhost:51515/update'); ws.onmessage = function(e) { console.log(e) };
     //     ws.send(JSON.stringify({}))

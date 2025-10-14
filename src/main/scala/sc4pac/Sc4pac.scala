@@ -29,7 +29,7 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) {  // TODO d
       _            <- ZIO.unless(modsNext == modsOrig) {
                         val pluginsDataNext = pluginsSpec.copy(explicit = modsNext)
                         // we do not check whether file was modified as this entire operation is synchronous and fast, in most cases
-                        JsonIo.write(JD.PluginsSpec.path(context.profileRoot), pluginsDataNext, None)(ZIO.succeed(()))
+                        JsonIo.write(JD.PluginsSpec.path(context.profileRoot), pluginsDataNext, None)(ZIO.unit)
                       }
     } yield modsNext
   }
@@ -39,6 +39,19 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) {  // TODO d
     */
   def add(modules: Seq[BareModule]): Task[Seq[BareModule]] = {
     modifyExplicitModules(modsOrig => ZIO.succeed((modsOrig ++ modules).distinct))
+  }
+
+  /** Mark modules for reinstallation that have been installed before, either explicitly or implicitly.
+    */
+  def reinstall(modules: Set[BareModule]): Task[Unit] = {
+    for {
+      pluginsLockData <- JsonIo.read[JD.PluginsLock](JD.PluginsLock.path(context.profileRoot))  // at this point, file should already exist
+      _ = require(pluginsLockData.scheme > 1, "run an Update before trying to reinstall packages, as scheme=1 is not supported anymore")
+      pluginsLockDataNext = pluginsLockData.copy(installed = pluginsLockData.installed.map { i =>
+        if (modules.contains(i.toBareModule)) i.copy(reinstall = true) else i
+      })
+      _ <- JsonIo.write(JD.PluginsLock.path(context.profileRoot), pluginsLockDataNext, Some(pluginsLockData))(ZIO.unit)
+    } yield ()
   }
 
   /** Remove modules from the list of explicitly installed modules.
@@ -546,7 +559,7 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) {  // TODO d
                        JD.PluginsSpec.path(context.profileRoot),
                        pluginsSpec.copy(config = pluginsSpec.config.copy(variant = selections), explicit = explicitModules),
                        None
-                     )(ZIO.succeed(()))
+                     )(ZIO.unit)
     } yield ()
 
     private def doDownloadWithMirror(resolution: Resolution, depsToInstall: Seq[Dep]): RIO[Prompter & ResolutionContext & Downloader.Credentials, Seq[(DepAsset, Artifact, java.io.File)]] = {
@@ -581,7 +594,7 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) {  // TODO d
         pluginsLockData <- JD.PluginsLock.upgradeFromScheme1(pluginsLockData1, iterateAllChannelPackages(channelUrl = None), logger, pluginsRoot)
         (resolution, modules, variantSelection) <- doResolveHandleUnresolvable(modules0, variantSelection0)
         finalSelections =  variantSelection.buildFinalSelections()
-        plan            =  UpdatePlan.fromResolution(resolution, installed = pluginsLockData.dependenciesWithAssets)
+        plan            =  UpdatePlan.fromResolution(resolution, installed = pluginsLockData.dependenciesWithAssets, forceReinstall = pluginsLockData.packagesToReinstall)
         continue        <- ZIO.serviceWithZIO[Prompter](_.confirmUpdatePlan(plan))
                              .filterOrFail(_ == true)(error.Sc4pacAbort())
         _               <- ZIO.unless(!continue || finalSelections == variantSelection0.initialSelections && modules == modules0)(storeUpdatedSpec(finalSelections, modules))  // only store something after confirmation
@@ -693,14 +706,17 @@ object Sc4pac {
     def isUpToDate: Boolean = toRemove.isEmpty && toReinstall.isEmpty && toInstall.isEmpty
   }
   object UpdatePlan {
-    def fromResolution(resolution: Resolution, installed: Set[Dep]): UpdatePlan = {
+    // Construct an UpdatePlan from a full dependency resolution.
+    // Here, `forceReinstall` is a subset of `installed` packages that should be
+    // reinstalled, unless the resolution updates them to a different version anyway.
+    def fromResolution(resolution: Resolution, installed: Set[Dep], forceReinstall: Set[Dep]): UpdatePlan = {
       // TODO decide whether we should also look for updates of `changing` artifacts
 
       val wanted: Set[Dep] = resolution.transitiveDependencies.toSet
       val missing = wanted &~ installed
       val obsolete = installed &~ wanted
-      // for assets, we also reinstall the packages that depend on them
-      val toReinstall = wanted & installed & resolution.dependentsOf(missing.filter(_.isSc4pacAsset))
+      // Reinstall packages that depend on missing assets or that were forced to be reinstalled explicitly.
+      val toReinstall = wanted & installed & (resolution.dependentsOf(missing.filter(_.isSc4pacAsset)) | forceReinstall)
       // for packages to install, we also include their assets (so that they get fetched)
       val toInstall = missing | toReinstall
       val assetsToInstall = toInstall.flatMap(dep => resolution.dependenciesOf(dep).filter(_.isSc4pacAsset))
