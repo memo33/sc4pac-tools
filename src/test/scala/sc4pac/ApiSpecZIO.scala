@@ -755,18 +755,24 @@ object ApiSpecZIO extends ZIOSpecDefault {
                 case msg: api.PromptMessage.ConfirmInstallation => ZIO.succeed(msg.responses("Yes"))
                 case msg: api.PromptMessage.ConfirmInstallingDlls => ZIO.succeed(msg.responses("Yes"))
               }
-              def doUpdate(upToDate: Boolean) =
+              def doUpdate(upToDate: Boolean, expectRedownload: Boolean = false) =
                 wsEndpoint(s"update?profile=$profileId",
                   respond = respond(upToDate = upToDate),
-                  filter = msg => msg.json("$type").str.startsWith("/result"),
+                  filter = msg => { val s = msg.json("$type").str; s.startsWith("/result") || s == "/progress/download/started" },
                   checkMessages = queue => (for {
-                    _ <- queue.take.flatMap(f => addTestResult(assertTrue(f.json == jsonOk)))
+                    (msgs, f)  <- takeUntil(queue)(!_.json("$type").str.startsWith("/progress/download"))
+                    sums       =  msgs.map(_.json("$type").str).groupMapReduce(identity)(_ => 1)(_ + _)
+                    _          <- addTestResult(assertTrue(if (!expectRedownload) sums.isEmpty else (sums == Map("/progress/download/started" -> 3))))
+                    _          <- addTestResult(assertTrue(f.json == jsonOk))
                   } yield ()),
                 )
               for {
                 _  <- doUpdate(upToDate = true)
                 _  <- postEndpoint(s"plugins.reinstall?profile=$profileId", jsonBody(Seq("memo:demo-package"))).flatMap(isOk200)
-                _  <- doUpdate(upToDate = false)
+                _  <- doUpdate(upToDate = false, expectRedownload = false)
+                _  <- doUpdate(upToDate = true)
+                _  <- postEndpoint(s"plugins.reinstall?profile=$profileId&redownload", jsonBody(Seq("memo:demo-package"))).flatMap(isOk200)
+                _  <- doUpdate(upToDate = false, expectRedownload = true)
                 _  <- doUpdate(upToDate = true)
               } yield ()
             })

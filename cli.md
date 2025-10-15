@@ -126,10 +126,14 @@ Afterwards, run `sc4pac update` for the changes to take effect.
 
 **Example:**
 ```sh
-sc4pac reinstall cyclone-boom:save-warning
+sc4pac reinstall cyclone-boom:save-warning                # packages of the form <group>:<package-name>
+sc4pac reinstall --redownload cyclone-boom:save-warning   # redownload instead of using cached assets
 ```
 
 Packages that are not actually installed will be ignored.
+
+**Options:**
+- `--redownload` Also redownload assets of packages to re-install
 
 
 ---

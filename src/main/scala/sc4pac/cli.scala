@@ -192,11 +192,15 @@ object Commands {
     |Afterwards, run ${emph("sc4pac update")} for the changes to take effect.
     |
     |Example:
-    |  sc4pac reinstall cyclone-boom:save-warning   ${gray("# packages of the form <group>:<package-name>")}
+    |  sc4pac reinstall cyclone-boom:save-warning                ${gray("# packages of the form <group>:<package-name>")}
+    |  sc4pac reinstall --redownload cyclone-boom:save-warning   ${gray("# redownload instead of using cached assets")}
     |
     |Packages that are not actually installed will be ignored.
     """.stripMargin.trim)
-  final case class ReinstallOptions() extends Sc4pacCommandOptions
+  final case class ReinstallOptions(
+    @HelpMessage("Also redownload assets of packages to re-install") @Group("Main") @Tag("Main")
+    redownload: Boolean = false
+  ) extends Sc4pacCommandOptions
 
   case object Reinstall extends Command[ReinstallOptions] {
     def run(options: ReinstallOptions, args: RemainingArgs): Unit = {
@@ -209,7 +213,7 @@ object Commands {
                   }
         config <- JD.PluginsSpec.readOrInit.map(_.config)
         pac    <- Sc4pac.init(config)
-        _      <- pac.reinstall(mods.toSet)
+        _      <- pac.reinstall(mods.toSet, redownload = options.redownload)
       } yield ()
       runMainExit(task.provideLayer(cliLayer), exit)
     }

@@ -166,6 +166,7 @@ object JsonData extends SharedData {
     installedAt: Instant = installedAtDummy,  // since scheme 2
     updatedAt: Instant = installedAtDummy,  // since scheme 2
     reinstall: Boolean = false,  // since scheme 2+
+    redownload: Boolean = false,  // since scheme 2+
   ) derives ReadWriter {
     def toDepModule = DepModule(Organization(group), ModuleName(name), version = version, variant = variant)
     def toBareModule = BareModule(Organization(group), ModuleName(name))
@@ -176,8 +177,10 @@ object JsonData extends SharedData {
   case class PluginsLock(scheme: Int = 1, installed: Seq[InstalledData], assets: Seq[Asset]) derives ReadWriter {
     def dependenciesWithAssets: Set[Resolution.Dep] =
       (installed.map(_.toDepModule) ++ assets.map(DepAsset.fromAsset(_))).toSet
-    def packagesToReinstall: Set[Resolution.Dep] =
+    def packagesToReinstall: Set[Resolution.DepModule] =
       installed.iterator.filter(_.reinstall).map(_.toDepModule).toSet
+    def packagesToRedownload: Set[Resolution.DepModule] =
+      installed.iterator.filter(_.redownload).map(_.toDepModule).toSet
 
     def updateTo(plan: Sc4pac.UpdatePlan, stagedItems: Seq[Sc4pac.StageResult.Item]): PluginsLock = {
       val now = java.time.Instant.now().truncatedTo(ChronoUnit.SECONDS)

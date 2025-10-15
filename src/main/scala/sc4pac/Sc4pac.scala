@@ -43,12 +43,14 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) {  // TODO d
 
   /** Mark modules for reinstallation that have been installed before, either explicitly or implicitly.
     */
-  def reinstall(modules: Set[BareModule]): Task[Unit] = {
+  def reinstall(modules: Set[BareModule], redownload: Boolean): Task[Unit] = {
     for {
       pluginsLockData <- JsonIo.read[JD.PluginsLock](JD.PluginsLock.path(context.profileRoot))  // at this point, file should already exist
       _ = require(pluginsLockData.scheme > 1, "run an Update before trying to reinstall packages, as scheme=1 is not supported anymore")
       pluginsLockDataNext = pluginsLockData.copy(installed = pluginsLockData.installed.map { i =>
-        if (modules.contains(i.toBareModule)) i.copy(reinstall = true) else i
+        if (!modules.contains(i.toBareModule)) i
+        else if (redownload) i.copy(reinstall = true, redownload = true)
+        else i.copy(reinstall = true)
       })
       _ <- JsonIo.write(JD.PluginsLock.path(context.profileRoot), pluginsLockDataNext, Some(pluginsLockData))(ZIO.unit)
     } yield ()
@@ -562,10 +564,11 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) {  // TODO d
                      )(ZIO.unit)
     } yield ()
 
-    private def doDownloadWithMirror(resolution: Resolution, depsToInstall: Seq[Dep]): RIO[Prompter & ResolutionContext & Downloader.Credentials, Seq[(DepAsset, Artifact, java.io.File)]] = {
+    private def doDownloadWithMirror(resolution: Resolution, plan: UpdatePlan): RIO[Prompter & ResolutionContext & Downloader.Credentials, Seq[(DepAsset, Artifact, java.io.File)]] = {
+      val depsToInstall = resolution.transitiveDependencies.filter(plan.toInstall).reverse  // we start by fetching artifacts in reverse as those have fewest dependencies of their own
       ZIO.iterate(Left(Map.empty): Either[Map[java.net.URI, os.Path], Seq[(DepAsset, Artifact, java.io.File)]])(_.isLeft) {
         case Left(urlFallbacks) =>
-          resolution.fetchArtifactsOf(depsToInstall, urlFallbacks)
+          resolution.fetchArtifactsOf(depsToInstall, urlFallbacks, plan.toRedownload)
             .map(Right(_))
             .catchSome { case e: error.DownloadFailed if e.url.isDefined && !urlFallbacks.contains(e.url.get) =>
               ZIO.serviceWithZIO[Prompter](_.promptForDownloadMirror(e.url.get, e))
@@ -594,12 +597,16 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) {  // TODO d
         pluginsLockData <- JD.PluginsLock.upgradeFromScheme1(pluginsLockData1, iterateAllChannelPackages(channelUrl = None), logger, pluginsRoot)
         (resolution, modules, variantSelection) <- doResolveHandleUnresolvable(modules0, variantSelection0)
         finalSelections =  variantSelection.buildFinalSelections()
-        plan            =  UpdatePlan.fromResolution(resolution, installed = pluginsLockData.dependenciesWithAssets, forceReinstall = pluginsLockData.packagesToReinstall)
+        plan            =  UpdatePlan.fromResolution(resolution,
+                             installed = pluginsLockData.dependenciesWithAssets,
+                             forceReinstall = pluginsLockData.packagesToReinstall,
+                             forceRedownload = pluginsLockData.packagesToRedownload,
+                           )
         continue        <- ZIO.serviceWithZIO[Prompter](_.confirmUpdatePlan(plan))
                              .filterOrFail(_ == true)(error.Sc4pacAbort())
         _               <- ZIO.unless(!continue || finalSelections == variantSelection0.initialSelections && modules == modules0)(storeUpdatedSpec(finalSelections, modules))  // only store something after confirmation
         flagOpt         <- ZIO.unless(!continue || plan.isUpToDate)(for {
-          assetsToInstall <- doDownloadWithMirror(resolution, resolution.transitiveDependencies.filter(plan.toInstall).reverse)  // we start by fetching artifacts in reverse as those have fewest dependencies of their own
+          assetsToInstall <- doDownloadWithMirror(resolution, plan)
           depsToStage     =  plan.toInstall.collect{ case d: DepModule => d }.toSeq  // keep only non-assets
           flag            <- ZIO.scoped(for {
                                 stagingDirs <- Sc4pac.makeStagingDirs(tempRoot, logger)
@@ -623,7 +630,7 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) {  // TODO d
                           .mapError(e => { logger.log(e.getMessage); e })
         _            <- ZIO.foreachDiscard(resolutions) { resolution =>
                           (for {
-                            assetsToInstall <- resolution.fetchArtifactsOf(resolution.transitiveDependencies, urlFallbacks = Map.empty)
+                            assetsToInstall <- resolution.fetchArtifactsOf(resolution.transitiveDependencies, urlFallbacks = Map.empty, assetsToRedownload = Set.empty)
                             depsToStage     =  resolution.transitiveDependencies.collect{ case d: DepModule => d }.toSeq  // keep only non-assets
                             staged <- stageAll(stagingDirs, depsToStage, assetsToInstall, resolution)
                             _      <- ZIO.foreachDiscard(outputDir)(movePackagesToPlugins(staged, _))  // moves files only when output dir is defined
@@ -702,28 +709,36 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) {  // TODO d
 
 object Sc4pac {
 
-  case class UpdatePlan(toInstall: Set[Dep], toReinstall: Set[Dep], toRemove: Set[Dep]) {
+  // Here `toRedownload` are only the assets explicitly requested to be
+  // redownloaded. In general, a lot more assets will be downloaded, e.g. when
+  // they are updated to a new version which isn't cached yet.
+  case class UpdatePlan(toInstall: Set[Dep], toReinstall: Set[Dep], toRemove: Set[Dep], toRedownload: Set[DepAsset]) {
     def isUpToDate: Boolean = toRemove.isEmpty && toReinstall.isEmpty && toInstall.isEmpty
   }
   object UpdatePlan {
     // Construct an UpdatePlan from a full dependency resolution.
     // Here, `forceReinstall` is a subset of `installed` packages that should be
     // reinstalled, unless the resolution updates them to a different version anyway.
-    def fromResolution(resolution: Resolution, installed: Set[Dep], forceReinstall: Set[Dep]): UpdatePlan = {
+    // Likewise, `forceRedownload` is a subset of packages whose assets should be redownloaded.
+    def fromResolution(resolution: Resolution, installed: Set[Dep], forceReinstall: Set[DepModule], forceRedownload: Set[DepModule]): UpdatePlan = {
       // TODO decide whether we should also look for updates of `changing` artifacts
 
       val wanted: Set[Dep] = resolution.transitiveDependencies.toSet
       val missing = wanted &~ installed
       val obsolete = installed &~ wanted
       // Reinstall packages that depend on missing assets or that were forced to be reinstalled explicitly.
-      val toReinstall = wanted & installed & (resolution.dependentsOf(missing.filter(_.isSc4pacAsset)) | forceReinstall)
+      val toReinstall = wanted & installed & (resolution.dependentsOf(missing.filter(_.isSc4pacAsset)) ++ forceReinstall)
       // for packages to install, we also include their assets (so that they get fetched)
       val toInstall = missing | toReinstall
-      val assetsToInstall = toInstall.flatMap(dep => resolution.dependenciesOf(dep).filter(_.isSc4pacAsset))
+      val assetsToInstall = toInstall.flatMap(dep => resolution.dependenciesOf(dep).collect{ case d: DepAsset => d })
+      val assetsToRedownload = assetsToInstall & forceRedownload.flatMap(dep =>
+          resolution.dependenciesOf(dep, ignoreUnresolved = true).collect{ case d: DepAsset => d })  // note that dependenciesOf converts to BareModule, so redownloading even works when variants change
       UpdatePlan(
-        toInstall = toInstall | assetsToInstall,
+        toInstall = toInstall ++ assetsToInstall,
         toReinstall = toReinstall,
-        toRemove = obsolete | toReinstall)  // to reinstall a package, it first needs to be removed
+        toRemove = obsolete | toReinstall,  // to reinstall a package, it first needs to be removed
+        toRedownload = assetsToRedownload,
+      )
       // (-------------wanted--------------)
       //           (-------------installed--------------)
       // (-missing-)                       (--obsolete--)

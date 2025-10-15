@@ -359,9 +359,13 @@ Synopsis: `POST /plugins.reinstall?profile=id ["<pkg1>", "<pkg2>", …]`
 
 Returns: `{"$type": "/result", "ok": true}`
 
+Optional parameters:
+- `redownload` to redownload assets of the packages to reinstall.
+
 Example:
 ```sh
 curl -X POST -d '["cyclone-boom:save-warning"]' http://localhost:51515/plugins.reinstall?profile=1
+curl -X POST -d '["cyclone-boom:save-warning"]' http://localhost:51515/plugins.reinstall?profile=1&redownload
 ```
 
 ## plugins.export

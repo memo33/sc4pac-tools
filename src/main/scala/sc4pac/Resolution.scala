@@ -224,8 +224,14 @@ class Resolution(reachableDeps: TreeSeqMap[BareDep, Links], resolvedData: Map[Ba
   val transitiveDependencies: Seq[Dep] = reachableDeps.keysIterator.map(nonbareDeps).toSeq
 
   /** Compute the direct dependencies. */
-  def dependenciesOf(dep: Dep): Set[Dep] = {
-    reachableDeps(dep.toBareDep).dependencies.map(nonbareDeps).toSet
+  def dependenciesOf(dep: Dep, ignoreUnresolved: Boolean = false): Set[Dep] = {
+    val linksOpt = reachableDeps.get(dep.toBareDep)
+    if (!linksOpt.isDefined) {
+      assert(ignoreUnresolved, s"Dependency resolution did not resolve $dep")
+      Set.empty
+    } else {
+      linksOpt.get.dependencies.map(nonbareDeps).toSet
+    }
   }
 
   /** Compute the direct reverse dependencies. */
@@ -236,7 +242,7 @@ class Resolution(reachableDeps: TreeSeqMap[BareDep, Links], resolvedData: Map[Ba
   /** Download artifacts of a subset of the dependency set of the resolution, or
     * take files from cache in case they are still up-to-date.
     */
-  def fetchArtifactsOf(subset: Seq[Dep], urlFallbacks: Map[java.net.URI, os.Path]): RIO[ResolutionContext & Downloader.Credentials, Seq[(DepAsset, Artifact, java.io.File)]] = {
+  def fetchArtifactsOf(subset: Seq[Dep], urlFallbacks: Map[java.net.URI, os.Path], assetsToRedownload: Set[DepAsset]): RIO[ResolutionContext & Downloader.Credentials, Seq[(DepAsset, Artifact, java.io.File)]] = {
     val assetsArtifacts = subset.collect{ case d: DepAsset =>
       (d, Artifact(
         d.url,
@@ -244,6 +250,7 @@ class Resolution(reachableDeps: TreeSeqMap[BareDep, Links], resolvedData: Map[Ba
         lastModified = d.lastModified,  // non-changing assets should have lastModified defined and vice versa
         checksum = d.checksum,
         redownloadOnChecksumError = false,
+        forceRedownload = assetsToRedownload.contains(d),
         localMirror = urlFallbacks.get(d.url),
       ))
     }

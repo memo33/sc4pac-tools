@@ -249,11 +249,12 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
 
     // 200, 400, 409
     Method.POST / "plugins.reinstall" -> handler((req: Request) => wrapHttpEndpoint {
+      val redownload = req.url.queryParams.getAll("redownload").nonEmpty
       for {
         mods        <- parseModulesOr400(req.body)
         pluginsSpec <- readPluginsSpecOr409
         pac         <- Sc4pac.init(pluginsSpec.config)
-        _           <- pac.reinstall(mods.toSet)  // non-installed packages are ignored (TODO should they raise an error?)
+        _           <- pac.reinstall(mods.toSet, redownload = redownload)  // non-installed packages are ignored (TODO should they raise an error?)
       } yield jsonOk
     }),
 
