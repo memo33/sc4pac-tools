@@ -20,6 +20,8 @@ GET  /plugins.search?profile=id&q=<text>&category=<cat>
 POST /plugins.add?profile=id         ["<pkg1>", "<pkg2>", …]
 POST /plugins.remove?profile=id      ["<pkg1>", "<pkg2>", …]
 POST /plugins.reinstall?profile=id   ["<pkg1>", "<pkg2>", …]
+GET  /plugins.repair.scan?profile=id
+POST /plugins.repair?profile=id      {incompletePackages: ["<pkg1>", …], orphanFiles: [string, …]}
 POST /plugins.export?profile=id      ["<pkg1>", "<pkg2>", …]
 
 GET  /variants.list?profile=id
@@ -366,6 +368,33 @@ Example:
 ```sh
 curl -X POST -d '["cyclone-boom:save-warning"]' http://localhost:51515/plugins.reinstall?profile=1
 curl -X POST -d '["cyclone-boom:save-warning"]' http://localhost:51515/plugins.reinstall?profile=1&redownload
+```
+
+## plugins.repair.scan
+
+Scan the Plugins folder for broken packages.
+
+Synopsis: `GET /plugins.repair.scan?profile=id`
+
+Returns:
+```
+{incompletePackages: ["<pkg1>", …], orphanFiles: [string, …]}
+```
+
+## plugins.repair
+
+Execute the repair of the Plugins folder based on the result of `/plugins.repair.scan`.
+The incomplete packages will be marked for re-installation. The orphan files will be deleted.
+
+Synopsis: `POST /plugins.repair?profile=id {incompletePackages: ["<pkg1>", …], orphanFiles: [string, …]}`
+
+Returns:
+- 200 `{"$type": "/result", "ok": false}` if a subsequent `/update` is needed to complete the repair
+- 200 `{"$type": "/result", "ok": true}` if no subsequent `/update` is needed to complete the repair
+
+Example:
+```sh
+curl -X POST -d '{"incompletePackages": ["cyclone-boom:save-warning"], "orphanFiles": []}' http://localhost:51515/plugins.repair?profile=1
 ```
 
 ## plugins.export

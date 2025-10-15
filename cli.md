@@ -45,6 +45,7 @@ add             Add new packages to install explicitly.
 update          Update all installed packages to their latest version and install any missing packages.
 remove          Remove packages that have been installed explicitly.
 reinstall       Mark previously installed packages for re-installation.
+repair          Scan the Plugins folder for broken packages and repair them.
 search          Search for the name of a package.
 info            Display more information about a package.
 list            List all installed packages.
@@ -134,6 +135,30 @@ Packages that are not actually installed will be ignored.
 
 **Options:**
 - `--redownload` Also redownload assets of packages to re-install
+
+
+---
+## repair
+
+**Usage:** `sc4pac repair [options]`
+
+Scan the Plugins folder for broken packages and repair them.
+
+Normally this is not needed, but if the Plugins files somehow got out-of-sync with *sc4pac*'s internal state, this command may be able to fix that.
+
+Specifically, this command finds old `.sc4pac` subfolders that are not needed anymore and will delete them.
+Moreover, it detects missing `.sc4pac` subfolders and will mark the corresponding packages for re-installation with the next `sc4pac update`.
+
+Note that this command will _not_ detect when some files of a package are missing, if the `.sc4pac` package subfolder still exists. In that case, use `sc4pac reinstall` instead, for the affected package.
+
+**Example:**
+```sh
+sc4pac repair
+```
+
+**Options:**
+- `-n, --dry-run`  Don't actually remove or fix anything, but just display detected issues
+- `-y, --yes`      Accept some default answers without asking, usually "yes"
 
 
 ---

@@ -258,6 +258,27 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
       } yield jsonOk
     }),
 
+    // 200, 409
+    Method.GET / "plugins.repair.scan" -> handler((req: Request) => wrapHttpEndpoint {
+      for {
+        pluginsSpec <- readPluginsSpecOr409
+        pac         <- Sc4pac.init(pluginsSpec.config)
+        pluginsRoot <- pluginsSpec.config.pluginsRootAbs
+        plan        <- pac.repairScan(pluginsRoot = pluginsRoot)
+      } yield jsonResponse(plan)
+    }),
+
+    // 200, 400, 409
+    Method.POST / "plugins.repair" -> handler((req: Request) => wrapHttpEndpoint {
+      for {
+        plan        <- parseOr400[Sc4pac.RepairPlan](req.body, ErrorMessage.BadRequest("Malformed repair arguments", """Pass arrays "incompletePackages" and "orphanFiles" as arguments."""))
+        pluginsSpec <- readPluginsSpecOr409
+        pac         <- Sc4pac.init(pluginsSpec.config)
+        pluginsRoot <- pluginsSpec.config.pluginsRootAbs
+        updateNeeded <- pac.repair(plan, pluginsRoot = pluginsRoot)
+      } yield jsonResponse(ResultMessage(ok = !updateNeeded))
+    }),
+
     // Test the websocket using Javascript in webbrowser (messages are also logged in network tab):
     //     let ws = new WebSocket('ws://localhost:51515/update'); ws.onmessage = function(e) { console.log(e) };
     //     ws.send(JSON.stringify({}))

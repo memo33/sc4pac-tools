@@ -9,8 +9,8 @@ import upickle.default as UP
 import sc4pac.error.*
 import sc4pac.Constants.isDll
 import sc4pac.JsonData as JD
-import JD.Warning
-import sc4pac.Sc4pac.{StageResult, UpdatePlan}
+import JD.{Warning, bareModuleRw, subPathRw}
+import sc4pac.Sc4pac.{StageResult, UpdatePlan, RepairPlan}
 import sc4pac.Resolution.{Dep, DepModule, DepAsset}
 
 // TODO Use `Runtime#reportFatal` or `Runtime.setReportFatal` to log fatal errors like stack overflow
@@ -42,18 +42,23 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) {  // TODO d
   }
 
   /** Mark modules for reinstallation that have been installed before, either explicitly or implicitly.
+    * Returns true if any matching module has been found and marked for reinstallation.
     */
-  def reinstall(modules: Set[BareModule], redownload: Boolean): Task[Unit] = {
-    for {
-      pluginsLockData <- JsonIo.read[JD.PluginsLock](JD.PluginsLock.path(context.profileRoot))  // at this point, file should already exist
-      _ = require(pluginsLockData.scheme > 1, "run an Update before trying to reinstall packages, as scheme=1 is not supported anymore")
-      pluginsLockDataNext = pluginsLockData.copy(installed = pluginsLockData.installed.map { i =>
+  def reinstall(modules: Set[BareModule], redownload: Boolean): Task[Boolean] = {
+    JsonIo.read[JD.PluginsLock](JD.PluginsLock.path(context.profileRoot)).flatMap { pluginsLockData =>  // at this point, file should already exist
+      require(pluginsLockData.scheme > 1, "run an Update before trying to reinstall packages, as scheme=1 is not supported anymore")
+      var foundAny = false
+      val pluginsLockDataNext = pluginsLockData.copy(installed = pluginsLockData.installed.map { i =>
         if (!modules.contains(i.toBareModule)) i
-        else if (redownload) i.copy(reinstall = true, redownload = true)
-        else i.copy(reinstall = true)
+        else {
+          foundAny = true
+          if (redownload) i.copy(reinstall = true, redownload = true) else i.copy(reinstall = true)
+        }
       })
-      _ <- JsonIo.write(JD.PluginsLock.path(context.profileRoot), pluginsLockDataNext, Some(pluginsLockData))(ZIO.unit)
-    } yield ()
+      for {
+        _ <- JsonIo.write(JD.PluginsLock.path(context.profileRoot), pluginsLockDataNext, Some(pluginsLockData))(ZIO.unit)
+      } yield foundAny
+    }
   }
 
   /** Remove modules from the list of explicitly installed modules.
@@ -89,6 +94,42 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) {  // TODO d
       case None => context.repositories.iterator.flatMap(_.iterateChannelPackages)
       case Some(url) => context.repositories.find(_.baseUri.toString == url).iterator.flatMap(_.iterateChannelPackages)
     }
+  }
+
+  /** Detect missing/orphan package subfolders inside Plugins. */
+  def repairScan(pluginsRoot: os.Path): Task[RepairPlan] = {
+    def isPackageSubfolder(path: os.Path): Boolean = path.last.endsWith(".sc4pac") && path != pluginsRoot && os.isDir(path)
+    for {
+      pluginsLockData <- JsonIo.read[JD.PluginsLock](JD.PluginsLock.path(context.profileRoot))  // at this point, file should already exist
+      _ = require(pluginsLockData.scheme > 1, "run an Update before trying to repair plugins, as scheme=1 is not supported anymore")
+      incompletePackages <-
+        ZIO.attemptBlockingIO {
+          pluginsLockData.installed
+            .filter(_.files.exists(subpath => !os.exists(pluginsRoot / subpath, followLinks = true)))  // followLinks=true will detect broken symlinks as well
+            .map(_.toBareModule)
+        }
+      expectedPaths = pluginsLockData.installed.iterator.flatMap(_.files).toSet: Set[os.SubPath]
+      unexpectedPaths <-
+        ZIO.attemptBlockingIO {
+          os.walk
+            .stream(pluginsRoot,
+              skip = (path) => expectedPaths.contains(path.subRelativeTo(pluginsRoot)) || isPackageSubfolder(path / os.up),
+              followLinks = false,
+              maxDepth = 8,  // currently .sc4pac folders only have depth 3 (NAM) or 2 (everything else)
+            )
+            .filter(isPackageSubfolder)
+            .map(_.subRelativeTo(pluginsRoot))
+            .toSeq.sorted
+        }
+    } yield RepairPlan(incompletePackages = incompletePackages, orphanFiles = unexpectedPaths)
+  }
+
+  /** Executes RepairPlan. Returns whether subsequent update is necessary for changes to take full effect. */
+  def repair(plan: RepairPlan, pluginsRoot: os.Path): Task[Boolean] = {
+    for {
+      _        <- ZIO.attemptBlockingIO(plan.orphanFiles.foreach(subpath => Sc4pac.removeAllForcibly(pluginsRoot / subpath)))
+      foundAny <- ZIO.when(plan.incompletePackages.nonEmpty)(reinstall(plan.incompletePackages.toSet, redownload = false))
+    } yield foundAny.getOrElse(false)
   }
 
   /** Fuzzy-search across all repositories.
@@ -921,4 +962,7 @@ object Sc4pac {
     }
   }
 
+  case class RepairPlan(incompletePackages: Seq[BareModule], orphanFiles: Seq[os.SubPath]) derives UP.ReadWriter {
+    def isUpToDate: Boolean = incompletePackages.isEmpty && orphanFiles.isEmpty
+  }
 }

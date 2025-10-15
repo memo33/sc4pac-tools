@@ -118,6 +118,21 @@ class CliLogger private (out: java.io.PrintStream, useColor: Boolean, isInteract
     }
   }
 
+  def logRepairPlan(plan: Sc4pac.RepairPlan): Unit = {
+    for ((mod, idx) <- plan.incompletePackages.zipWithIndex) {
+      log(s"(${idx+1}) " + mod.formattedDisplayString(gray, bold) + " " + cyanBold("[missing]"))
+    }
+    val offset = plan.incompletePackages.length
+    for ((subpath, idx) <- plan.orphanFiles.zipWithIndex) {
+      log(s"(${idx+1+offset}) $subpath " + cyanBold("[orphan]"))
+    }
+  }
+
+  def logRepairResult(needsUpdate: Boolean): Unit = {
+    if (!needsUpdate) log("Done.")
+    else log(s"Done. Run ${bold("sc4pac update")} to finish the repair.")
+  }
+
   // private val spinnerSymbols = collection.immutable.ArraySeq("⡿", "⣟", "⣯", "⣷", "⣾", "⣽", "⣻", "⢿").reverse
   private val spinnerSymbols = {
     val n = 6

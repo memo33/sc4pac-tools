@@ -219,6 +219,51 @@ object Commands {
     }
   }
 
+  @HelpMessage(s"""
+    |Scan the Plugins folder for broken packages and repair them.
+    |
+    |Normally this is not needed, but if the Plugins files somehow got out-of-sync with sc4pac's internal state, this command may be able to fix that.
+    |
+    |Specifically, this command finds old ${gray(".sc4pac")} subfolders that are not needed anymore and will delete them.
+    |Moreover, it detects missing ${gray(".sc4pac")} subfolders and will mark the corresponding packages for re-installation with the next ${emph("sc4pac update")}.
+    |
+    |Note that this command will ${emph("not")} detect when some files of a package are missing, if the ${gray(".sc4pac")} package subfolder still exists. In that case, use ${emph("sc4pac reinstall")} instead, for the affected package.
+    |
+    |Example:
+    |  sc4pac repair
+    """.stripMargin.trim)
+  final case class RepairOptions(
+    @ExtraName("n") @HelpMessage("""Don't actually remove or fix anything, but just display detected issues""") @Group("Main") @Tag("Main")
+    dryRun: Boolean = false,
+    @ExtraName("y") @HelpMessage("""Accept some default answers without asking, usually "yes"""") @Group("Main") @Tag("Main")
+    yes: Boolean = false,
+  ) extends Sc4pacCommandOptions
+
+  case object Repair extends Command[RepairOptions] {
+    def run(options: RepairOptions, args: RemainingArgs): Unit = {
+      val task = for {
+        config <- JD.PluginsSpec.readOrInit.map(_.config)
+        pac    <- Sc4pac.init(config)
+        logger <- ZIO.service[CliLogger]
+        pluginsRoot <- config.pluginsRootAbs
+        _      <- ZIO.succeed(logger.log(s"Scanning Plugins folder: $pluginsRoot"))
+        plan   <- pac.repairScan(pluginsRoot = pluginsRoot)
+        _      <- if (plan.isUpToDate)
+                    ZIO.succeed(logger.log("Looking good. No issues found."))
+                  else for {
+                    _  <- ZIO.succeed(logger.log(f"There are broken packages in your Plugins:%n"))
+                    _  <- ZIO.succeed(logger.logRepairPlan(plan))
+                    _  <- ZIO.succeed(logger.log(""))
+                  } yield ()
+        _      <- ZIO.unlessDiscard(plan.isUpToDate || options.dryRun)(for {
+                    _ <- ZIO.serviceWithZIO[CliPrompter](_.confirmRepairPlan()).filterOrFail(_ == true)(sc4pac.error.Sc4pacAbort())
+                    _ <- pac.repair(plan, pluginsRoot = pluginsRoot).map(logger.logRepairResult)
+                  } yield ())
+      } yield ()
+      runMainExit(task.provideLayer(cliLayer.map(_.update((_: CliPrompter).withAutoYes(options.yes)))), exit)
+    }
+  }
+
   @ArgsName("search text...")
   @HelpMessage(s"""
     |Search for the name of a package.
@@ -840,6 +885,7 @@ object CliMain extends caseapp.core.app.CommandsEntryPoint {
     Commands.Update,
     Commands.Remove,
     Commands.Reinstall,
+    Commands.Repair,
     Commands.Search,
     Commands.Info,
     Commands.List,

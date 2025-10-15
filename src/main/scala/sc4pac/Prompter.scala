@@ -164,4 +164,12 @@ class CliPrompter(val logger: CliLogger, autoYes: Boolean) extends Prompter {
       onTrue = Prompt.choice("Delete staged files?", Seq("Yes"), default = Some("Yes")).map(_ == "Yes").unit,
     )
   }
+
+  def confirmRepairPlan(): Task[Boolean] = {
+    if (autoYes) ZIO.succeed({ logger.log("Deleting orphan files and marking incomplete packages for re-installation."); true })  // if --yes flag is present, always continue
+    else Prompt.ifInteractive(
+      onFalse = ZIO.fail(new error.Sc4pacNotInteractive(s"Pass --yes to fix broken packages non-interactively.")),
+      onTrue = Prompt.yesNo("Delete orphan files and mark incomplete packages for re-installation?"),
+    )
+  }
 }
