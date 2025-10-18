@@ -283,6 +283,38 @@ object ApiSpecZIO extends ZIOSpecDefault {
           _      <- addTestResult(assertTrue(data.profiles.forall(_.pluginsRoot == null)))  // as profiles are not initialized yet
         } yield ())
       },
+      test("/profiles.remove") {
+        withTestResultRef(for {
+          data   <- getEndpoint("profiles.list").flatMap(getBody200[api.ProfilesList])
+          _      <- addTestResult(assertTrue(
+                      data.profiles.exists(_.id == "2"),
+                      !data.profiles.exists(_.id == "42"),
+                    ))
+          resp   <- postEndpoint("profiles.remove", jsonBody(Obj("id" -> "42")))
+          _      <- addTestResult(assertTrue(resp.status.code == 400))
+          data2  <- getEndpoint("profiles.list").flatMap(getBody200[api.ProfilesList])
+          _      <- addTestResult(assertTrue(data2 == data))
+          subdir <- ZIO.serviceWith[ProfilesDir](_.path / "2" / "subfolder")
+          _      <- ZIO.attemptBlockingIO(os.makeDir.all(subdir))
+          resp   <- postEndpoint("profiles.remove", jsonBody(Obj("id" -> "2")))
+          data   <- parseBody[ujson.Value](resp.body)
+          exists <- ZIO.attemptBlockingIO(os.exists(subdir))
+          _      <- addTestResult(assertTrue(
+                      resp.status.code == 500,
+                      data("$type").str == "/error/file-access-denied",
+                      exists,
+                    ))
+          _      <- ZIO.attemptBlockingIO(Sc4pac.removeAllForcibly(subdir))
+          _      <- postEndpoint("profiles.remove", jsonBody(Obj("id" -> "2"))).flatMap(isOk200)
+          data   <- getEndpoint("profiles.list").flatMap(getBody200[api.ProfilesList])
+          _      <- addTestResult(assertTrue(
+                      data.profiles.exists(_.id != "2"),
+                      !os.exists(subdir),
+                      !os.exists(subdir / os.up),
+                      os.exists(subdir / os.up / os.up),
+                    ))
+        } yield ())
+      },
     ),
 
     suite("profile")(ZIO.serviceWith[JD.ProfileData](_.id).map { (profileId: String) =>

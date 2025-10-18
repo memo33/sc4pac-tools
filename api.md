@@ -40,6 +40,7 @@ GET  /server.connect                 (websocket)
 
 GET  /profiles.list
 POST /profiles.add                   {name: string}
+POST /profiles.remove                {id: "<id>"}
 POST /profiles.switch                {id: "<id>"}
 
 GET  /settings.all.get
@@ -705,9 +706,25 @@ Synopsis: `POST /profiles.add {name: string}`
 
 Returns: `{"id": "<id>", "name": string}`
 
+## profiles.remove
+
+Delete a profile. This removes the profile JSON files from the Profile Configuration Folder. The Plugins and Cache folders are left unchanged.
+
+Synopsis: `POST /profiles.remove {id: "<id>"}`
+
+Returns:
+- 200 `{"$type": "/result", "ok": true}`
+- 400 if profile does not exist
+- 500 `/error/file-access-denied` in case there are unexpected sub-subfolders in profile configuration directory
+
+Example:
+```sh
+curl -X POST -d '{"id": "2"}' http://localhost:51515/profiles.remove
+```
+
 ## profiles.switch
 
-Set a different existing profiles as the currently active one.
+Set a different existing profile as the currently active one.
 
 Synopsis: `POST /profiles.switch {id: "<id>"}`
 

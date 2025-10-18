@@ -18,6 +18,10 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
   private def jsonResponse[A : UP.Writer](obj: A): Response = Response.json(UP.write(obj, indent = options.indent))
   private def jsonFrame[A : UP.Writer](obj: A): WebSocketFrame = WebSocketFrame.Text(UP.write(obj, indent = options.indent))
 
+  // only for use in API, not CLI, in particular to ensure only profile roots constructed by ID can be deleted via API
+  private def profileRootFromId(id: String)/*: zio.RLayer[ProfilesDir, ProfileRoot]*/ =  // inferred type is more specific which helps the compiler
+    zio.ZLayer.fromFunction((dir: ProfilesDir) => ProfileRoot(dir.path / id))
+
   private val makePlatformDefaults: URIO[ProfileRoot & service.FileSystem, Map[String, Seq[String]]] =
     for {
       defPlugins  <- JD.PluginsSpec.defaultPluginsRoot
@@ -520,7 +524,7 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
                           variant = pluginsSpec.config.variant ++ selections,
                         ))
         path         <- JD.PluginsSpec.pathURIO
-        _            <- JsonIo.write(path, pluginsSpec2, None)(ZIO.succeed(()))
+        _            <- JsonIo.write(path, pluginsSpec2, None)(ZIO.unit)
       } yield jsonOk
     }),
 
@@ -569,7 +573,7 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
                             if (urls2.nonEmpty) urls2.distinct else Constants.defaultChannelUrls
                           ))
           path         <- JD.PluginsSpec.pathURIO
-          _            <- JsonIo.write(path, pluginsSpec2, None)(ZIO.succeed(()))
+          _            <- JsonIo.write(path, pluginsSpec2, None)(ZIO.unit)
         } yield jsonOk
       }
     },
@@ -610,9 +614,7 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
         req.url.queryParams.getAll("profile").headOption match {
           case Some[ProfileId](id) =>
             handler0(req)
-              .provideSomeLayer[ProfilesDir & service.FileSystem & Ref[Option[FileCache]]](zio.ZLayer.fromFunction(
-                (dir: ProfilesDir) => ProfileRoot(dir.path / id)
-              ))
+              .provideSomeLayer[ProfilesDir & service.FileSystem & Ref[Option[FileCache]]](profileRootFromId(id))
           case None =>
             ZIO.fail(jsonResponse(ErrorMessage.BadRequest(
               """URL query parameter "profile" is required.""", "Pass the profile ID as query."
@@ -650,13 +652,13 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
             logger <- ZIO.service[Logger]
             _      <- ZIO.succeed(logger.log(s"Registered websocket connection $num."))
             _      <- wsChannel.receiveAll {
-                        case UserEventTriggered(UserEvent.HandshakeComplete) => ZIO.succeed(())  // ignore expected event
+                        case UserEventTriggered(UserEvent.HandshakeComplete) => ZIO.unit  // ignore expected event
                         case Unregistered =>
                           logger.log(s"Unregistered websocket connection $num.")  // client closed websocket (results in websocket shutdown)
-                          ZIO.succeed(())
+                          ZIO.unit
                         case event =>
                           logger.warn(s"Discarding unexpected websocket event: $event")
-                          ZIO.succeed(())  // discard all unexpected messages (and events) and continue receiving
+                          ZIO.unit  // discard all unexpected messages (and events) and continue receiving
                       }
             _      <- wsChannel.shutdown: zio.UIO[Unit]  // may be redundant
             _      <- ZIO.succeed(logger.log(s"Shut down websocket connection $num."))
@@ -701,7 +703,7 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
               else
                 ZIO.foreachPar(profiles.profiles) { p =>
                   for {
-                    pluginsSpecOpt <- JD.PluginsSpec.readMaybe.provideSomeLayer(zio.ZLayer.succeed[ProfileRoot](ProfileRoot(profilesDir.path / p.id)))
+                    pluginsSpecOpt <- JD.PluginsSpec.readMaybe.provideSomeLayer(profileRootFromId(p.id))
                   } yield ProfilesList.ProfileData2(id = p.id, name = p.name, pluginsRoot = pluginsSpecOpt.map(_.config.pluginsRoot).orNull)
                 }
           } yield jsonResponse(ProfilesList(
@@ -721,10 +723,40 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
             (ps2, p)    = ps.add(profileName.name)
             jsonPath    <- JD.Profiles.pathURIO
             _           <- ZIO.attemptBlockingIO { os.makeDir.all(jsonPath / os.up) }
-            _           <- JsonIo.write(jsonPath, ps2, None)(ZIO.succeed(()))
+            _           <- JsonIo.write(jsonPath, ps2, None)(ZIO.unit)
           } yield jsonResponse(p)
         }
       },
+
+      // 200, 400, 500
+      Method.POST / "profiles.remove" -> handler((req: Request) => wrapHttpEndpoint {
+        for {
+          arg    <- parseOr400[ProfileIdObj](req.body, ErrorMessage.BadRequest("Missing profile ID.", "Pass the \"id\" for the profile to remove."))
+          data   <- JD.Profiles.readOrInit
+          idx    <- ZIO.succeed(data.profiles.indexWhere(_.id == arg.id))
+                      .filterOrFail(_ != -1)(jsonResponse(
+                        ErrorMessage.BadRequest(s"""Profile ID "${arg.id}" does not exist.""", "Make sure to only remove existing profiles.")
+                      ).status(Status.BadRequest))
+          profileRoot <- ZIO.service[ProfileRoot].provideSomeLayer(profileRootFromId(data.profiles(idx).id))
+          logger <- ZIO.service[Logger]
+          _      <- ZIO.attemptBlockingIO {
+                      if (os.exists(profileRoot.path)) {
+                        for (path <- os.list.stream(profileRoot.path).find(os.isDir)) {
+                          // sanity check (profileRoot was created by GUI, so should only contain two .json files)
+                          throw java.nio.file.AccessDeniedException(s"Failed to remove profile directory as it contains unexpected subdirectories: $path")
+                        }
+                        logger.log(s"Deleting profile directory: ${profileRoot.path}")
+                        Sc4pac.removeAllForcibly(profileRoot.path)
+                      }
+                    }
+          ps2    =  data.profiles.patch(from = idx, Nil, replaced = 1)
+          data2  =  data.copy(
+                      profiles = ps2,
+                      currentProfileId = data.currentProfileId.filter(_ != arg.id).orElse(ps2.lastOption.map(_.id)),
+                    )
+          _      <- JD.Profiles.pathURIO.flatMap(JsonIo.write(_, data2, origState = Some(data))(ZIO.unit))
+        } yield jsonOk
+      }),
 
       // 200, 400
       Method.POST / "profiles.switch" -> handler((req: Request) => wrapHttpEndpoint {
@@ -736,7 +768,7 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
                     ).status(Status.BadRequest))
           _    <- ZIO.unlessDiscard(ps.currentProfileId.contains(arg.id)) {
                     val ps2 = ps.copy(currentProfileId = Some(arg.id))
-                    JD.Profiles.pathURIO.flatMap(JsonIo.write(_, ps2, origState = Some(ps))(ZIO.succeed(())))
+                    JD.Profiles.pathURIO.flatMap(JsonIo.write(_, ps2, origState = Some(ps))(ZIO.unit))
                   }
         } yield jsonOk
       }),
@@ -753,7 +785,7 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
           ps          <- JD.Profiles.readOrInit
           ps2         =  ps.copy(settings = newSettings)
           jsonPath    <- JD.Profiles.pathURIO
-          _           <- JsonIo.write(jsonPath, ps2, None)(ZIO.succeed(()))
+          _           <- JsonIo.write(jsonPath, ps2, None)(ZIO.unit)
         } yield jsonOk
       }),
 
