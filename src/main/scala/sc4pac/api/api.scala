@@ -773,6 +773,19 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
         } yield jsonOk
       }),
 
+      // 200, 400
+      Method.POST / "profiles.rename" -> handler((req: Request) => wrapHttpEndpoint {
+        for {
+          arg  <- parseOr400[JD.ProfileData](req.body, ErrorMessage.BadRequest("Missing profile ID or name.", "Pass the \"id\" and \"name\" for the profile."))
+          data <- JD.Profiles.readOrInit
+                    .filterOrFail(_.profiles.exists(_.id == arg.id))(jsonResponse(
+                      ErrorMessage.BadRequest(s"""Profile ID "${arg.id}" does not exist.""", "Make sure to only rename existing profiles.")
+                    ).status(Status.BadRequest))
+          data2 = data.copy(profiles = data.profiles.map(p => if (p.id == arg.id) p.copy(name = arg.name) else p))
+          _    <- JD.Profiles.pathURIO.flatMap(JsonIo.write(_, data2, origState = Some(data))(ZIO.unit))
+        } yield jsonOk
+      }),
+
       // 200
       Method.GET / "settings.all.get" -> handler(wrapHttpEndpoint {
         JD.Profiles.readOrInit.map(profiles => jsonResponse(profiles.settings))

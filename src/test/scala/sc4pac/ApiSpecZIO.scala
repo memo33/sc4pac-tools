@@ -283,6 +283,23 @@ object ApiSpecZIO extends ZIOSpecDefault {
           _      <- addTestResult(assertTrue(data.profiles.forall(_.pluginsRoot == null)))  // as profiles are not initialized yet
         } yield ())
       },
+      test("/profiles.rename") {
+        withTestResultRef(for {
+          data   <- getEndpoint("profiles.list").flatMap(getBody200[api.ProfilesList])
+          _      <- addTestResult(assertTrue(
+                      data.profiles.exists(_.id == "2"),
+                      !data.profiles.exists(_.id == "42"),
+                    ))
+          resp   <- postEndpoint("profiles.rename", jsonBody(Obj("id" -> "42", "name" -> "nonexistent")))
+          _      <- addTestResult(assertTrue(resp.status.code == 400))
+          data2  <- getEndpoint("profiles.list").flatMap(getBody200[api.ProfilesList])
+          _      <- addTestResult(assertTrue(data2 == data))
+          name2  =  "Profile2-Renamed"
+          _      <- postEndpoint("profiles.rename", jsonBody(Obj("id" -> "2", "name" -> name2))).flatMap(isOk200)
+          data   <- getEndpoint("profiles.list").flatMap(getBody200[api.ProfilesList])
+          _      <- addTestResult(assertTrue(data.profiles.find(_.id == "2").is(_.some).name == name2))
+        } yield ())
+      },
       test("/profiles.remove") {
         withTestResultRef(for {
           data   <- getEndpoint("profiles.list").flatMap(getBody200[api.ProfilesList])

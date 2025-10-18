@@ -14,7 +14,7 @@
 - API upgraded to 2.8:
   - added optional `includePlugins` parameter to `/profiles.list` endpoint
   - added `/plugins.reinstall` endpoint and corresponding installation status
-  - added `/profiles.remove` endpoint
+  - added `/profiles.remove` and `/profiles.rename` endpoints
 
 
 ## [0.8.1] - 2025-09-20

@@ -42,6 +42,7 @@ GET  /profiles.list
 POST /profiles.add                   {name: string}
 POST /profiles.remove                {id: "<id>"}
 POST /profiles.switch                {id: "<id>"}
+POST /profiles.rename                {id: "<id>", name: string}
 
 GET  /settings.all.get
 POST /settings.all.set               <object>
@@ -735,6 +736,21 @@ Returns:
 Example:
 ```sh
 curl -X POST -d '{"id": "2"}' http://localhost:51515/profiles.switch
+```
+
+## profiles.rename
+
+Rename a profile.
+
+Synopsis: `POST /profiles.rename {id: "<id>", name: string}`
+
+Returns:
+- 200 `{"$type": "/result", "ok": true}`
+- 400 if profile does not exist
+
+Example:
+```sh
+curl -X POST -d '{"id": "1", "name": "Timbuktu"}' http://localhost:51515/profiles.rename
 ```
 
 ## settings.all.get
