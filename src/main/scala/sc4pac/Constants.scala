@@ -55,6 +55,7 @@ object Constants {
   val urlReadTimeout = java.time.Duration.ofSeconds(60)  // timeout in case of internet outage while downloading a file
   val serverShutdownDelay = java.time.Duration.ofSeconds(2)  // defer shutdown to accept new connection in case of page refresh
   val defaultPort = 51515
+  val sc4pacGuiClientId = "sc4pacGUIxDI5NjY4MzE2MDQ5OTQ0"  // public info
 
   lazy val userAgent = {
     val majMinVersion = cli.BuildInfo.version.split("\\.", 3).take(2).mkString(".")

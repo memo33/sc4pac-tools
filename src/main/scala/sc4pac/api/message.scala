@@ -243,6 +243,8 @@ object ErrorMessage {
   case class PublishedFilesIncomplete(title: String, detail: String) extends ErrorMessage derives UP.ReadWriter
   @upickle.implicits.key("/error/obtaining-user-dirs-failed")
   case class ObtainingUserDirsFailed(title: String, detail: String) extends ErrorMessage derives UP.ReadWriter
+  @upickle.implicits.key("/error/unauthorized")
+  case class UnauthorizedRequest(title: String, detail: String) extends ErrorMessage derives UP.ReadWriter
 }
 
 @upickle.implicits.key("/result")

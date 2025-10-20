@@ -724,6 +724,7 @@ object Commands {
     |  sc4pac server --profiles-dir profiles --indent 1
     |  sc4pac server --profiles-dir profiles --web-app-dir build/web --launch-browser  ${gray("# used by GUI web")}
     |  sc4pac server --profiles-dir profiles --auto-shutdown --startup-tag [READY]     ${gray("# used by GUI desktop")}
+    |  secret="123456"; echo "$$secret" | sc4pac server --client-secret-stdin           ${gray("# pass a custom client_secret")}
     |
     |The ${emph("--profiles-dir")} path defaults to the environment variable ${emph("SC4PAC_PROFILES_DIR")} if it is set. Otherwise, it defaults to
     |- "%AppData%\\io.github.memo33\\sc4pac\\config\\profiles" on Windows,
@@ -752,6 +753,9 @@ object Commands {
     @ValueDescription("number") @Group("Server") @Tag("Server")
     @HelpMessage(s"indentation of JSON responses (default: -1, no indentation)")
     indent: Int = -1,
+    @ValueDescription("bool") @Group("Server") @Tag("Server")
+    @HelpMessage(s"read the client_secret for authentication from stdin (default: --client-secret-stdin=false), otherwise it is generated randomly")
+    clientSecretStdin: Boolean = false,
   ) extends Sc4pacCommandOptions
 
   case object Server extends Command[ServerOptions] {
@@ -760,7 +764,7 @@ object Commands {
       ZIO.logInfo(message).as(resp)
     })
 
-    def serve(options: ServerOptions, profilesDir: os.Path, webAppDir: Option[os.Path]): RIO[zio.Scope & service.FileSystem, zio.Fiber[Throwable, Nothing]] = {
+    def serve(options: ServerOptions, profilesDir: os.Path, webAppDir: Option[os.Path], clientSecret: zio.Config.Secret): RIO[zio.Scope & service.FileSystem, zio.Fiber[Throwable, Nothing]] = {
       val api = sc4pac.api.Api(options)
       // Enabling CORS is important so that web browsers do not block the
       // request response for lack of the following response header:
@@ -787,7 +791,7 @@ object Commands {
           })
           .zipRight(
             ZIO.whenDiscard(webAppDir.isDefined) {
-              val url = java.net.URI.create(s"http://localhost:${options.port}/webapp/")
+              val url = java.net.URI.create(s"http://localhost:${options.port}/webapp/?client_secret=${clientSecret.stringValue}")
               println(f"%nTo start the sc4pac-gui web-app, open the following URL in your web browser if it does not launch automatically:%n%n  ${url}%n")
               ZIO.whenDiscard(options.launchBrowser) {
                 DesktopOps.openUrl(url).catchAll(_ => ZIO.succeed(()))  // errors can be ignored
@@ -818,7 +822,7 @@ object Commands {
               },
             zio.http.Client.default  // for /image.fetch
               .map(_.update[zio.http.Client](_.updateHeaders(_.addHeader("User-Agent", Constants.userAgent)) @@ followRedirects)),
-            zio.ZLayer.succeed(ProfilesDir(profilesDir)),
+            sc4pac.api.TokenService.live(ProfilesDir(profilesDir), zio.http.Credentials(Constants.sc4pacGuiClientId, clientSecret)),
             zio.ZLayer(zio.Ref.make(ServerConnection(numConnections = 0, currentChannel = None))),
             zio.ZLayer(zio.Ref.make(Option.empty[FileCache])),
           )
@@ -850,9 +854,11 @@ object Commands {
                   println(s"Creating sc4pac profiles directory: $profilesDir")
                   os.makeDir.all(profilesDir)
                 })
+          clientSecret <- if (options.clientSecretStdin) Prompt.readClientSecret else sc4pac.api.TokenService.generateSecureToken
+          _  <- ZIO.unlessDiscard(options.clientSecretStdin || webAppDir.nonEmpty)(ZIO.succeed(println(s"Configured new client_secret=${clientSecret.stringValue}")))
           _  <- ZIO.scoped {
                   for {
-                    fiber    <- serve(options, profilesDir = profilesDir, webAppDir = webAppDir)
+                    fiber    <- serve(options, profilesDir = profilesDir, webAppDir = webAppDir, clientSecret = clientSecret)
                     exitVal  <- fiber.await
                     _        <- exitVal match {
                                   case zio.Exit.Failure(cause) =>

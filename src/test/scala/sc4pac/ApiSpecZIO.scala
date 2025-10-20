@@ -3,7 +3,8 @@ package sc4pac
 
 import zio.*
 import zio.test.*
-import zio.http.{Client, Body, URL, Response, Request, Handler, ChannelEvent, WebSocketFrame}
+import zio.http.{Client, Body, URL, Response, Request, Handler, ChannelEvent, WebSocketFrame, Header, Form, Method}
+import zio.Config.Secret
 import upickle.default as UP
 import ujson.Obj
 
@@ -30,7 +31,7 @@ object ApiSpecZIO extends ZIOSpecDefault {
     })
 
   /** Launches an API server for the duration of the Scope. */
-  val serverLayer: zio.ZLayer[ProfilesDir & service.FileSystem, Throwable, ServerOptions] =
+  val serverLayer: zio.ZLayer[ProfilesDir & service.FileSystem & Ref[Secret], Throwable, ServerOptions] =
     zio.ZLayer.scoped(
       for {
         profilesDir  <- ZIO.serviceWith[ProfilesDir](_.path)
@@ -40,7 +41,8 @@ object ApiSpecZIO extends ZIOSpecDefault {
                           autoShutdown = false,
                           indent = 1,
                         )
-        fiber        <- cli.Commands.Server.serve(options, profilesDir = profilesDir, webAppDir = None)
+        clientSecret <- ZIO.serviceWithZIO[Ref[Secret]](_.get)
+        fiber        <- cli.Commands.Server.serve(options, profilesDir = profilesDir, webAppDir = None, clientSecret = clientSecret)
         _            <- ZIO.addFinalizerExit(exitVal => ZIO.succeed {
                           println(s"...Sc4pac server on port ${options.port} has been shut down: $exitVal")
                         })
@@ -50,7 +52,7 @@ object ApiSpecZIO extends ZIOSpecDefault {
   val fileServerLayer: ZLayer[Any, Nothing, FileServer] =
     FileServer.serve(os.pwd / "channel-testing" / "json", port = 8090)  // TODO port is hardcoded in ./channel-testing/ files
 
-  val setFileServerChannel: ZIO[FileServer & JD.ProfileData & ServerOptions & Client, Throwable, Unit] =
+  val setFileServerChannel: ZIO[FileServer & JD.ProfileData & ServerOptions & Client & Ref[Secret], Throwable, Unit] =
     for {
       port      <- ZIO.serviceWith[FileServer](_.port)
       profileId <- ZIO.serviceWith[JD.ProfileData](_.id)
@@ -58,7 +60,7 @@ object ApiSpecZIO extends ZIOSpecDefault {
       _         <- ZIO.whenDiscard(resp.status.code != 200)(ZIO.fail(AssertionError(s"/channels.set responded with ${resp.status.code}")))
     } yield ()
 
-  val currentProfileLayer: zio.ZLayer[ServerOptions & Client, Throwable, JD.ProfileData] =
+  val currentProfileLayer: zio.ZLayer[ServerOptions & Client & Ref[Secret], Throwable, JD.ProfileData] =
     ZLayer(
       for {
         profilesList <- getEndpoint("profiles.list").flatMap(resp => parseBody[api.ProfilesList](resp.body))
@@ -88,7 +90,9 @@ object ApiSpecZIO extends ZIOSpecDefault {
   def jsonBody[A : UP.Writer](data: A): Body =
     Body.fromChunk(zio.Chunk.fromArray(UP.writeToByteArray(data)), zio.http.MediaType.application.json)
 
-  def parseBody[A : UP.Reader](body: Body) = body.asArray.flatMap(bytes => ZIO.attempt { UP.read[A](bytes) })
+  def parseBody[A : UP.Reader](body: Body) =
+    body.asArray.flatMap(bytes => ZIO.attempt { UP.read[A](bytes) })
+      .catchSome { case _: ujson.ParseException => body.asString.flatMap(s => ZIO.fail(Exception(s"Unexpected body: `$s`"))) }
 
   // Asserts that response is 200 (stored in Ref) and parses the body. */
   def getBody200[A : UP.Reader](response: Response): RIO[Ref[TestResult], A] =
@@ -106,16 +110,18 @@ object ApiSpecZIO extends ZIOSpecDefault {
   def endpoint(path: String): RIO[ServerOptions, URL] =
     ZIO.serviceWith[ServerOptions](options => URL.empty.absolute(zio.http.Scheme.HTTP, "localhost", options.port) / path)
 
-  def postEndpoint(path: String, body: Body): RIO[ServerOptions & Client, Response] =
+  def postEndpoint(path: String, body: Body): RIO[ServerOptions & Client & Ref[Secret], Response] =
     for {
       url <- endpoint(path)
-      resp <- Client.batched(Request.post(url, body))
+      token <- ZIO.serviceWithZIO[Ref[Secret]](_.get)
+      resp <- Client.batched(Request.post(url, body).addHeader(Header.Authorization.Bearer(token)))
     } yield resp
 
-  def getEndpoint(path: String): RIO[ServerOptions & Client, Response] =
+  def getEndpoint(path: String): RIO[ServerOptions & Client & Ref[Secret], Response] =
     for {
       url <- endpoint(path)
-      resp <- Client.batched(Request.get(url))
+      token <- ZIO.serviceWithZIO[Ref[Secret]](_.get)
+      resp <- Client.batched(Request.get(url).addHeader(Header.Authorization.Bearer(token)))
     } yield resp
 
   val jsonOk = Obj("$type" -> "/result", "ok" -> true)
@@ -125,7 +131,7 @@ object ApiSpecZIO extends ZIOSpecDefault {
   //     channel <- YamlChannelBuilder().result(packages).provideSomeLayer(ZLayer.succeed(JD.Channel.Info(channelLabel = Some("Test-Channel"), metadataSourceUrl = None)))
   //   } yield channel
 
-  val removeAll: RIO[JD.ProfileData & ServerOptions & Client, Unit] =
+  val removeAll: RIO[JD.ProfileData & ServerOptions & Client & Ref[Secret], Unit] =
     for {
       id   <- ZIO.serviceWith[JD.ProfileData](_.id)
       resp <- getEndpoint(s"plugins.added.list?profile=$id")
@@ -155,11 +161,12 @@ object ApiSpecZIO extends ZIOSpecDefault {
     respond: PartialFunction[api.PromptMessage, RIO[Ref[TestResult], api.ResponseMessage]],
     filter: MsgFrame => Boolean = _ => true,
     checkMessages: Queue[MsgFrame] => ZIO[Scope & Ref[TestResult], Throwable, Unit] = _ => ZIO.unit,
-  ): ZIO[ServerOptions & Client & Ref[TestResult] & Scope, Throwable, Response] =
+  ): ZIO[ServerOptions & Client & Ref[TestResult] & Scope & Ref[Secret], Throwable, Response] =
     for {
       url      <- endpoint(path).map(_.scheme(zio.http.Scheme.WS))
       promise  <- Promise.make[Throwable, Unit]  // abnormal exit of websocket channel
       queue    <- Queue.unbounded[MsgFrame]
+      token    <- ZIO.serviceWithZIO[Ref[Secret]](_.get)
       // _        <- ZIO.addFinalizerExit(exitVal => ZIO.succeed(println(s"websocket: scope closed: $exitVal")))
       resp     <- Handler.webSocket { channel =>
                     channel.receiveAll {
@@ -188,7 +195,7 @@ object ApiSpecZIO extends ZIOSpecDefault {
                         case zio.Exit.Failure(cause) => promise.failCause(cause)
                         case zio.Exit.Success(_) => promise.succeed(())
                       }
-                  }.connect(url, zio.http.Headers.empty)
+                  }.connect(url, zio.http.Headers(Header.Authorization.Bearer(token)))
       _        <- addTestResult(assertTrue(resp.status.code == 101))  // switching protocol: upgrade to websocket
       _        <- promise.await.raceWith(checkMessages(queue))(
                     leftDone = (exitVal, fiberRight) => exitVal match {
@@ -210,7 +217,38 @@ object ApiSpecZIO extends ZIOSpecDefault {
                   ).zipRight(queue.shutdown)
     } yield resp
 
-  def spec = suite[Spec[ProfilesDir & ServerOptions & Client, Throwable]]("ApiSpecZIO")(
+  def spec = suite[Spec[ProfilesDir & ServerOptions & Client & Ref[Secret], Throwable]]("ApiSpecZIO")(
+    test("/auth/token") {
+      withTestResultRef(for {
+        url          <- endpoint("auth/token")
+        req          =  Request.post(url = url, body = Body.fromURLEncodedForm(Form.fromStrings("grant_type" -> "client_credentials")))
+        resp         <- Client.batched(req)
+        data         <- parseBody[ujson.Value](resp.body)
+        _            <- addTestResult(assertTrue(
+                          resp.status.code == 401,
+                          data("error").str == api.TokenEndpointError.invalid_client.toString,
+                          resp.headers.exists(_.headerName == "www-authenticate"),
+                        ))
+        resp         <- Client.batched(req.addHeader(Header.Authorization.Basic(Constants.sc4pacGuiClientId, "incorrect-secret")))
+        data         <- parseBody[ujson.Value](resp.body)
+        _            <- addTestResult(assertTrue(resp.status.code == 400, data("error").str == api.TokenEndpointError.invalid_grant.toString))
+        clientSecret <- ZIO.serviceWithZIO[Ref[Secret]](_.get)
+        resp         <- Client.batched(req.addHeader(Header.Authorization.Basic(Constants.sc4pacGuiClientId, clientSecret)))
+        data         <- parseBody[ujson.Value](resp.body)
+        _            <- addTestResult(assertTrue(
+                          resp.status.code == 200,
+                          data("token_type").str.toLowerCase == "bearer",
+                          data("access_token").str.nonEmpty,
+                          api.AuthScope.parse(data("scope").str).is(_.some) == api.AuthScope.all,
+                        ))
+        token        =  data("access_token").str
+        _            <- ZIO.serviceWithZIO[Ref[Secret]](ref => zio.Console.printLine("Replacing client_secret by access_token.").zipRight(ref.set(Secret(token))))
+        resp         <- Client.batched(req.addHeader(Header.Authorization.Basic(Constants.sc4pacGuiClientId, clientSecret)))  // must not be used more than once
+        data         <- parseBody[ujson.Value](resp.body)
+        _            <- addTestResult(assertTrue(resp.status.code == 400, data("error").str == api.TokenEndpointError.invalid_grant.toString))
+      } yield ())
+    },
+
     test("/server.status") {
       for {
         resp <- getEndpoint("server.status")
@@ -397,7 +435,7 @@ object ApiSpecZIO extends ZIOSpecDefault {
             } yield ())
           },
           test("/channels.stats") {
-            withTestResultRef[FileServer & JD.ProfileData & ServerOptions & Client](for {
+            withTestResultRef[FileServer & JD.ProfileData & ServerOptions & Client & Ref[Secret]](for {
               _    <- setFileServerChannel
               data <- getEndpoint(s"channels.stats?profile=$profileId").flatMap(getBody200[api.ChannelStatsAll])
               _    <- addTestResult(assertTrue(
@@ -440,6 +478,18 @@ object ApiSpecZIO extends ZIOSpecDefault {
         ),
 
         suite("update")(
+          test("/update (unauthorized)") {
+            withTestResultRef(ZIO.scoped {
+              for {
+                url  <- endpoint(s"update?profile=$profileId").map(_.scheme(zio.http.Scheme.WS))
+                ws   =  Handler.webSocket { channel => channel.receiveAll{ case _ => ZIO.unit }.zipRight(channel.shutdown) }
+                resp <- ws.connect(url, zio.http.Headers.empty)  // no token
+                _    <- addTestResult(assertTrue(resp.status.code == 401))
+                resp <- ws.connect(url, zio.http.Headers(Header.Authorization.Bearer("incorrect-token")))
+                _    <- addTestResult(assertTrue(resp.status.code == 401))
+              } yield ()
+            })
+          },
           test("/update (0 packages, abort update)") {
             withTestResultRef(ZIO.scoped {
               for {
@@ -898,7 +948,12 @@ object ApiSpecZIO extends ZIOSpecDefault {
     }).provideSomeLayerShared(fileServerLayer)  // shared across all tests
       .provideSomeLayer(currentProfileLayer),
 
-  ).provideShared(profilesDirLayer, testFileSystemLayer, serverLayer, Client.default)  // shared across all tests
-    @@ TestAspect.sequential @@ TestAspect.withLiveClock @@ TestAspect.timeout(30.seconds)
+  ).provideShared(  // shared across all tests
+    profilesDirLayer,
+    testFileSystemLayer,
+    serverLayer,
+    zio.ZLayer.fromZIO(api.TokenService.generateSecureToken.flatMap(Ref.make)),
+    Client.default,
+  ) @@ TestAspect.sequential @@ TestAspect.withLiveClock @@ TestAspect.timeout(30.seconds)
 
 }

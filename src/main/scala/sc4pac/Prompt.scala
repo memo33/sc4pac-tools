@@ -21,21 +21,31 @@ object Prompt {
   /** Calls readLine with a timeout. In case of a timeout, System.in seems to
     * remain blocked or out-of-sync, so the program should terminate.
     */
-  private val readLineTimeout: ZIO[Interactive, IOException, String] = {  // See also https://github.com/zio/zio/pull/6205#issue-1088016373
+  private def readLineTimeout(discardPrevious: Boolean = true): ZIO[Interactive, IOException, String] = {  // See also https://github.com/zio/zio/pull/6205#issue-1088016373
     // Since Console.readLine is not reliably interruptible on every OS
     // (well-known Java issue), we race two fibers and interrupt the slower one.
     val sleep = ZIO.sleep(Constants.interactivePromptTimeout)
     val readLine =
-      ZIO.attemptBlockingIO {  // first clears old input (non-blocking), then blocks for new input
-        val count = System.in.available()
-        if (count > 0) { System.in.read(new Array[Byte](count)); () }  // discard (up to) `count` bytes
-      }.zipRight(zio.Console.readLine)
+      if (discardPrevious)
+        ZIO.attemptBlockingIO {  // first clears old input (non-blocking), then blocks for new input
+          val count = System.in.available()
+          if (count > 0) { System.in.read(new Array[Byte](count)); () }  // discard (up to) `count` bytes
+        }.zipRight(zio.Console.readLine)
+      else zio.Console.readLine
     sleep.raceWith(readLine)(
       leftDone = (result, fiberRight) =>  // The forking (interruptFork) is important in order not to wait indefinitely for the blocking non-interruptible readLine.
         fiberRight.interruptFork.zipRight(ZIO.fail(new Sc4pacTimeout("Timeout at prompt."))),  // exit the program
       rightDone = (result, fiberLeft) =>
         fiberLeft.interrupt.zipRight(result)
     )
+  }
+
+  def readClientSecret: zio.IO[IOException, zio.Config.Secret] = {
+    for {
+      _      <- zio.Console.printLine("Reading client_secret from stdin... ")
+      input  <- readLineTimeout(discardPrevious = false)  // do not discard prior input, since when using pipes to redirect input to sc4pac, this would lead to EOFException when stdin is exhausted
+                  .provideSomeLayer(zio.ZLayer.succeed(InteractiveLive))
+    } yield zio.Config.Secret(input.trim)
   }
 
   /** Prompts for input until a valid option is chosen.
@@ -47,7 +57,7 @@ object Prompt {
 
     val readOption: ZIO[Interactive, IOException, Option[String]] = for {
       _     <- zio.Console.print(promptText)
-      input <- readLineTimeout.map(_.trim)
+      input <- readLineTimeout().map(_.trim)
       // _     <- zio.Console.printLine("")
     } yield {
       if (input.isEmpty) default
@@ -99,7 +109,7 @@ object Prompt {
     val indexed = (1 to options.length).zip(options)
     val promptRanges: ZIO[Interactive, IOException, Option[Set[Int]]] = for {
       _ <- zio.Console.print("""Enter numbers [e.g. "1 2 3", "1-3"]: """)
-      s <- readLineTimeout.map(_.trim)
+      s <- readLineTimeout().map(_.trim)
     } yield parseRanges(s)
     for {
       _        <- zio.Console.printLine(f"$pretext%n%n" + indexed.map((i, o) => s"  ($i) ${render(o)}").mkString(f"%n") + f"%n")
@@ -111,7 +121,7 @@ object Prompt {
   def pathInput(pretext: String): ZIO[Interactive, IOException, os.Path] = {
     val readOption: ZIO[Interactive, IOException, Option[os.Path]] = for {
       _ <- zio.Console.print(pretext)
-      s <- readLineTimeout.map(_.trim)
+      s <- readLineTimeout().map(_.trim)
     } yield if (s.isEmpty) None else try {
       Some(os.Path(java.nio.file.Paths.get(s), os.pwd))
     } catch { case _: java.nio.file.InvalidPathException => None }
