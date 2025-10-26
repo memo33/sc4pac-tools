@@ -325,7 +325,7 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) extends AuthMiddleware {
                 credentials  =  Downloader.Credentials(
                                   simtropolisToken = req.url.queryParams.getAll("simtropolisToken").headOption.orElse(fs.env.simtropolisToken),
                                 )
-                credentialsDesc = credentials.simtropolisToken.map(t => s"with token: ${t.length} bytes").getOrElse("without token")
+                credentialsDesc = credentials.simtropolisToken.map(t => s"with Simtropolis token: ${t.length} bytes").getOrElse("without Simtropolis token")
                 pac          <- Sc4pac.init(pluginsSpec.config, refreshChannels = req.url.queryParams.getAll("refreshChannels").nonEmpty)
                 pluginsRoot  <- pluginsSpec.config.pluginsRootAbs
                 wsLogger     <- ZIO.service[WebSocketLogger]
@@ -837,10 +837,14 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) extends AuthMiddleware {
 
   )
 
+  private val websocketRoutePatterns = Set[RoutePattern[?]](Method.GET / "update", Method.GET / "server.connect")
   def tokenRoutes0 = profileRoutes ++ genericRoutes ++ fetchRoutes
   def tokenRoutes =  // these require use of an access token
     Routes(tokenRoutes0.map { case (route, scope) =>
-      route.transform(handler => handler @@ tokenAuth(scope))
+      if (websocketRoutePatterns.contains(route.routePattern))
+        route.transform(handler => handler @@ tokenAuth(scope, allowFromQuery = true))
+      else
+        route.transform(handler => handler @@ tokenAuth(scope))
     })
 
   def routes(webAppDir: Option[os.Path]): Routes[TokenService & service.FileSystem & ServerFiber & Client & Ref[ServerConnection] & Ref[Option[FileCache]], Nothing] = {

@@ -107,6 +107,9 @@ object ApiSpecZIO extends ZIOSpecDefault {
       _    <- addTestResult(assertTrue(data == jsonOk))
     } yield ()
 
+  def is401(response: Response): RIO[Ref[TestResult], Unit] =
+    addTestResult(assertTrue(response.status.code == 401))
+
   def endpoint(path: String): RIO[ServerOptions, URL] =
     ZIO.serviceWith[ServerOptions](options => URL.empty.absolute(zio.http.Scheme.HTTP, "localhost", options.port) / path)
 
@@ -483,10 +486,14 @@ object ApiSpecZIO extends ZIOSpecDefault {
               for {
                 url  <- endpoint(s"update?profile=$profileId").map(_.scheme(zio.http.Scheme.WS))
                 ws   =  Handler.webSocket { channel => channel.receiveAll{ case _ => ZIO.unit }.zipRight(channel.shutdown) }
-                resp <- ws.connect(url, zio.http.Headers.empty)  // no token
-                _    <- addTestResult(assertTrue(resp.status.code == 401))
-                resp <- ws.connect(url, zio.http.Headers(Header.Authorization.Bearer("incorrect-token")))
-                _    <- addTestResult(assertTrue(resp.status.code == 401))
+                _    <- ws.connect(url, zio.http.Headers.empty).flatMap(is401)  // no token
+                _    <- ws.connect(url, zio.http.Headers(Header.Authorization.Bearer("incorrect-token"))).flatMap(is401)
+                url  <- endpoint(s"update?profile=$profileId&token=incorrect-token").map(_.scheme(zio.http.Scheme.WS))
+                _    <- ws.connect(url, zio.http.Headers.empty).flatMap(is401)
+                token <- ZIO.serviceWithZIO[Ref[Secret]](_.get)
+                url  <- endpoint(s"update?profile=$profileId&token=${token.stringValue}").map(_.scheme(zio.http.Scheme.WS))  // passing token in query is possible for websocket endpoints
+                resp <- ws.connect(url, zio.http.Headers.empty)
+                _    <- assertTrue(resp.status.code != 401)
               } yield ()
             })
           },

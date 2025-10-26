@@ -85,15 +85,27 @@ trait AuthMiddleware { self: Api =>
 
   val realm = "User Profile"
 
-  def tokenAuth(scope: AuthScope): HandlerAspect[TokenService, UserInfo] =
+  // For websockets, we allow passing the token in the query instead of an
+  // Authorization header, for compatibility with web browser Javascript, see https://github.com/whatwg/websockets/issues/16#issuecomment-332065542
+  def tokenAuth(scope: AuthScope, allowFromQuery: Boolean = false): HandlerAspect[TokenService, UserInfo] =
     HandlerAspect.interceptIncomingHandler {
       handler { (req: Request) =>
-        (req.header(Header.Authorization) match {
-          case Some(Header.Authorization.Bearer(token)) =>
+        val tokenOpt =
+          req.header(Header.Authorization) match {
+            case Some(Header.Authorization.Bearer(token)) => Some(token)
+            case _ if allowFromQuery => req.url.queryParams.getAll("token").headOption.map(Secret(_))
+            case _ => None
+          }
+        (tokenOpt match {
+          case Some(token) =>
             ZIO.serviceWithZIO[TokenService](_.verifyAccessToken(token, scope))
               .map(userInfo => (req, userInfo))
               .mapError(errMsg => ErrorMessage.UnauthorizedRequest("Authentication failed", errMsg))
-          case _ => ZIO.fail(ErrorMessage.UnauthorizedRequest("missing Authorization header", "Add Authorization header with Bearer access token"))
+          case None =>
+            ZIO.fail(ErrorMessage.UnauthorizedRequest(
+              "missing Authorization header",
+              "Add Authorization header with Bearer access token" + (if (allowFromQuery) " or add 'token' query parameter" else ""),
+            ))
         }).mapError { (e: ErrorMessage) =>
           jsonResponse(e)
             .addHeaders(Headers(Header.WWWAuthenticate.Bearer(realm, scope = Some(scope.toString))))

@@ -599,14 +599,17 @@ This mirrors the interactive `sc4pac update` command of the CLI.
 The websocket sends a series of messages, some of which expect a specific response, such as a confirmation to continue.
 
 Parameters:
-- `simtropolisToken=<value>` to re-use an authenticated session.
+- `profile=<id>` the profile ID.
+- `token=<access_token>` the client's `access_token` for authentication, unless it was passed as Authorization header.
+   This is for compatibility with web browser Javascript websockets, which do not support headers.
+- `simtropolisToken=<value>` to authenticate with Simtropolis for downloads.
   Otherwise, the environment variable will be used instead if available.
 - `refreshChannels` to clear the cached channel contents files before updating.
 
 Example using Javascript in your web browser:
 ```javascript
-let ws = new WebSocket('ws://localhost:51515/update?profile=1');
-// ws.send(JSON.stringify({"$type": "/prompt/response", token: "<token>", body: "Yes"}))
+let ws = new WebSocket('ws://localhost:51515/update?profile=1&token=<access_token>');
+// ws.send(JSON.stringify({"$type": "/prompt/response", token: "<msg_response_token>", body: "Yes"}))
 ```
 The messages sent from the server are logged in the network tab of the browser dev tools.
 
@@ -725,6 +728,9 @@ the server may send the following message to tell the client to show a particula
 ```
 { "$type": "/prompt/open/package", "packages": [{"package": "<pkg>", "channelUrl": "<url>"}] }
 ```
+Parameters:
+- `token=<access_token>` the client's `access_token` for authentication, unless it was passed as Authorization header.
+   This is for compatibility with web browser Javascript websockets, which do not support headers.
 
 ## profiles.list
 
