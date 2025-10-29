@@ -9,6 +9,7 @@ import zio.{ZIO, Task, Ref, RIO}
 import sc4pac.error.Sc4pacNotInteractive
 import sc4pac.JsonData as JD
 import sc4pac.Resolution.DepModule
+import sc4pac.api.TokenService
 
 // see https://github.com/coursier/coursier/blob/main/modules/cli/src/main/scala/coursier/cli/Coursier.scala
 // and related files
@@ -764,17 +765,17 @@ object Commands {
       ZIO.logInfo(message).as(resp)
     })
 
-    def serve(options: ServerOptions, profilesDir: os.Path, webAppDir: Option[os.Path], clientSecret: zio.Config.Secret): RIO[zio.Scope & service.FileSystem, zio.Fiber[Throwable, Nothing]] = {
+    def serve(options: ServerOptions, webAppDir: Option[(os.Path, java.net.URI)]): RIO[zio.Scope & service.FileSystem & TokenService, zio.Fiber[Throwable, Nothing]] = {
       val api = sc4pac.api.Api(options)
       // Enabling CORS is important so that web browsers do not block the
       // request response for lack of the following response header:
       //     access-control-allow-origin: http://localhost:12345
       // (e.g. when Flutter-web is hosted on port 12345)
-      val app = api.routes(webAppDir) @@ zio.http.Middleware.cors
+      val app = api.routes(webAppDir.map(_._1)) @@ zio.http.Middleware.cors
       def createPortOccupiedMsg(e: Throwable): sc4pac.error.PortOccupied =
         sc4pac.error.PortOccupied(s"Failed to run sc4pac server on port ${options.port}. ${e.getMessage}")
 
-      val serverTask: RIO[ServerFiber & service.FileSystem, Nothing] =
+      val serverTask: RIO[ServerFiber & service.FileSystem & TokenService, Nothing] =
         zio.http.Server.install(app)
           .catchSomeDefect {
             // usually: "bind(..) failed: Address already in use"
@@ -791,7 +792,7 @@ object Commands {
           })
           .zipRight(
             ZIO.whenDiscard(webAppDir.isDefined) {
-              val url = java.net.URI.create(s"http://localhost:${options.port}/webapp/?client_secret=${clientSecret.stringValue}")
+              val url = webAppDir.get._2
               println(f"%nTo start the sc4pac-gui web-app, open the following URL in your web browser if it does not launch automatically:%n%n  ${url}%n")
               ZIO.whenDiscard(options.launchBrowser) {
                 DesktopOps.openUrl(url).catchAll(_ => ZIO.succeed(()))  // errors can be ignored
@@ -810,7 +811,7 @@ object Commands {
             }
           )
           .zipRight(ZIO.never)  // keep server running indefinitely unless interrupted
-          .provideSome[ServerFiber & service.FileSystem](
+          .provideSome[ServerFiber & service.FileSystem & TokenService](
             zio.http.Server.defaultWith(config => config.port(options.port)
                 .requestStreaming(zio.http.Server.RequestStreaming.Enabled)  // enabling request streaming to avoid 413 "content too large" on large POST requests
               )
@@ -822,7 +823,6 @@ object Commands {
               },
             zio.http.Client.default  // for /image.fetch
               .map(_.update[zio.http.Client](_.updateHeaders(_.addHeader("User-Agent", Constants.userAgent)) @@ followRedirects)),
-            sc4pac.api.TokenService.live(ProfilesDir(profilesDir), zio.http.Credentials(Constants.sc4pacGuiClientId, clientSecret)),
             zio.ZLayer(zio.Ref.make(ServerConnection(numConnections = 0, currentChannel = None))),
             zio.ZLayer(zio.Ref.make(Option.empty[FileCache])),
           )
@@ -838,6 +838,9 @@ object Commands {
         _        <- promise.succeed(fiber)
       } yield fiber
     }
+
+    def createWebAppUrl(port: Int, clientSecret: zio.Config.Secret): java.net.URI =
+      java.net.URI.create(s"http://localhost:${port}/webapp/?client_secret=${clientSecret.stringValue}")
 
     def run(options: ServerOptions, args: RemainingArgs): Unit = {
       if (options.indent < -1)
@@ -858,7 +861,11 @@ object Commands {
           _  <- ZIO.unlessDiscard(options.clientSecretStdin || webAppDir.nonEmpty)(ZIO.succeed(println(s"Configured new client_secret=${clientSecret.stringValue}")))
           _  <- ZIO.scoped {
                   for {
-                    fiber    <- serve(options, profilesDir = profilesDir, webAppDir = webAppDir, clientSecret = clientSecret)
+                    fiber    <- serve(options, webAppDir = webAppDir.map((_, createWebAppUrl(port = options.port, clientSecret))))
+                                  .provideSomeLayer(sc4pac.api.TokenService.live(
+                                    ProfilesDir(profilesDir),
+                                    zio.http.Credentials(Constants.sc4pacGuiClientId, clientSecret),
+                                  ))
                     exitVal  <- fiber.await
                     _        <- exitVal match {
                                   case zio.Exit.Failure(cause) =>
