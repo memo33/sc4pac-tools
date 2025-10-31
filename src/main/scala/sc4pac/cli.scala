@@ -840,7 +840,7 @@ object Commands {
     }
 
     def createWebAppUrl(port: Int, clientSecret: zio.Config.Secret): java.net.URI =
-      java.net.URI.create(s"http://localhost:${port}/webapp/?client_secret=${clientSecret.stringValue}")
+      java.net.URI.create(s"http://localhost:${port}/webapp/?launch-token=${clientSecret.stringValue}")
 
     def run(options: ServerOptions, args: RemainingArgs): Unit = {
       if (options.indent < -1)
@@ -857,7 +857,7 @@ object Commands {
                   println(s"Creating sc4pac profiles directory: $profilesDir")
                   os.makeDir.all(profilesDir)
                 })
-          clientSecret <- if (options.clientSecretStdin) Prompt.readClientSecret else sc4pac.api.TokenService.generateSecureToken
+          clientSecret <- if (options.clientSecretStdin) Prompt.readClientSecret else sc4pac.api.TokenService.generateSecureToken(short = webAppDir.nonEmpty)
           _  <- ZIO.unlessDiscard(options.clientSecretStdin || webAppDir.nonEmpty)(ZIO.succeed(println(s"Configured new client_secret=${clientSecret.stringValue}")))
           _  <- ZIO.scoped {
                   for {

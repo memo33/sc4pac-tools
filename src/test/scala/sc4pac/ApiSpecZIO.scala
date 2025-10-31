@@ -34,8 +34,8 @@ object ApiSpecZIO extends ZIOSpecDefault {
   class TestConfig(val clientSecret: Secret, val clientSecretWeb: Secret, val token: Ref[Option[Secret]], val tokenWeb: Ref[Option[Token]])
   val testConfigLayer: ULayer[TestConfig] =
     ZLayer.scoped(for {
-      clientSecret     <- TokenService.generateSecureToken
-      clientSecretWeb  <- TokenService.generateSecureToken  // for cookie-based tests
+      clientSecret     <- TokenService.generateSecureToken(short = false)
+      clientSecretWeb  <- TokenService.generateSecureToken(short = true)  // for cookie-based tests
       token            <- Ref.make(Option.empty[Secret])
       tokenWeb         <- Ref.make(Option.empty[Token])
     } yield TestConfig(clientSecret = clientSecret, clientSecretWeb = clientSecretWeb, token = token, tokenWeb = tokenWeb))

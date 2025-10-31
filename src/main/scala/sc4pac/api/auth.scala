@@ -47,10 +47,10 @@ object TokenService {
     } yield InmemoryTokenService(initialCredentials, tokenStore, profilesDir)
   }
 
-  def generateSecureToken: UIO[Secret] =
+  def generateSecureToken(short: Boolean = false): UIO[Secret] =
     ZIO.succeed {
       val random = new java.security.SecureRandom()
-      val bytes  = new Array[Byte](32)
+      val bytes  = new Array[Byte](if (short) 16 else 32)
       random.nextBytes(bytes)
       Secret(java.util.Base64.getUrlEncoder.withoutPadding.encodeToString(bytes))
     }
@@ -61,8 +61,8 @@ class InmemoryTokenService(private[sc4pac] val initialCredentials: Ref[Set[Crede
     for {
       _ <- initialCredentials.modifySome(default = false) { case known if known.contains(credentials) => (true, known.excl(credentials)) }  // one-time use credentials
             .filterOrFail(_ == true)("Invalid or expired client credentials.")
-      csrf <- ZIO.when(withCsrf)(TokenService.generateSecureToken)
-      token <- TokenService.generateSecureToken.map(Token(_, csrf = csrf))
+      csrf <- ZIO.when(withCsrf)(TokenService.generateSecureToken())
+      token <- TokenService.generateSecureToken().map(Token(_, csrf = csrf))
       _ <- tokenStore.update { tokens => tokens + (token -> scopes) }
     } yield token
 
