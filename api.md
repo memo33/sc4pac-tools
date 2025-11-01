@@ -23,7 +23,7 @@ In a nutshell:
 *POST /plugins.remove?profile=id      ["<pkg1>", "<pkg2>", …]
 *POST /plugins.reinstall?profile=id   ["<pkg1>", "<pkg2>", …]
 †GET  /plugins.repair.scan?profile=id
-*POST /plugins.repair?profile=id      {incompletePackages: ["<pkg1>", …], orphanFiles: [string, …]}
+*POST /plugins.repair?profile=id      <object>
 †POST /plugins.export?profile=id      ["<pkg1>", "<pkg2>", …]
 
 †GET  /variants.list?profile=id
@@ -480,7 +480,16 @@ Synopsis: `GET /plugins.repair.scan?profile=id`
 
 Returns:
 ```
-{incompletePackages: ["<pkg1>", …], orphanFiles: [string, …]}
+{
+  "$type": "/prompt/confirmation/repair/plan",
+  plan: {
+    incompletePackages: ["<pkg1>", …],
+    orphanFiles: [string, …]
+  },
+  choices: ["Yes"],
+  token: "<prompt-message-token>",
+  "responses": {"Yes": {"$type": "/prompt/response", "token": "<prompt-message-token>", "body": "Yes"}}
+}
 ```
 
 ## plugins.repair
@@ -488,15 +497,18 @@ Returns:
 Execute the repair of the Plugins folder based on the result of `/plugins.repair.scan`.
 The incomplete packages will be marked for re-installation. The orphan files will be deleted.
 
-Synopsis: `POST /plugins.repair?profile=id {incompletePackages: ["<pkg1>", …], orphanFiles: [string, …]}`
+Synopsis: `POST /plugins.repair?profile=id <object>`
+
+The posted object should be a response message from `/plugins.repair.scan`.
 
 Returns:
 - 200 `{"$type": "/result", "ok": false}` if a subsequent `/update` is needed to complete the repair
 - 200 `{"$type": "/result", "ok": true}` if no subsequent `/update` is needed to complete the repair
+- 404 if posted response message is not valid anymore
 
 Example:
 ```sh
-curl --oauth2-bearer "$token" -X POST -d '{"incompletePackages": ["cyclone-boom:save-warning"], "orphanFiles": []}' http://localhost:51515/plugins.repair?profile=1
+curl --oauth2-bearer "$token" -X POST -d '{"$type": "/prompt/response", "token": "<prompt-message-token>", "body": "Yes"}' http://localhost:51515/plugins.repair?profile=1
 ```
 
 ## plugins.export
@@ -709,7 +721,7 @@ The `responses` field contains the valid response message objects to send back t
 #### Confirmation of packages to install and remove
 ```javascript
 {
-  "$type": "/prompt/confirmation/update/plan"
+  "$type": "/prompt/confirmation/update/plan",
   toRemove: [
     {"package": "<pkg>", "version": string, "variant": {"<variantId>": "<value>", …}},
     {"package": "<pkg>", "version": string, "variant": {}},
@@ -729,7 +741,7 @@ The `responses` field contains the valid response message objects to send back t
 #### Confirmation of installation despite warnings
 ```javascript
 {
-  "$type": "/prompt/confirmation/update/warnings"
+  "$type": "/prompt/confirmation/update/warnings",
   "warnings": {"<pkg>": ["warnings-1", "warning-2", …], …},
   choices: ["Yes", "No"],
   token: string,

@@ -15,6 +15,7 @@ import sc4pac.cli.Commands.Server.{ServerFiber, ServerConnection}
 
 class Api(options: sc4pac.cli.Commands.ServerOptions) extends AuthMiddleware {
   private val connectionsSinceLaunch = java.util.concurrent.atomic.AtomicInteger(0)
+  private val currentRepairPlan = java.util.concurrent.atomic.AtomicReference(Option.empty[PromptMessage.ConfirmRepairPlan])
 
   def jsonResponse[A : UP.Writer](obj: A): Response = Response.json(UP.write(obj, indent = options.indent))
   private def jsonFrame[A : UP.Writer](obj: A): WebSocketFrame = WebSocketFrame.Text(UP.write(obj, indent = options.indent))
@@ -296,17 +297,25 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) extends AuthMiddleware {
         pac         <- Sc4pac.init(pluginsSpec.config)
         pluginsRoot <- pluginsSpec.config.pluginsRootAbs
         plan        <- pac.repairScan(pluginsRoot = pluginsRoot)
-      } yield jsonResponse(plan)
+      } yield {
+        val msg = PromptMessage.ConfirmRepairPlan(plan)
+        currentRepairPlan.set(Some(msg))
+        jsonResponse(msg)
+      }
     }) @@ interceptProfile -> AuthScope.read,
 
-    // 200, 400, 409
+    // 200, 400, 404, 409
     Method.POST / "plugins.repair" -> handler((req: Request) => wrapHttpEndpoint {
       for {
-        plan        <- parseOr400[Sc4pac.RepairPlan](req.body, ErrorMessage.BadRequest("Malformed repair arguments", """Pass arrays "incompletePackages" and "orphanFiles" as arguments.""" ))
-        pluginsSpec <- readPluginsSpecOr409
-        pac         <- Sc4pac.init(pluginsSpec.config)
-        pluginsRoot <- pluginsSpec.config.pluginsRootAbs
-        updateNeeded <- pac.repair(plan, pluginsRoot = pluginsRoot)
+        responseMsg  <- parseOr400[ResponseMessage](req.body, ErrorMessage.BadRequest("Malformed repair arguments", "Pass response message from previous call to 'plugins.repair.scan'." ))
+        pluginsSpec  <- readPluginsSpecOr409
+        pac          <- Sc4pac.init(pluginsSpec.config)
+        pluginsRoot  <- pluginsSpec.config.pluginsRootAbs
+        promptMsgOpt =  currentRepairPlan.getAndUpdate((promptMsgOpt) => if (promptMsgOpt.exists(_.accept(responseMsg))) None else promptMsgOpt)
+        _            <- ZIO.whenDiscard(!promptMsgOpt.exists(_.accept(responseMsg)))(ZIO.fail(jsonResponse(ErrorMessage.BadRequest(
+                          """Matching repair plan for current token not found anymore.""", "Pass the latest response message from 'plugins.repair.scan'."
+                        )).status(Status.NotFound)))
+        updateNeeded <- pac.repair(promptMsgOpt.get.plan, pluginsRoot = pluginsRoot)
       } yield jsonResponse(ResultMessage(ok = !updateNeeded))
     }) @@ interceptProfile -> AuthScope.write,
 

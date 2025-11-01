@@ -1068,6 +1068,28 @@ object ApiSpecZIO extends ZIOSpecDefault {
           },
         ),
 
+        test("/plugins.repair.scan + /plugins.repair") {
+          withTestResultRef(for {
+            pluginsRoot  <- ZIO.serviceWith[ProfilesDir](_.path / s"$profileId" / "plugins")
+            _            <- addTestResult(assertTrue(os.exists(pluginsRoot)))
+            subdir       =  pluginsRoot / "010-test" / "outdated-folder.sc4pac"
+            _            <- ZIO.attemptBlockingIO(os.makeDir.all(subdir))
+            promptMsg    <- getEndpoint(s"plugins.repair.scan?profile=$profileId").flatMap(getBody200[api.PromptMessage.ConfirmRepairPlan])
+            exists       <- ZIO.attemptBlockingIO(os.exists(subdir))
+            _            <- addTestResult(assertTrue(
+                              promptMsg.plan.incompletePackages.isEmpty,
+                              promptMsg.plan.orphanFiles == Seq(subdir.subRelativeTo(pluginsRoot)),
+                              promptMsg.choices == Seq("Yes"),
+                              exists,
+                            ))
+            _            <- postEndpoint(s"plugins.repair?profile=$profileId", jsonBody(promptMsg.responses("Yes"))).flatMap(isOk200)
+            exists       <- ZIO.attemptBlockingIO(os.exists(subdir))
+            _            <- addTestResult(assertTrue(!exists))
+            resp         <- postEndpoint(s"plugins.repair?profile=$profileId", jsonBody(promptMsg.responses("Yes")))
+            _            <- addTestResult(assertTrue(resp.status.code == 404))  // replay not allowed
+          } yield ())
+        },
+
       )
     }).provideSomeLayerShared(fileServerLayer)  // shared across all tests
       .provideSomeLayer(currentProfileLayer),

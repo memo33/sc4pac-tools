@@ -186,6 +186,20 @@ object PromptMessage {
     ) derives UP.ReadWriter
   }
 
+  @upickle.implicits.key("/prompt/confirmation/repair/plan")
+  case class ConfirmRepairPlan(
+    plan: Sc4pac.RepairPlan,
+    choices: Seq[String], // = yes,
+    token: String,
+    responses: Map[String, ResponseMessage]
+  ) extends PromptMessage derives UP.ReadWriter
+  object ConfirmRepairPlan {
+    def apply(plan: Sc4pac.RepairPlan): ConfirmRepairPlan = {
+      val token = scala.util.Random.nextInt().toHexString
+      ConfirmRepairPlan(plan = plan, choices = Seq(yes), token = token, responsesFromChoices(Seq(yes), token))
+    }
+  }
+
 }
 
 @upickle.implicits.key("/prompt/response")
