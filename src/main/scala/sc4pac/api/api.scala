@@ -4,6 +4,7 @@ package api
 
 import zio.http.*
 import zio.http.ChannelEvent.{Read, Unregistered, UserEvent, UserEventTriggered}
+import zio.http.codec.PathCodec.literal
 import zio.{ZIO, IO, URIO, Ref}
 import upickle.default as UP
 
@@ -12,15 +13,16 @@ import JD.{bareModuleRw, uriRw}
 import sc4pac.cli.Commands.Server.{ServerFiber, ServerConnection}
 
 
-class Api(options: sc4pac.cli.Commands.ServerOptions) {
+class Api(options: sc4pac.cli.Commands.ServerOptions) extends AuthMiddleware {
   private val connectionsSinceLaunch = java.util.concurrent.atomic.AtomicInteger(0)
 
-  private def jsonResponse[A : UP.Writer](obj: A): Response = Response.json(UP.write(obj, indent = options.indent))
+  def jsonResponse[A : UP.Writer](obj: A): Response = Response.json(UP.write(obj, indent = options.indent))
   private def jsonFrame[A : UP.Writer](obj: A): WebSocketFrame = WebSocketFrame.Text(UP.write(obj, indent = options.indent))
 
   // only for use in API, not CLI, in particular to ensure only profile roots constructed by ID can be deleted via API
   private def profileRootFromId(id: String)/*: zio.RLayer[ProfilesDir, ProfileRoot]*/ =  // inferred type is more specific which helps the compiler
-    zio.ZLayer.fromFunction((dir: ProfilesDir) => ProfileRoot(dir.path / id))
+    zio.ZLayer.fromFunction(profileRootFromId0(id, _))
+  private def profileRootFromId0(id: String, dir: ProfilesDir): ProfileRoot = ProfileRoot(dir.path / id)
 
   private val makePlatformDefaults: URIO[ProfileRoot & service.FileSystem, Map[String, Seq[String]]] =
     for {
@@ -85,15 +87,20 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
     zio.ZLayer.succeed(cliLogger)
   }
 
+  private def handleUnhandledError(err: Throwable): zio.UIO[Response] = ZIO.succeed {
+    err.printStackTrace()
+    jsonResponse(ErrorMessage.ServerError("Unhandled error. This looks like a bug. Please report it.", err.toString)).status(Status.InternalServerError)
+  }
+
   /** Handles some errors and provides http logger (not used for update-websocket). */
-  private def wrapHttpEndpoint[R](task: ZIO[R & Logger, Throwable | Response, Response]): ZIO[R, Throwable, Response] = {
+  private def wrapHttpEndpoint[R](task: ZIO[R & Logger, Throwable | Response, Response]): ZIO[R, Response, Response] = {
     task.provideSomeLayer(httpLogger)
       .catchAll {
         case response: Response => ZIO.succeed(response)
         case err: cli.Commands.ExpectedFailure => ZIO.succeed(jsonResponse(expectedFailureMessage(err)).status(expectedFailureStatus(err)))
-        case t: Throwable => ZIO.fail(t)
+        case t: Throwable => handleUnhandledError(t)
       }
-      .catchAllDefect(t => ZIO.fail(t))
+      .catchAllDefect(t => handleUnhandledError(t))
   }
 
   private def parseModuleOr400(module: String): IO[Response, BareModule] = {
@@ -181,8 +188,28 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
     }
   }
 
+  // Extract profile ID from URL query parameter and add it to environment.
+  // 400 error if "profile" parameter is absent.
+  val interceptProfile: HandlerAspect[UserInfo, ProfileRoot] =
+    HandlerAspect.interceptIncomingHandler {
+      handler { (req: Request) =>
+        req.url.queryParams.getAll("profile").headOption match {
+          case Some[ProfileId](id) =>
+            ZIO.serviceWith[UserInfo] { userInfo =>
+              (req, profileRootFromId0(id = id, userInfo.profilesDir))
+            }
+          case None =>
+            ZIO.fail(jsonResponse(ErrorMessage.BadRequest(
+              """URL query parameter "profile" is required.""", "Pass the profile ID as query."
+            )).status(Status.BadRequest))
+        }
+      }
+    }
+
+  type ProfileRouteEnv[R] = R & service.FileSystem & Ref[Option[FileCache]]
+
   /** Routes that require a `profile=id` query parameter as part of the URL. */
-  def profileRoutes: Routes[ProfileRoot & service.FileSystem & Ref[Option[FileCache]], Throwable] = Routes(
+  def profileRoutes = zio.Chunk[(Route[ProfileRouteEnv[UserInfo], Nothing], AuthScope)](
 
     // 200, 409, 500
     Method.GET / "profile.read" -> handler { (req: Request) =>
@@ -191,7 +218,7 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
           pluginsSpec <- readPluginsSpecOr409
         } yield jsonResponse(pluginsSpec.config)
       }
-    },
+    } @@ interceptProfile -> AuthScope.read,
 
     // 200, 400, 409
     Method.POST / "profile.init" -> handler { (req: Request) =>
@@ -220,7 +247,7 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
           pluginsSpec <- JD.PluginsSpec.init(pluginsRoot = pluginsRoot, cacheRoot = cacheRoot, tempRoot = tempRoot)
         } yield jsonResponse(pluginsSpec.config)
       }
-    },
+    } @@ interceptProfile -> AuthScope.write,
 
     // 200, 400, 409
     Method.POST / "plugins.add" -> handler { (req: Request) =>
@@ -232,7 +259,7 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
           _           <- pac.add(mods)
         } yield jsonOk
       }
-    },
+    } @@ interceptProfile -> AuthScope.write,
 
     // 200, 400, 409
     Method.POST / "plugins.remove" -> handler { (req: Request) =>
@@ -249,7 +276,7 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
           _           <- pac.remove(mods)
         } yield jsonOk
       }
-    },
+    } @@ interceptProfile -> AuthScope.write,
 
     // 200, 400, 409
     Method.POST / "plugins.reinstall" -> handler((req: Request) => wrapHttpEndpoint {
@@ -260,7 +287,7 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
         pac         <- Sc4pac.init(pluginsSpec.config)
         _           <- pac.reinstall(mods.toSet, redownload = redownload)  // non-installed packages are ignored (TODO should they raise an error?)
       } yield jsonOk
-    }),
+    }) @@ interceptProfile -> AuthScope.write,
 
     // 200, 409
     Method.GET / "plugins.repair.scan" -> handler((req: Request) => wrapHttpEndpoint {
@@ -270,18 +297,18 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
         pluginsRoot <- pluginsSpec.config.pluginsRootAbs
         plan        <- pac.repairScan(pluginsRoot = pluginsRoot)
       } yield jsonResponse(plan)
-    }),
+    }) @@ interceptProfile -> AuthScope.read,
 
     // 200, 400, 409
     Method.POST / "plugins.repair" -> handler((req: Request) => wrapHttpEndpoint {
       for {
-        plan        <- parseOr400[Sc4pac.RepairPlan](req.body, ErrorMessage.BadRequest("Malformed repair arguments", """Pass arrays "incompletePackages" and "orphanFiles" as arguments."""))
+        plan        <- parseOr400[Sc4pac.RepairPlan](req.body, ErrorMessage.BadRequest("Malformed repair arguments", """Pass arrays "incompletePackages" and "orphanFiles" as arguments.""" ))
         pluginsSpec <- readPluginsSpecOr409
         pac         <- Sc4pac.init(pluginsSpec.config)
         pluginsRoot <- pluginsSpec.config.pluginsRootAbs
         updateNeeded <- pac.repair(plan, pluginsRoot = pluginsRoot)
       } yield jsonResponse(ResultMessage(ok = !updateNeeded))
-    }),
+    }) @@ interceptProfile -> AuthScope.write,
 
     // Test the websocket using Javascript in webbrowser (messages are also logged in network tab):
     //     let ws = new WebSocket('ws://localhost:51515/update'); ws.onmessage = function(e) { console.log(e) };
@@ -291,14 +318,14 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
         failure = ZIO.succeed[Response](_),
         success = pluginsSpec =>
           Handler.webSocket { wsChannel =>
-            val updateTask: zio.RIO[ProfileRoot & service.FileSystem & Ref[Option[FileCache]] & WebSocketLogger, Message] =
+            val updateTask: zio.RIO[ProfileRouteEnv[ProfileRoot & WebSocketLogger], Message] =
               for {
                 fs           <- ZIO.service[service.FileSystem]
                 _            <- fs.injectErrorInTest
                 credentials  =  Downloader.Credentials(
                                   simtropolisToken = req.url.queryParams.getAll("simtropolisToken").headOption.orElse(fs.env.simtropolisToken),
                                 )
-                credentialsDesc = credentials.simtropolisToken.map(t => s"with token: ${t.length} bytes").getOrElse("without token")
+                credentialsDesc = credentials.simtropolisToken.map(t => s"with Simtropolis token: ${t.length} bytes").getOrElse("without Simtropolis token")
                 pac          <- Sc4pac.init(pluginsSpec.config, refreshChannels = req.url.queryParams.getAll("refreshChannels").nonEmpty)
                 pluginsRoot  <- pluginsSpec.config.pluginsRootAbs
                 wsLogger     <- ZIO.service[WebSocketLogger]
@@ -318,7 +345,7 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
                                   )))
               } yield ResultMessage(ok = true)
 
-            val wsTask: zio.RIO[ProfileRoot & service.FileSystem & Ref[Option[FileCache]], Unit] =
+            val wsTask: zio.RIO[ProfileRouteEnv[ProfileRoot & Ref[Option[FileCache]]], Unit] =
               WebSocketLogger.run(send = msg => wsChannel.send(Read(jsonFrame(msg)))) {
                 for {
                   finalMsg <- updateTask.catchAll {
@@ -346,11 +373,11 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
                 fiberLeft.interruptFork  // forking is important here to be able to interrupt a blocked fiber
                   .zipRight(ZIO.serviceWith[Logger](_.log("Update task was canceled.")))
                   .zipRight(result)
-            ).provideSomeLayer(httpLogger): zio.RIO[ProfileRoot & service.FileSystem & Ref[Option[FileCache]], Unit]
+            ).provideSomeLayer(httpLogger): zio.RIO[ProfileRouteEnv[ProfileRoot], Unit]
 
-          }.toResponse: zio.URIO[ProfileRoot & service.FileSystem & Ref[Option[FileCache]], Response]
+          }.toResponse: zio.URIO[ProfileRouteEnv[ProfileRoot], Response]
       )
-    },
+    } @@ interceptProfile -> AuthScope.write,
 
     // 200, 400, 409
     Method.GET / "packages.search" -> handler { (req: Request) =>
@@ -376,11 +403,11 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
           stats = stats.orNull,
         ))
       }
-    },
+    } @@ interceptProfile -> AuthScope.read,
 
     Method.POST / "packages.search.id" -> handler((req: Request) => wrapHttpEndpoint {
       for {
-        args         <- parseOr400[FindPackagesArgs](req.body, ErrorMessage.BadRequest("Malformed package names", """Pass a "packages" array of strings of the form '<group>:<name>'."""))
+        args         <- parseOr400[FindPackagesArgs](req.body, ErrorMessage.BadRequest("Malformed package names", """Pass a "packages" array of strings of the form '<group>:<name>'.""" ))
         pluginsSpec  <- readPluginsSpecOr409
         pac          <- Sc4pac.init(pluginsSpec.config)
         searchResult <- pac.searchById(args.packages, args.externalIds.groupMap(_._1)(_._2).map((p, ids) => (p, ids.toSet)))
@@ -393,7 +420,7 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
         notFoundPackageCount = searchResult._2,
         notFoundExternalIdCount = searchResult._3,
       ))
-    }),
+    }) @@ interceptProfile -> AuthScope.read,
 
     Method.GET / "plugins.search" -> handler((req: Request) => wrapHttpEndpoint {
       for {
@@ -411,7 +438,7 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
         }
         jsonResponse(PluginsSearchResult(stats, items))
       }
-    }),
+    }) @@ interceptProfile -> AuthScope.read,
 
     // 200, 400, 404, 409
     Method.GET / "packages.info" -> handler { (req: Request) =>
@@ -449,7 +476,7 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
           jsonResponse(PackageInfo(local = PackageInfo.Local(statuses = statuses.toMap), remote = remoteData))
         }
       }
-    },
+    } @@ interceptProfile -> AuthScope.read,
 
     // 200, 409
     Method.GET / "plugins.added.list" -> handler {
@@ -458,7 +485,7 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
           pluginsSpec <- readPluginsSpecOr409
         } yield jsonResponse(pluginsSpec.explicit)
       }
-    },
+    } @@ interceptProfile -> AuthScope.read,
 
     // 200, 409
     Method.GET / "plugins.installed.list" -> handler {
@@ -472,7 +499,7 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
           }.toSeq)
         }
       }
-    },
+    } @@ interceptProfile -> AuthScope.read,
 
     // 200, 409
     Method.GET / "packages.list" -> handler {
@@ -486,7 +513,7 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
           case _: BareAsset => Nil
         }).toSeq)
       }
-    },
+    } @@ interceptProfile -> AuthScope.read,
 
     // 200, 409
     Method.GET / "variants.list" -> handler {
@@ -499,7 +526,7 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
           id -> VariantsList.Item(value = value, unused = !used(id))
         }))
       }
-    },
+    } @@ interceptProfile -> AuthScope.read,
 
     // 200, 400, 409
     Method.POST / "variants.reset" -> handler { (req: Request) =>
@@ -513,7 +540,7 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
           _           <- cli.Commands.VariantReset.removeAndWrite(pluginsSpec, labels)
         } yield jsonOk
       }
-    },
+    } @@ interceptProfile -> AuthScope.write,
 
     // 200, 400, 409
     Method.POST / "variants.set" -> handler((req: Request) => wrapHttpEndpoint {
@@ -526,7 +553,7 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
         path         <- JD.PluginsSpec.pathURIO
         _            <- JsonIo.write(path, pluginsSpec2, None)(ZIO.unit)
       } yield jsonOk
-    }),
+    }) @@ interceptProfile -> AuthScope.write,
 
     // 200, 400, 404, 409
     Method.GET / "variants.choices" -> handler((req: Request) => wrapHttpEndpoint {
@@ -545,7 +572,7 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
                             s"Variant ID $variantId not found for package.", mod.orgName,
                           )).status(Status.NotFound))
       } yield jsonResponse(msg.copy(responses = Map.empty))
-    }),
+    }) @@ interceptProfile -> AuthScope.read,
 
     // 200, 409
     Method.GET / "channels.list" -> handler {
@@ -554,7 +581,7 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
           pluginsSpec <- readPluginsSpecOr409
         } yield jsonResponse(pluginsSpec.config.channels)
       }
-    },
+    } @@ interceptProfile -> AuthScope.read,
 
     // 200, 400, 409
     Method.POST / "channels.set" -> handler { (req: Request) =>
@@ -576,7 +603,7 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
           _            <- JsonIo.write(path, pluginsSpec2, None)(ZIO.unit)
         } yield jsonOk
       }
-    },
+    } @@ interceptProfile -> AuthScope.write,
 
     // 200, 409
     Method.GET / "channels.stats" -> handler {
@@ -592,7 +619,7 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
                            ))
         } yield jsonResponse(ChannelStatsAll(combinedStats, statsItems))
       }
-    },
+    } @@ interceptProfile -> AuthScope.read,
 
     // 200, 400, 404, 409
     Method.POST / "plugins.export" -> handler((req: Request) => wrapHttpEndpoint {
@@ -602,233 +629,227 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) {
         pac         <- Sc4pac.init(pluginsSpec.config)
         data        <- pac.`export`(mods, pluginsSpec.config.variant, pluginsSpec.config.channels)
       } yield jsonResponse(data)
-    })
+    }) @@ interceptProfile -> AuthScope.read,
 
   )
 
-  def routes(webAppDir: Option[os.Path]): Routes[ProfilesDir & service.FileSystem & ServerFiber & Client & Ref[ServerConnection] & Ref[Option[FileCache]], Nothing] = {
-    // Extract profile ID from URL query parameter and add it to environment.
-    // 400 error if "profile" parameter is absent.
-    val profileRoutes2 =
-      profileRoutes.transform((handler0) => handler { (req: Request) =>
-        req.url.queryParams.getAll("profile").headOption match {
-          case Some[ProfileId](id) =>
-            handler0(req)
-              .provideSomeLayer[ProfilesDir & service.FileSystem & Ref[Option[FileCache]]](profileRootFromId(id))
-          case None =>
-            ZIO.fail(jsonResponse(ErrorMessage.BadRequest(
-              """URL query parameter "profile" is required.""", "Pass the profile ID as query."
-            )).status(Status.BadRequest))
-        }
-      })
+  type GenericRouteEnv[R] = R & service.FileSystem & ServerFiber & Client & Ref[ServerConnection]
 
-    // profile-independent routes
-    val genericRoutes = Routes[ProfilesDir & service.FileSystem & ServerFiber & Client & Ref[ServerConnection], Throwable](
+  // profile-independent routes
+  def genericRoutes = zio.Chunk[(Route[GenericRouteEnv[UserInfo], Nothing], AuthScope)](
 
-      // 200
-      Method.GET / "server.status" -> handler {
-        wrapHttpEndpoint {
-          def getPropSafe(prop: String): String = scala.util.Try(System.getProperty(prop)).fold((e) => e.toString, (value) => value)
-          def dedupe(props: String*): String = props.flatMap(p => Option(getPropSafe(p))).distinct.mkString("/")
-          ZIO.attempt(jsonResponse(ServerStatus(
-            sc4pacVersion = cli.BuildInfo.version,
-            osVersion = Seq("os.name", "os.version", "os.arch").map(getPropSafe).mkString(" "),
-            javaVersion = s"${Runtime.version.feature()}",
-            javaRuntime = Seq(
-              s"""${getPropSafe("java.vm.name")} ${dedupe("java.vm.version", "java.version")}""",
-              dedupe("java.vm.vendor", "java.vendor"),
-              getPropSafe("java.runtime.name"),
-              getPropSafe("java.home")
-            ).mkString(", "),
-          )))
-        }
-      },
-
-      // websocket allowing to monitor whether server is alive (supports no particular message exchange)
-      Method.GET / "server.connect" -> handler {
-        val num = connectionsSinceLaunch.incrementAndGet()
-        Handler.webSocket { wsChannel =>
-          val wsTask = for {
-            logger <- ZIO.service[Logger]
-            _      <- ZIO.succeed(logger.log(s"Registered websocket connection $num."))
-            _      <- wsChannel.receiveAll {
-                        case UserEventTriggered(UserEvent.HandshakeComplete) => ZIO.unit  // ignore expected event
-                        case Unregistered =>
-                          logger.log(s"Unregistered websocket connection $num.")  // client closed websocket (results in websocket shutdown)
-                          ZIO.unit
-                        case event =>
-                          logger.warn(s"Discarding unexpected websocket event: $event")
-                          ZIO.unit  // discard all unexpected messages (and events) and continue receiving
-                      }
-            _      <- wsChannel.shutdown: zio.UIO[Unit]  // may be redundant
-            _      <- ZIO.succeed(logger.log(s"Shut down websocket connection $num."))
-          } yield ()
-
-          // keeps track of number of open connections
-          ZIO.acquireReleaseWith
-            (acquire = ZIO.serviceWithZIO[Ref[ServerConnection]](_.update { s =>
-              ServerConnection(numConnections = s.numConnections + 1, currentChannel = Some(wsChannel))
-            }))
-            (release = (_) => ZIO.serviceWithZIO[Ref[ServerConnection]](_.modify { s =>
-              val remainingConnections = s.numConnections - 1
-              (Some(remainingConnections), ServerConnection(numConnections = remainingConnections, currentChannel = s.currentChannel.filter(_ != wsChannel)))
-            }).flatMap(shutdownServerIfNoConnections(_, reason = "All connections from client to server are closed.")))
-            (use = (_) => wsTask)
-        }.provideSomeLayer(httpLogger).toResponse
-      },
-
-      // 200, 400, 503
-      Method.POST / "packages.open" -> handler((req: Request) => wrapHttpEndpoint {
-        for {
-          packages   <- parseOr400[Seq[OpenPackageMessage.Item]](req.body, ErrorMessage.BadRequest("Malformed package list.", "Pass an array of package items."))
-          wsChannel  <- ZIO.serviceWithZIO[Ref[ServerConnection]](_.get.map(_.currentChannel))
-                          .someOrFail(jsonResponse(ErrorMessage.ServerError(
-                            "The sc4pac GUI is not opened. Make sure the GUI is running correctly.",
-                            "Connection between API server and GUI client is not available."
-                          )).status(Status.ServiceUnavailable))
-          _          <- wsChannel.send(Read(jsonFrame(OpenPackageMessage(packages))))
-        } yield jsonOk
-      }),
-
-      // 200, 500
-      Method.GET / "profiles.list" -> handler { (req: Request) =>
-        val includePlugins = req.url.queryParams.getAll("includePlugins").nonEmpty
-        wrapHttpEndpoint {
-          for {
-            profilesDir <- ZIO.service[ProfilesDir]
-            profiles <- JD.Profiles.readOrInit
-            profilesData <-
-              if (!includePlugins)
-                ZIO.succeed(profiles.profiles.map(p => ProfilesList.ProfileData2(id = p.id, name = p.name)))
-              else
-                ZIO.foreachPar(profiles.profiles) { p =>
-                  for {
-                    pluginsSpecOpt <- JD.PluginsSpec.readMaybe.provideSomeLayer(profileRootFromId(p.id))
-                  } yield ProfilesList.ProfileData2(id = p.id, name = p.name, pluginsRoot = pluginsSpecOpt.map(_.config.pluginsRoot).orNull)
-                }
-          } yield jsonResponse(ProfilesList(
-            profiles = profilesData,
-            currentProfileId = profiles.currentProfileId,
-            profilesDir = profilesDir.path.toNIO,
-          ))
-        }
-      },
-
-      // 200, 400
-      Method.POST / "profiles.add" -> handler { (req: Request) =>
-        wrapHttpEndpoint {
-          for {
-            profileName <- parseOr400[ProfileName](req.body, ErrorMessage.BadRequest("Missing profile name.", "Pass the \"name\" of the new profile."))
-            ps          <- JD.Profiles.readOrInit
-            (ps2, p)    = ps.add(profileName.name)
-            jsonPath    <- JD.Profiles.pathURIO
-            _           <- ZIO.attemptBlockingIO { os.makeDir.all(jsonPath / os.up) }
-            _           <- JsonIo.write(jsonPath, ps2, None)(ZIO.unit)
-          } yield jsonResponse(p)
-        }
-      },
-
-      // 200, 400, 500
-      Method.POST / "profiles.remove" -> handler((req: Request) => wrapHttpEndpoint {
-        for {
-          arg    <- parseOr400[ProfileIdObj](req.body, ErrorMessage.BadRequest("Missing profile ID.", "Pass the \"id\" for the profile to remove."))
-          data   <- JD.Profiles.readOrInit
-          idx    <- ZIO.succeed(data.profiles.indexWhere(_.id == arg.id))
-                      .filterOrFail(_ != -1)(jsonResponse(
-                        ErrorMessage.BadRequest(s"""Profile ID "${arg.id}" does not exist.""", "Make sure to only remove existing profiles.")
-                      ).status(Status.BadRequest))
-          profileRoot <- ZIO.service[ProfileRoot].provideSomeLayer(profileRootFromId(data.profiles(idx).id))
-          logger <- ZIO.service[Logger]
-          _      <- ZIO.attemptBlockingIO {
-                      if (os.exists(profileRoot.path)) {
-                        for (path <- os.list.stream(profileRoot.path).find(os.isDir)) {
-                          // sanity check (profileRoot was created by GUI, so should only contain two .json files)
-                          throw java.nio.file.AccessDeniedException(s"Failed to remove profile directory as it contains unexpected subdirectories: $path")
-                        }
-                        logger.log(s"Deleting profile directory: ${profileRoot.path}")
-                        Sc4pac.removeAllForcibly(profileRoot.path)
-                      }
-                    }
-          ps2    =  data.profiles.patch(from = idx, Nil, replaced = 1)
-          data2  =  data.copy(
-                      profiles = ps2,
-                      currentProfileId = data.currentProfileId.filter(_ != arg.id).orElse(ps2.lastOption.map(_.id)),
-                    )
-          _      <- JD.Profiles.pathURIO.flatMap(JsonIo.write(_, data2, origState = Some(data))(ZIO.unit))
-        } yield jsonOk
-      }),
-
-      // 200, 400
-      Method.POST / "profiles.switch" -> handler((req: Request) => wrapHttpEndpoint {
-        for {
-          arg  <- parseOr400[ProfileIdObj](req.body, ErrorMessage.BadRequest("Missing profile ID.", "Pass the \"id\" for the profile to switch to."))
-          ps   <- JD.Profiles.readOrInit
-                    .filterOrFail(_.profiles.exists(_.id == arg.id))(jsonResponse(
-                      ErrorMessage.BadRequest(s"""Profile ID "${arg.id}" does not exist.""", "Make sure to only switch to existing profiles.")
-                    ).status(Status.BadRequest))
-          _    <- ZIO.unlessDiscard(ps.currentProfileId.contains(arg.id)) {
-                    val ps2 = ps.copy(currentProfileId = Some(arg.id))
-                    JD.Profiles.pathURIO.flatMap(JsonIo.write(_, ps2, origState = Some(ps))(ZIO.unit))
-                  }
-        } yield jsonOk
-      }),
-
-      // 200, 400
-      Method.POST / "profiles.rename" -> handler((req: Request) => wrapHttpEndpoint {
-        for {
-          arg  <- parseOr400[JD.ProfileData](req.body, ErrorMessage.BadRequest("Missing profile ID or name.", "Pass the \"id\" and \"name\" for the profile."))
-          data <- JD.Profiles.readOrInit
-                    .filterOrFail(_.profiles.exists(_.id == arg.id))(jsonResponse(
-                      ErrorMessage.BadRequest(s"""Profile ID "${arg.id}" does not exist.""", "Make sure to only rename existing profiles.")
-                    ).status(Status.BadRequest))
-          data2 = data.copy(profiles = data.profiles.map(p => if (p.id == arg.id) p.copy(name = arg.name) else p))
-          _    <- JD.Profiles.pathURIO.flatMap(JsonIo.write(_, data2, origState = Some(data))(ZIO.unit))
-        } yield jsonOk
-      }),
-
-      // 200
-      Method.GET / "settings.all.get" -> handler(wrapHttpEndpoint {
-        JD.Profiles.readOrInit.map(profiles => jsonResponse(profiles.settings))
-      }),
-
-      // 200, 400
-      Method.POST / "settings.all.set" -> handler((req: Request) => wrapHttpEndpoint {
-        for {
-          newSettings <- parseOr400[ujson.Value](req.body, ErrorMessage.BadRequest("Missing settings", "Pass the settings as JSON body of the request."))
-          ps          <- JD.Profiles.readOrInit
-          ps2         =  ps.copy(settings = newSettings)
-          jsonPath    <- JD.Profiles.pathURIO
-          _           <- JsonIo.write(jsonPath, ps2, None)(ZIO.unit)
-        } yield jsonOk
-      }),
-
-    )
-
-    val fetchRoutes = Routes[Client, Throwable](
-
-      // 200, 400
-      Method.GET / "image.fetch" -> handler((req: Request) => wrapHttpEndpoint {
-        for {
-          rawUrl <- ZIO.fromOption(req.url.queryParams.getAll("url").headOption).orElseFail(jsonResponse(ErrorMessage.BadRequest(
-                      """Query parameter "url" is required.""", "Pass the remote image url as parameter."
-                    )).status(Status.BadRequest))
-          url    <- ZIO.fromEither(zio.http.URL.decode(rawUrl).left.map(malformedUrl => jsonResponse(ErrorMessage.BadRequest(
-                      "Malformed url", malformedUrl.getMessage
-                    )).status(Status.BadRequest)))
-          // TODO use credentials.addAuthorizationToMatchingRequest(Request.get(url))
-          // TODO handle retrys
-          resp   <- zio.http.ZClient.batched(Request.get(url))  // TODO this first downloads the entire response body before forwarding the response
-                                                                // Using `ZClient.streaming` instead is blocked on https://github.com/zio/zio-http/issues/3197
-        } yield resp
-      }),
-
-    )
-
-    (profileRoutes2 ++ genericRoutes ++ fetchRoutes ++ webAppDir.map(staticRoutes).getOrElse(Routes.empty))
-      .handleError { err =>
-        err.printStackTrace()
-        jsonResponse(ErrorMessage.ServerError("Unhandled error. This looks like a bug. Please report it.", err.toString)).status(Status.InternalServerError)
+    // 200
+    Method.GET / "server.status" -> handler {
+      wrapHttpEndpoint {
+        def getPropSafe(prop: String): String = scala.util.Try(System.getProperty(prop)).fold((e) => e.toString, (value) => value)
+        def dedupe(props: String*): String = props.flatMap(p => Option(getPropSafe(p))).distinct.mkString("/")
+        ZIO.attempt(jsonResponse(ServerStatus(
+          sc4pacVersion = cli.BuildInfo.version,
+          osVersion = Seq("os.name", "os.version", "os.arch").map(getPropSafe).mkString(" "),
+          javaVersion = s"${Runtime.version.feature()}",
+          javaRuntime = Seq(
+            s"""${getPropSafe("java.vm.name")} ${dedupe("java.vm.version", "java.version")}""",
+            dedupe("java.vm.vendor", "java.vendor"),
+            getPropSafe("java.runtime.name"),
+            getPropSafe("java.home")
+          ).mkString(", "),
+        )))
       }
+    } -> AuthScope.read,
+
+    // websocket allowing to monitor whether server is alive (supports no particular message exchange)
+    Method.GET / "server.connect" -> handler {
+      val num = connectionsSinceLaunch.incrementAndGet()
+      Handler.webSocket { wsChannel =>
+        val wsTask = for {
+          logger <- ZIO.service[Logger]
+          _      <- ZIO.succeed(logger.log(s"Registered websocket connection $num."))
+          _      <- wsChannel.receiveAll {
+                      case UserEventTriggered(UserEvent.HandshakeComplete) => ZIO.unit  // ignore expected event
+                      case Unregistered =>
+                        logger.log(s"Unregistered websocket connection $num.")  // client closed websocket (results in websocket shutdown)
+                        ZIO.unit
+                      case event =>
+                        logger.warn(s"Discarding unexpected websocket event: $event")
+                        ZIO.unit  // discard all unexpected messages (and events) and continue receiving
+                    }
+          _      <- wsChannel.shutdown: zio.UIO[Unit]  // may be redundant
+          _      <- ZIO.succeed(logger.log(s"Shut down websocket connection $num."))
+        } yield ()
+
+        // keeps track of number of open connections
+        ZIO.acquireReleaseWith
+          (acquire = ZIO.serviceWithZIO[Ref[ServerConnection]](_.update { s =>
+            ServerConnection(numConnections = s.numConnections + 1, currentChannel = Some(wsChannel))
+          }))
+          (release = (_) => ZIO.serviceWithZIO[Ref[ServerConnection]](_.modify { s =>
+            val remainingConnections = s.numConnections - 1
+            (Some(remainingConnections), ServerConnection(numConnections = remainingConnections, currentChannel = s.currentChannel.filter(_ != wsChannel)))
+          }).flatMap(shutdownServerIfNoConnections(_, reason = "All connections from client to server are closed.")))
+          (use = (_) => wsTask)
+      }.provideSomeLayer(httpLogger).toResponse
+    } -> AuthScope.write,
+
+    // 200, 400, 503
+    Method.POST / "packages.open" -> handler((req: Request) => wrapHttpEndpoint {
+      for {
+        packages   <- parseOr400[Seq[OpenPackageMessage.Item]](req.body, ErrorMessage.BadRequest("Malformed package list.", "Pass an array of package items."))
+        wsChannel  <- ZIO.serviceWithZIO[Ref[ServerConnection]](_.get.map(_.currentChannel))
+                        .someOrFail(jsonResponse(ErrorMessage.ServerError(
+                          "The sc4pac GUI is not opened. Make sure the GUI is running correctly.",
+                          "Connection between API server and GUI client is not available."
+                        )).status(Status.ServiceUnavailable))
+        _          <- wsChannel.send(Read(jsonFrame(OpenPackageMessage(packages))))
+      } yield jsonOk
+    }) -> AuthScope.open,
+
+    // 200, 500
+    Method.GET / "profiles.list" -> handler { (req: Request) =>
+      val includePlugins = req.url.queryParams.getAll("includePlugins").nonEmpty
+      wrapHttpEndpoint {
+        for {
+          profilesDir <- ZIO.service[ProfilesDir]
+          profiles <- JD.Profiles.readOrInit
+          profilesData <-
+            if (!includePlugins)
+              ZIO.succeed(profiles.profiles.map(p => ProfilesList.ProfileData2(id = p.id, name = p.name)))
+            else
+              ZIO.foreachPar(profiles.profiles) { p =>
+                for {
+                  pluginsSpecOpt <- JD.PluginsSpec.readMaybe.provideSomeLayer(profileRootFromId(p.id))
+                } yield ProfilesList.ProfileData2(id = p.id, name = p.name, pluginsRoot = pluginsSpecOpt.map(_.config.pluginsRoot).orNull)
+              }
+        } yield jsonResponse(ProfilesList(
+          profiles = profilesData,
+          currentProfileId = profiles.currentProfileId,
+          profilesDir = profilesDir.path.toNIO,
+        ))
+      }.provideSomeLayer(UserInfo.toProfile)
+    } -> AuthScope.read,
+
+    // 200, 400
+    Method.POST / "profiles.add" -> handler { (req: Request) =>
+      wrapHttpEndpoint {
+        for {
+          profileName <- parseOr400[ProfileName](req.body, ErrorMessage.BadRequest("Missing profile name.", "Pass the \"name\" of the new profile."))
+          ps          <- JD.Profiles.readOrInit
+          (ps2, p)    = ps.add(profileName.name)
+          jsonPath    <- JD.Profiles.pathURIO
+          _           <- ZIO.attemptBlockingIO { os.makeDir.all(jsonPath / os.up) }
+          _           <- JsonIo.write(jsonPath, ps2, None)(ZIO.unit)
+        } yield jsonResponse(p)
+      }.provideSomeLayer(UserInfo.toProfile)
+    } -> AuthScope.write,
+
+    // 200, 400, 500
+    Method.POST / "profiles.remove" -> handler((req: Request) => wrapHttpEndpoint {
+      for {
+        arg    <- parseOr400[ProfileIdObj](req.body, ErrorMessage.BadRequest("Missing profile ID.", "Pass the \"id\" for the profile to remove."))
+        data   <- JD.Profiles.readOrInit
+        idx    <- ZIO.succeed(data.profiles.indexWhere(_.id == arg.id))
+                    .filterOrFail(_ != -1)(jsonResponse(
+                      ErrorMessage.BadRequest(s"""Profile ID "${arg.id}" does not exist.""", "Make sure to only remove existing profiles.")
+                    ).status(Status.BadRequest))
+        profileRoot <- ZIO.service[ProfileRoot].provideSomeLayer(profileRootFromId(data.profiles(idx).id))
+        logger <- ZIO.service[Logger]
+        _      <- ZIO.attemptBlockingIO {
+                    if (os.exists(profileRoot.path)) {
+                      for (path <- os.list.stream(profileRoot.path).find(os.isDir)) {
+                        // sanity check (profileRoot was created by GUI, so should only contain two .json files)
+                        throw java.nio.file.AccessDeniedException(s"Failed to remove profile directory as it contains unexpected subdirectories: $path")
+                      }
+                      logger.log(s"Deleting profile directory: ${profileRoot.path}")
+                      Sc4pac.removeAllForcibly(profileRoot.path)
+                    }
+                  }
+        ps2    =  data.profiles.patch(from = idx, Nil, replaced = 1)
+        data2  =  data.copy(
+                    profiles = ps2,
+                    currentProfileId = data.currentProfileId.filter(_ != arg.id).orElse(ps2.lastOption.map(_.id)),
+                  )
+        _      <- JD.Profiles.pathURIO.flatMap(JsonIo.write(_, data2, origState = Some(data))(ZIO.unit))
+      } yield jsonOk
+    }.provideSomeLayer(UserInfo.toProfile)) -> AuthScope.write,
+
+    // 200, 400
+    Method.POST / "profiles.switch" -> handler((req: Request) => wrapHttpEndpoint {
+      for {
+        arg  <- parseOr400[ProfileIdObj](req.body, ErrorMessage.BadRequest("Missing profile ID.", "Pass the \"id\" for the profile to switch to."))
+        ps   <- JD.Profiles.readOrInit
+                  .filterOrFail(_.profiles.exists(_.id == arg.id))(jsonResponse(
+                    ErrorMessage.BadRequest(s"""Profile ID "${arg.id}" does not exist.""", "Make sure to only switch to existing profiles.")
+                  ).status(Status.BadRequest))
+        _    <- ZIO.unlessDiscard(ps.currentProfileId.contains(arg.id)) {
+                  val ps2 = ps.copy(currentProfileId = Some(arg.id))
+                  JD.Profiles.pathURIO.flatMap(JsonIo.write(_, ps2, origState = Some(ps))(ZIO.unit))
+                }
+      } yield jsonOk
+    }.provideSomeLayer(UserInfo.toProfile)) -> AuthScope.write,
+
+    // 200, 400
+    Method.POST / "profiles.rename" -> handler((req: Request) => wrapHttpEndpoint {
+      for {
+        arg  <- parseOr400[JD.ProfileData](req.body, ErrorMessage.BadRequest("Missing profile ID or name.", "Pass the \"id\" and \"name\" for the profile."))
+        data <- JD.Profiles.readOrInit
+                  .filterOrFail(_.profiles.exists(_.id == arg.id))(jsonResponse(
+                    ErrorMessage.BadRequest(s"""Profile ID "${arg.id}" does not exist.""", "Make sure to only rename existing profiles.")
+                  ).status(Status.BadRequest))
+        data2 = data.copy(profiles = data.profiles.map(p => if (p.id == arg.id) p.copy(name = arg.name) else p))
+        _    <- JD.Profiles.pathURIO.flatMap(JsonIo.write(_, data2, origState = Some(data))(ZIO.unit))
+      } yield jsonOk
+    }.provideSomeLayer(UserInfo.toProfile)) -> AuthScope.write,
+
+    // 200
+    Method.GET / "settings.all.get" -> handler(wrapHttpEndpoint {
+      JD.Profiles.readOrInit.map(profiles => jsonResponse(profiles.settings))
+    }.provideSomeLayer(UserInfo.toProfile)) -> AuthScope.write,  // not `AuthScope.read` as this might contain sensitive info like the ST token
+
+    // 200, 400
+    Method.POST / "settings.all.set" -> handler((req: Request) => wrapHttpEndpoint {
+      for {
+        newSettings <- parseOr400[ujson.Value](req.body, ErrorMessage.BadRequest("Missing settings", "Pass the settings as JSON body of the request."))
+        ps          <- JD.Profiles.readOrInit
+        ps2         =  ps.copy(settings = newSettings)
+        jsonPath    <- JD.Profiles.pathURIO
+        _           <- JsonIo.write(jsonPath, ps2, None)(ZIO.unit)
+      } yield jsonOk
+    }.provideSomeLayer(UserInfo.toProfile)) -> AuthScope.write,
+
+  )
+
+  def fetchRoutes = zio.Chunk[(Route[UserInfo & Client, Nothing], AuthScope)](
+
+    // 200, 400
+    Method.GET / "image.fetch" -> handler((req: Request) => wrapHttpEndpoint {
+      for {
+        rawUrl <- ZIO.fromOption(req.url.queryParams.getAll("url").headOption).orElseFail(jsonResponse(ErrorMessage.BadRequest(
+                    """Query parameter "url" is required.""", "Pass the remote image url as parameter."
+                  )).status(Status.BadRequest))
+        url    <- ZIO.fromEither(zio.http.URL.decode(rawUrl).left.map(malformedUrl => jsonResponse(ErrorMessage.BadRequest(
+                    "Malformed url", malformedUrl.getMessage
+                  )).status(Status.BadRequest)))
+        // TODO use credentials.addAuthorizationToMatchingRequest(Request.get(url))
+        // TODO handle retrys
+        resp   <- zio.http.ZClient.batched(Request.get(url))  // TODO this first downloads the entire response body before forwarding the response
+                                                              // Using `ZClient.streaming` instead is blocked on https://github.com/zio/zio-http/issues/3197
+      } yield resp
+    }) -> AuthScope.write,
+
+  )
+
+  private val websocketRoutePatterns = Set[RoutePattern[?]](Method.GET / "update", Method.GET / "server.connect")
+  def tokenRoutes0 = profileRoutes ++ genericRoutes ++ fetchRoutes
+  def tokenRoutes =  // these require use of an access token
+    Routes(tokenRoutes0.map { case (route, scope) =>
+      if (websocketRoutePatterns.contains(route.routePattern))
+        route.transform(handler => handler @@ tokenAuth(scope, allowFromQuery = true))
+      else
+        route.transform(handler => handler @@ tokenAuth(scope))
+    })
+
+  def routes(webAppDir: Option[os.Path]): Routes[TokenService & service.FileSystem & ServerFiber & Client & Ref[ServerConnection] & Ref[Option[FileCache]], Nothing] = {
+    val authRoutes = literal("auth") / authEndpoints
+    (authRoutes ++ tokenRoutes ++ webAppDir.map(staticRoutes).getOrElse(Routes.empty))
   }
 
   def staticFileHandler(webAppDir: os.Path, path: zio.http.Path): Handler[Any, Nothing, Request, Response] = {

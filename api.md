@@ -5,55 +5,63 @@ The API allows other programs to control *sc4pac* in a client-server fashion.
 In a nutshell:
 
 ```
-GET  /profile.read?profile=id
-POST /profile.init?profile=id        {plugins: "<path>", cache: "<path>", temp: "<path>"}
+ POST /auth/token
 
-GET  /packages.list?profile=id
-GET  /packages.info?pkg=<pkg>&profile=id
-GET  /packages.search?q=<text>&profile=id
-POST /packages.search.id?profile=id  {packages: ["<pkg1>", "<pkg2>", …], externalIds: [["sc4e", "<extId1>"], …]}
-POST /packages.open                  [{package: "<pkg>", channelUrl: "<url>"}]
+†GET  /profile.read?profile=id
+*POST /profile.init?profile=id        {plugins: "<path>", cache: "<path>", temp: "<path>"}
 
-GET  /plugins.added.list?profile=id
-GET  /plugins.installed.list?profile=id
-GET  /plugins.search?profile=id&q=<text>&category=<cat>
-POST /plugins.add?profile=id         ["<pkg1>", "<pkg2>", …]
-POST /plugins.remove?profile=id      ["<pkg1>", "<pkg2>", …]
-POST /plugins.reinstall?profile=id   ["<pkg1>", "<pkg2>", …]
-GET  /plugins.repair.scan?profile=id
-POST /plugins.repair?profile=id      {incompletePackages: ["<pkg1>", …], orphanFiles: [string, …]}
-POST /plugins.export?profile=id      ["<pkg1>", "<pkg2>", …]
+†GET  /packages.list?profile=id
+†GET  /packages.info?pkg=<pkg>&profile=id
+†GET  /packages.search?q=<text>&profile=id
+†POST /packages.search.id?profile=id  {packages: ["<pkg1>", "<pkg2>", …], externalIds: [["sc4e", "<extId1>"], …]}
+‡POST /packages.open                  [{package: "<pkg>", channelUrl: "<url>"}]
 
-GET  /variants.list?profile=id
-POST /variants.reset?profile=id      ["<variantId1>", "<variantId2>", …]
-POST /variants.set?profile=id        {"<variantId1>": "<value1>", …}
-GET  /variants.choices?profile=id&pkg=<pkg>&variantId=<variantId>
+†GET  /plugins.added.list?profile=id
+†GET  /plugins.installed.list?profile=id
+†GET  /plugins.search?profile=id&q=<text>&category=<cat>
+*POST /plugins.add?profile=id         ["<pkg1>", "<pkg2>", …]
+*POST /plugins.remove?profile=id      ["<pkg1>", "<pkg2>", …]
+*POST /plugins.reinstall?profile=id   ["<pkg1>", "<pkg2>", …]
+†GET  /plugins.repair.scan?profile=id
+*POST /plugins.repair?profile=id      {incompletePackages: ["<pkg1>", …], orphanFiles: [string, …]}
+†POST /plugins.export?profile=id      ["<pkg1>", "<pkg2>", …]
 
-GET  /channels.list?profile=id
-POST /channels.set?profile=id        ["<url1>", "<url2>", …]
-GET  /channels.stats?profile=id
+†GET  /variants.list?profile=id
+*POST /variants.reset?profile=id      ["<variantId1>", "<variantId2>", …]
+*POST /variants.set?profile=id        {"<variantId1>": "<value1>", …}
+†GET  /variants.choices?profile=id&pkg=<pkg>&variantId=<variantId>
 
-GET  /update?profile=id              (websocket)
+†GET  /channels.list?profile=id
+*POST /channels.set?profile=id        ["<url1>", "<url2>", …]
+†GET  /channels.stats?profile=id
 
-GET  /server.status
-GET  /server.connect                 (websocket)
+*GET  /update?profile=id              (websocket)
 
-GET  /profiles.list
-POST /profiles.add                   {name: string}
-POST /profiles.remove                {id: "<id>"}
-POST /profiles.switch                {id: "<id>"}
-POST /profiles.rename                {id: "<id>", name: string}
+†GET  /server.status
+*GET  /server.connect                 (websocket)
 
-GET  /settings.all.get
-POST /settings.all.set               <object>
+†GET  /profiles.list
+*POST /profiles.add                   {name: string}
+*POST /profiles.remove                {id: "<id>"}
+*POST /profiles.switch                {id: "<id>"}
+*POST /profiles.rename                {id: "<id>", name: string}
 
-GET  /image.fetch?url=<url>
+*GET  /settings.all.get
+*POST /settings.all.set               <object>
+
+*GET  /image.fetch?url=<url>
+
+Required permission scopes:
+* write
+† read
+‡ open
 ```
 
 - Everything JSON.
 - Package placeholders `<pkg>` are of the form `<group>:<name>`.
 - Launch the server using the `sc4pac server` command.
-- On the first time, invoke `/profile.init` before anything else.
+- All requests must be authorized with an access token, issued at the `/auth/token` endpoint.
+- Once you have an access token, invoke `/profile.init` before anything else, if you don't have an initialized profile yet.
 - All endpoints may return some generic errors:
   - 400 (incorrect input)
   - 404 (non-existing packages, assets, etc.)
@@ -69,6 +77,98 @@ GET  /image.fetch?url=<url>
     "detail": "<info for debugging>"
   }
   ```
+
+## auth/token
+
+Exchange the initial (one-time use) client credentials for an access token, following the OAuth2 `client_credentials` grant type.
+
+References:
+- https://www.rfc-editor.org/rfc/rfc6749#section-2.3.1
+- https://www.rfc-editor.org/rfc/rfc6749#section-3.2
+- https://www.rfc-editor.org/rfc/rfc6749#section-5
+
+Returns: 200, 400, 401, as defined in the references above.
+
+**Overview:**
+
+First, the desktop GUI generates a one-time client secret, then launches the sc4pac server, passing the secret via stdin.
+
+In contrast, for the web-app, when the sc4pac server is launched by the user,
+a one-time client secret is generated by the server and passed to the web-app GUI via the launch URL query parameter `launch-token`.
+
+In both cases, a request is made to the `/auth/token` endpoint to exchange the client secret for a new access token, randomly generated by the server.
+The access token is required for all subsequent calls to the API, which prevents unauthorized API requests like XSS.
+
+The client credentials are discarded after issuing an access token, so there won't be any other processes able to acquire full access to the API.
+The access token becomes invalid as soon as the server is shut-down or restarted, and otherwise expires after a couple of days, forcing the user to restart the application.
+
+The desktop app keeps the access token in memory only.
+The web-app stores the access token as cookie and the `csrf_token` in Local Storage, which allows opening the web-app in multiple tabs of the web browser.
+
+### grant type `client_credentials`
+
+Example:
+```sh
+export secret="123456"
+echo "$secret" | sc4pac server --indent 1 --client-secret-stdin
+# Reading client_secret from stdin...
+# Sc4pac server is listening on port 51515...
+
+curl --verbose -X POST --data-urlencode 'grant_type=client_credentials' \
+  --user "sc4pacGUIxDI5NjY4MzE2MDQ5OTQ0:$secret" http://localhost:51515/auth/token
+
+# HTTP/1.1 200 Ok
+# content-type: application/json
+# cache-control: no-store
+# pragma: no-cache
+#
+# {
+#   "access_token": "VJaikygjRG_Yt_0lqpY6J9_HiAMTpKyi5QJkl3Q_TcI",
+#   "token_type": "Bearer",
+#   "expires_in": "432000",
+#   "scope": "open read write"
+# }
+```
+
+Test the acquired access token with e.g.:
+```sh
+export token="VJaikygjRG_Yt_0lqpY6J9_HiAMTpKyi5QJkl3Q_TcI"
+curl --oauth2-bearer "$token" http://localhost:51515/server.status
+```
+From here on, this access token is referred to as `$token` in all the examples below.
+
+The access token is needed for all regular API endpoints and is tied to a particular set of permission scopes.
+
+### grant type `client_credentials_cookie_sc4pac`
+
+A custom grant type for use by the web-app, which differs slightly from the `client_credentials` grant.
+
+Instead of an access token, the JSON response returns a `csrf_token` for use as Bearer token in the Authorization header of subsequent API requests.
+The access token is returned as HttpOnly cookie instead, which will be passed to all subsequent API requests automatically.
+As both tokens are required for subsequent API calls from the web-app, this is very effective in protecting against XSS and CSRF.
+
+```sh
+export secret="123456"
+echo "$secret" | sc4pac server --indent 1 --client-secret-stdin
+# Reading client_secret from stdin...
+# Sc4pac server is listening on port 51515...
+
+curl --verbose -X POST --data-urlencode 'grant_type=client_credentials_cookie_sc4pac' \
+  --user "sc4pacGUIxDI5NjY4MzE2MDQ5OTQ0:$secret" http://localhost:51515/auth/token
+
+# HTTP/1.1 200 Ok
+# content-type: application/json
+# cache-control: no-store
+# pragma: no-cache
+# set-cookie: __Host-access_token=2BbOhQVSOQ-Lndcor46d5FdSmUWBfc5mE1PggKJhNYQ; Path=/; Max-Age=432000; Secure; HTTPOnly; SameSite=Strict
+#
+# {
+#   "csrf_token": "nWXuUx5da4toSrt0L8ofaniGtjwYA9feBQIJbLXEvqw",
+#   "token_type": "Bearer",
+#   "expires_in": "432000",
+#   "scope": "open read write"
+# }
+```
 
 ## profile.read
 
@@ -106,7 +206,7 @@ Returns:
 
 Without parameters:
 ```sh
-curl -X POST http://localhost:51515/profile.init?profile=1
+curl --oauth2-bearer "$token" -X POST http://localhost:51515/profile.init?profile=1
 ```
 Returns:
 ```json
@@ -132,7 +232,7 @@ Returns:
 
 With parameters:
 ```sh
-curl -X POST -d '{"plugins":"plugins","cache":"cache","temp":"temp"}' http://localhost:51515/profile.init?profile=1
+curl --oauth2-bearer "$token" -X POST -d '{"plugins":"plugins","cache":"cache","temp":"temp"}' http://localhost:51515/profile.init?profile=1
 ```
 
 ## packages.list
@@ -246,7 +346,7 @@ Returns:
 
 Example:
 ```sh
-curl -X POST -d '{"packages": ["cyclone-boom:save-warning", "memo:submenus-dll"]}' http://localhost:51515/packages.search.id?profile=1
+curl --oauth2-bearer "$token" -X POST -d '{"packages": ["cyclone-boom:save-warning", "memo:submenus-dll"]}' http://localhost:51515/packages.search.id?profile=1
 ```
 
 ## packages.open
@@ -262,7 +362,7 @@ Returns:
 
 Example:
 ```sh
-curl -X POST -d '[{"package": "cyclone-boom:save-warning", "channelUrl": "https://memo33.github.io/sc4pac/channel/"}]' http://localhost:51515/packages.open
+curl --oauth2-bearer "$token" -X POST -d '[{"package": "cyclone-boom:save-warning", "channelUrl": "https://memo33.github.io/sc4pac/channel/"}]' http://localhost:51515/packages.open
 ```
 The client will be informed by the `/server.connect` websocket.
 
@@ -335,7 +435,7 @@ Returns: `{"$type": "/result", "ok": true}`
 
 Example:
 ```sh
-curl -X POST -d '["cyclone-boom:save-warning"]' http://localhost:51515/plugins.add?profile=1
+curl --oauth2-bearer "$token" -X POST -d '["cyclone-boom:save-warning"]' http://localhost:51515/plugins.add?profile=1
 ```
 
 ## plugins.remove
@@ -351,7 +451,7 @@ Returns:
 
 Example:
 ```sh
-curl -X POST -d '["cyclone-boom:save-warning"]' http://localhost:51515/plugins.remove?profile=1
+curl --oauth2-bearer "$token" -X POST -d '["cyclone-boom:save-warning"]' http://localhost:51515/plugins.remove?profile=1
 ```
 
 ## plugins.reinstall
@@ -368,8 +468,8 @@ Optional parameters:
 
 Example:
 ```sh
-curl -X POST -d '["cyclone-boom:save-warning"]' http://localhost:51515/plugins.reinstall?profile=1
-curl -X POST -d '["cyclone-boom:save-warning"]' http://localhost:51515/plugins.reinstall?profile=1&redownload
+curl --oauth2-bearer "$token" -X POST -d '["cyclone-boom:save-warning"]' http://localhost:51515/plugins.reinstall?profile=1
+curl --oauth2-bearer "$token" -X POST -d '["cyclone-boom:save-warning"]' http://localhost:51515/plugins.reinstall?profile=1&redownload
 ```
 
 ## plugins.repair.scan
@@ -396,7 +496,7 @@ Returns:
 
 Example:
 ```sh
-curl -X POST -d '{"incompletePackages": ["cyclone-boom:save-warning"], "orphanFiles": []}' http://localhost:51515/plugins.repair?profile=1
+curl --oauth2-bearer "$token" -X POST -d '{"incompletePackages": ["cyclone-boom:save-warning"], "orphanFiles": []}' http://localhost:51515/plugins.repair?profile=1
 ```
 
 ## plugins.export
@@ -419,7 +519,7 @@ Returns:
 
 Example:
 ```sh
-curl -X POST -d '["sfbt:essentials"]' http://localhost:51515/plugins.export?profile=1
+curl --oauth2-bearer "$token" -X POST -d '["sfbt:essentials"]' http://localhost:51515/plugins.export?profile=1
 ```
 Result:
 ```
@@ -462,7 +562,7 @@ Returns:
 
 Example:
 ```sh
-curl -X POST -d '["nightmode"]' http://localhost:51515/variants.reset?profile=1
+curl --oauth2-bearer "$token" -X POST -d '["nightmode"]' http://localhost:51515/variants.reset?profile=1
 ```
 
 ## variants.set
@@ -476,7 +576,7 @@ Synopsis: `POST /variants.set?profile=id {"<variantId1>": "<value1>", …}`
 
 Example:
 ```sh
-curl -X POST -d '{"roadstyle": "EU"}' http://localhost:51515/variants.set?profile=1
+curl --oauth2-bearer "$token" -X POST -d '{"roadstyle": "EU"}' http://localhost:51515/variants.set?profile=1
 ```
 
 ## variants.choices
@@ -522,7 +622,7 @@ Returns:
 
 Example:
 ```sh
-curl -X POST -d '["url"]' http://localhost:51515/channels.set?profile=1
+curl --oauth2-bearer "$token" -X POST -d '["url"]' http://localhost:51515/channels.set?profile=1
 ```
 
 ## channels.stats
@@ -546,14 +646,17 @@ This mirrors the interactive `sc4pac update` command of the CLI.
 The websocket sends a series of messages, some of which expect a specific response, such as a confirmation to continue.
 
 Parameters:
-- `simtropolisToken=<value>` to re-use an authenticated session.
+- `profile=<id>` the profile ID.
+- `token=<access_token>` the client's `access_token` for authentication (or the `csrf_token` when the access token is passed as cookie), unless it was passed as Authorization header.
+   This is for compatibility with web browser Javascript websockets, which do not support headers.
+- `simtropolisToken=<value>` to authenticate with Simtropolis for downloads.
   Otherwise, the environment variable will be used instead if available.
 - `refreshChannels` to clear the cached channel contents files before updating.
 
 Example using Javascript in your web browser:
 ```javascript
-let ws = new WebSocket('ws://localhost:51515/update?profile=1');
-// ws.send(JSON.stringify({"$type": "/prompt/response", token: "<token>", body: "Yes"}))
+let ws = new WebSocket('ws://localhost:51515/update?profile=1&token=<access_token>');
+// ws.send(JSON.stringify({"$type": "/prompt/response", token: "<msg_response_token>", body: "Yes"}))
 ```
 The messages sent from the server are logged in the network tab of the browser dev tools.
 
@@ -672,6 +775,9 @@ the server may send the following message to tell the client to show a particula
 ```
 { "$type": "/prompt/open/package", "packages": [{"package": "<pkg>", "channelUrl": "<url>"}] }
 ```
+Parameters:
+- `token=<access_token>` the client's `access_token` for authentication (or the `csrf_token` when the access token is passed as cookie), unless it was passed as Authorization header.
+   This is for compatibility with web browser Javascript websockets, which do not support headers.
 
 ## profiles.list
 
@@ -720,7 +826,7 @@ Returns:
 
 Example:
 ```sh
-curl -X POST -d '{"id": "2"}' http://localhost:51515/profiles.remove
+curl --oauth2-bearer "$token" -X POST -d '{"id": "2"}' http://localhost:51515/profiles.remove
 ```
 
 ## profiles.switch
@@ -735,7 +841,7 @@ Returns:
 
 Example:
 ```sh
-curl -X POST -d '{"id": "2"}' http://localhost:51515/profiles.switch
+curl --oauth2-bearer "$token" -X POST -d '{"id": "2"}' http://localhost:51515/profiles.switch
 ```
 
 ## profiles.rename
@@ -750,7 +856,7 @@ Returns:
 
 Example:
 ```sh
-curl -X POST -d '{"id": "1", "name": "Timbuktu"}' http://localhost:51515/profiles.rename
+curl --oauth2-bearer "$token" -X POST -d '{"id": "1", "name": "Timbuktu"}' http://localhost:51515/profiles.rename
 ```
 
 ## settings.all.get
@@ -771,7 +877,7 @@ Returns: `{"$type": "/result", "ok": true}`
 
 Example to clear all settings:
 ```sh
-curl -X POST -d '{}' http://localhost:51515/settings.all.set
+curl --oauth2-bearer "$token" -X POST -d '{}' http://localhost:51515/settings.all.set
 ```
 
 ## image.fetch

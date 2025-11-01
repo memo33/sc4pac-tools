@@ -9,6 +9,7 @@ import zio.{ZIO, Task, Ref, RIO}
 import sc4pac.error.Sc4pacNotInteractive
 import sc4pac.JsonData as JD
 import sc4pac.Resolution.DepModule
+import sc4pac.api.TokenService
 
 // see https://github.com/coursier/coursier/blob/main/modules/cli/src/main/scala/coursier/cli/Coursier.scala
 // and related files
@@ -724,6 +725,7 @@ object Commands {
     |  sc4pac server --profiles-dir profiles --indent 1
     |  sc4pac server --profiles-dir profiles --web-app-dir build/web --launch-browser  ${gray("# used by GUI web")}
     |  sc4pac server --profiles-dir profiles --auto-shutdown --startup-tag [READY]     ${gray("# used by GUI desktop")}
+    |  secret="123456"; echo "$$secret" | sc4pac server --client-secret-stdin           ${gray("# pass a custom client_secret")}
     |
     |The ${emph("--profiles-dir")} path defaults to the environment variable ${emph("SC4PAC_PROFILES_DIR")} if it is set. Otherwise, it defaults to
     |- "%AppData%\\io.github.memo33\\sc4pac\\config\\profiles" on Windows,
@@ -752,6 +754,9 @@ object Commands {
     @ValueDescription("number") @Group("Server") @Tag("Server")
     @HelpMessage(s"indentation of JSON responses (default: -1, no indentation)")
     indent: Int = -1,
+    @ValueDescription("bool") @Group("Server") @Tag("Server")
+    @HelpMessage(s"read the client_secret for authentication from stdin (default: --client-secret-stdin=false), otherwise it is generated randomly")
+    clientSecretStdin: Boolean = false,
   ) extends Sc4pacCommandOptions
 
   case object Server extends Command[ServerOptions] {
@@ -760,17 +765,17 @@ object Commands {
       ZIO.logInfo(message).as(resp)
     })
 
-    def serve(options: ServerOptions, profilesDir: os.Path, webAppDir: Option[os.Path]): RIO[zio.Scope & service.FileSystem, zio.Fiber[Throwable, Nothing]] = {
+    def serve(options: ServerOptions, webAppDir: Option[(os.Path, java.net.URI)]): RIO[zio.Scope & service.FileSystem & TokenService, zio.Fiber[Throwable, Nothing]] = {
       val api = sc4pac.api.Api(options)
       // Enabling CORS is important so that web browsers do not block the
       // request response for lack of the following response header:
       //     access-control-allow-origin: http://localhost:12345
       // (e.g. when Flutter-web is hosted on port 12345)
-      val app = api.routes(webAppDir) @@ zio.http.Middleware.cors
+      val app = api.routes(webAppDir.map(_._1)) @@ zio.http.Middleware.cors
       def createPortOccupiedMsg(e: Throwable): sc4pac.error.PortOccupied =
         sc4pac.error.PortOccupied(s"Failed to run sc4pac server on port ${options.port}. ${e.getMessage}")
 
-      val serverTask: RIO[ServerFiber & service.FileSystem, Nothing] =
+      val serverTask: RIO[ServerFiber & service.FileSystem & TokenService, Nothing] =
         zio.http.Server.install(app)
           .catchSomeDefect {
             // usually: "bind(..) failed: Address already in use"
@@ -787,7 +792,7 @@ object Commands {
           })
           .zipRight(
             ZIO.whenDiscard(webAppDir.isDefined) {
-              val url = java.net.URI.create(s"http://localhost:${options.port}/webapp/")
+              val url = webAppDir.get._2
               println(f"%nTo start the sc4pac-gui web-app, open the following URL in your web browser if it does not launch automatically:%n%n  ${url}%n")
               ZIO.whenDiscard(options.launchBrowser) {
                 DesktopOps.openUrl(url).catchAll(_ => ZIO.succeed(()))  // errors can be ignored
@@ -806,7 +811,7 @@ object Commands {
             }
           )
           .zipRight(ZIO.never)  // keep server running indefinitely unless interrupted
-          .provideSome[ServerFiber & service.FileSystem](
+          .provideSome[ServerFiber & service.FileSystem & TokenService](
             zio.http.Server.defaultWith(config => config.port(options.port)
                 .requestStreaming(zio.http.Server.RequestStreaming.Enabled)  // enabling request streaming to avoid 413 "content too large" on large POST requests
               )
@@ -818,7 +823,6 @@ object Commands {
               },
             zio.http.Client.default  // for /image.fetch
               .map(_.update[zio.http.Client](_.updateHeaders(_.addHeader("User-Agent", Constants.userAgent)) @@ followRedirects)),
-            zio.ZLayer.succeed(ProfilesDir(profilesDir)),
             zio.ZLayer(zio.Ref.make(ServerConnection(numConnections = 0, currentChannel = None))),
             zio.ZLayer(zio.Ref.make(Option.empty[FileCache])),
           )
@@ -835,6 +839,9 @@ object Commands {
       } yield fiber
     }
 
+    def createWebAppUrl(port: Int, clientSecret: zio.Config.Secret): java.net.URI =
+      java.net.URI.create(s"http://localhost:${port}/webapp/?launch-token=${clientSecret.stringValue}")
+
     def run(options: ServerOptions, args: RemainingArgs): Unit = {
       if (options.indent < -1)
         error(caseapp.core.Error.Other(s"Indentation must be -1 or larger."))
@@ -850,9 +857,15 @@ object Commands {
                   println(s"Creating sc4pac profiles directory: $profilesDir")
                   os.makeDir.all(profilesDir)
                 })
+          clientSecret <- if (options.clientSecretStdin) Prompt.readClientSecret else sc4pac.api.TokenService.generateSecureToken(short = webAppDir.nonEmpty)
+          _  <- ZIO.unlessDiscard(options.clientSecretStdin || webAppDir.nonEmpty)(ZIO.succeed(println(s"Configured new client_secret=${clientSecret.stringValue}")))
           _  <- ZIO.scoped {
                   for {
-                    fiber    <- serve(options, profilesDir = profilesDir, webAppDir = webAppDir)
+                    fiber    <- serve(options, webAppDir = webAppDir.map((_, createWebAppUrl(port = options.port, clientSecret))))
+                                  .provideSomeLayer(sc4pac.api.TokenService.live(
+                                    ProfilesDir(profilesDir),
+                                    zio.http.Credentials(Constants.sc4pacGuiClientId, clientSecret),
+                                  ))
                     exitVal  <- fiber.await
                     _        <- exitVal match {
                                   case zio.Exit.Failure(cause) =>

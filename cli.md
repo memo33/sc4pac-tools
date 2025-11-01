@@ -390,6 +390,7 @@ Start a local server to use the HTTP [API](api).
 sc4pac server --profiles-dir profiles --indent 1
 sc4pac server --profiles-dir profiles --web-app-dir build/web --launch-browser  # used by GUI web
 sc4pac server --profiles-dir profiles --auto-shutdown --startup-tag [READY]     # used by GUI desktop
+secret="123456"; echo "$secret" | sc4pac server --client-secret-stdin           # pass a custom client_secret
 ```
 
 **Options:**
@@ -400,6 +401,7 @@ sc4pac server --profiles-dir profiles --auto-shutdown --startup-tag [READY]     
 - `--auto-shutdown`         automatically shut down the server when client closes connection to `/server.connect` (default: `--auto-shutdown=false`). This is used by the desktop GUI to ensure the port is cleared when the GUI exits.
 - `--startup-tag <string>`  optional tag to print once server has started and is listening
 - `--indent <number>`       indentation of JSON responses (default: -1, no indentation)
+- `--client-secret-stdin`   read the `client_secret` for authentication from stdin (default: `--client-secret-stdin=false`), otherwise it is generated randomly
 
 The `--profiles-dir` path defaults to the environment variable `SC4PAC_PROFILES_DIR` if it is set. Otherwise, it defaults to
 - `%AppData%\io.github.memo33\sc4pac\config\profiles` on Windows,
