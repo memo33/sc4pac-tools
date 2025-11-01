@@ -26,7 +26,9 @@ final class Sc4pacMissingVariant(val packageData: JsonData.Package, msg: String)
 
 final class UnsatisfiableVariantConstraints(val title: String, val detail: String) extends java.io.IOException(s"$title $detail") with Sc4pacErr
 
-final class ExtractionFailed(val title: String, val detail: String) extends java.io.IOException(s"$title $detail") with Sc4pacErr
+final class ExtractionFailed(val title: String, val detail: String) extends java.io.IOException(s"$title $detail") with Sc4pacErr {
+  def withDetail(newDetail: String): ExtractionFailed = ExtractionFailed(title, newDetail)
+}
 
 final class DownloadFailed(val title: String, val detail: String, val url: Option[java.net.URI]) extends java.io.IOException(s"$title $detail") with Sc4pacErr
 

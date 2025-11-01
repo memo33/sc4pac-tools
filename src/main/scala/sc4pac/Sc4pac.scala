@@ -333,7 +333,7 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) {  // TODO d
       progress: Sc4pac.Progress,
       resolution: Resolution,
     ): RIO[ResolutionContext, StageResult.Item] = {
-      def extract(assetData: JD.AssetReference, pkgFolder: os.SubPath, variant: Variant): Task[(BareAsset, Chunk[Extractor.ExtractedItem], Seq[Warning])] = {
+      def extract(assetData: JD.AssetReference, pkgFolder: os.SubPath, variant: Variant, debugModule: BareModule): Task[(BareAsset, Chunk[Extractor.ExtractedItem], Seq[Warning])] = {
         // Given an AssetReference, we look up the corresponding artifact file
         // by ID. This relies on the 1-to-1-correspondence between sc4pacAssets
         // and artifact files.
@@ -352,7 +352,7 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) {  // TODO d
             val (recipe, regexWarnings) = Extractor.InstallRecipe.fromAssetReference(assetData, variant)
             val extractor = new Extractor(logger)
 
-            def doExtract(fallbackFilename: Option[String]) =
+            def doExtract(fallbackFilename: Option[String]) = try {
               extractor.extract(
                 archive,
                 fallbackFilename,
@@ -363,6 +363,19 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) {  // TODO d
                 stagingDirs.root,
                 validate = true,
               )
+            } catch { case e: error.ExtractionFailed =>
+              throw e.withDetail((Seq(
+                e.detail, "",
+                "Redownloading the package might resolve the problem in case of issues with the downloaded file:",
+                s"- Package: ${debugModule.orgName}",
+                s"- Asset ID: ${assetData.assetId}",
+                // s"- Package folder: $pkgFolder",
+              ) ++ Option.when(variant.nonEmpty)(
+                s"- Variant: ${JD.VariantData.variantString(variant)}",
+              ) ++ Seq(
+                s"- Downloaded and cached file: $archive",
+              )).mkString(f"%n"))
+            }
 
             for {
               fallbackFilename <- context.cache.getFallbackFilename(archive).provideSomeLayer(zio.ZLayer.succeed(logger))
@@ -412,7 +425,7 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) {  // TODO d
       for {
         extractions        <- logger.extractingPackage(dependency, progress)(for {
                                 _  <- ZIO.attemptBlocking(os.makeDir.all(stagingDirs.plugins / pkgFolder))  // create folder even if package does not have any assets or files
-                                extracted <- ZIO.foreach(variantData.assets)(extract(_, pkgFolder, variant = variantData.variant))
+                                extracted <- ZIO.foreach(variantData.assets)(extract(_, pkgFolder, variant = variantData.variant, debugModule = module))
                               } yield extracted)  // (asset, files, warnings)
         artifactWarnings   =  extractions.flatMap(_._3)
         _                  <- ZIO.foreach(artifactWarnings)(w => ZIO.attempt(logger.warn(w.value)))  // to avoid conflicts with spinner animation, we print warnings after extraction already finished
