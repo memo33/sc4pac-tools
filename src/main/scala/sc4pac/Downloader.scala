@@ -49,7 +49,7 @@ class Downloader(
         if (localFilePath != mirrorPath) {
           os.copy.over(mirrorPath, localFilePath, replaceExisting = true, createFolders = true, followLinks = true)
         }
-        doTouchCheckFile(localFile, url = url, filename = mirrorPath.lastOpt, sha256 = Downloader.computeChecksum(localFile))
+        doTouchCheckFile(localFile, url = url, filename = mirrorPath.lastOpt, sha256 = Downloader.computeChecksum(localFile), debugSource = mirrorPath.toString)
         Right(localFile)
       }.catchSome {
         case e: java.io.FileNotFoundException if e.getMessage != null => ZIO.succeed(Left(new Artifact2Error.NotFound(e.getMessage)))
@@ -237,7 +237,7 @@ class Downloader(
 
           val checksum = Downloader.computeChecksum(file)
 
-          doTouchCheckFile(file, url, filename, checksum)
+          doTouchCheckFile(file, url, filename, checksum, debugSource = url)
         }
       }
 
@@ -253,11 +253,15 @@ class Downloader(
   // in the cache under this name directly.
   // Additionally we store a checksum to be able to quickly check if a file is
   // still up-to-date by comparing with an expected checksum value.
-  def doTouchCheckFile(file: java.io.File, url: String, filename: Option[String], sha256: ArraySeq[Byte]): Unit = {  // without `updateLinks` as we do not download directories
+  def doTouchCheckFile(file: java.io.File, url: String, filename: Option[String], sha256: ArraySeq[Byte], debugSource: String): Unit = {  // without `updateLinks` as we do not download directories
     val ts = System.currentTimeMillis()
     val f  = FileCache.ttlFile(file)
     val arr: Array[Byte] =  // with older sc4pac versions, this could be an empty byte array
-      UP.writeToByteArray(JD.CheckFile(filename = filename, checksum = JD.Checksum(sha256 = Some(sha256))))
+      UP.writeToByteArray(JD.CheckFile(
+        filename = filename,
+        checksum = JD.Checksum(sha256 = Some(sha256)),
+        source = debugSource,
+      ))
     scala.util.Using.resource(new java.io.FileOutputStream(f)) { fos => fos.write(arr) }
     f.setLastModified(ts)
     ()
