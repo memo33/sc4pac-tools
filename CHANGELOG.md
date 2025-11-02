@@ -1,16 +1,20 @@
 # Changelog
 
 ## [Unreleased]
+### Fixed
+- a security vulnerability of the API (lack of authentication)
+  which could allow XSS to install files without user interaction while the GUI was running (#48).
+  Upgrade to sc4pac GUI 1.4.0+ which includes the fix.
+- an issue preventing the import and export of JSON mod sets if the JSON file was too large ([#39][gui39])
+- Extraction failures now display the name of the originating package (#42)
+
 ### Added
 - new `sc4pac reinstall` command to force re-installing or to redownload individual packages, e.g. to restore missing files
 - new `sc4pac repair` command to scan the Plugins folder for .sc4pac folders that are out-of-sync with sc4pac's internal state
 
-### Fixed
-- an issue preventing the import and export of JSON mod sets if the JSON file was too large ([#39][gui39])
-- Extraction failures now display the name of the originating package (#42)
-
 ### Changed
-- API upgraded to 2.8:
+- API upgraded to 3.0:
+  - added mandatory authentication/authorization to all API endpoints and new `/auth/token` endpoint (#48)
   - added optional `includePlugins` parameter to `/profiles.list` endpoint
   - added `/plugins.reinstall` endpoint and corresponding installation status
   - added `/profiles.remove` and `/profiles.rename` endpoints
@@ -18,6 +22,7 @@
 
 [gui35]: https://github.com/memo33/sc4pac-gui/issues/35
 [gui39]: https://github.com/memo33/sc4pac-gui/issues/39
+
 
 ## [0.8.1] - 2025-09-20
 ### Added
