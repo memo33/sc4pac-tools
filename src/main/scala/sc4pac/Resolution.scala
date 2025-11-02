@@ -268,18 +268,19 @@ class Resolution(reachableDeps: TreeSeqMap[BareDep, Links], resolvedData: Map[Ba
                 e.getMessage))
             case e: Artifact2Error.Unauthorized =>  // 401
               ZIO.serviceWithZIO[Downloader.Credentials] { credentials =>
-                val msg = if (!art.isFromSimtropolis) {
-                  "Failed to download some assets due to lack of authorization. This should not normally happen. Please report this problem and mention which file or URL is affected."
+                val (promptForSimtropolisToken, msg) = if (!art.isFromSimtropolis) {
+                  false -> "Failed to download some assets due to lack of authorization. This should not normally happen. Please report this problem and mention which file or URL is affected."
                 } else if (credentials.simtropolisToken.isDefined) {
-                  "Failed to download some assets from Simtropolis. Your personal Simtropolis authentication token seems to be incorrect."
+                  true -> "Failed to download some assets from Simtropolis. Your personal Simtropolis authentication token seems to be incorrect."
                 } else {
-                  "Failed to download some assets from Simtropolis due to lack of authorization. Set up a personal Simtropolis authentication token and try again."
+                  true -> "Failed to download some assets from Simtropolis due to lack of authorization. Set up a personal Simtropolis authentication token and try again."
                 }
-                ZIO.fail(new error.DownloadFailed(msg, e.getMessage, url = Some(art.url)))
+                ZIO.fail(new error.DownloadFailed(msg, e.getMessage, url = Some(art.url), promptForSimtropolisToken = promptForSimtropolisToken))
               }
             case e: Artifact2Error.RateLimited =>  // 429
               ZIO.serviceWithZIO[Downloader.Credentials] { credentials =>
-                val msg = if (art.isFromSimtropolis && !credentials.simtropolisToken.isDefined) {
+                val promptForSimtropolisToken = art.isFromSimtropolis && !credentials.simtropolisToken.isDefined
+                val msg = if (promptForSimtropolisToken) {
                   "Failed to download some assets from Simtropolis (rate-limited). " +
                   "You have reached your daily download limit (20 files per day for guests on Simtropolis). " +
                   "Go to Settings to set up a personal Simtropolis authentication token and try again."
@@ -288,11 +289,12 @@ class Resolution(reachableDeps: TreeSeqMap[BareDep, Links], resolvedData: Map[Ba
                   "The file exchange server has blocked your download, as you have sent too many download requests in a short time. " +
                   "Try again later."
                 }
-                ZIO.fail(new error.DownloadFailed(msg, e.getMessage, url = Some(art.url)))
+                ZIO.fail(new error.DownloadFailed(msg, e.getMessage, url = Some(art.url), promptForSimtropolisToken = promptForSimtropolisToken))
               }
             case e: Artifact2Error.Forbidden =>  // 403
               ZIO.serviceWithZIO[Downloader.Credentials] { credentials =>
-                val msg = if (art.isFromSimtropolis && !credentials.simtropolisToken.isDefined) {
+                val promptForSimtropolisToken = art.isFromSimtropolis && !credentials.simtropolisToken.isDefined
+                val msg = if (promptForSimtropolisToken) {
                   "Failed to download some assets from Simtropolis (forbidden). " +
                   "Your download request has been blocked by Simtropolis or by Cloudflare. " +
                   "Setting up a personal Simtropolis authentication token might resolve the problem (see Settings)."
@@ -301,7 +303,7 @@ class Resolution(reachableDeps: TreeSeqMap[BareDep, Links], resolvedData: Map[Ba
                   "Your download request has been blocked by the file exchange server. " +
                   "For example, this can happen when using a public VPN or a suspicious IP address, or when a file has been locked."
                 }
-                ZIO.fail(new error.DownloadFailed(msg, e.getMessage, url = Some(art.url)))
+                ZIO.fail(new error.DownloadFailed(msg, e.getMessage, url = Some(art.url), promptForSimtropolisToken = promptForSimtropolisToken))
               }
             case e: (Artifact2Error.DownloadError | Artifact2Error.WrongLength | Artifact2Error.NotFound) =>  // e.g. 500, 404 or other issues
               val msg = "Failed to download some assets. Maybe the file exchange server is currently unavailable. Also check your internet connection."

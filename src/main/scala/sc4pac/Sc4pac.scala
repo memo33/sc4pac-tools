@@ -620,15 +620,19 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) {  // TODO d
 
     private def doDownloadWithMirror(resolution: Resolution, plan: UpdatePlan): RIO[Prompter & ResolutionContext & Downloader.Credentials, Seq[(DepAsset, Artifact, java.io.File)]] = {
       val depsToInstall = resolution.transitiveDependencies.filter(plan.toInstall).reverse  // we start by fetching artifacts in reverse as those have fewest dependencies of their own
-      ZIO.iterate(Left(Map.empty): Either[Map[java.net.URI, os.Path], Seq[(DepAsset, Artifact, java.io.File)]])(_.isLeft) {
-        case Left(urlFallbacks) =>
+      ZIO.iterate(Left((Map.empty, None)): Either[(Map[java.net.URI, os.Path], Option[Downloader.Credentials]), Seq[(DepAsset, Artifact, java.io.File)]])(_.isLeft) {
+        case Left((urlFallbacks, credentialsFallback)) =>
           resolution.fetchArtifactsOf(depsToInstall, urlFallbacks, plan.toRedownload)
+            .updateService[Downloader.Credentials](origCredentials => credentialsFallback.getOrElse(origCredentials))
             .map(Right(_))
             .catchSome { case e: error.DownloadFailed if e.url.isDefined && !urlFallbacks.contains(e.url.get) =>
               ZIO.serviceWithZIO[Prompter](_.promptForDownloadMirror(e.url.get, e))
-                .flatMap {
-                  case Right(fallback) => ZIO.succeed(Left(urlFallbacks + (e.url.get -> fallback)))
-                  case Left(retry) => if (retry) ZIO.succeed(Left(urlFallbacks)) else ZIO.fail(e)
+                .flatMap { response =>
+                  if (!response.retry) ZIO.fail(e)
+                  else ZIO.succeed(Left((
+                    urlFallbacks ++ response.localMirror.map(fallback => e.url.get -> os.Path(fallback, os.pwd)),  // path should usually be absolute already
+                    response.simtropolisToken.map(s => Downloader.Credentials(simtropolisToken = Some(s))).orElse(credentialsFallback),
+                  )))
                 }
             }
         case Right(_) => throw new AssertionError
