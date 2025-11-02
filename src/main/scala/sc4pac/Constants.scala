@@ -33,8 +33,9 @@ object Constants {
     * - 5: channel stats, external packages, replacement of `contents`
     * - 6: variantInfo
     * - 7: conditional variants
+    * - 8: #48
     */
-  val channelSchemeVersions: Range = 1 to 7  // supported versions
+  val channelSchemeVersions: Range = 1 to 8  // supported versions
 
   val pluginsLockScheme = 2
   val bufferSizeExtract = 64 * 1024  // 64 kiB, bounded by disk speed
