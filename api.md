@@ -465,6 +465,9 @@ Returns: `{"$type": "/result", "ok": true}`
 
 Optional parameters:
 - `redownload` to redownload assets of the packages to reinstall.
+  If a package is not installed, but would be installed by the next `/update`, it will be flagged for redownload as well.
+  Otherwise, the `redownload` flag is cleared after the next successful `/update`.
+  In particular, this allows to redownload files that could not be installed due to extraction failures.
 
 Example:
 ```sh

@@ -131,7 +131,7 @@ sc4pac reinstall cyclone-boom:save-warning                # packages of the form
 sc4pac reinstall --redownload cyclone-boom:save-warning   # redownload instead of using cached assets
 ```
 
-Packages that are not actually installed will be ignored.
+Packages that are not actually installed will be ignored, but can still be marked for redownload in case they are part of the next update (e.g. when a corrupted file failed to extract).
 
 **Options:**
 - `--redownload` Also redownload assets of packages to re-install

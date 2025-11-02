@@ -2,7 +2,7 @@
 
 ## [Unreleased]
 ### Added
-- new `sc4pac reinstall` command to force re-installing individual packages, e.g. to restore missing files
+- new `sc4pac reinstall` command to force re-installing or to redownload individual packages, e.g. to restore missing files
 - new `sc4pac repair` command to scan the Plugins folder for .sc4pac folders that are out-of-sync with sc4pac's internal state
 
 ### Fixed

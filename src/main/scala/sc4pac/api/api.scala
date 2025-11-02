@@ -286,7 +286,7 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) extends AuthMiddleware {
         mods        <- parseModulesOr400(req.body)
         pluginsSpec <- readPluginsSpecOr409
         pac         <- Sc4pac.init(pluginsSpec.config)
-        _           <- pac.reinstall(mods.toSet, redownload = redownload)  // non-installed packages are ignored (TODO should they raise an error?)
+        _           <- pac.reinstall(mods.toSet, redownload = redownload)  // non-installed packages are ignored (TODO should they raise an error?), but may be redownloaded if they are pending updates
       } yield jsonOk
     }) @@ interceptProfile -> AuthScope.write,
 

@@ -166,7 +166,6 @@ object JsonData extends SharedData {
     installedAt: Instant = installedAtDummy,  // since scheme 2
     updatedAt: Instant = installedAtDummy,  // since scheme 2
     reinstall: Boolean = false,  // since scheme 2+
-    redownload: Boolean = false,  // since scheme 2+
   ) derives ReadWriter {
     def toDepModule = DepModule(Organization(group), ModuleName(name), version = version, variant = variant)
     def toBareModule = BareModule(Organization(group), ModuleName(name))
@@ -174,13 +173,17 @@ object JsonData extends SharedData {
     def toApiInstalled = api.InstalledStatus.Installed(version = version, variant = variant, installedAt = installedAt, updatedAt = updatedAt, reinstall = reinstall)
   }
 
-  case class PluginsLock(scheme: Int = 1, installed: Seq[InstalledData], assets: Seq[Asset]) derives ReadWriter {
+  case class PluginsLock(
+    scheme: Int = 1,
+    installed: Seq[InstalledData],
+    assets: Seq[Asset],
+    redownload: Seq[BareModule] = Seq.empty,  // since scheme 2+
+  ) derives ReadWriter {
     def dependenciesWithAssets: Set[Resolution.Dep] =
       (installed.map(_.toDepModule) ++ assets.map(DepAsset.fromAsset(_))).toSet
     def packagesToReinstall: Set[Resolution.DepModule] =
       installed.iterator.filter(_.reinstall).map(_.toDepModule).toSet
-    def packagesToRedownload: Set[Resolution.DepModule] =
-      installed.iterator.filter(_.redownload).map(_.toDepModule).toSet
+    def packagesToRedownload: Set[BareModule] = redownload.toSet
 
     def updateTo(plan: Sc4pac.UpdatePlan, stagedItems: Seq[Sc4pac.StageResult.Item]): PluginsLock = {
       val now = java.time.Instant.now().truncatedTo(ChronoUnit.SECONDS)
@@ -217,7 +220,8 @@ object JsonData extends SharedData {
           lastModified = dep.lastModified.getOrElse(null),
           archiveType = dep.archiveType,
           checksum = dep.checksum,
-        ))
+        )),
+        redownload = Seq.empty,  // after update is complete, any redownloads will have been processed
       )
     }
   }

@@ -224,8 +224,8 @@ class Resolution(reachableDeps: TreeSeqMap[BareDep, Links], resolvedData: Map[Ba
   val transitiveDependencies: Seq[Dep] = reachableDeps.keysIterator.map(nonbareDeps).toSeq
 
   /** Compute the direct dependencies. */
-  def dependenciesOf(dep: Dep, ignoreUnresolved: Boolean = false): Set[Dep] = {
-    val linksOpt = reachableDeps.get(dep.toBareDep)
+  def dependenciesOf(dep: BareDep, ignoreUnresolved: Boolean = false): Set[Dep] = {
+    val linksOpt = reachableDeps.get(dep)
     if (!linksOpt.isDefined) {
       assert(ignoreUnresolved, s"Dependency resolution did not resolve $dep")
       Set.empty

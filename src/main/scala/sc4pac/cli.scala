@@ -196,7 +196,7 @@ object Commands {
     |  sc4pac reinstall cyclone-boom:save-warning                ${gray("# packages of the form <group>:<package-name>")}
     |  sc4pac reinstall --redownload cyclone-boom:save-warning   ${gray("# redownload instead of using cached assets")}
     |
-    |Packages that are not actually installed will be ignored.
+    |Packages that are not actually installed will be ignored, but can still be marked for redownload in case they are part of the next update (e.g. when a corrupted file failed to extract).
     """.stripMargin.trim)
   final case class ReinstallOptions(
     @HelpMessage("Also redownload assets of packages to re-install") @Group("Main") @Tag("Main")

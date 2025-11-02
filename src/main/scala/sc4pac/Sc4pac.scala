@@ -43,18 +43,20 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) {  // TODO d
 
   /** Mark modules for reinstallation that have been installed before, either explicitly or implicitly.
     * Returns true if any matching module has been found and marked for reinstallation.
+    * Optionally, modules (i.e. their assets) can be marked for redownload, even
+    * if they are not yet installed, but e.g. they're pending updates.
     */
   def reinstall(modules: Set[BareModule], redownload: Boolean): Task[Boolean] = {
     JsonIo.read[JD.PluginsLock](JD.PluginsLock.path(context.profileRoot)).flatMap { pluginsLockData =>  // at this point, file should already exist
       require(pluginsLockData.scheme > 1, "run an Update before trying to reinstall packages, as scheme=1 is not supported anymore")
       var foundAny = false
-      val pluginsLockDataNext = pluginsLockData.copy(installed = pluginsLockData.installed.map { i =>
-        if (!modules.contains(i.toBareModule)) i
-        else {
-          foundAny = true
-          if (redownload) i.copy(reinstall = true, redownload = true) else i.copy(reinstall = true)
-        }
-      })
+      val pluginsLockDataNext = pluginsLockData.copy(
+        installed = pluginsLockData.installed.map { i =>
+          if (!modules.contains(i.toBareModule)) i
+          else { foundAny = true; i.copy(reinstall = true) }
+        },
+        redownload = if (redownload) (pluginsLockData.redownload ++ modules.iterator).distinct else pluginsLockData.redownload,
+      )
       for {
         _ <- JsonIo.write(JD.PluginsLock.path(context.profileRoot), pluginsLockDataNext, Some(pluginsLockData))(ZIO.unit)
       } yield foundAny
@@ -778,7 +780,7 @@ object Sc4pac {
     // Here, `forceReinstall` is a subset of `installed` packages that should be
     // reinstalled, unless the resolution updates them to a different version anyway.
     // Likewise, `forceRedownload` is a subset of packages whose assets should be redownloaded.
-    def fromResolution(resolution: Resolution, installed: Set[Dep], forceReinstall: Set[DepModule], forceRedownload: Set[DepModule]): UpdatePlan = {
+    def fromResolution(resolution: Resolution, installed: Set[Dep], forceReinstall: Set[DepModule], forceRedownload: Set[BareModule]): UpdatePlan = {
       // TODO decide whether we should also look for updates of `changing` artifacts
 
       val wanted: Set[Dep] = resolution.transitiveDependencies.toSet
@@ -788,9 +790,9 @@ object Sc4pac {
       val toReinstall = wanted & installed & (resolution.dependentsOf(missing.filter(_.isSc4pacAsset)) ++ forceReinstall)
       // for packages to install, we also include their assets (so that they get fetched)
       val toInstall = missing | toReinstall
-      val assetsToInstall = toInstall.flatMap(dep => resolution.dependenciesOf(dep).collect{ case d: DepAsset => d })
-      val assetsToRedownload = assetsToInstall & forceRedownload.flatMap(dep =>
-          resolution.dependenciesOf(dep, ignoreUnresolved = true).collect{ case d: DepAsset => d })  // note that dependenciesOf converts to BareModule, so redownloading even works when variants change
+      val assetsToInstall = toInstall.flatMap(dep => resolution.dependenciesOf(dep.toBareDep).collect{ case d: DepAsset => d })
+      val assetsToRedownload = assetsToInstall & forceRedownload.flatMap(mod =>
+          resolution.dependenciesOf(mod, ignoreUnresolved = true).collect{ case d: DepAsset => d })  // note that dependenciesOf takes BareModule, so redownloading even works when variants change
       UpdatePlan(
         toInstall = toInstall ++ assetsToInstall,
         toReinstall = toReinstall,
