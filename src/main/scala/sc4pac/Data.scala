@@ -165,16 +165,25 @@ object JsonData extends SharedData {
     category: Option[String] = None,  // since scheme 2
     installedAt: Instant = installedAtDummy,  // since scheme 2
     updatedAt: Instant = installedAtDummy,  // since scheme 2
+    reinstall: Boolean = false,  // since scheme 2+
   ) derives ReadWriter {
     def toDepModule = DepModule(Organization(group), ModuleName(name), version = version, variant = variant)
     def toBareModule = BareModule(Organization(group), ModuleName(name))
     private[sc4pac] def toSearchString: String = s"$group:$name $summary".toLowerCase(java.util.Locale.ENGLISH)  // copied from ChannelItem.toSearchString
-    def toApiInstalled = api.InstalledStatus.Installed(version = version, variant = variant, installedAt = installedAt, updatedAt = updatedAt)
+    def toApiInstalled = api.InstalledStatus.Installed(version = version, variant = variant, installedAt = installedAt, updatedAt = updatedAt, reinstall = reinstall)
   }
 
-  case class PluginsLock(scheme: Int = 1, installed: Seq[InstalledData], assets: Seq[Asset]) derives ReadWriter {
+  case class PluginsLock(
+    scheme: Int = 1,
+    installed: Seq[InstalledData],
+    assets: Seq[Asset],
+    redownload: Seq[BareModule] = Seq.empty,  // since scheme 2+
+  ) derives ReadWriter {
     def dependenciesWithAssets: Set[Resolution.Dep] =
       (installed.map(_.toDepModule) ++ assets.map(DepAsset.fromAsset(_))).toSet
+    def packagesToReinstall: Set[Resolution.DepModule] =
+      installed.iterator.filter(_.reinstall).map(_.toDepModule).toSet
+    def packagesToRedownload: Set[BareModule] = redownload.toSet
 
     def updateTo(plan: Sc4pac.UpdatePlan, stagedItems: Seq[Sc4pac.StageResult.Item]): PluginsLock = {
       val now = java.time.Instant.now().truncatedTo(ChronoUnit.SECONDS)
@@ -201,6 +210,7 @@ object JsonData extends SharedData {
             category = stagedItem.map(item => categoryFromSubPath(item.pkgData.subfolder)).getOrElse(previousPkgs(bareDep).category),
             installedAt = previousPkgs.get(bareDep).map(_.installedAt).getOrElse(now),
             updatedAt = if (stagedItem.isDefined) now else previousPkgs(bareDep).updatedAt,
+            reinstall = false,
           )
         },
         assets = arts.map(dep => Asset(
@@ -210,7 +220,8 @@ object JsonData extends SharedData {
           lastModified = dep.lastModified.getOrElse(null),
           archiveType = dep.archiveType,
           checksum = dep.checksum,
-        ))
+        )),
+        redownload = Seq.empty,  // after update is complete, any redownloads will have been processed
       )
     }
   }
@@ -301,7 +312,8 @@ object JsonData extends SharedData {
       (m: Map[String, String]) => Checksum(sha256 = m.get("sha256").map(Checksum.stringToBytes))
     )
 
-  case class CheckFile(filename: Option[String], checksum: Checksum = Checksum.empty) derives ReadWriter
+  // `source` is local path or remote url, for debugging purposes, see https://github.com/memo33/sc4pac-tools/issues/43
+  case class CheckFile(filename: Option[String], checksum: Checksum = Checksum.empty, source: String = null) derives ReadWriter
 
   case class ProfileData(id: ProfileId, name: String) derives ReadWriter
 

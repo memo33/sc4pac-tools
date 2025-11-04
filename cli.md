@@ -44,6 +44,8 @@ For most uses, it is recommended to use the *sc4pac* GUI instead.
 add             Add new packages to install explicitly.
 update          Update all installed packages to their latest version and install any missing packages.
 remove          Remove packages that have been installed explicitly.
+reinstall       Mark previously installed packages for re-installation.
+repair          Scan the Plugins folder for broken packages and repair them.
 search          Search for the name of a package.
 info            Display more information about a package.
 list            List all installed packages.
@@ -110,6 +112,53 @@ sc4pac remove cyclone-boom:save-warning   # Remove package <group>:<package-name
 
 **Options:**
 - `-i, --interactive` Interactively select packages to remove
+
+
+---
+## reinstall
+
+**Usage:** `sc4pac reinstall [options] [packages...]`
+
+Mark previously installed packages for re-installation, ignoring any dependency relations.
+
+For example, this is useful when you accidentally deleted some files from the package subfolder inside the Plugins folder. Reinstalling the package ensures the missing files are restored, without having to reinstall any packages that depend on it.
+
+Afterwards, run `sc4pac update` for the changes to take effect.
+
+**Example:**
+```sh
+sc4pac reinstall cyclone-boom:save-warning                # packages of the form <group>:<package-name>
+sc4pac reinstall --redownload cyclone-boom:save-warning   # redownload instead of using cached assets
+```
+
+Packages that are not actually installed will be ignored, but can still be marked for redownload in case they are part of the next update (e.g. when a corrupted file failed to extract).
+
+**Options:**
+- `--redownload` Also redownload assets of packages to re-install
+
+
+---
+## repair
+
+**Usage:** `sc4pac repair [options]`
+
+Scan the Plugins folder for broken packages and repair them.
+
+Normally this is not needed, but if the Plugins files somehow got out-of-sync with *sc4pac*'s internal state, this command may be able to fix that.
+
+Specifically, this command finds old `.sc4pac` subfolders that are not needed anymore and will delete them.
+Moreover, it detects missing `.sc4pac` subfolders and will mark the corresponding packages for re-installation with the next `sc4pac update`.
+
+Note that this command will _not_ detect when some files of a package are missing, if the `.sc4pac` package subfolder still exists. In that case, use `sc4pac reinstall` instead, for the affected package.
+
+**Example:**
+```sh
+sc4pac repair
+```
+
+**Options:**
+- `-n, --dry-run`  Don't actually remove or fix anything, but just display detected issues
+- `-y, --yes`      Accept some default answers without asking, usually "yes"
 
 
 ---
@@ -341,6 +390,7 @@ Start a local server to use the HTTP [API](api).
 sc4pac server --profiles-dir profiles --indent 1
 sc4pac server --profiles-dir profiles --web-app-dir build/web --launch-browser  # used by GUI web
 sc4pac server --profiles-dir profiles --auto-shutdown --startup-tag [READY]     # used by GUI desktop
+secret="123456"; echo "$secret" | sc4pac server --client-secret-stdin           # pass a custom client_secret
 ```
 
 **Options:**
@@ -351,6 +401,7 @@ sc4pac server --profiles-dir profiles --auto-shutdown --startup-tag [READY]     
 - `--auto-shutdown`         automatically shut down the server when client closes connection to `/server.connect` (default: `--auto-shutdown=false`). This is used by the desktop GUI to ensure the port is cleared when the GUI exits.
 - `--startup-tag <string>`  optional tag to print once server has started and is listening
 - `--indent <number>`       indentation of JSON responses (default: -1, no indentation)
+- `--client-secret-stdin`   read the `client_secret` for authentication from stdin (default: `--client-secret-stdin=false`), otherwise it is generated randomly
 
 The `--profiles-dir` path defaults to the environment variable `SC4PAC_PROFILES_DIR` if it is set. Otherwise, it defaults to
 - `%AppData%\io.github.memo33\sc4pac\config\profiles` on Windows,

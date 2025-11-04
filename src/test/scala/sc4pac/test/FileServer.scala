@@ -27,7 +27,7 @@ object FileServer {
         _      <- ZIO.succeed(println(s"Launching test file server on port $port"))
         fiber  <- Server.install(routes(staticDir))
                     .zipRight(ZIO.never)
-                    .provideSome(
+                    .provide(
                       Server.defaultWith(_.port(port).requestStreaming(Server.RequestStreaming.Enabled))
                     )
                     .forkScoped

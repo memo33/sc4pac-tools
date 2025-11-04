@@ -9,8 +9,8 @@ import upickle.default as UP
 import sc4pac.error.*
 import sc4pac.Constants.isDll
 import sc4pac.JsonData as JD
-import JD.Warning
-import sc4pac.Sc4pac.{StageResult, UpdatePlan}
+import JD.{Warning, bareModuleRw, subPathRw}
+import sc4pac.Sc4pac.{StageResult, UpdatePlan, RepairPlan}
 import sc4pac.Resolution.{Dep, DepModule, DepAsset}
 
 // TODO Use `Runtime#reportFatal` or `Runtime.setReportFatal` to log fatal errors like stack overflow
@@ -29,7 +29,7 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) {  // TODO d
       _            <- ZIO.unless(modsNext == modsOrig) {
                         val pluginsDataNext = pluginsSpec.copy(explicit = modsNext)
                         // we do not check whether file was modified as this entire operation is synchronous and fast, in most cases
-                        JsonIo.write(JD.PluginsSpec.path(context.profileRoot), pluginsDataNext, None)(ZIO.succeed(()))
+                        JsonIo.write(JD.PluginsSpec.path(context.profileRoot), pluginsDataNext, None)(ZIO.unit)
                       }
     } yield modsNext
   }
@@ -39,6 +39,28 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) {  // TODO d
     */
   def add(modules: Seq[BareModule]): Task[Seq[BareModule]] = {
     modifyExplicitModules(modsOrig => ZIO.succeed((modsOrig ++ modules).distinct))
+  }
+
+  /** Mark modules for reinstallation that have been installed before, either explicitly or implicitly.
+    * Returns true if any matching module has been found and marked for reinstallation.
+    * Optionally, modules (i.e. their assets) can be marked for redownload, even
+    * if they are not yet installed, but e.g. they're pending updates.
+    */
+  def reinstall(modules: Set[BareModule], redownload: Boolean): Task[Boolean] = {
+    JsonIo.read[JD.PluginsLock](JD.PluginsLock.path(context.profileRoot)).flatMap { pluginsLockData =>  // at this point, file should already exist
+      require(pluginsLockData.scheme > 1, "run an Update before trying to reinstall packages, as scheme=1 is not supported anymore")
+      var foundAny = false
+      val pluginsLockDataNext = pluginsLockData.copy(
+        installed = pluginsLockData.installed.map { i =>
+          if (!modules.contains(i.toBareModule)) i
+          else { foundAny = true; i.copy(reinstall = true) }
+        },
+        redownload = if (redownload) (pluginsLockData.redownload ++ modules.iterator).distinct else pluginsLockData.redownload,
+      )
+      for {
+        _ <- JsonIo.write(JD.PluginsLock.path(context.profileRoot), pluginsLockDataNext, Some(pluginsLockData))(ZIO.unit)
+      } yield foundAny
+    }
   }
 
   /** Remove modules from the list of explicitly installed modules.
@@ -74,6 +96,42 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) {  // TODO d
       case None => context.repositories.iterator.flatMap(_.iterateChannelPackages)
       case Some(url) => context.repositories.find(_.baseUri.toString == url).iterator.flatMap(_.iterateChannelPackages)
     }
+  }
+
+  /** Detect missing/orphan package subfolders inside Plugins. */
+  def repairScan(pluginsRoot: os.Path): Task[RepairPlan] = {
+    def isPackageSubfolder(path: os.Path): Boolean = path.last.endsWith(".sc4pac") && path != pluginsRoot && os.isDir(path)
+    for {
+      pluginsLockData <- JsonIo.read[JD.PluginsLock](JD.PluginsLock.path(context.profileRoot))  // at this point, file should already exist
+      _ = require(pluginsLockData.scheme > 1, "run an Update before trying to repair plugins, as scheme=1 is not supported anymore")
+      incompletePackages <-
+        ZIO.attemptBlockingIO {
+          pluginsLockData.installed
+            .filter(_.files.exists(subpath => !os.exists(pluginsRoot / subpath, followLinks = true)))  // followLinks=true will detect broken symlinks as well
+            .map(_.toBareModule)
+        }
+      expectedPaths = pluginsLockData.installed.iterator.flatMap(_.files).toSet: Set[os.SubPath]
+      unexpectedPaths <-
+        ZIO.attemptBlockingIO {
+          os.walk
+            .stream(pluginsRoot,
+              skip = (path) => expectedPaths.contains(path.subRelativeTo(pluginsRoot)) || isPackageSubfolder(path / os.up),
+              followLinks = false,
+              maxDepth = 8,  // currently .sc4pac folders only have depth 3 (NAM) or 2 (everything else)
+            )
+            .filter(isPackageSubfolder)
+            .map(_.subRelativeTo(pluginsRoot))
+            .toSeq.sorted
+        }
+    } yield RepairPlan(incompletePackages = incompletePackages, orphanFiles = unexpectedPaths)
+  }
+
+  /** Executes RepairPlan. Returns whether subsequent update is necessary for changes to take full effect. */
+  def repair(plan: RepairPlan, pluginsRoot: os.Path): Task[Boolean] = {
+    for {
+      _        <- ZIO.attemptBlockingIO(plan.orphanFiles.foreach(subpath => Sc4pac.removeAllForcibly(pluginsRoot / subpath)))
+      foundAny <- ZIO.when(plan.incompletePackages.nonEmpty)(reinstall(plan.incompletePackages.toSet, redownload = false))
+    } yield foundAny.getOrElse(false)
   }
 
   /** Fuzzy-search across all repositories.
@@ -277,7 +335,7 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) {  // TODO d
       progress: Sc4pac.Progress,
       resolution: Resolution,
     ): RIO[ResolutionContext, StageResult.Item] = {
-      def extract(assetData: JD.AssetReference, pkgFolder: os.SubPath, variant: Variant): Task[(BareAsset, Chunk[Extractor.ExtractedItem], Seq[Warning])] = {
+      def extract(assetData: JD.AssetReference, pkgFolder: os.SubPath, variant: Variant, debugModule: BareModule): Task[(BareAsset, Chunk[Extractor.ExtractedItem], Seq[Warning])] = {
         // Given an AssetReference, we look up the corresponding artifact file
         // by ID. This relies on the 1-to-1-correspondence between sc4pacAssets
         // and artifact files.
@@ -296,7 +354,7 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) {  // TODO d
             val (recipe, regexWarnings) = Extractor.InstallRecipe.fromAssetReference(assetData, variant)
             val extractor = new Extractor(logger)
 
-            def doExtract(fallbackFilename: Option[String]) =
+            def doExtract(fallbackFilename: Option[String]) = try {
               extractor.extract(
                 archive,
                 fallbackFilename,
@@ -307,6 +365,19 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) {  // TODO d
                 stagingDirs.root,
                 validate = true,
               )
+            } catch { case e: error.ExtractionFailed =>
+              throw e.withDetail((Seq(
+                e.detail, "",
+                "Redownloading the package might resolve the problem in case of issues with the downloaded file:",
+                s"- Package: ${debugModule.orgName}",
+                s"- Asset ID: ${assetData.assetId}",
+                // s"- Package folder: $pkgFolder",
+              ) ++ Option.when(variant.nonEmpty)(
+                s"- Variant: ${JD.VariantData.variantString(variant)}",
+              ) ++ Seq(
+                s"- Downloaded and cached file: $archive",
+              )).mkString(f"%n"))
+            }
 
             for {
               fallbackFilename <- context.cache.getFallbackFilename(archive).provideSomeLayer(zio.ZLayer.succeed(logger))
@@ -356,7 +427,7 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) {  // TODO d
       for {
         extractions        <- logger.extractingPackage(dependency, progress)(for {
                                 _  <- ZIO.attemptBlocking(os.makeDir.all(stagingDirs.plugins / pkgFolder))  // create folder even if package does not have any assets or files
-                                extracted <- ZIO.foreach(variantData.assets)(extract(_, pkgFolder, variant = variantData.variant))
+                                extracted <- ZIO.foreach(variantData.assets)(extract(_, pkgFolder, variant = variantData.variant, debugModule = module))
                               } yield extracted)  // (asset, files, warnings)
         artifactWarnings   =  extractions.flatMap(_._3)
         _                  <- ZIO.foreach(artifactWarnings)(w => ZIO.attempt(logger.warn(w.value)))  // to avoid conflicts with spinner animation, we print warnings after extraction already finished
@@ -546,19 +617,24 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) {  // TODO d
                        JD.PluginsSpec.path(context.profileRoot),
                        pluginsSpec.copy(config = pluginsSpec.config.copy(variant = selections), explicit = explicitModules),
                        None
-                     )(ZIO.succeed(()))
+                     )(ZIO.unit)
     } yield ()
 
-    private def doDownloadWithMirror(resolution: Resolution, depsToInstall: Seq[Dep]): RIO[Prompter & ResolutionContext & Downloader.Credentials, Seq[(DepAsset, Artifact, java.io.File)]] = {
-      ZIO.iterate(Left(Map.empty): Either[Map[java.net.URI, os.Path], Seq[(DepAsset, Artifact, java.io.File)]])(_.isLeft) {
-        case Left(urlFallbacks) =>
-          resolution.fetchArtifactsOf(depsToInstall, urlFallbacks)
+    private def doDownloadWithMirror(resolution: Resolution, plan: UpdatePlan): RIO[Prompter & ResolutionContext & Downloader.Credentials, Seq[(DepAsset, Artifact, java.io.File)]] = {
+      val depsToInstall = resolution.transitiveDependencies.filter(plan.toInstall).reverse  // we start by fetching artifacts in reverse as those have fewest dependencies of their own
+      ZIO.iterate(Left((Map.empty, None)): Either[(Map[java.net.URI, os.Path], Option[Downloader.Credentials]), Seq[(DepAsset, Artifact, java.io.File)]])(_.isLeft) {
+        case Left((urlFallbacks, credentialsFallback)) =>
+          resolution.fetchArtifactsOf(depsToInstall, urlFallbacks, plan.toRedownload)
+            .updateService[Downloader.Credentials](origCredentials => credentialsFallback.getOrElse(origCredentials))
             .map(Right(_))
             .catchSome { case e: error.DownloadFailed if e.url.isDefined && !urlFallbacks.contains(e.url.get) =>
               ZIO.serviceWithZIO[Prompter](_.promptForDownloadMirror(e.url.get, e))
-                .flatMap {
-                  case Right(fallback) => ZIO.succeed(Left(urlFallbacks + (e.url.get -> fallback)))
-                  case Left(retry) => if (retry) ZIO.succeed(Left(urlFallbacks)) else ZIO.fail(e)
+                .flatMap { response =>
+                  if (!response.retry) ZIO.fail(e)
+                  else ZIO.succeed(Left((
+                    urlFallbacks ++ response.localMirror.map(fallback => e.url.get -> os.Path(fallback, os.pwd)),  // path should usually be absolute already
+                    response.simtropolisToken.map(s => Downloader.Credentials(simtropolisToken = Some(s))).orElse(credentialsFallback),
+                  )))
                 }
             }
         case Right(_) => throw new AssertionError
@@ -581,12 +657,16 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) {  // TODO d
         pluginsLockData <- JD.PluginsLock.upgradeFromScheme1(pluginsLockData1, iterateAllChannelPackages(channelUrl = None), logger, pluginsRoot)
         (resolution, modules, variantSelection) <- doResolveHandleUnresolvable(modules0, variantSelection0)
         finalSelections =  variantSelection.buildFinalSelections()
-        plan            =  UpdatePlan.fromResolution(resolution, installed = pluginsLockData.dependenciesWithAssets)
+        plan            =  UpdatePlan.fromResolution(resolution,
+                             installed = pluginsLockData.dependenciesWithAssets,
+                             forceReinstall = pluginsLockData.packagesToReinstall,
+                             forceRedownload = pluginsLockData.packagesToRedownload,
+                           )
         continue        <- ZIO.serviceWithZIO[Prompter](_.confirmUpdatePlan(plan))
                              .filterOrFail(_ == true)(error.Sc4pacAbort())
         _               <- ZIO.unless(!continue || finalSelections == variantSelection0.initialSelections && modules == modules0)(storeUpdatedSpec(finalSelections, modules))  // only store something after confirmation
         flagOpt         <- ZIO.unless(!continue || plan.isUpToDate)(for {
-          assetsToInstall <- doDownloadWithMirror(resolution, resolution.transitiveDependencies.filter(plan.toInstall).reverse)  // we start by fetching artifacts in reverse as those have fewest dependencies of their own
+          assetsToInstall <- doDownloadWithMirror(resolution, plan)
           depsToStage     =  plan.toInstall.collect{ case d: DepModule => d }.toSeq  // keep only non-assets
           flag            <- ZIO.scoped(for {
                                 stagingDirs <- Sc4pac.makeStagingDirs(tempRoot, logger)
@@ -610,7 +690,7 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) {  // TODO d
                           .mapError(e => { logger.log(e.getMessage); e })
         _            <- ZIO.foreachDiscard(resolutions) { resolution =>
                           (for {
-                            assetsToInstall <- resolution.fetchArtifactsOf(resolution.transitiveDependencies, urlFallbacks = Map.empty)
+                            assetsToInstall <- resolution.fetchArtifactsOf(resolution.transitiveDependencies, urlFallbacks = Map.empty, assetsToRedownload = Set.empty)
                             depsToStage     =  resolution.transitiveDependencies.collect{ case d: DepModule => d }.toSeq  // keep only non-assets
                             staged <- stageAll(stagingDirs, depsToStage, assetsToInstall, resolution)
                             _      <- ZIO.foreachDiscard(outputDir)(movePackagesToPlugins(staged, _))  // moves files only when output dir is defined
@@ -689,25 +769,36 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) {  // TODO d
 
 object Sc4pac {
 
-  case class UpdatePlan(toInstall: Set[Dep], toReinstall: Set[Dep], toRemove: Set[Dep]) {
+  // Here `toRedownload` are only the assets explicitly requested to be
+  // redownloaded. In general, a lot more assets will be downloaded, e.g. when
+  // they are updated to a new version which isn't cached yet.
+  case class UpdatePlan(toInstall: Set[Dep], toReinstall: Set[Dep], toRemove: Set[Dep], toRedownload: Set[DepAsset]) {
     def isUpToDate: Boolean = toRemove.isEmpty && toReinstall.isEmpty && toInstall.isEmpty
   }
   object UpdatePlan {
-    def fromResolution(resolution: Resolution, installed: Set[Dep]): UpdatePlan = {
+    // Construct an UpdatePlan from a full dependency resolution.
+    // Here, `forceReinstall` is a subset of `installed` packages that should be
+    // reinstalled, unless the resolution updates them to a different version anyway.
+    // Likewise, `forceRedownload` is a subset of packages whose assets should be redownloaded.
+    def fromResolution(resolution: Resolution, installed: Set[Dep], forceReinstall: Set[DepModule], forceRedownload: Set[BareModule]): UpdatePlan = {
       // TODO decide whether we should also look for updates of `changing` artifacts
 
       val wanted: Set[Dep] = resolution.transitiveDependencies.toSet
       val missing = wanted &~ installed
       val obsolete = installed &~ wanted
-      // for assets, we also reinstall the packages that depend on them
-      val toReinstall = wanted & installed & resolution.dependentsOf(missing.filter(_.isSc4pacAsset))
+      // Reinstall packages that depend on missing assets or that were forced to be reinstalled explicitly.
+      val toReinstall = wanted & installed & (resolution.dependentsOf(missing.filter(_.isSc4pacAsset)) ++ forceReinstall)
       // for packages to install, we also include their assets (so that they get fetched)
       val toInstall = missing | toReinstall
-      val assetsToInstall = toInstall.flatMap(dep => resolution.dependenciesOf(dep).filter(_.isSc4pacAsset))
+      val assetsToInstall = toInstall.flatMap(dep => resolution.dependenciesOf(dep.toBareDep).collect{ case d: DepAsset => d })
+      val assetsToRedownload = assetsToInstall & forceRedownload.flatMap(mod =>
+          resolution.dependenciesOf(mod, ignoreUnresolved = true).collect{ case d: DepAsset => d })  // note that dependenciesOf takes BareModule, so redownloading even works when variants change
       UpdatePlan(
-        toInstall = toInstall | assetsToInstall,
+        toInstall = toInstall ++ assetsToInstall,
         toReinstall = toReinstall,
-        toRemove = obsolete | toReinstall)  // to reinstall a package, it first needs to be removed
+        toRemove = obsolete | toReinstall,  // to reinstall a package, it first needs to be removed
+        toRedownload = assetsToRedownload,
+      )
       // (-------------wanted--------------)
       //           (-------------installed--------------)
       // (-missing-)                       (--obsolete--)
@@ -890,4 +981,7 @@ object Sc4pac {
     }
   }
 
+  case class RepairPlan(incompletePackages: Seq[BareModule], orphanFiles: Seq[os.SubPath]) derives UP.ReadWriter {
+    def isUpToDate: Boolean = incompletePackages.isEmpty && orphanFiles.isEmpty
+  }
 }

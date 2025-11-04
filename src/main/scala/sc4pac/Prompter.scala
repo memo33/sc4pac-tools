@@ -16,7 +16,7 @@ trait Prompter {
 
   def confirmUpdatePlan(plan: Sc4pac.UpdatePlan): Task[Boolean]
 
-  def promptForDownloadMirror(url: java.net.URI, reason: error.DownloadFailed): Task[Either[Boolean, os.Path]]
+  def promptForDownloadMirror(url: java.net.URI, reason: error.DownloadFailed): Task[api.PromptMessage.DownloadFailedSelectMirror.ResponseData]
 
   def confirmInstallationWarnings(warnings: Seq[(BareModule, Seq[JD.Warning])]): Task[Boolean]
 
@@ -112,12 +112,13 @@ class CliPrompter(val logger: CliLogger, autoYes: Boolean) extends Prompter {
   }
 
   /** Returns either retry=true/false or a local fallback file. */
-  def promptForDownloadMirror(url: java.net.URI, reason: error.DownloadFailed): Task[Either[Boolean, os.Path]] = {
+  def promptForDownloadMirror(url: java.net.URI, reason: error.DownloadFailed): Task[api.PromptMessage.DownloadFailedSelectMirror.ResponseData] = {
+    import api.PromptMessage.DownloadFailedSelectMirror.ResponseData
     logger.warn(reason.getMessage)
     val choices = Seq("Retry", "Select a file from disk to use instead", "Cancel")
     val pretext = f"%n  $url%n%nThe download of this file failed. Choose what to do."
     Prompt.ifInteractive(
-      onFalse = ZIO.succeed(Left(false)),  // error out
+      onFalse = ZIO.succeed(ResponseData(retry = false)),  // error out
       onTrue = Prompt.numbered(pretext, choices, default = Some(choices.last))
         .flatMap { s =>
           if (s == choices(1))
@@ -129,8 +130,8 @@ class CliPrompter(val logger: CliLogger, autoYes: Boolean) extends Prompter {
                 )
               }
               .repeatWhile(_.isEmpty)
-              .map(pathOpt => Right(pathOpt.get))
-          else ZIO.succeed(Left(s == choices(0)))
+              .map(pathOpt => ResponseData(retry = true, localMirror = pathOpt.map(_.toNIO)))
+          else ZIO.succeed(ResponseData(retry = (s == choices(0))))
         },
     )
   }
@@ -162,6 +163,14 @@ class CliPrompter(val logger: CliLogger, autoYes: Boolean) extends Prompter {
     else Prompt.ifInteractive(
       onFalse = ZIO.succeed(logger.log("Deleting staged files.")),
       onTrue = Prompt.choice("Delete staged files?", Seq("Yes"), default = Some("Yes")).map(_ == "Yes").unit,
+    )
+  }
+
+  def confirmRepairPlan(): Task[Boolean] = {
+    if (autoYes) ZIO.succeed({ logger.log("Deleting orphan files and marking incomplete packages for re-installation."); true })  // if --yes flag is present, always continue
+    else Prompt.ifInteractive(
+      onFalse = ZIO.fail(new error.Sc4pacNotInteractive(s"Pass --yes to fix broken packages non-interactively.")),
+      onTrue = Prompt.yesNo("Delete orphan files and mark incomplete packages for re-installation?"),
     )
   }
 }

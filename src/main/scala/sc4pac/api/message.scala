@@ -158,6 +158,7 @@ object PromptMessage {
   case class DownloadFailedSelectMirror(
     url: java.net.URI,
     reason: ErrorMessage.DownloadFailed,
+    promptForSimtropolisToken: Boolean,
     choices: Seq[String],
     token: String,
     responses: Map[String, ResponseMessage],
@@ -165,15 +166,16 @@ object PromptMessage {
     override def accept(response: ResponseMessage): Boolean = response.token == token
   }
   object DownloadFailedSelectMirror {
-    def apply(url: java.net.URI, reason: ErrorMessage.DownloadFailed): DownloadFailedSelectMirror = {
+    def apply(url: java.net.URI, reason: ErrorMessage.DownloadFailed, promptForSimtropolisToken: Boolean): DownloadFailedSelectMirror = {
       val token = scala.util.Random.nextInt().toHexString
       DownloadFailedSelectMirror(
         url = url,
         reason = reason,
+        promptForSimtropolisToken = promptForSimtropolisToken,
         choices = Seq("Retry", "Cancel"),
         token = token,
         responses = Map(
-          "Retry" -> ResponseMessage(token, ujson.Obj("retry" -> true, "localMirror" -> ujson.Arr())),
+          "Retry" -> ResponseMessage(token, ujson.Obj("retry" -> true, "localMirror" -> ujson.Arr(), "simtropolisToken" -> ujson.Arr())),
           // Select mirror -> retry=true, localMirror=[path]  (must be constructed manually)
           "Cancel" -> ResponseMessage(token, ujson.Obj("retry" -> false)),
         ),
@@ -183,7 +185,22 @@ object PromptMessage {
     case class ResponseData(
       retry: Boolean,
       localMirror: Option[java.nio.file.Path] = None,
+      simtropolisToken: Option[String] = None,
     ) derives UP.ReadWriter
+  }
+
+  @upickle.implicits.key("/prompt/confirmation/repair/plan")
+  case class ConfirmRepairPlan(
+    plan: Sc4pac.RepairPlan,
+    choices: Seq[String], // = yes,
+    token: String,
+    responses: Map[String, ResponseMessage]
+  ) extends PromptMessage derives UP.ReadWriter
+  object ConfirmRepairPlan {
+    def apply(plan: Sc4pac.RepairPlan): ConfirmRepairPlan = {
+      val token = scala.util.Random.nextInt().toHexString
+      ConfirmRepairPlan(plan = plan, choices = Seq(yes), token = token, responsesFromChoices(Seq(yes), token))
+    }
   }
 
 }
@@ -243,6 +260,8 @@ object ErrorMessage {
   case class PublishedFilesIncomplete(title: String, detail: String) extends ErrorMessage derives UP.ReadWriter
   @upickle.implicits.key("/error/obtaining-user-dirs-failed")
   case class ObtainingUserDirsFailed(title: String, detail: String) extends ErrorMessage derives UP.ReadWriter
+  @upickle.implicits.key("/error/unauthorized")
+  case class UnauthorizedRequest(title: String, detail: String) extends ErrorMessage derives UP.ReadWriter
 }
 
 @upickle.implicits.key("/result")
@@ -274,7 +293,7 @@ object InstalledPkg {
 // `installed` may be null
 case class InstalledStatus(explicit: Boolean, installed: InstalledStatus.Installed = null) derives UP.ReadWriter
 object InstalledStatus {
-  case class Installed(version: String, variant: Variant, installedAt: java.time.Instant, updatedAt: java.time.Instant)
+  case class Installed(version: String, variant: Variant, installedAt: java.time.Instant, updatedAt: java.time.Instant, reinstall: Boolean = false)
   given installedRw: UP.ReadWriter[Installed] = UP.stringKeyRW(UP.macroRW)
 }
 
@@ -307,7 +326,12 @@ case class ServerStatus(sc4pacVersion: String, osVersion: String, javaVersion: S
 
 case class ProfileName(name: String) derives UP.ReadWriter
 case class ProfileIdObj(id: ProfileId) derives UP.ReadWriter
-case class ProfilesList(profiles: Seq[JD.ProfileData], currentProfileId: Option[ProfileId], profilesDir: java.nio.file.Path) derives UP.ReadWriter
+case class ProfilesList(profiles: Seq[ProfilesList.ProfileData2], currentProfileId: Option[ProfileId], profilesDir: java.nio.file.Path) derives UP.ReadWriter
+object ProfilesList {
+  case class ProfileData2(id: ProfileId, name: String, pluginsRoot: java.nio.file.Path = null) derives UP.ReadWriter {
+    def toProfileData: JD.ProfileData = JD.ProfileData(id = id, name = name)
+  }
+}
 
 case class VariantsList(variants: Map[String, VariantsList.Item])
 object VariantsList {

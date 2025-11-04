@@ -180,17 +180,15 @@ class WebSocketPrompter(wsChannel: zio.http.WebSocketChannel, logger: WebSocketL
     sendPrompt(PromptMessage.ConfirmUpdatePlan(toRemove = toRemove, toInstall = toInstall)).map(_.body.str == yes)
   }
 
-  def promptForDownloadMirror(url: java.net.URI, reason: error.DownloadFailed): Task[Either[Boolean, os.Path]] = {
+  def promptForDownloadMirror(url: java.net.URI, reason: error.DownloadFailed): Task[PromptMessage.DownloadFailedSelectMirror.ResponseData] = {
     for {
       resp <- sendPrompt(PromptMessage.DownloadFailedSelectMirror(
                 url = url,
                 reason = ErrorMessage.DownloadFailed(reason.title, reason.detail),
+                promptForSimtropolisToken = reason.promptForSimtropolisToken,
               ))
       data <- JsonIo.read[PromptMessage.DownloadFailedSelectMirror.ResponseData](resp.body.toString)
-    } yield {
-      if (data.retry && data.localMirror.isDefined) Right(os.Path(data.localMirror.get, os.pwd))  // should usually be absolute already
-      else Left(data.retry)
-    }
+    } yield data
   }
 
   def confirmInstallationWarnings(warnings: Seq[(BareModule, Seq[JD.Warning])]): Task[Boolean] = {

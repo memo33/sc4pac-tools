@@ -78,9 +78,13 @@ assembly / assemblyMergeStrategy := {
 
 
 val coursierVersion = "2.1.2"
-libraryDependencies += "io.get-coursier" %% "coursier-cache" % coursierVersion cross CrossVersion.for3Use2_13  // resolver, not yet available for scala 3
+libraryDependencies += "io.get-coursier" %% "coursier-cache" % coursierVersion cross CrossVersion.for3Use2_13 exclude("org.scala-lang.modules", "scala-collection-compat_2.13")  // resolver, not yet available for scala 3
 
-libraryDependencies += "dev.zio" %% "zio" % "2.1.12"  // IO
+libraryDependencies += "dev.zio" %% "zio" % "2.1.21"  // IO
+
+libraryDependencies += "dev.zio" %% "zio-http" % "3.5.1"  // server
+
+// libraryDependencies += "dev.zio" %% "izumi-reflect" % "3.0.1"  // includes fix for deterministic compilation
 
 libraryDependencies += "com.lihaoyi" %% "os-lib" % "0.11.1"  // file system utilities
 
@@ -110,10 +114,6 @@ libraryDependencies += "net.sf.sevenzipjbinding" % "sevenzipjbinding" % "16.02-2
 libraryDependencies += ("com.mucommander" % "sevenzipjbinding-all-platforms" % "16.02-2.01" // patched by muCommander for Apple M1 support
   from "https://www.mucommander.com/maven/com/mucommander/sevenzipjbinding-all-platforms/16.02-2.01/sevenzipjbinding-all-platforms-16.02-2.01.jar")
 
-libraryDependencies += "dev.zio" %% "zio-http" % "3.0.1" exclude("org.scala-lang.modules", "scala-collection-compat_3")  // server
-
-libraryDependencies += "dev.zio" %% "izumi-reflect" % "3.0.1"  // includes fix for deterministic compilation
-
 libraryDependencies += "org.slf4j" % "slf4j-nop" % "2.0.7"  // ignore logging in zio-http/netty
 
 libraryDependencies += "io.github.pavelicii" % "allpairs4j" % "1.0.1"
@@ -121,9 +121,9 @@ libraryDependencies += "io.github.pavelicii" % "allpairs4j" % "1.0.1"
 libraryDependencies += "org.scalatest" %% "scalatest" % "3.2.17" % Test exclude("org.scala-lang.modules", "scala-xml_3")
 
 libraryDependencies ++= Seq(
-  "dev.zio" %% "zio-test"          % "2.1.14" % Test,
-  "dev.zio" %% "zio-test-sbt"      % "2.1.14" % Test,
-  "dev.zio" %% "zio-test-magnolia" % "2.1.14" % Test,
+  "dev.zio" %% "zio-test"          % "2.1.21" % Test,
+  "dev.zio" %% "zio-test-sbt"      % "2.1.21" % Test,
+  "dev.zio" %% "zio-test-magnolia" % "2.1.21" % Test,
 )
 
 
@@ -136,7 +136,7 @@ lazy val shared = (crossProject(JSPlatform, JVMPlatform) in file("shared"))
   )
   .jvmSettings(
     libraryDependencies ++= Seq(
-      "io.get-coursier" %% "coursier" % coursierVersion cross CrossVersion.for3Use2_13  // for definition of Organization and ModuleName
+      "io.get-coursier" %% "coursier" % coursierVersion cross CrossVersion.for3Use2_13 exclude("org.scala-lang.modules", "scala-collection-compat_2.13")  // for definition of Organization and ModuleName
     )
   )
   .jsSettings(
