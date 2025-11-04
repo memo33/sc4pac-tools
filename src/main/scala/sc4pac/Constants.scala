@@ -33,7 +33,7 @@ object Constants {
     * - 5: channel stats, external packages, replacement of `contents`
     * - 6: variantInfo
     * - 7: conditional variants
-    * - 8: #48
+    * - 8: authentication (#48)
     */
   val channelSchemeVersions: Range = 1 to 8  // supported versions
 

@@ -1,6 +1,9 @@
 # Changelog
 
 ## [Unreleased]
+
+
+## [0.9.0] - 2025-11-04
 ### Fixed
 - a security vulnerability of the API (lack of authentication)
   which could allow XSS to install files without user interaction while the GUI was running (#48).
@@ -345,7 +348,8 @@
 ## [0.1.5] - 2023-09-26
 …
 
-[Unreleased]: https://github.com/memo33/sc4pac-tools/compare/0.8.1...HEAD
+[Unreleased]: https://github.com/memo33/sc4pac-tools/compare/0.9.0...HEAD
+[0.9.0]: https://github.com/memo33/sc4pac-tools/compare/0.8.1...0.9.0
 [0.8.1]: https://github.com/memo33/sc4pac-tools/compare/0.8.0...0.8.1
 [0.8.0]: https://github.com/memo33/sc4pac-tools/compare/0.7.0...0.8.0
 [0.7.0]: https://github.com/memo33/sc4pac-tools/compare/0.6.1...0.7.0
