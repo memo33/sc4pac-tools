@@ -148,6 +148,7 @@ object ChannelPage {
         s"sc4pac://$path"
       })("Open in Desktop-App")
 
+    /*
     lazy val openButtonWeb =
       H.button(H.cls := "btn open-app-btn open-app-btn-outlined",
         {
@@ -187,6 +188,7 @@ object ChannelPage {
               ()
         }
     }
+    */
 
     // add("Name", pkg.name)
     // add("Group", pkg.group)
@@ -254,8 +256,8 @@ object ChannelPage {
           H.li(
             H.p("with the ", H.a(H.href := sc4pacGuiUrl)("sc4pac GUI"), ":",
               openButtonDesktop,
-              openButtonWeb,
-              openButtonResult,
+              // openButtonWeb,
+              // openButtonResult,  // TODO temporarily disabled, see https://github.com/memo33/sc4pac-tools/issues/48
             ),
           ),
           H.li(
