@@ -48,10 +48,10 @@ jobs:
       - uses: actions/download-artifact@v4  # downloads all artifacts uploaded during this run
         with:
           merge-multiple: true  # downloads artifacts into same directory .
-      - name: Set up JDK 21
+      - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
-          java-version: '21'
+          java-version: '17'  # the currently minimum supported version by sc4pac libs
           distribution: 'temurin'
           java-package: 'jre'
           # cache: 'sbt'  # not needed

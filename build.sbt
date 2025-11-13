@@ -2,7 +2,7 @@ name := "sc4pac"
 
 ThisBuild / organization := "io.github.memo33"
 
-ThisBuild / version := "0.9.0"
+ThisBuild / version := "0.9.1-SNAPSHOT"
 
 // ThisBuild / versionScheme := Some("early-semver")
 
@@ -11,6 +11,8 @@ description := "Package manager for SimCity 4 plugins"
 ThisBuild / licenses += ("GPL-3.0-only", url("https://spdx.org/licenses/GPL-3.0-only.html"))
 
 ThisBuild / scalaVersion := "3.4.2"
+
+val minJavaVersion = "17"
 
 ThisBuild / scalacOptions ++= Seq(
   // "-Wunused:imports",
@@ -22,9 +24,9 @@ ThisBuild / scalacOptions ++= Seq(
   "-Wvalue-discard",
   "-source:future",
   "-encoding", "UTF-8",
-  "-release:11")
+  s"-release:$minJavaVersion")
 
-ThisBuild / javacOptions ++= Seq("--release", "11")
+ThisBuild / javacOptions ++= Seq("--release", minJavaVersion)
 
 console / initialCommands := """
 import io.github.memo33.sc4pac.*

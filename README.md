@@ -25,7 +25,7 @@ The GUI is located in the <a href="https://github.com/memo33/sc4pac-gui/releases
 ## Usage
 
 - Prerequisites:
-  - **Java** 11+ ([Windows]/[macOS]/[Linux], see [Adoptium] for details)
+  - **Java** 17+ ([Windows]/[macOS]/[Linux], see [Adoptium] for details)
   - **Mono** ([macOS](https://www.mono-project.com/docs/getting-started/install/)/[Linux](https://repology.org/project/mono/versions), not needed on Windows)
   - Enough disk space
 
