@@ -62,6 +62,8 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) extends AuthMiddleware {
     case abort: error.Sc4pacAbort => ErrorMessage.Aborted("Operation aborted.", "")
     case abort: java.nio.file.AccessDeniedException => ErrorMessage.FileAccessDenied(
       "File access denied. Check that you have permissions to access the file or directory.", abort.getMessage)
+    case abort: java.lang.IncompatibleClassChangeError => ErrorMessage.ServerError(
+      "The Java version installed on your system might be too old. Install a more recent Java version.", abort.getMessage)
   }
 
   private def expectedFailureStatus(err: cli.Commands.ExpectedFailure): Status = err match {
@@ -79,6 +81,7 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) extends AuthMiddleware {
     case abort: error.ObtainingUserDirsFailed => Status.InternalServerError
     case abort: error.Sc4pacAbort => Status.Ok  // this is not really an error, but the expected control flow
     case abort: java.nio.file.AccessDeniedException => Status.InternalServerError
+    case abort: java.lang.IncompatibleClassChangeError => Status.InternalServerError
   }
 
   val jsonOk = jsonResponse(ResultMessage(ok = true))
