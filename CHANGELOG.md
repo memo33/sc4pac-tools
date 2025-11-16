@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Changed
+- improved caching of metadata by using `etag` HTTP header (#49)
 - new option `--indent` for `channel build` command. By default, the channel contents JSON file now uses no indentation to save space.
 
 

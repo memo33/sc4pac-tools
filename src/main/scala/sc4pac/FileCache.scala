@@ -66,14 +66,31 @@ class FileCache private (
     }
   }
 
+  private def parseCheckFileOf(destFile: java.io.File): ZIO[Logger, java.io.IOException, Option[JD.CheckFile]] =
+    ZIO.serviceWithZIO[Logger] { logger =>
+      ZIO.attemptBlockingIO {
+        val checkedFile = FileCache.ttlFile(destFile)
+        if (!checkedFile.exists() || checkedFile.length() == 0)   // zero-length is possible for historic reasons
+          None
+        else
+          JsonIo.readBlocking[JD.CheckFile](os.Path(checkedFile.getAbsolutePath()))
+            .left.map { err =>
+              logger.debug(s"Failed to read .checked file $checkedFile: $err")
+            }.toOption
+      }
+    }
+
   /** Retrieve the file from the cache or download it if necessary.
     *
     * Refresh policy: Download only files that are
-    * - corrupted (force redownload), or
-    * - absent, or
-    * - changing and outdated (according to ttl of cache), or
-    * - non-changing and the remote lastModified timestamp is newer than the local file, or
-    * - expected checksum is given and does not match local file and redownload allowed(json: yes, asset: no).
+    * - (a) corrupted (force redownload), or
+    * - (b) absent, or
+    * - (c) changing and outdated (according to ttl of cache), or
+    * - (d) non-changing and the remote lastModified timestamp is newer than the local file, or
+    * - (e) expected checksum is given and does not match local file and redownload allowed(json: yes, asset: no).
+    *
+    * If the server indicates "304 not modified" due to matching etag, the file
+    * is only redownloaded when (a), (b) or (e).
     *
     * Otherwise, return local file, potentially failing with a checksum error.
     */
@@ -83,14 +100,21 @@ class FileCache private (
       (for {
         destFileChecksumVerifiedLazy <- verifyChecksum(destFile, artifact).memoize  // lazily evaluates only when needed
         refresh  <- ZIO.attemptBlockingIO {
-                      artifact.forceRedownload
-                      || !destFile.exists()
-                      || artifact.changing && isStale(destFile)
-                      || artifact.lastModified.exists(remoteModificationDate => isOlderThan(destFile, remoteModificationDate))
-                    } || ZIO.succeed(artifact.redownloadOnChecksumError) && destFileChecksumVerifiedLazy.map(_.isLeft)
+          /*(a)*/     artifact.forceRedownload
+          /*(b)*/     || !destFile.exists()
+          /*(c)*/     || artifact.changing && isStale(destFile)
+          /*(d)*/     || artifact.lastModified.exists(remoteModificationDate => isOlderThan(destFile, remoteModificationDate))
+          /*(e)*/   } || ZIO.succeed(artifact.redownloadOnChecksumError) && destFileChecksumVerifiedLazy.map(_.isLeft)
         result   <- if (refresh) {
                       for {
-                        newFile <- new Downloader(artifact, cacheLocation = location, localFile = destFile, logger, pool, credentials).download
+                        checkFileOpt <- parseCheckFileOf(destFile)
+                        skipETag  <- ZIO.attemptBlockingIO {
+                                      !checkFileOpt.exists(_.etag.isDefined)
+                          /*(a)*/     || artifact.forceRedownload
+                          /*(b)*/     || !destFile.exists()
+                          /*(e)*/   } || (ZIO.succeed(artifact.redownloadOnChecksumError) && destFileChecksumVerifiedLazy.map(_.isLeft))
+                        etag = Option.unless(skipETag)(checkFileOpt.flatMap(_.etag)).flatten
+                        newFile <- new Downloader(artifact, etag, cacheLocation = location, localFile = destFile, logger, pool, credentials).download
                         // We enforce that checksums match (if present) to avoid redownloading same file repeatedly.
                         //
                         // In case of pkg.json files, there is a small chance (30 minutes time window, see `channelContentsTtl`)
@@ -186,24 +210,17 @@ class FileCache private (
       ZIO.succeed(Right(()))
     else artifact.checksum.sha256 match
       case None => ZIO.succeed(Right(()))  // no validation if no checksum is given
-      case Some(sha256Expected) => ZIO.serviceWithZIO[Logger](logger => ZIO.attemptBlockingIO {
-        logger.debug(s"Verifying checksum for file $file")
-        val checkedFile = FileCache.ttlFile(file)
-        if (!checkedFile.exists() || checkedFile.length() == 0)   // zero-length is possible for historic reasons
-          Left(Artifact2Error.ChecksumNotFound(sumType = "sha256", file = file.toString))
-        else
-          JsonIo.readBlocking[JD.CheckFile](os.Path(checkedFile.getAbsolutePath()))
-            .left.map { err =>
-              logger.debug(s"Failed to read checksum: $err")
-              Artifact2Error.ChecksumFormatError(sumType = "sha256", file = file.toString)
-            }
-            .flatMap { data => data.checksum.sha256.toRight(left = Artifact2Error.ChecksumNotFound(sumType = "sha256", file = file.toString)) }
+      case Some(sha256Expected) => ZIO.serviceWithZIO[Logger](logger => parseCheckFileOf(file).map {  // TODO avoid parsing file multiple times (see fetchFile)
+        case None => Left(Artifact2Error.ChecksumNotFound(sumType = "sha256", file = file.toString))
+        case Some(data) =>
+          logger.debug(s"Verifying checksum for file $file")
+          data.checksum.sha256.toRight(left = Artifact2Error.ChecksumNotFound(sumType = "sha256", file = file.toString))
             .flatMap { sha256Actual =>
               if (sha256Actual == sha256Expected)
                 Right(())
               else
                 Left(Artifact2Error.WrongChecksum(sumType = "sha256", got = JD.Checksum.bytesToString(sha256Actual),
-                  expected = JD.Checksum.bytesToString(sha256Expected), file = file.toString, sumFile = checkedFile.toString))
+                  expected = JD.Checksum.bytesToString(sha256Expected), file = file.toString, sumFile = FileCache.ttlFile(file).toString))
             }
       })
   }
