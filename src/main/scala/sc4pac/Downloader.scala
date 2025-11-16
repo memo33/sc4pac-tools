@@ -93,8 +93,9 @@ class Downloader(
         success = res.isRight
         res
       } finally logger.downloadedArtifact(url, success = success)
-    }).catchNonFatalOrDie {
-      case e => ZIO.fail(wrapDownloadError(e, url))
+    }).catchAll {
+      case scala.util.control.NonFatal(e) => ZIO.fail(wrapDownloadError(e, url))
+      case e => ZIO.die(e)
     }
   }
 
