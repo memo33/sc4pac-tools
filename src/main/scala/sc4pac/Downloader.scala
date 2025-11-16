@@ -192,10 +192,21 @@ class Downloader(
               }
             }
 
+        val isGZip: Boolean =
+          Option(conn.getContentEncoding).flatMap(zio.http.Header.ContentEncoding.parse(_).toOption) match {
+            case None => false // empty or parse error
+            case Some(zio.http.Header.ContentEncoding.GZip) =>
+              logger.debug(s"Content-Encoding=gzip: $url")
+              true
+            case Some(unknownEncoding) =>
+              logger.warn(s"Unknown content encoding ($unknownEncoding): $url")
+              false
+          }
+
         def consumeStream(): Either[Artifact2Error, Unit] = {
           scala.util.Using.resource {
             val baseStream =
-              if (conn.getContentEncoding == "gzip") new java.util.zip.GZIPInputStream(conn.getInputStream)
+              if (isGZip) new java.util.zip.GZIPInputStream(conn.getInputStream)
               else conn.getInputStream
             new java.io.BufferedInputStream(baseStream, Constants.bufferSizeDownload)
           } { in =>
@@ -229,13 +240,14 @@ class Downloader(
 
         def lengthCheck(): Either[Artifact2Error, Unit] =
           lenOpt match {
-            case None => Right(())
-            case Some(len) =>
+            case Some(len) if !isGZip =>
               val tmpLen = if (tmp.exists()) tmp.length() else 0L
               if (len == tmpLen)
                 Right(())
               else
                 Left(new Artifact2Error.WrongLength(tmpLen, len, tmp.getAbsolutePath))
+            case _ => Right(())  // TODO In particular, we currently skip the length check if isGZip, as content-length header is not actual file size.
+                                 // GZip encoding is mainly used with JSON files. They will fail to parse anyway if incomplete.
           }
 
         for {
@@ -442,6 +454,9 @@ object Downloader {
             conn0.setInstanceFollowRedirects(true)  // Coursier sets this to false and handles redirects manually
             conn0.setRequestProperty("User-Agent", Constants.userAgent)
             conn0.setRequestProperty("Accept", "*/*")
+            if (specOpt.isEmpty) {  // use gzip only for non-partial downloads
+              conn0.setRequestProperty("Accept-Encoding", "gzip, identity")
+            }
             conn0.setConnectTimeout(Constants.urlConnectTimeout.toMillis.toInt)  // timeout for establishing a connection
             conn0.setReadTimeout(Constants.urlReadTimeout.toMillis.toInt)  // timeout in case of internet outage while downloading a file
             credentials.addAuthorizationToMatchingConnection(conn0)
