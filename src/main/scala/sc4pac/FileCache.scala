@@ -2,6 +2,7 @@ package io.github.memo33
 package sc4pac
 
 import java.util.concurrent.ConcurrentHashMap
+import java.io.IOException
 import coursier.cache as CC
 import zio.{ZIO, IO, Task, Promise}
 
@@ -66,7 +67,7 @@ class FileCache private (
     }
   }
 
-  private def parseCheckFileOf(destFile: java.io.File): ZIO[Logger, java.io.IOException, Option[JD.CheckFile]] =
+  private def parseCheckFileOf(destFile: java.io.File): ZIO[Logger, IOException, Option[JD.CheckFile]] =
     ZIO.serviceWithZIO[Logger] { logger =>
       ZIO.attemptBlockingIO {
         val checkedFile = FileCache.ttlFile(destFile)
@@ -98,7 +99,8 @@ class FileCache private (
     def task0(credentials: Downloader.Credentials, logger: Logger): IO[Artifact2Error, java.io.File] = {
       val destFile = localFile(artifact.url)
       (for {
-        destFileChecksumVerifiedLazy <- verifyChecksum(destFile, artifact).memoize  // lazily evaluates only when needed
+        getCheckFileLazy <- parseCheckFileOf(destFile).memoize  // lazily evaluates only when needed
+        destFileChecksumVerifiedLazy <- verifyChecksum(destFile, artifact, getCheckFileLazy).memoize  // lazily evaluates only when needed
         refresh  <- ZIO.attemptBlockingIO {
           /*(a)*/     artifact.forceRedownload
           /*(b)*/     || !destFile.exists()
@@ -107,8 +109,8 @@ class FileCache private (
           /*(e)*/   } || ZIO.succeed(artifact.redownloadOnChecksumError) && destFileChecksumVerifiedLazy.map(_.isLeft)
         result   <- if (refresh) {
                       for {
-                        checkFileOpt <- parseCheckFileOf(destFile)
-                        skipETag  <- ZIO.attemptBlockingIO {
+                        checkFileOpt <- getCheckFileLazy
+                        skipETag <- ZIO.attemptBlockingIO {
                                       !checkFileOpt.exists(_.etag.isDefined)
                           /*(a)*/     || artifact.forceRedownload
                           /*(b)*/     || !destFile.exists()
@@ -121,7 +123,7 @@ class FileCache private (
                         // that checksums become out of sync when a pkg.json is updated remotely and the channel contents file
                         // is already cached locally. This will fix itself after 30 minutes.
                         // Alternatively the sc4pac-channel-contents.json file can be manually deleted from cache.
-                        _ <- verifyChecksum(newFile, artifact).absolve  // TODO add special handling for local files?
+                        _ <- verifyChecksum(newFile, artifact, parseCheckFileOf(newFile)).absolve  // TODO add special handling for local files?
                       } yield newFile
                     } else {
                       destFileChecksumVerifiedLazy.absolve.map((_: Unit) => destFile)
@@ -130,7 +132,7 @@ class FileCache private (
         .provideSomeLayer(zio.ZLayer.succeed(logger))
         .mapError {
           case e: Artifact2Error => e
-          case e: java.io.IOException => new Artifact2Error.DownloadError(
+          case e: IOException => new Artifact2Error.DownloadError(
             s"Caught ${e.getClass().getName()}${Option(e.getMessage).fold("")(" (" + _ + ")")} while accessing $destFile",
             Some(e)
           )
@@ -170,7 +172,7 @@ class FileCache private (
       zio.ZIO.attemptBlockingIO {
         new String(java.nio.file.Files.readAllBytes(f.toPath), java.nio.charset.StandardCharsets.UTF_8)
       }.mapError {
-        case e: java.io.IOException => new Artifact2Error.DownloadError(
+        case e: IOException => new Artifact2Error.DownloadError(
           s"Caught ${e.getClass().getName()}${Option(e.getMessage).fold("")(" (" + _ + ")")} while reading $f",
           Some(e)
         )
@@ -203,14 +205,14 @@ class FileCache private (
   /** If artifact has an expected checksum, check that it matches the cached
     * file. This is mainly used for checking whether certain cached json files are
     * out-of-date, and for ensuring data integrity of assets that define a checksum in their metadata. */
-  def verifyChecksum(file: java.io.File, artifact: Artifact): ZIO[Logger, java.io.IOException, Either[Artifact2Error, Unit]] = {
+  def verifyChecksum(file: java.io.File, artifact: Artifact, getCheckFile: ZIO[Logger, IOException, Option[JD.CheckFile]]): ZIO[Logger, IOException, Either[Artifact2Error, Unit]] = {
     if (!isManagedByCache(artifact.url, file))
       // For local channels, there's no need to verify checksums as the local
       // channel files are always up-to-date and Downloader .checked files do not exist.
       ZIO.succeed(Right(()))
     else artifact.checksum.sha256 match
       case None => ZIO.succeed(Right(()))  // no validation if no checksum is given
-      case Some(sha256Expected) => ZIO.serviceWithZIO[Logger](logger => parseCheckFileOf(file).map {  // TODO avoid parsing file multiple times (see fetchFile)
+      case Some(sha256Expected) => ZIO.serviceWithZIO[Logger](logger => getCheckFile.map {
         case None => Left(Artifact2Error.ChecksumNotFound(sumType = "sha256", file = file.toString))
         case Some(data) =>
           logger.debug(s"Verifying checksum for file $file")
@@ -225,7 +227,7 @@ class FileCache private (
       })
   }
 
-  def getFallbackFilename(file: java.io.File): ZIO[Logger, java.io.IOException, Option[String]] = ZIO.serviceWithZIO[Logger] { logger => ZIO.attemptBlockingIO {
+  def getFallbackFilename(file: java.io.File): ZIO[Logger, IOException, Option[String]] = ZIO.serviceWithZIO[Logger] { logger => ZIO.attemptBlockingIO {
     val checkedFile = FileCache.ttlFile(file)
     if (!checkedFile.exists() || checkedFile.length() == 0)
       None
