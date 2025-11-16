@@ -166,7 +166,7 @@ object ChannelUtil {
     ): RIO[JD.Channel.Info, Unit] = JsonChannelBuilder(tempJsonDir).result(packages).flatMap(channel => ZIO.attemptBlockingIO {
       // write channel contents
       scala.util.Using.resource(java.nio.file.Files.newBufferedWriter((tempJsonDir / JsonRepoUtil.channelContentsFilename).toNIO)) { out =>
-        writeTo(channel, out, indent=1)  // writes channel contents json file
+        writeTo(channel, out, indent = -1)  // writes channel contents json file
       }
 
       // create symlinks for latest versions
