@@ -101,22 +101,21 @@ class FileCache private (
       (for {
         getCheckFileLazy <- parseCheckFileOf(destFile).memoize  // lazily evaluates only when needed
         destFileChecksumVerifiedLazy <- verifyChecksum(destFile, artifact, getCheckFileLazy).memoize  // lazily evaluates only when needed
-        refresh  <- ZIO.attemptBlockingIO {
-          /*(a)*/     artifact.forceRedownload
-          /*(b)*/     || !destFile.exists()
-          /*(c)*/     || artifact.changing && isStale(destFile)
-          /*(d)*/     || artifact.lastModified.exists(remoteModificationDate => isOlderThan(destFile, remoteModificationDate))
-          /*(e)*/   } || ZIO.succeed(artifact.redownloadOnChecksumError) && destFileChecksumVerifiedLazy.map(_.isLeft)
+        condA    =  ZIO.succeed(artifact.forceRedownload)
+        condB    <- ZIO.attemptBlockingIO(!destFile.exists()).memoize
+        condC    <- ZIO.attemptBlockingIO(artifact.changing && isStale(destFile)).memoize
+        condD    <- ZIO.attemptBlockingIO(artifact.lastModified.exists(remoteModificationDate => isOlderThan(destFile, remoteModificationDate))).memoize
+        condE    =  ZIO.succeed(artifact.redownloadOnChecksumError) && destFileChecksumVerifiedLazy.map(_.isLeft)
+        refresh  <- condA || condB || condC || condD || condE
         result   <- if (refresh) {
                       for {
-                        checkFileOpt <- getCheckFileLazy
-                        skipETag <- ZIO.attemptBlockingIO {
-                                      !checkFileOpt.exists(_.etag.isDefined)
-                          /*(a)*/     || artifact.forceRedownload
-                          /*(b)*/     || !destFile.exists()
-                          /*(e)*/   } || (ZIO.succeed(artifact.redownloadOnChecksumError) && destFileChecksumVerifiedLazy.map(_.isLeft))
-                        etag = Option.unless(skipETag)(checkFileOpt.flatMap(_.etag)).flatten
-                        newFile <- new Downloader(artifact, etag, cacheLocation = location, localFile = destFile, logger, pool, credentials).download
+                        etagOpt  <- getCheckFileLazy.map(_.flatMap(_.etag)).flatMap {
+                                      case None => ZIO.succeed(None)
+                                      case Some(etag) =>
+                                        val ignoreETag = condA || condB || (condC || condD).negate  // where ¬(c ∨ d) implies (e), which avoids evaluating (e) unless necessary
+                                        ZIO.unlessZIO(ignoreETag)(ZIO.succeed(etag))
+                                    }
+                        newFile  <- new Downloader(artifact, etagOpt, cacheLocation = location, localFile = destFile, logger, pool, credentials).download
                         // We enforce that checksums match (if present) to avoid redownloading same file repeatedly.
                         //
                         // In case of pkg.json files, there is a small chance (30 minutes time window, see `channelContentsTtl`)
