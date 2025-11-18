@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+### Changed
+- new option `--indent` for `channel build` command. By default, the channel contents JSON file now uses no indentation to save space.
+
 
 ## [0.9.0] - 2025-11-04
 ### Fixed

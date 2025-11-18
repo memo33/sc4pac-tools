@@ -218,6 +218,50 @@
    ]
   }
  ],
+ "variantChoices": [
+  {
+   "variantId": "driveside",
+   "choices": [
+    "right",
+    "left"
+   ]
+  },
+  {
+   "variantId": "nightmode",
+   "choices": [
+    "standard",
+    "dark"
+   ]
+  },
+  {
+   "variantId": "style",
+   "choices": [
+    "style1",
+    "style2"
+   ]
+  },
+  {
+   "variantId": "capacity",
+   "choices": [
+    "standard",
+    "quadrupled"
+   ]
+  },
+  {
+   "variantId": "CAM",
+   "choices": [
+    "yes",
+    "no"
+   ]
+  },
+  {
+   "variantId": "roadstyle",
+   "choices": [
+    "US",
+    "EU"
+   ]
+  }
+ ],
  "metadataSource": [
   "memo/conditional-variants.yaml"
  ],

@@ -4,9 +4,9 @@ build-channel-page:
 	sh ./src/scripts/build-channel-page.sh
 
 channel-testing:
-	./sc4pac channel build --label Test-Local --output ./channel-testing/json ./channel-testing/yaml
+	./sc4pac channel build --indent 1 --label Test-Local --output ./channel-testing/json ./channel-testing/yaml
 channel-testing-web:
-	./sc4pac channel build --label Test-Web --metadata-source-url https://github.com/memo33/sc4pac/blob/main/src/yaml/ --output ./web/channel/ ./channel-testing/yaml
+	./sc4pac channel build --indent 1 --label Test-Web --metadata-source-url https://github.com/memo33/sc4pac/blob/main/src/yaml/ --output ./web/channel/ ./channel-testing/yaml
 
 host:
 	# jwebserver comes with java 18

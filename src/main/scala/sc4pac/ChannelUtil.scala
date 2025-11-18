@@ -158,15 +158,15 @@ object ChannelUtil {
     * - files do not include the version number which avoids the need for renaming
     * - files can include multiple package definitions
     */
-  def convertYamlToJson(inputDirs: Seq[os.Path], outputDir: os.Path): RIO[JD.Channel.Info, Unit] = {
+  def convertYamlToJson(inputDirs: Seq[os.Path], outputDir: os.Path, indent: Option[Int]): RIO[JD.Channel.Info, Unit] = {
 
     def writeChannel(
       packages: Seq[JD.PackageAsset],
       tempJsonDir: os.Path,
-    ): RIO[JD.Channel.Info, Unit] = JsonChannelBuilder(tempJsonDir).result(packages).flatMap(channel => ZIO.attemptBlockingIO {
+    ): RIO[JD.Channel.Info, Unit] = JsonChannelBuilder(tempJsonDir, indent).result(packages).flatMap(channel => ZIO.attemptBlockingIO {
       // write channel contents
       scala.util.Using.resource(java.nio.file.Files.newBufferedWriter((tempJsonDir / JsonRepoUtil.channelContentsFilename).toNIO)) { out =>
-        writeTo(channel, out, indent = -1)  // writes channel contents json file
+        writeTo(channel, out, indent = indent.getOrElse(-1))  // writes channel contents json file
       }
 
       // create symlinks for latest versions
@@ -345,12 +345,12 @@ trait ChannelBuilder[+E] {
   }
 }
 
-class JsonChannelBuilder(tempJsonDir: os.Path) extends ChannelBuilder[Throwable] {
+class JsonChannelBuilder(tempJsonDir: os.Path, indent: Option[Int]) extends ChannelBuilder[Throwable] {
 
   private def writePackageJsonBlocking[A : ReadWriter](pkgData: A, target: os.Path): JD.Checksum = {
     os.makeDir.all(target / os.up)
     scala.util.Using.resource(java.nio.file.Files.newBufferedWriter(target.toNIO)) { out =>
-      writeTo(pkgData, out, indent = 1)  // writes package/asset json file
+      writeTo(pkgData, out, indent = indent.getOrElse(1))  // writes package/asset json file
     }
     JD.Checksum(sha256 = Some(Downloader.computeChecksum(target.toIO)))
   }
