@@ -46,13 +46,14 @@ object Commands {
     | error.Sc4pacVersionNotFound | error.Sc4pacAssetNotFound | error.ExtractionFailed
     | error.UnsatisfiableVariantConstraints | error.ChecksumError | error.ReadingProfileFailed
     | error.Sc4pacPublishIncomplete | error.UnresolvableDependencies | error.ConflictingPackages | error.ObtainingUserDirsFailed
-    | java.nio.file.AccessDeniedException | java.lang.IncompatibleClassChangeError
+    | java.nio.file.AccessDeniedException | java.lang.IncompatibleClassChangeError | error.FileOpsFailure
 
   private def handleExpectedFailures(abort: ExpectedFailure, exit: Int => Nothing): Nothing = abort match {
     case abort: error.Sc4pacAbort => { System.err.println("Operation aborted."); exit(ExitCodes.ExternalReason) }
     case abort: java.nio.file.AccessDeniedException => { System.err.println(s"Operation aborted. File access denied. Check your permissions to access the file or directory: ${abort.getMessage}"); exit(ExitCodes.AccessDenied) }  // any command that creates directories or files
     case abort: error.Sc4pacPublishIncomplete => { System.err.println(s"Operation finished with warnings. ${abort.getMessage}"); exit(ExitCodes.PublishIncomplete) }  // update (final step)
     case abort: java.lang.IncompatibleClassChangeError => { abort.printStackTrace(); System.err.println("Operation aborted. The Java version installed on your system might be too old."); exit(ExitCodes.JavaTooOld) }  // e.g. NoSuchMethodError
+    case abort: error.FileOpsFailure => { System.err.println(s"Operation aborted. ${abort.getMessage}"); exit(ExitCodes.ExternalReason) }  // channel-build and repair commands
     case abort => { System.err.println(s"Operation aborted. ${abort.getMessage}"); exit(ExitCodes.ExternalReason) }
   }
 
@@ -75,7 +76,6 @@ object Commands {
         case abort: error.Sc4pacTimeout => { System.err.println(Array("Operation aborted.", abort.getMessage).mkString(" ")); exit(ExitCodes.ExternalReason) }
         case abort: error.Sc4pacNotInteractive => { System.err.println(s"Operation aborted as terminal is non-interactive: ${abort.getMessage}"); exit(ExitCodes.ExternalReason) }
         case abort: error.SymlinkCreationFailed => { System.err.println(s"Operation aborted. ${abort.getMessage}"); exit(ExitCodes.ExternalReason) }  // channel-build command
-        case abort: error.FileOpsFailure => { System.err.println(s"Operation aborted. ${abort.getMessage}"); exit(ExitCodes.ExternalReason) }  // channel-build command
         case abort: error.YamlFormatIssue => { System.err.println(s"Operation aborted. ${abort.getMessage}"); exit(ExitCodes.ExternalReason) }  // channel-build command
         case abort: error.PortOccupied => { System.err.println(abort.getMessage); exit(ExitCodes.PortOccupied) }  // server command
         case e: Throwable => { e.printStackTrace(); exit(ExitCodes.UnknownReason) }

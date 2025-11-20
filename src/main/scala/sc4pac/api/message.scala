@@ -262,6 +262,8 @@ object ErrorMessage {
   case class ObtainingUserDirsFailed(title: String, detail: String) extends ErrorMessage derives UP.ReadWriter
   @upickle.implicits.key("/error/unauthorized")
   case class UnauthorizedRequest(title: String, detail: String) extends ErrorMessage derives UP.ReadWriter
+  @upickle.implicits.key("/error/file-operations-failed")
+  case class FileOperationsFailed(title: String, detail: String) extends ErrorMessage derives UP.ReadWriter
 }
 
 @upickle.implicits.key("/result")

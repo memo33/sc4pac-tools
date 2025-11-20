@@ -101,7 +101,7 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) {  // TODO d
   /** Detect missing/orphan package subfolders inside Plugins. */
   def repairScan(pluginsRoot: os.Path): Task[RepairPlan] = {
     def isPackageSubfolder(path: os.Path): Boolean = path.last.endsWith(".sc4pac") && path != pluginsRoot && os.isDir(path)
-    for {
+    (for {
       pluginsLockData <- JsonIo.read[JD.PluginsLock](JD.PluginsLock.path(context.profileRoot))  // at this point, file should already exist
       _ = require(pluginsLockData.scheme > 1, "run an Update before trying to repair plugins, as scheme=1 is not supported anymore")
       incompletePackages <-
@@ -113,7 +113,8 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) {  // TODO d
       expectedPaths = pluginsLockData.installed.iterator.flatMap(_.files).toSet: Set[os.SubPath]
       unexpectedPaths <-
         ZIO.attemptBlockingIO {
-          os.walk
+          if (!os.exists(pluginsRoot)) throw new error.FileOpsFailure(s"Plugins folder does not exist: $pluginsRoot")
+          else os.walk
             .stream(pluginsRoot,
               skip = (path) => expectedPaths.contains(path.subRelativeTo(pluginsRoot)) || isPackageSubfolder(path / os.up),
               followLinks = false,
@@ -123,13 +124,18 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) {  // TODO d
             .map(_.subRelativeTo(pluginsRoot))
             .toSeq.sorted
         }
-    } yield RepairPlan(incompletePackages = incompletePackages, orphanFiles = unexpectedPaths)
+    } yield RepairPlan(incompletePackages = incompletePackages, orphanFiles = unexpectedPaths))
+      .catchSome {
+        case e: error.FileOpsFailure => ZIO.fail(e)
+        case e: java.io.IOException => ZIO.fail(error.FileOpsFailure(e.toString()))
+      }
   }
 
   /** Executes RepairPlan. Returns whether subsequent update is necessary for changes to take full effect. */
   def repair(plan: RepairPlan, pluginsRoot: os.Path): Task[Boolean] = {
     for {
       _        <- ZIO.attemptBlockingIO(plan.orphanFiles.foreach(subpath => Sc4pac.removeAllForcibly(pluginsRoot / subpath)))
+                    .mapError { case e: java.io.IOException => error.FileOpsFailure(e.toString()) }
       foundAny <- ZIO.when(plan.incompletePackages.nonEmpty)(reinstall(plan.incompletePackages.toSet, redownload = false))
     } yield foundAny.getOrElse(false)
   }
