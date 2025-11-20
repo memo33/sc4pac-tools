@@ -61,7 +61,7 @@ object Artifact2Error {
   final class Locked(val file: java.io.File) extends Artifact2Error(s"File is locked: $file", None)
   final class WrongLength(val got: Long, val expected: Long, val file: String) extends Artifact2Error(s"Wrong length: $file (expected $expected B, got $got B)", None)
   final class ChecksumNotFound(val sumType: String, val file: String) extends Artifact2Error(s"Checksum not found: $file", None)
-  final class ChecksumFormatError(val sumType: String, val file: String) extends Artifact2Error(s"Checksum format error: $file", None)
+  final class ChecksumFormatError(val sumType: String, val file: String) extends Artifact2Error(s"Checksum format error: $file", None)  // currently not used
   final class WrongChecksum(val sumType: String, val got: String, val expected: String, val file: String, val sumFile: String) extends Artifact2Error(s"Wrong checksum: $file (expected $sumType $expected in $sumFile, got $got)", None)
   final class JsonFormatError(val reason: String, e: Throwable) extends Artifact2Error(s"$reason - ${e.getMessage}", Some(e))
 }

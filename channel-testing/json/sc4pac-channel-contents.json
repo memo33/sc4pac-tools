@@ -1,5 +1,5 @@
 {
- "scheme": 6,
+ "scheme": 8,
  "info": {
   "channelLabel": [
    "Test-Local"
@@ -74,7 +74,7 @@
    ],
    "checksums": {
     "1.0": {
-     "sha256": "9bac059e4be3fa415a06e652ee7b73c9acbd418f8a247899cb9c0d794372f21f"
+     "sha256": "ff19987148d949b59611dce4a5cacd4eca85b80c7245cfeed0f99786643d6292"
     }
    },
    "category": [
@@ -89,7 +89,7 @@
    ],
    "checksums": {
     "1.0": {
-     "sha256": "e9f0d62cf27c682a488218a298166220aad40fa42a9726ab1ae3ec689a805727"
+     "sha256": "de413cdbbef8eee4e96024fd440e431732f72dd325d1a023b1845dd3ef9927d3"
     }
    },
    "category": [

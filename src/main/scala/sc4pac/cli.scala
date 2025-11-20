@@ -570,6 +570,9 @@ object Commands {
     label: String = null,
     @ValueDescription("url") @HelpMessage("Optional base URL linking to the online YAML source files (for Edit Metadata button)") @Group("Main") @Tag("Main")
     metadataSourceUrl: String = null,
+    @ValueDescription("number") @Group("Main") @Tag("Main")
+    @HelpMessage(s"Indentation of channel JSON files (-1 for no indentation, default: unspecified)")
+    indent: Int = -2,
   ) extends Sc4pacCommandOptions
 
   /** For internal use, convert yaml files to json.
@@ -596,8 +599,9 @@ object Commands {
               case _ => None
             }),
           )
+          val indent = Option(options.indent).filter(_ >= -1)
           val task =
-            ChannelUtil.convertYamlToJson(inputs.map(os.Path(_, os.pwd)), os.Path(options.output, os.pwd))
+            ChannelUtil.convertYamlToJson(inputs.map(os.Path(_, os.pwd)), os.Path(options.output, os.pwd), indent = indent)
               .provideSomeLayer(zio.ZLayer.succeed(info))
           runMainExit(task, exit)
       }

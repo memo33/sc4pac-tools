@@ -307,9 +307,10 @@ sc4pac channel build --label Local --metadata-source-url https://github.com/memo
 Use the options `--label` and `--metadata-source-url` particularly for building publicly accessible channels.
 
 **Options:**
-- `-o, --output <dir>`         Output directory for JSON files
-- `--label str`                Optional short channel name for display in the UI
-- `--metadata-source-url url`  Optional base URL linking to the online YAML source files (for Edit Metadata button)
+- `-o, --output <dir>`           Output directory for JSON files
+- `--label <str>`                Optional short channel name for display in the UI
+- `--metadata-source-url <url>`  Optional base URL linking to the online YAML source files (for Edit Metadata button)
+- `--indent <number>`            Indentation of channel JSON files (-1 for no indentation, default: unspecified)
 
 
 ---

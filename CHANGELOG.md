@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Changed
+- improved performance of downloading metadata by enabling GZip compression (#49)
+- improved caching of metadata by using `etag` HTTP header (#49)
+- new option `--indent` for `channel build` command. By default, the channel contents JSON file now uses no indentation to save space.
+
 
 ## [0.9.0] - 2025-11-04
 ### Fixed

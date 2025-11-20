@@ -10,6 +10,7 @@ import zio.{ZIO, IO}
 import upickle.default as UP
 import sc4pac.JsonData as JD
 import sc4pac.error.Artifact2Error
+import zio.http.Header.ETag
 
 import Downloader.PartialDownloadSpec
 
@@ -23,6 +24,7 @@ import Downloader.PartialDownloadSpec
   */
 class Downloader(
   artifact: Artifact,  // contains the URL
+  etag: Option[ETag],
   cacheLocation: java.io.File,
   localFile: java.io.File,  // the local file after download
   logger: Logger,
@@ -49,7 +51,12 @@ class Downloader(
         if (localFilePath != mirrorPath) {
           os.copy.over(mirrorPath, localFilePath, replaceExisting = true, createFolders = true, followLinks = true)
         }
-        doTouchCheckFile(localFile, url = url, filename = mirrorPath.lastOpt, sha256 = Downloader.computeChecksum(localFile), debugSource = mirrorPath.toString)
+        doTouchCheckFile(localFile, url = url, Some(JD.CheckFile(
+          filename = mirrorPath.lastOpt,
+          checksum = JD.Checksum(sha256 = Some(Downloader.computeChecksum(localFile))),
+          source = mirrorPath.toString,
+          etag = None,
+        )))
         Right(localFile)
       }.catchSome {
         case e: java.io.FileNotFoundException if e.getMessage != null => ZIO.succeed(Left(new Artifact2Error.NotFound(e.getMessage)))
@@ -58,7 +65,7 @@ class Downloader(
       }.orDie.absolve
     } else {
       // download remote file
-      remote(localFile, url).map(_ => localFile)
+      remote(localFile, url, etag).map(_ => localFile)
     }
   }
 
@@ -70,7 +77,7 @@ class Downloader(
     )
   }
 
-  private def remote(file: java.io.File, url: String): IO[Artifact2Error, Unit] = {
+  private def remote(file: java.io.File, url: String, etag: Option[ETag]): IO[Artifact2Error, Unit] = {
     Downloader.attemptCancelableOnPool(pool, (isCanceled) => {
       val tmp = coursier.paths.CachePath.temporaryFile(file)  // file => .file.part
       logger.downloadingArtifact(url, artifact)
@@ -78,7 +85,7 @@ class Downloader(
       try {
         val res = downloading(url, file)(
           CC.CacheLocks.withLockOr(cacheLocation, file)(
-            doDownload(file, url, tmp, isCanceled),
+            doDownload(file, url, tmp, isCanceled, oldETag = etag),
             ifLocked = Some(Left(new Artifact2Error.Locked(file)))  // should not be an issue as long as just one instance of sc4pac is running
           ),
           ifLocked = Some(Left(new Artifact2Error.Locked(file)))  // should not be an issue as long as just one instance of sc4pac is running
@@ -86,8 +93,9 @@ class Downloader(
         success = res.isRight
         res
       } finally logger.downloadedArtifact(url, success = success)
-    }).catchNonFatalOrDie {
-      case e => ZIO.fail(wrapDownloadError(e, url))
+    }).catchAll {
+      case scala.util.control.NonFatal(e) => ZIO.fail(wrapDownloadError(e, url))
+      case e => ZIO.die(e)
     }
   }
 
@@ -132,11 +140,11 @@ class Downloader(
   }
 
   /** Download in blocking fashion. */
-  private def doDownload(file: java.io.File, url: String, tmp: java.io.File, isCanceled: AtomicBoolean): Either[Artifact2Error, Unit] = {
+  private def doDownload(file: java.io.File, url: String, tmp: java.io.File, isCanceled: AtomicBoolean, oldETag: Option[ETag]): Either[Artifact2Error, Unit] = {
     var conn: URLConnection = null
 
     try {
-      val (conn0, partialDownload) = Downloader.urlConnectionMaybePartial(url, Downloader.PartialDownloadSpec.initBlocking(tmp), credentials)
+      val (conn0, partialDownload) = Downloader.urlConnectionMaybePartial(url, Downloader.PartialDownloadSpec.initBlocking(tmp), credentials, etag = oldETag)
       conn = conn0
 
       val respCodeOpt = CC.CacheUrl.responseCode(conn)
@@ -149,7 +157,11 @@ class Downloader(
         Left(new Artifact2Error.Unauthorized(url))
       else if (respCodeOpt.contains(429))
         Left(new Artifact2Error.RateLimited(url))
-      else {
+      else if (respCodeOpt.contains(304)) {
+        logger.debug(s"304 not modified: $url")
+        doTouchCheckFile(file, url, checkFile = None)
+        Right(())  // "not modified" based on etag
+      } else {
         val lenOpt: Option[Long] =
           for (len0 <- Option(conn.getContentLengthLong).filter(_ >= 0L).orElse(Downloader.lengthFromContentRange(conn))) yield {
             val (len, alreadyDownloaded) =
@@ -164,6 +176,10 @@ class Downloader(
 
         val lastModifiedOpt = Option(conn.getLastModified).filter(_ > 0L)
 
+        val newETag: Option[ETag] =
+          Option(conn.getHeaderField("etag"))
+            .flatMap(etagStr => ETag.parse(etagStr).toOption)
+
         val filename: Option[String] =
           Option(conn.getHeaderField("content-disposition"))
             .filter(_.nonEmpty)
@@ -176,10 +192,21 @@ class Downloader(
               }
             }
 
+        val isGZip: Boolean =
+          Option(conn.getContentEncoding).flatMap(zio.http.Header.ContentEncoding.parse(_).toOption) match {
+            case None => false // empty or parse error
+            case Some(zio.http.Header.ContentEncoding.GZip) =>
+              logger.debug(s"Content-Encoding=gzip: $url")
+              true
+            case Some(unknownEncoding) =>
+              logger.warn(s"Unknown content encoding ($unknownEncoding): $url")
+              false
+          }
+
         def consumeStream(): Either[Artifact2Error, Unit] = {
           scala.util.Using.resource {
             val baseStream =
-              if (conn.getContentEncoding == "gzip") new java.util.zip.GZIPInputStream(conn.getInputStream)
+              if (isGZip) new java.util.zip.GZIPInputStream(conn.getInputStream)
               else conn.getInputStream
             new java.io.BufferedInputStream(baseStream, Constants.bufferSizeDownload)
           } { in =>
@@ -213,13 +240,14 @@ class Downloader(
 
         def lengthCheck(): Either[Artifact2Error, Unit] =
           lenOpt match {
-            case None => Right(())
-            case Some(len) =>
+            case Some(len) if !isGZip =>
               val tmpLen = if (tmp.exists()) tmp.length() else 0L
               if (len == tmpLen)
                 Right(())
               else
                 Left(new Artifact2Error.WrongLength(tmpLen, len, tmp.getAbsolutePath))
+            case _ => Right(())  // TODO In particular, we currently skip the length check if isGZip, as content-length header is not actual file size.
+                                 // GZip encoding is mainly used with JSON files. They will fail to parse anyway if incomplete.
           }
 
         for {
@@ -237,7 +265,12 @@ class Downloader(
 
           val checksum = Downloader.computeChecksum(file)
 
-          doTouchCheckFile(file, url, filename, checksum, debugSource = url)
+          doTouchCheckFile(file, url, Some(JD.CheckFile(
+            filename = filename,
+            checksum = JD.Checksum(sha256 = Some(checksum)),
+            source = url,
+            etag = newETag,
+          )))
         }
       }
 
@@ -247,23 +280,27 @@ class Downloader(
 
   }
 
-  // Here, filename is the name as declared in the HTTP header. We store it in
+  // Here, checkFile's filename is the name as declared in the HTTP header. We store it in
   // the ttl file in order to be able to restore it if necessary.
   // As this filename may not be persistent, it makes sense not to store files
   // in the cache under this name directly.
   // Additionally we store a checksum to be able to quickly check if a file is
   // still up-to-date by comparing with an expected checksum value.
-  def doTouchCheckFile(file: java.io.File, url: String, filename: Option[String], sha256: ArraySeq[Byte], debugSource: String): Unit = {  // without `updateLinks` as we do not download directories
+  // And other metadata.
+  //
+  // If checkFile is None, then only the timestamp is updated. For this, the
+  // file should already exist.
+  def doTouchCheckFile(file: java.io.File, url: String, checkFile: Option[JD.CheckFile]): Unit = {  // without `updateLinks` as we do not download directories
     val ts = System.currentTimeMillis()
     val f  = FileCache.ttlFile(file)
-    val arr: Array[Byte] =  // with older sc4pac versions, this could be an empty byte array
-      UP.writeToByteArray(JD.CheckFile(
-        filename = filename,
-        checksum = JD.Checksum(sha256 = Some(sha256)),
-        source = debugSource,
-      ))
-    scala.util.Using.resource(new java.io.FileOutputStream(f)) { fos => fos.write(arr) }
-    f.setLastModified(ts)
+    for (data <- checkFile) {
+      val arr: Array[Byte] = UP.writeToByteArray(data) // with older sc4pac versions, this could be an empty byte array
+      scala.util.Using.resource(new java.io.FileOutputStream(f)) { fos => fos.write(arr) }
+    }
+    val success = f.setLastModified(ts)
+    if (!success) {
+      logger.debug(s"Failed to update timestamp of .checked file: $f")
+    }
     ()
   }
 
@@ -404,7 +441,7 @@ object Downloader {
   /** Open a URL connection for download, optionally for resuming a partial
     * download (if byte-serving is supported by the server).
     */
-  private def urlConnectionMaybePartial(url0: String, specOpt: Option[PartialDownloadSpec], credentials: Downloader.Credentials): (URLConnection, Option[PartialDownloadSpec]) = {
+  private def urlConnectionMaybePartial(url0: String, specOpt: Option[PartialDownloadSpec], credentials: Downloader.Credentials, etag: Option[ETag]): (URLConnection, Option[PartialDownloadSpec]) = {
 
     var conn: URLConnection = null
 
@@ -417,9 +454,13 @@ object Downloader {
             conn0.setInstanceFollowRedirects(true)  // Coursier sets this to false and handles redirects manually
             conn0.setRequestProperty("User-Agent", Constants.userAgent)
             conn0.setRequestProperty("Accept", "*/*")
+            if (specOpt.isEmpty) {  // use gzip only for non-partial downloads
+              conn0.setRequestProperty("Accept-Encoding", "gzip, identity")
+            }
             conn0.setConnectTimeout(Constants.urlConnectTimeout.toMillis.toInt)  // timeout for establishing a connection
             conn0.setReadTimeout(Constants.urlReadTimeout.toMillis.toInt)  // timeout in case of internet outage while downloading a file
             credentials.addAuthorizationToMatchingConnection(conn0)
+            etag.foreach(e => conn0.setRequestProperty("If-None-Match", e.renderedValue))
           case _ =>
         }
 
@@ -464,7 +505,7 @@ object Downloader {
 
     res match {
       case Left(specOpt) =>
-        urlConnectionMaybePartial(url0, specOpt, credentials)  // reconnect, possibly starting from 0
+        urlConnectionMaybePartial(url0, specOpt, credentials, etag)  // reconnect, possibly starting from 0
       case Right(ret) =>
         ret
     }

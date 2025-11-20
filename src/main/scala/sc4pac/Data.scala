@@ -312,8 +312,14 @@ object JsonData extends SharedData {
       (m: Map[String, String]) => Checksum(sha256 = m.get("sha256").map(Checksum.stringToBytes))
     )
 
+  implicit val etagRw: ReadWriter[zio.http.Header.ETag] =
+    readwriter[String].bimap[zio.http.Header.ETag](
+      _.renderedValue,
+      s => zio.http.Header.ETag.parse(s).getOrElse(throw new IllegalArgumentException(s"Invalid etag: $s")),
+    )
+
   // `source` is local path or remote url, for debugging purposes, see https://github.com/memo33/sc4pac-tools/issues/43
-  case class CheckFile(filename: Option[String], checksum: Checksum = Checksum.empty, source: String = null) derives ReadWriter
+  case class CheckFile(filename: Option[String], checksum: Checksum = Checksum.empty, source: String = null, etag: Option[zio.http.Header.ETag] = None) derives ReadWriter
 
   case class ProfileData(id: ProfileId, name: String) derives ReadWriter
 
