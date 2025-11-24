@@ -63,7 +63,7 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) extends AuthMiddleware {
     case abort: java.nio.file.AccessDeniedException => ErrorMessage.FileAccessDenied(
       "File access denied. Check that you have permissions to access the file or directory.", abort.getMessage)
     case abort: java.lang.IncompatibleClassChangeError => ErrorMessage.ServerError(
-      "The Java version installed on your system might be too old. Install a more recent Java version.", abort.getMessage)
+      s"The Java version installed on your system might be too old. Uninstall Java, restart your computer and install the latest version of Java available. (The minimum version required for the program to work is Java ${cli.BuildInfo.minJavaVersion})", abort.getMessage)
     case abort: error.FileOpsFailure => ErrorMessage.FileOperationsFailed(abort.getMessage, "")
   }
 

@@ -12,7 +12,8 @@ ThisBuild / licenses += ("GPL-3.0-only", url("https://spdx.org/licenses/GPL-3.0-
 
 ThisBuild / scalaVersion := "3.4.2"
 
-val minJavaVersion = "17"
+val minJavaVersion = settingKey[String]("minimum supported Java version")
+ThisBuild / minJavaVersion := "17"
 
 ThisBuild / scalacOptions ++= Seq(
   // "-Wunused:imports",
@@ -24,9 +25,9 @@ ThisBuild / scalacOptions ++= Seq(
   "-Wvalue-discard",
   "-source:future",
   "-encoding", "UTF-8",
-  s"-release:$minJavaVersion")
+  s"-release:${minJavaVersion.value}")
 
-ThisBuild / javacOptions ++= Seq("--release", minJavaVersion)
+ThisBuild / javacOptions ++= Seq("--release", minJavaVersion.value)
 
 console / initialCommands := """
 import io.github.memo33.sc4pac.*
@@ -39,7 +40,7 @@ lazy val root = (project in file("."))
   .dependsOn(shared.jvm)
   .enablePlugins(BuildInfoPlugin)
   .settings(
-    buildInfoKeys := Seq[BuildInfoKey](name, organization, version, scalaVersion, sbtVersion, licenses),
+    buildInfoKeys := Seq[BuildInfoKey](name, organization, version, scalaVersion, sbtVersion, licenses, minJavaVersion),
     buildInfoPackage := "io.github.memo33.sc4pac.cli"
   )
   .settings(
