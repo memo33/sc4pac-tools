@@ -794,7 +794,7 @@ object Commands {
           .zipRight(ZIO.succeed {
             if (options.startupTag.nonEmpty)
               println(options.startupTag)
-            println(s"Sc4pac server ${BuildInfo.version} is listening on port ${options.port}...")
+            println(s"Sc4pac server ${BuildInfo.version} is listening ${if (Constants.debugMode) "(in debug mode) " else ""}on port ${options.port}...")
           })
           .zipRight(
             ZIO.whenDiscard(webAppDir.isDefined) {

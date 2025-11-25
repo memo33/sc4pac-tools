@@ -853,13 +853,17 @@ class Api(options: sc4pac.cli.Commands.ServerOptions) extends AuthMiddleware {
 
   private val websocketRoutePatterns = Set[RoutePattern[?]](Method.GET / "update", Method.GET / "server.connect")
   def tokenRoutes0 = profileRoutes ++ genericRoutes ++ fetchRoutes
-  def tokenRoutes =  // these require use of an access token
-    Routes(tokenRoutes0.map { case (route, scope) =>
-      if (websocketRoutePatterns.contains(route.routePattern))
-        route.transform(handler => handler @@ tokenAuth(scope, allowFromQuery = true))
-      else
-        route.transform(handler => handler @@ tokenAuth(scope))
-    })
+  def tokenRoutes = {  // these require use of an access token
+    val r =
+      Routes(tokenRoutes0.map { case (route, scope) =>
+        if (websocketRoutePatterns.contains(route.routePattern))
+          route.transform(handler => handler @@ tokenAuth(scope, allowFromQuery = true))
+        else
+          route.transform(handler => handler @@ tokenAuth(scope))
+      })
+    // if (Constants.debugMode) r @@ Middleware.requestLogging() else r
+    r
+  }
 
   def routes(webAppDir: Option[os.Path]): Routes[TokenService & service.FileSystem & ServerFiber & Client & Ref[ServerConnection] & Ref[Option[FileCache]], Nothing] = {
     val authRoutes = literal("auth") / authEndpoints
