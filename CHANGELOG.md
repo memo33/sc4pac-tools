@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+
+## [0.9.1] - 2025-11-25
+### Fixed
+- minimum Java version set to 17 (as needed since 0.9.0)
+
 ### Changed
 - improved performance of downloading metadata by enabling GZip compression (#49)
 - improved caching of metadata by using `etag` HTTP header (#49)
@@ -353,7 +358,8 @@
 ## [0.1.5] - 2023-09-26
 …
 
-[Unreleased]: https://github.com/memo33/sc4pac-tools/compare/0.9.0...HEAD
+[Unreleased]: https://github.com/memo33/sc4pac-tools/compare/0.9.1...HEAD
+[0.9.0]: https://github.com/memo33/sc4pac-tools/compare/0.9.0...0.9.1
 [0.9.0]: https://github.com/memo33/sc4pac-tools/compare/0.8.1...0.9.0
 [0.8.1]: https://github.com/memo33/sc4pac-tools/compare/0.8.0...0.8.1
 [0.8.0]: https://github.com/memo33/sc4pac-tools/compare/0.7.0...0.8.0
