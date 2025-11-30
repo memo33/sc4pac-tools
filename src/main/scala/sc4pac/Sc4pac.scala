@@ -717,8 +717,8 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) {  // TODO d
     }
 
     /** Returns true if all tests were successful. */
-    def testInstall(modules: Seq[BareModule], outputDir: Option[os.Path], quick: Boolean): RIO[Downloader.Credentials & CliPrompter, Boolean] = {
-      ZIO.scoped(for {
+    def testInstall(modules: Seq[BareModule], outputDir: Option[os.Path], quick: Boolean, listAssetsOnly: Boolean, downloadOnly: Boolean): RIO[Downloader.Credentials & CliPrompter, Boolean] = {
+      (for {
         pkgs           <- ZIO.validatePar(modules)(module => infoJson(module).someOrFail(module))
                             .mapError { reasons =>
                               val (errs, notFoundMods) = reasons.partitionMap { case mod: BareModule => Right(mod); case err: Throwable => Left(err) }
@@ -733,14 +733,21 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) {  // TODO d
                           }
         assetsToFetch  =  resolutionss.flatMap(_.flatMap(resolution => resolution.transitiveDependencies.collect{ case d: DepAsset => d }))
                             .distinct
-        fetchedAssets  <- Resolution.fetchArtifacts(assetsToFetch, urlFallbacks = Map.empty, assetsToRedownload = Set.empty)
-        stagingDirs    <- Sc4pac.makeStagingDirs(tempRoot, logger)  // created here once in order to avoid extracting the same outer nested archive multiple times
-        results        <- ZIO.foreach(modules.zip(resolutionss)) { (module, resolutions) =>
-                            testInstallOne(module, resolutions, fetchedAssets, stagingDirs, outputDir = outputDir).either
-                          }
-        _              <- ZIO.serviceWith[CliPrompter](_.logger.reportTestResults(results, outputDir.getOrElse(stagingDirs.plugins)))
-        _              <- ZIO.whenDiscard(outputDir.isEmpty)(ZIO.serviceWithZIO[CliPrompter](_.confirmDeletionOfStagedFiles()))
-      } yield results.forall(_.isRight))
+        doFetch        =  Resolution.fetchArtifacts(assetsToFetch, urlFallbacks = Map.empty, assetsToRedownload = Set.empty)
+        success        <- if (listAssetsOnly)
+                            ZIO.serviceWith[CliPrompter](_.logger.logAssetsToFetchForTest(assetsToFetch)).map(_ => true)
+                          else if (downloadOnly)
+                            doFetch.map(_ => true)
+                          else ZIO.scoped(for {
+                            fetchedAssets  <- doFetch
+                            stagingDirs    <- Sc4pac.makeStagingDirs(tempRoot, logger)  // created here once in order to avoid extracting the same outer nested archive multiple times
+                            results        <- ZIO.foreach(modules.zip(resolutionss)) { (module, resolutions) =>
+                                                testInstallOne(module, resolutions, fetchedAssets, stagingDirs, outputDir = outputDir).either
+                                              }
+                            _              <- ZIO.serviceWith[CliPrompter](_.logger.reportTestResults(results, outputDir.getOrElse(stagingDirs.plugins)))
+                            _              <- ZIO.whenDiscard(outputDir.isEmpty)(ZIO.serviceWithZIO[CliPrompter](_.confirmDeletionOfStagedFiles()))
+                          } yield results.forall(_.isRight))
+      } yield success)
         .provideSomeLayer(zio.ZLayer.succeed(context))
     }
 

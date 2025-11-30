@@ -207,6 +207,10 @@ class CliLogger private (out: java.io.PrintStream, useColor: Boolean, isInteract
       log(red(s"Failed to install ${errs.length} of ${testResults.length} packages."))
     }
   }
+
+  def logAssetsToFetchForTest(assets: Seq[Resolution.DepAsset]): Unit = {
+    assets.sortBy(_.assetId).foreach(a => log(s"${a.assetId.value} ${a.version} ${a.url}"))
+  }
 }
 
 object CliLogger {
