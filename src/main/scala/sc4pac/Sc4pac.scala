@@ -630,7 +630,7 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) {  // TODO d
       val depsToInstall = resolution.transitiveDependencies.filter(plan.toInstall).reverse  // we start by fetching artifacts in reverse as those have fewest dependencies of their own
       ZIO.iterate(Left((Map.empty, None)): Either[(Map[java.net.URI, os.Path], Option[Downloader.Credentials]), Seq[(DepAsset, Artifact, java.io.File)]])(_.isLeft) {
         case Left((urlFallbacks, credentialsFallback)) =>
-          resolution.fetchArtifactsOf(depsToInstall, urlFallbacks, plan.toRedownload)
+          Resolution.fetchArtifacts(depsToInstall.collect{ case d: DepAsset => d }, urlFallbacks, plan.toRedownload)
             .updateService[Downloader.Credentials](origCredentials => credentialsFallback.getOrElse(origCredentials))
             .map(Right(_))
             .catchSome { case e: error.DownloadFailed if e.url.isDefined && !urlFallbacks.contains(e.url.get) =>
@@ -696,7 +696,7 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) {  // TODO d
                           .mapError(e => { logger.log(e.getMessage); e })
         _            <- ZIO.foreachDiscard(resolutions) { resolution =>
                           (for {
-                            assetsToInstall <- resolution.fetchArtifactsOf(resolution.transitiveDependencies, urlFallbacks = Map.empty, assetsToRedownload = Set.empty)
+                            assetsToInstall <- Resolution.fetchArtifacts(resolution.transitiveDependencies.collect{ case d: DepAsset => d }, urlFallbacks = Map.empty, assetsToRedownload = Set.empty)
                             depsToStage     =  resolution.transitiveDependencies.collect{ case d: DepModule => d }.toSeq  // keep only non-assets
                             staged <- stageAll(stagingDirs, depsToStage, assetsToInstall, resolution)
                             _      <- ZIO.foreachDiscard(outputDir)(movePackagesToPlugins(staged, _))  // moves files only when output dir is defined
