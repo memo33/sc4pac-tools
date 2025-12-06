@@ -2,6 +2,7 @@
 
 ## [Unreleased]
 
+## [0.9.2] - 2025-12-06
 ### Added
 - a warning if extracted plugin file paths exceed the 260-character limit on Windows and `null-45:startup-performance-optimization-dll` is not installed
 - options `--list-assets` and `--download-only` for the `sc4pac test` command
@@ -362,8 +363,9 @@
 ## [0.1.5] - 2023-09-26
 …
 
-[Unreleased]: https://github.com/memo33/sc4pac-tools/compare/0.9.1...HEAD
-[0.9.0]: https://github.com/memo33/sc4pac-tools/compare/0.9.0...0.9.1
+[Unreleased]: https://github.com/memo33/sc4pac-tools/compare/0.9.2...HEAD
+[0.9.2]: https://github.com/memo33/sc4pac-tools/compare/0.9.1...0.9.2
+[0.9.1]: https://github.com/memo33/sc4pac-tools/compare/0.9.0...0.9.1
 [0.9.0]: https://github.com/memo33/sc4pac-tools/compare/0.8.1...0.9.0
 [0.8.1]: https://github.com/memo33/sc4pac-tools/compare/0.8.0...0.8.1
 [0.8.0]: https://github.com/memo33/sc4pac-tools/compare/0.7.0...0.8.0
