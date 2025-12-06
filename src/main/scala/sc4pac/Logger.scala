@@ -85,7 +85,7 @@ class CliLogger private (out: java.io.PrintStream, useColor: Boolean, isInteract
     debug(s"[${if (include) Console.GREEN + "include" + grayEscape else "exclude"}] $entry")
 
   def log(msg: String): Unit = out.println(msg)
-  def warn(msg: String): Unit = out.println(yellowBold("Warning:") + " " + msg)
+  def warn(msg: String): Unit = out.println(yellowBold("Warning:") + " " + applyMarkdown(msg))
   def debug(msg: => String): Unit = if (Constants.debugMode) out.println(gray(s"--> $msg"))
 
   def logSearchResult(idx: Int, module: BareModule, description: Option[String], installed: Boolean): Unit = {
