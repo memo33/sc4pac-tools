@@ -376,6 +376,8 @@ Use this command together with a locally built channel (see `sc4pac channel buil
 **Options:**
 - `-o, --output <dir>`  Optional output directory to keep extracted files
 - `-q, --quick`         Test fewer variants (only first and last)
+- `--list-assets`       Only list the IDs and versions of the assets required for the test, but do not download or test anything
+- `--download-only`     Only download and cache the assets required for the test, but do not run any tests yet
 - `-y, --yes`           Accept some default answers without asking, usually "yes"
 
 

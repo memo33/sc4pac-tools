@@ -203,59 +203,20 @@ object Resolution {
       resolvedData     <- createResolvedData(findMetadataMemo)(incompleteDeps.keySet)
     } yield Resolution(incompleteDeps, resolvedData, reverseDeps = Map.empty)
 
-}
-
-class Resolution(reachableDeps: TreeSeqMap[BareDep, Links], resolvedData: Map[BareDep, (Dep, Either[JD.Asset, (JD.Package, JD.VariantData)], java.net.URI)], reverseDeps: Map[BareDep, Seq[BareDep]]) {
-
-  private val nonbareDeps: collection.MapView[BareDep, Dep] = resolvedData.view.mapValues(_._1)
-
-  def depModuleOf(module: BareModule): Resolution.DepModule = nonbareDeps(module).asInstanceOf[Resolution.DepModule]
-
-  val metadata: collection.MapView[BareDep, Either[JD.Asset, (JD.Package, JD.VariantData)]] = resolvedData.view.mapValues(_._2)
-
-  val metadataUrls: collection.MapView[BareDep, java.net.URI] = resolvedData.view.mapValues(_._3)
-
-  /** Since `TreeSeqMap` preserves insertion order, this sequence should contain
-    * all reachable dependencies such that, if you take any number from the
-    * right, you obtain a set of dependencies that includes all its transitive
-    * dependencies (if there are no cycles). In other words, the tails are
-    * closed under the operation of taking dependencies.
+  /** Download artifacts corresponding to resolved assets, or take files from cache in case they are still up-to-date.
     */
-  val transitiveDependencies: Seq[Dep] = reachableDeps.keysIterator.map(nonbareDeps).toSeq
-
-  /** Compute the direct dependencies. */
-  def dependenciesOf(dep: BareDep, ignoreUnresolved: Boolean = false): Set[Dep] = {
-    val linksOpt = reachableDeps.get(dep)
-    if (!linksOpt.isDefined) {
-      assert(ignoreUnresolved, s"Dependency resolution did not resolve $dep")
-      Set.empty
-    } else {
-      linksOpt.get.dependencies.map(nonbareDeps).toSet
-    }
-  }
-
-  /** Compute the direct reverse dependencies. */
-  def dependentsOf(dependencies: Set[Dep]): Set[Dep] = {
-    dependencies.map(_.toBareDep).flatMap(d => reverseDeps.get(d).getOrElse(Seq.empty)).map(nonbareDeps)
-  }
-
-  /** Download artifacts of a subset of the dependency set of the resolution, or
-    * take files from cache in case they are still up-to-date.
-    */
-  def fetchArtifactsOf(subset: Seq[Dep], urlFallbacks: Map[java.net.URI, os.Path], assetsToRedownload: Set[DepAsset]): RIO[ResolutionContext & Downloader.Credentials, Seq[(DepAsset, Artifact, java.io.File)]] = {
-    val assetsArtifacts = subset.collect{ case d: DepAsset =>
-      (d, Artifact(
-        d.url,
-        changing = d.lastModified.isEmpty,
-        lastModified = d.lastModified,  // non-changing assets should have lastModified defined and vice versa
-        checksum = d.checksum,
-        redownloadOnChecksumError = false,
-        forceRedownload = assetsToRedownload.contains(d),
-        localMirror = urlFallbacks.get(d.url),
-      ))
-    }
+  def fetchArtifacts(assets: Seq[DepAsset], urlFallbacks: Map[java.net.URI, os.Path], assetsToRedownload: Set[DepAsset]): RIO[ResolutionContext & Downloader.Credentials, Seq[(DepAsset, Artifact, java.io.File)]] = {
     def fetchTask(context: ResolutionContext) =
-      ZIO.foreachPar(assetsArtifacts) { (dep, art) =>
+      ZIO.foreachPar(assets) { dep =>
+        val art = Artifact(
+          dep.url,
+          changing = dep.lastModified.isEmpty,
+          lastModified = dep.lastModified,  // non-changing assets should have lastModified defined and vice versa
+          checksum = dep.checksum,
+          redownloadOnChecksumError = false,
+          forceRedownload = assetsToRedownload.contains(dep),
+          localMirror = urlFallbacks.get(dep.url),
+        )
         context.cache.fetchFile(art).map(file => (dep, art, file))
           .catchAll {
             // See also download-error handling in Find.
@@ -319,5 +280,41 @@ class Resolution(reachableDeps: TreeSeqMap[BareDep, Links], resolvedData: Map[Ba
       context <- ZIO.service[ResolutionContext]
       result  <- context.logger.fetchingAssets(fetchTask(context))
     } yield result
+  }
+
+}
+
+class Resolution(reachableDeps: TreeSeqMap[BareDep, Links], resolvedData: Map[BareDep, (Dep, Either[JD.Asset, (JD.Package, JD.VariantData)], java.net.URI)], reverseDeps: Map[BareDep, Seq[BareDep]]) {
+
+  private val nonbareDeps: collection.MapView[BareDep, Dep] = resolvedData.view.mapValues(_._1)
+
+  def depModuleOf(module: BareModule): Resolution.DepModule = nonbareDeps(module).asInstanceOf[Resolution.DepModule]
+
+  val metadata: collection.MapView[BareDep, Either[JD.Asset, (JD.Package, JD.VariantData)]] = resolvedData.view.mapValues(_._2)
+
+  val metadataUrls: collection.MapView[BareDep, java.net.URI] = resolvedData.view.mapValues(_._3)
+
+  /** Since `TreeSeqMap` preserves insertion order, this sequence should contain
+    * all reachable dependencies such that, if you take any number from the
+    * right, you obtain a set of dependencies that includes all its transitive
+    * dependencies (if there are no cycles). In other words, the tails are
+    * closed under the operation of taking dependencies.
+    */
+  val transitiveDependencies: Seq[Dep] = reachableDeps.keysIterator.map(nonbareDeps).toSeq
+
+  /** Compute the direct dependencies. */
+  def dependenciesOf(dep: BareDep, ignoreUnresolved: Boolean = false): Set[Dep] = {
+    val linksOpt = reachableDeps.get(dep)
+    if (!linksOpt.isDefined) {
+      assert(ignoreUnresolved, s"Dependency resolution did not resolve $dep")
+      Set.empty
+    } else {
+      linksOpt.get.dependencies.map(nonbareDeps).toSet
+    }
+  }
+
+  /** Compute the direct reverse dependencies. */
+  def dependentsOf(dependencies: Set[Dep]): Set[Dep] = {
+    dependencies.map(_.toBareDep).flatMap(d => reverseDeps.get(d).getOrElse(Seq.empty)).map(nonbareDeps)
   }
 }

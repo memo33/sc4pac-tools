@@ -463,11 +463,11 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) {  // TODO d
       * If everything is properly extracted, the files are later moved to the
       * actual plugins folder in the publication step.
       */
-    private def stageAll(stagingDirs: Sc4pac.StagingDirs, deps: Seq[DepModule], assetsToInstall: Seq[(DepAsset, Artifact, java.io.File)], resolution: Resolution): RIO[ResolutionContext, StageResult] = {
-      val artifactsById = assetsToInstall.map((dep, art, file) => dep.toBareDep -> (art, file, dep)).toMap
+    private def stageAll(stagingDirs: Sc4pac.StagingDirs, deps: Seq[DepModule], fetchedAssets: Seq[(DepAsset, Artifact, java.io.File)], resolution: Resolution): RIO[ResolutionContext, StageResult] = {
+      val artifactsById = fetchedAssets.map((dep, art, file) => dep.toBareDep -> (art, file, dep)).toMap
       val numDeps = deps.length
       for {
-        _           <- ZIO.attempt(require(artifactsById.size == assetsToInstall.size, s"artifactsById is not 1-to-1: $assetsToInstall"))
+        _           <- ZIO.attempt(require(artifactsById.size == fetchedAssets.size, s"artifactsById is not 1-to-1: $fetchedAssets"))
         stagedItems <- ZIO.foreach(deps.zipWithIndex) { case (dep, idx) =>   // sequentially stages each package
                          stage(stagingDirs, dep, artifactsById, Sc4pac.Progress(idx+1, numDeps), resolution)
                        }
@@ -630,7 +630,7 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) {  // TODO d
       val depsToInstall = resolution.transitiveDependencies.filter(plan.toInstall).reverse  // we start by fetching artifacts in reverse as those have fewest dependencies of their own
       ZIO.iterate(Left((Map.empty, None)): Either[(Map[java.net.URI, os.Path], Option[Downloader.Credentials]), Seq[(DepAsset, Artifact, java.io.File)]])(_.isLeft) {
         case Left((urlFallbacks, credentialsFallback)) =>
-          resolution.fetchArtifactsOf(depsToInstall, urlFallbacks, plan.toRedownload)
+          Resolution.fetchArtifacts(depsToInstall.collect{ case d: DepAsset => d }, urlFallbacks, plan.toRedownload)
             .updateService[Downloader.Credentials](origCredentials => credentialsFallback.getOrElse(origCredentials))
             .map(Right(_))
             .catchSome { case e: error.DownloadFailed if e.url.isDefined && !urlFallbacks.contains(e.url.get) =>
@@ -672,11 +672,11 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) {  // TODO d
                              .filterOrFail(_ == true)(error.Sc4pacAbort())
         _               <- ZIO.unless(!continue || finalSelections == variantSelection0.initialSelections && modules == modules0)(storeUpdatedSpec(finalSelections, modules))  // only store something after confirmation
         flagOpt         <- ZIO.unless(!continue || plan.isUpToDate)(for {
-          assetsToInstall <- doDownloadWithMirror(resolution, plan)
+          fetchedAssets   <- doDownloadWithMirror(resolution, plan)
           depsToStage     =  plan.toInstall.collect{ case d: DepModule => d }.toSeq  // keep only non-assets
           flag            <- ZIO.scoped(for {
                                 stagingDirs <- Sc4pac.makeStagingDirs(tempRoot, logger)
-                                stageResult <- stageAll(stagingDirs, depsToStage, assetsToInstall, resolution)
+                                stageResult <- stageAll(stagingDirs, depsToStage, fetchedAssets, resolution)
                                 _           <- confirmStageResultOrAbort(stageResult)
                                 flag        <- publishToPlugins(stageResult, pluginsRoot, pluginsLockData, pluginsLockData1, plan)
                              } yield flag)
@@ -687,51 +687,68 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) {  // TODO d
       updateTask.provideSomeLayer(zio.ZLayer.succeed(context))
     }
 
-    private def testInstallOne(module: BareModule, pkgData: JD.Package, stagingDirs: Sc4pac.StagingDirs, outputDir: Option[os.Path], quick: Boolean): RIO[Downloader.Credentials, Unit] = {
-      (for {
-        resolutions  <- ZIO.foreach(VariantSelection.generateTestingVariants(pkgData, quick = quick)) { selections =>
-                          val variantSelection = VariantSelection(currentSelections = selections, initialSelections = Map.empty)
-                          Resolution.resolveAssetsNoDependencies(module, variantSelection)
-                        }.map(_.distinctBy(_.depModuleOf(module)))  // drop duplicates in case of irrelevant variant choices
-                          .mapError(e => { logger.log(e.getMessage); e })
-        _            <- ZIO.foreachDiscard(resolutions) { resolution =>
-                          (for {
-                            assetsToInstall <- resolution.fetchArtifactsOf(resolution.transitiveDependencies, urlFallbacks = Map.empty, assetsToRedownload = Set.empty)
-                            depsToStage     =  resolution.transitiveDependencies.collect{ case d: DepModule => d }.toSeq  // keep only non-assets
-                            staged <- stageAll(stagingDirs, depsToStage, assetsToInstall, resolution)
-                            _      <- ZIO.foreachDiscard(outputDir)(movePackagesToPlugins(staged, _))  // moves files only when output dir is defined
-                            fatal  =  staged.items.iterator.flatMap(_.warnings).filter {
-                                        case _: JD.InformativeWarning => false
-                                        case _: JD.UnexpectedWarning => true
-                                      }.toSeq
-                            _      <- ZIO.whenDiscard(fatal.nonEmpty)(ZIO.fail(error.ExtractionFailed(
-                                        f"There were warnings during installation of the package ${module.orgName}, so metadata seems incorrect:%n",
-                                        fatal.map(w => f"%n${w.value}").mkString(""),
-                                      )))
-                          } yield ())
-                            .foldZIO(
-                              failure = e => ZIO.succeed(logger.logTestStep(resolution.depModuleOf(module), failure = Some(e))).zipRight(ZIO.fail(e)),
-                              success = u => ZIO.succeed(logger.logTestStep(resolution.depModuleOf(module), failure = None)).zipRight(ZIO.succeed(u)),
-                            )
-                        }
-      } yield ()).provideSomeLayer(zio.ZLayer.succeed(context))
+    // (each selected variant of the module comes with a resolution)
+    private def testInstallOne(
+      module: BareModule,
+      resolutions: Seq[Resolution],
+      fetchedAssets: Seq[(DepAsset, Artifact, java.io.File)],
+      stagingDirs: Sc4pac.StagingDirs,
+      outputDir: Option[os.Path],
+    ): RIO[ResolutionContext & Downloader.Credentials, Unit] = {
+      ZIO.foreachDiscard(resolutions) { resolution =>
+        val depsToStage = resolution.transitiveDependencies.collect{ case d: DepModule => d }.toSeq  // keep only non-assets
+        (for {
+          staged <- stageAll(stagingDirs, depsToStage, fetchedAssets, resolution)
+          _      <- ZIO.foreachDiscard(outputDir)(movePackagesToPlugins(staged, _))  // moves files only when output dir is defined
+          fatal  =  staged.items.iterator.flatMap(_.warnings).filter {
+                      case _: JD.InformativeWarning => false
+                      case _: JD.UnexpectedWarning => true
+                    }.toSeq
+          _      <- ZIO.whenDiscard(fatal.nonEmpty)(ZIO.fail(error.ExtractionFailed(
+                      f"There were warnings during installation of the package ${module.orgName}, so metadata seems incorrect:%n",
+                      fatal.map(w => f"%n${w.value}").mkString(""),
+                    )))
+        } yield ())
+          .foldZIO(
+            failure = e => ZIO.succeed(logger.logTestStep(resolution.depModuleOf(module), failure = Some(e))).zipRight(ZIO.fail(e)),
+            success = u => ZIO.succeed(logger.logTestStep(resolution.depModuleOf(module), failure = None)).zipRight(ZIO.succeed(u)),
+          )
+      }
     }
 
     /** Returns true if all tests were successful. */
-    def testInstall(modules: Seq[BareModule], outputDir: Option[os.Path], quick: Boolean): RIO[Downloader.Credentials & CliPrompter, Boolean] = {
-      ZIO.scoped(for {
-        pkgs         <- ZIO.validatePar(modules)(module => infoJson(module).someOrFail(module))
-                          .mapError { reasons =>
-                            val (errs, notFoundMods) = reasons.partitionMap { case mod: BareModule => Right(mod); case err: Throwable => Left(err) }
-                            errs.headOption.getOrElse(error.Sc4pacAssetNotFound("Packages could not be found:", notFoundMods.map(_.orgName).mkString(" ")))
+    def testInstall(modules: Seq[BareModule], outputDir: Option[os.Path], quick: Boolean, listAssetsOnly: Boolean, downloadOnly: Boolean): RIO[Downloader.Credentials & CliPrompter, Boolean] = {
+      (for {
+        pkgs           <- ZIO.validatePar(modules)(module => infoJson(module).someOrFail(module))
+                            .mapError { reasons =>
+                              val (errs, notFoundMods) = reasons.partitionMap { case mod: BareModule => Right(mod); case err: Throwable => Left(err) }
+                              errs.headOption.getOrElse(error.Sc4pacAssetNotFound("Packages could not be found:", notFoundMods.map(_.orgName).mkString(" ")))
+                            }
+        resolutionss   <- ZIO.foreach(modules.zip(pkgs)) { (module, pkgData) =>
+                            ZIO.foreach(VariantSelection.generateTestingVariants(pkgData, quick = quick)) { selections =>
+                              val variantSelection = VariantSelection(currentSelections = selections, initialSelections = Map.empty)
+                              Resolution.resolveAssetsNoDependencies(module, variantSelection)
+                            }.map(_.distinctBy(_.depModuleOf(module)))  // drop duplicates in case of irrelevant variant choices
+                              .mapError(e => { logger.log(e.getMessage); e })
                           }
-        stagingDirs  <- Sc4pac.makeStagingDirs(tempRoot, logger)  // created here once in order to avoid extracting the same outer nested archive multiple times
-        results      <- ZIO.foreach(modules.zip(pkgs)) { (module, pkg) =>
-                          testInstallOne(module, pkg, stagingDirs, outputDir = outputDir, quick = quick).either
-                        }
-        _            <- ZIO.serviceWith[CliPrompter](_.logger.reportTestResults(results, outputDir.getOrElse(stagingDirs.plugins)))
-        _            <- ZIO.whenDiscard(outputDir.isEmpty)(ZIO.serviceWithZIO[CliPrompter](_.confirmDeletionOfStagedFiles()))
-      } yield results.forall(_.isRight))
+        assetsToFetch  =  resolutionss.flatMap(_.flatMap(resolution => resolution.transitiveDependencies.collect{ case d: DepAsset => d }))
+                            .distinct
+        doFetch        =  Resolution.fetchArtifacts(assetsToFetch, urlFallbacks = Map.empty, assetsToRedownload = Set.empty)
+        success        <- if (listAssetsOnly)
+                            ZIO.serviceWith[CliPrompter](_.logger.logAssetsToFetchForTest(assetsToFetch)).map(_ => true)
+                          else if (downloadOnly)
+                            doFetch.map(_ => true)
+                          else ZIO.scoped(for {
+                            fetchedAssets  <- doFetch
+                            stagingDirs    <- Sc4pac.makeStagingDirs(tempRoot, logger)  // created here once in order to avoid extracting the same outer nested archive multiple times
+                            results        <- ZIO.foreach(modules.zip(resolutionss)) { (module, resolutions) =>
+                                                testInstallOne(module, resolutions, fetchedAssets, stagingDirs, outputDir = outputDir).either
+                                              }
+                            _              <- ZIO.serviceWith[CliPrompter](_.logger.reportTestResults(results, outputDir.getOrElse(stagingDirs.plugins)))
+                            _              <- ZIO.whenDiscard(outputDir.isEmpty)(ZIO.serviceWithZIO[CliPrompter](_.confirmDeletionOfStagedFiles()))
+                          } yield results.forall(_.isRight))
+      } yield success)
+        .provideSomeLayer(zio.ZLayer.succeed(context))
     }
 
   }  // end of update

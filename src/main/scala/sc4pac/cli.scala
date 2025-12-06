@@ -699,6 +699,10 @@ object Commands {
     output: String = "",
     @ExtraName("q") @HelpMessage("Test fewer variants (only first and last)") @Group("Main") @Tag("Main")
     quick: Boolean = false,
+    @HelpMessage("Only list the IDs and versions of the assets required for the test, but do not download or test anything") @Group("Main") @Tag("Main")
+    listAssets: Boolean = false,
+    @HelpMessage("Only download and cache the assets required for the test, but do not run any tests yet") @Group("Main") @Tag("Main")
+    downloadOnly: Boolean = false,
     @ExtraName("y") @HelpMessage("""Accept some default answers without asking, usually "yes"""") @Group("Main") @Tag("Main")
     yes: Boolean = false,
   ) extends Sc4pacCommandOptions
@@ -716,7 +720,13 @@ object Commands {
         config <- JD.PluginsSpec.readOrInit.map(_.config)
         fs     <- ZIO.service[service.FileSystem]
         pac    <- Sc4pac.init(config)
-        passed <- pac.update.testInstall(mods, outputDir = outputDir, quick = options.quick)
+        passed <- pac.update.testInstall(
+                      mods,
+                      outputDir = outputDir,
+                      quick = options.quick,
+                      listAssetsOnly = options.listAssets,
+                      downloadOnly = options.downloadOnly,
+                    )
                     .provideSomeLayer(zio.ZLayer.succeed(Downloader.Credentials(simtropolisToken = fs.env.simtropolisToken)))
         _      <- ZIO.unlessDiscard(passed)(exit(ExitCodes.TestsFailed))
       } yield ()

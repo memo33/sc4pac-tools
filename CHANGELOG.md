@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+### Added
+- options `--list-assets` and `--download-only` for the `sc4pac test` command
+
 
 ## [0.9.1] - 2025-11-25
 ### Fixed
