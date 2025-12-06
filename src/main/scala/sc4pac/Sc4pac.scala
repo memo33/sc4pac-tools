@@ -340,6 +340,7 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) {  // TODO d
       artifactsById: Map[BareAsset, (Artifact, java.io.File, DepAsset)],
       progress: Sc4pac.Progress,
       resolution: Resolution,
+      pathLimit: Option[Int],
     ): RIO[ResolutionContext, StageResult.Item] = {
       def extract(assetData: JD.AssetReference, pkgFolder: os.SubPath, variant: Variant, debugModule: BareModule): Task[(BareAsset, Chunk[Extractor.ExtractedItem], Seq[Warning])] = {
         // Given an AssetReference, we look up the corresponding artifact file
@@ -396,8 +397,14 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) {  // TODO d
                                     ZIO.attemptBlocking(doExtract(fallbackFilename))
                                   }
             } yield {
+              val pathLimitWarningOpt =
+                for (limit <- pathLimit if files.exists(_.path.toString.length > limit))
+                yield JD.UnexpectedWarning(
+                  f"The file paths of some of the extracted plugin files are too long. They exceed the character limit of your operating system, so the game may have issues loading these files.%n%n" +
+                  f"To solve this, install ${Constants.startupPerformanceOptimizationDll.markdown}."
+                )
               // TODO catch IOExceptions
-              (id, files, regexWarnings ++ recipe.usedPatternWarnings(patterns, id, short = false))
+              (id, files, regexWarnings ++ recipe.usedPatternWarnings(patterns, id, short = false) ++ pathLimitWarningOpt)
             }
         }
       }
@@ -463,13 +470,13 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) {  // TODO d
       * If everything is properly extracted, the files are later moved to the
       * actual plugins folder in the publication step.
       */
-    private def stageAll(stagingDirs: Sc4pac.StagingDirs, deps: Seq[DepModule], fetchedAssets: Seq[(DepAsset, Artifact, java.io.File)], resolution: Resolution): RIO[ResolutionContext, StageResult] = {
+    private def stageAll(stagingDirs: Sc4pac.StagingDirs, deps: Seq[DepModule], fetchedAssets: Seq[(DepAsset, Artifact, java.io.File)], resolution: Resolution, pathLimit: Option[Int]): RIO[ResolutionContext, StageResult] = {
       val artifactsById = fetchedAssets.map((dep, art, file) => dep.toBareDep -> (art, file, dep)).toMap
       val numDeps = deps.length
       for {
         _           <- ZIO.attempt(require(artifactsById.size == fetchedAssets.size, s"artifactsById is not 1-to-1: $fetchedAssets"))
         stagedItems <- ZIO.foreach(deps.zipWithIndex) { case (dep, idx) =>   // sequentially stages each package
-                         stage(stagingDirs, dep, artifactsById, Sc4pac.Progress(idx+1, numDeps), resolution)
+                         stage(stagingDirs, dep, artifactsById, Sc4pac.Progress(idx+1, numDeps), resolution, pathLimit = pathLimit)
                        }
       } yield StageResult(stagingDirs, stagedItems)
     }
@@ -676,7 +683,10 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) {  // TODO d
           depsToStage     =  plan.toInstall.collect{ case d: DepModule => d }.toSeq  // keep only non-assets
           flag            <- ZIO.scoped(for {
                                 stagingDirs <- Sc4pac.makeStagingDirs(tempRoot, logger)
-                                stageResult <- stageAll(stagingDirs, depsToStage, fetchedAssets, resolution)
+                                pathLimit   =  Option.unless(resolution.metadata.contains(Constants.startupPerformanceOptimizationDll))(
+                                                 Constants.maxPathLength.map(_ - pluginsRoot.toString.length + stagingDirs.plugins.toString.length)
+                                               ).flatten
+                                stageResult <- stageAll(stagingDirs, depsToStage, fetchedAssets, resolution, pathLimit = pathLimit)
                                 _           <- confirmStageResultOrAbort(stageResult)
                                 flag        <- publishToPlugins(stageResult, pluginsRoot, pluginsLockData, pluginsLockData1, plan)
                              } yield flag)
@@ -698,7 +708,7 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) {  // TODO d
       ZIO.foreachDiscard(resolutions) { resolution =>
         val depsToStage = resolution.transitiveDependencies.collect{ case d: DepModule => d }.toSeq  // keep only non-assets
         (for {
-          staged <- stageAll(stagingDirs, depsToStage, fetchedAssets, resolution)
+          staged <- stageAll(stagingDirs, depsToStage, fetchedAssets, resolution, pathLimit = None)
           _      <- ZIO.foreachDiscard(outputDir)(movePackagesToPlugins(staged, _))  // moves files only when output dir is defined
           fatal  =  staged.items.iterator.flatMap(_.warnings).filter {
                       case _: JD.InformativeWarning => false

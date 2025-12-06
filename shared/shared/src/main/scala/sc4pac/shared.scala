@@ -10,6 +10,7 @@ sealed trait BareDep {
 final case class BareModule(group: Organization, name: ModuleName) extends BareDep {  // a dependency without version information, variant data or any other attributes
   def orgName = s"${group.value}:${name.value}"
   def formattedDisplayString(gray: String => String, bold: String => String): String = gray(s"${group.value}:") + bold(name.value)
+  def markdown = s"`pkg=$orgName`"
 }
 object BareModule {
   val pkgMarkdownRegex = """`pkg=([^`:\s]+):([^`:\s]+)`""".r

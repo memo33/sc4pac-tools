@@ -28,6 +28,10 @@ REM Uncomment and adjust the following line to set a custom location for the pro
 REM SET "SC4PAC_PROFILES_DIR=C:\Users\YOURUSERNAME\AppData\Roaming\io.github.memo33\sc4pac\config\profiles"
 
 REM ------------------------------------------------------------
+REM Enable the check for plugin file paths exceeding the Windows 260-character limit:
+IF "%SC4PAC_MAX_PATH_LENGTH%"=="" SET "SC4PAC_MAX_PATH_LENGTH=260"
+
+REM ------------------------------------------------------------
 REM Uncomment to enable debug mode:
 REM SET "SC4PAC_DEBUG=1"
 

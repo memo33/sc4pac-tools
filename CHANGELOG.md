@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Added
+- a warning if extracted plugin file paths exceed the 260-character limit on Windows and `null-45:startup-performance-optimization-dll` is not installed
 - options `--list-assets` and `--download-only` for the `sc4pac test` command
 
 

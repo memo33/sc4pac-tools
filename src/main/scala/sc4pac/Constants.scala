@@ -70,6 +70,9 @@ object Constants {
   lazy val noColor: Boolean = (System.getenv("NO_COLOR") match { case null | "" => false; case _ => true }) ||
                               (System.getenv("SC4PAC_NO_COLOR") match { case null | "" => false; case _ => true })
 
+  lazy val maxPathLength: Option[Int] = Option(System.getenv("SC4PAC_MAX_PATH_LENGTH")).filter(_.nonEmpty).flatMap(_.toIntOption).filter(_ > 0)
+  val startupPerformanceOptimizationDll = BareModule(coursier.core.Organization("null-45"), coursier.core.ModuleName("startup-performance-optimization-dll"))
+
   /* On non-Windows platforms, cicdec is invoked by `mono cicdec [args]`, but on Windows Mono is not required: `cicdec [args]`.
    * We choose reasonable defaults, but allow customizing these two commands via environment variables (which are set in the launch scripts).
    * Note that these commands must consist of a single command (not multiple space-separated commands).
