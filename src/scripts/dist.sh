@@ -6,7 +6,7 @@ mkdir -p target/dist
 VERSION=$(sed build.sbt -ne 's/^ThisBuild \/ version := .\(.*\)./\1/p')
 OUT="target/dist/sc4pac-${VERSION}.zip"
 rm -f "$OUT"
-zip --junk-paths "$OUT" target/scala-3.4.2/sc4pac-cli.jar src/scripts/sc4pac src/scripts/sc4pac.bat README.md
+zip --junk-paths "$OUT" target/scala-3.4.2/stripped/sc4pac-cli.jar src/scripts/sc4pac src/scripts/sc4pac.bat README.md
 
 # download and install cicdec at ./cicdec/ if not present to bundle it with our software
 if [ ! -e "cicdec" ]
