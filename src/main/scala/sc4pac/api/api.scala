@@ -13,7 +13,7 @@ import JD.{bareModuleRw, uriRw}
 import sc4pac.cli.Commands.Server.{ServerFiber, ServerConnection}
 
 
-class Api(options: sc4pac.cli.Commands.ServerOptions) extends AuthMiddleware {
+class Api(val options: sc4pac.cli.Commands.ServerOptions) extends AuthMiddleware {
   private val connectionsSinceLaunch = java.util.concurrent.atomic.AtomicInteger(0)
   private val currentRepairPlan = java.util.concurrent.atomic.AtomicReference(Option.empty[PromptMessage.ConfirmRepairPlan])
 

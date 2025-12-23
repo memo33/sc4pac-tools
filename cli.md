@@ -405,6 +405,7 @@ secret="123456"; echo "$secret" | sc4pac server --client-secret-stdin           
 - `--startup-tag <string>`  optional tag to print once server has started and is listening
 - `--indent <number>`       indentation of JSON responses (default: -1, no indentation)
 - `--client-secret-stdin`   read the `client_secret` for authentication from stdin (default: `--client-secret-stdin=false`), otherwise it is generated randomly
+- `--cookie-secure`         enable/disable secure flag for cookie of web-app on localhost (default: `--cookie-secure=true`), for compatibility with Safari browser
 
 The `--profiles-dir` path defaults to the environment variable `SC4PAC_PROFILES_DIR` if it is set. Otherwise, it defaults to
 - `%AppData%\io.github.memo33\sc4pac\config\profiles` on Windows,

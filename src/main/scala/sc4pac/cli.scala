@@ -773,6 +773,9 @@ object Commands {
     @ValueDescription("bool") @Group("Server") @Tag("Server")
     @HelpMessage(s"read the client_secret for authentication from stdin (default: --client-secret-stdin=false), otherwise it is generated randomly")
     clientSecretStdin: Boolean = false,
+    @ValueDescription("bool") @Group("Server") @Tag("Server")
+    @HelpMessage(s"enable/disable secure flag for cookie of web-app on localhost (default: --cookie-secure=true), for compatibility with Safari browser")
+    cookieSecure: Boolean = true,
   ) extends Sc4pacCommandOptions
 
   case object Server extends Command[ServerOptions] {

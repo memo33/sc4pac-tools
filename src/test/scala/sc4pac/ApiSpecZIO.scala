@@ -278,9 +278,9 @@ object ApiSpecZIO extends ZIOSpecDefault {
               cookieOpt    =  resp.header(Header.SetCookie).map(_.value)
               _            <- addTestResult(assertTrue(cookieOpt.nonEmpty == useCookie))
               _            <- ZIO.foreach(cookieOpt)(cookie => addTestResult(assertTrue(
-                                cookie.name == Constants.accessTokenCookieName,
+                                cookie.name == Constants.accessTokenCookieName(hostPrefix = true),  // unless --cookie-secure=false
                                 cookie.path.is(_.some).toString == "/",
-                                cookie.isSecure,
+                                cookie.isSecure,  // unless --cookie-secure=false
                                 cookie.isHttpOnly,
                                 cookie.sameSite.is(_.some) == Cookie.SameSite.Strict,
                               )))
@@ -332,7 +332,7 @@ object ApiSpecZIO extends ZIOSpecDefault {
               url  <- endpoint("server.status")
               resp <- Client.batched(Request.get(url)
                         .addHeaders(Headers(tokenOpt.map(token => Header.Authorization.Bearer(token.stringValue))))
-                        .addHeaders(Headers(cookieOpt.map(cookie => Header.Cookie(NonEmptyChunk(Cookie.Request(name = Constants.accessTokenCookieName, content = cookie.stringValue))))))
+                        .addHeaders(Headers(cookieOpt.map(cookie => Header.Cookie(NonEmptyChunk(Cookie.Request(name = Constants.accessTokenCookieName(hostPrefix = true), content = cookie.stringValue))))))
                       )
               _    <- addTestResult(assertTrue(
                         resp.status.code == (if (bearerType == Correct && (!isWeb || cookieType == Correct)) 200 else 401),
@@ -609,7 +609,7 @@ object ApiSpecZIO extends ZIOSpecDefault {
                 resp <- ws.connect(url, zio.http.Headers.empty)
                 _    <- assertTrue(resp.status.code == 401)  // cookie missing
                 cookie <- ZIO.serviceWithZIO[TestConfig](_.tokenWeb.get.map(_.get.accessToken))
-                resp <- ws.connect(url, Headers(Header.Cookie(NonEmptyChunk(Cookie.Request(name = Constants.accessTokenCookieName, content = cookie.stringValue)))))
+                resp <- ws.connect(url, Headers(Header.Cookie(NonEmptyChunk(Cookie.Request(name = Constants.accessTokenCookieName(hostPrefix = true), content = cookie.stringValue)))))
                 _    <- assertTrue(resp.status.code == 101)  // cookie+csrf present
               } yield ()
             })

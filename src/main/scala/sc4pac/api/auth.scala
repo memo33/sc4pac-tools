@@ -99,7 +99,7 @@ trait AuthMiddleware { self: Api =>
             case _ if allowFromQuery => req.url.queryParams.getAll("token").headOption.map(Secret(_))
             case _ => None
           }
-        val cookieOpt = req.cookie(Constants.accessTokenCookieName).map(cookie => Secret(cookie.content))
+        val cookieOpt = req.cookie(Constants.accessTokenCookieName(hostPrefix = self.options.cookieSecure)).map(cookie => Secret(cookie.content))
         (tokenOpt match {
           case Some(token) =>
             ZIO.fromOption(cookieOpt)
@@ -157,10 +157,15 @@ trait AuthMiddleware { self: Api =>
                     Header.CacheControl.NoStore,
                     Header.Pragma.NoCache,
                     Header.SetCookie(Cookie.Response(
-                      name = Constants.accessTokenCookieName,  // see https://datatracker.ietf.org/doc/html/draft-ietf-oauth-browser-based-apps#section-6.1.3.2
+                      // For compatibility with Safari, we allow setting hostPrefix and isSecure to false, see e.g.
+                      //   https://codedamn.com/news/web-development/safari-cookie-is-not-being-set
+                      //   https://github.com/webcompat/web-bugs/issues/142566
+                      //   https://thevalleyofcode.com/cookie-not-being-set-in-safari/
+                      // Since the web-app runs on localhost only, this does not impact security.
+                      isSecure = self.options.cookieSecure,
+                      name = Constants.accessTokenCookieName(hostPrefix = self.options.cookieSecure),  // see https://datatracker.ietf.org/doc/html/draft-ietf-oauth-browser-based-apps#section-6.1.3.2
                       content = token.accessToken.stringValue,
                       path = Some(Path("/")),
-                      isSecure = true,
                       isHttpOnly = true,
                       maxAge = Some(Constants.cookieExpirationTime.toJava),
                       sameSite = Some(Cookie.SameSite.Strict),

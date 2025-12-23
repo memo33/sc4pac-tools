@@ -57,7 +57,7 @@ object Constants {
   val serverShutdownDelay = java.time.Duration.ofSeconds(2)  // defer shutdown to accept new connection in case of page refresh
   val defaultPort = 51515
   val sc4pacGuiClientId = "sc4pacGUIxDI5NjY4MzE2MDQ5OTQ0"  // public info
-  val accessTokenCookieName = "__Host-access_token"  // see https://datatracker.ietf.org/doc/html/draft-ietf-oauth-browser-based-apps#section-6.1.3.2
+  def accessTokenCookieName(hostPrefix: Boolean) = if (hostPrefix) "__Host-access_token" else "access-token"  // see https://datatracker.ietf.org/doc/html/draft-ietf-oauth-browser-based-apps#section-6.1.3.2
   val cookieExpirationTime = 5.days
 
   lazy val userAgent = {

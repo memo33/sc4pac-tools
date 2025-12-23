@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Added
+- option `--cookie-secure` for `sc4pac server` command for compatibility with some browsers like Safari
+
+
 ## [0.9.2] - 2025-12-06
 ### Added
 - a warning if extracted plugin file paths exceed the 260-character limit on Windows and `null-45:startup-performance-optimization-dll` is not installed
