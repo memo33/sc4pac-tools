@@ -2,8 +2,10 @@
 
 ## [Unreleased]
 
+
+## [0.9.3] - 2026-01-25
 ### Added
-- option `--cookie-secure` for `sc4pac server` command for compatibility with some browsers like Safari
+- option `--cookie-secure=false` for `sc4pac server` command for compatibility with some browsers like Safari
 
 
 ## [0.9.2] - 2025-12-06
@@ -367,7 +369,8 @@
 ## [0.1.5] - 2023-09-26
 …
 
-[Unreleased]: https://github.com/memo33/sc4pac-tools/compare/0.9.2...HEAD
+[Unreleased]: https://github.com/memo33/sc4pac-tools/compare/0.9.3...HEAD
+[0.9.3]: https://github.com/memo33/sc4pac-tools/compare/0.9.2...0.9.3
 [0.9.2]: https://github.com/memo33/sc4pac-tools/compare/0.9.1...0.9.2
 [0.9.1]: https://github.com/memo33/sc4pac-tools/compare/0.9.0...0.9.1
 [0.9.0]: https://github.com/memo33/sc4pac-tools/compare/0.8.1...0.9.0
