@@ -258,7 +258,7 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) {  // TODO d
           Some(pkg.copy(info = pkg.info.copy(
             requiredBy = (pkg.info.requiredBy.iterator ++ relations.iterator.flatMap(_._2._1)).toSeq.distinct.sorted,
             reverseConflictingPackages = (pkg.info.reverseConflictingPackages.iterator ++ relations.iterator.flatMap(_._2._2)).toSeq.distinct.sorted,
-          )).upgradeVariantInfo)
+          )))
         case (None, _) => None
       }
   }.provideSomeLayer(zio.ZLayer.succeed(context))

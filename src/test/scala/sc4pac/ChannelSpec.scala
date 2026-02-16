@@ -77,8 +77,6 @@ url: dummy
       val repos = yamlFiles.map(path =>
         unsafeRun(MetadataRepository.create(path, path.toNIO.toUri())))
 
-      repos(0).channel.contents should have length 0  // replaced by packages and assets
-
       repos(0).channel.packages
         .map(_.toBareDep.orgName)
         .toSet

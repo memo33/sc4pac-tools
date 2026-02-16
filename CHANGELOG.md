@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Changed
+- The deprecated `variantDescriptions` metadata field has been removed.
+- Support for old channels built before 0.5.4 (scheme 6) has been removed.
+
 
 ## [0.9.3] - 2026-01-25
 ### Added

@@ -124,7 +124,7 @@ class VariantSelection private (
         case Some(mod2) =>
           Find.concreteVersion(mod2, Constants.versionLatestRelease)
             .flatMap(Find.packageData[JD.Package](mod2, _))
-            .map(_.flatMap(_._1.upgradeVariantInfo.variantInfo.get(variantId)))
+            .map(_.flatMap(_._1.variantInfo.get(variantId)))
         case None => ZIO.succeed(None)
     }
   }
@@ -171,7 +171,7 @@ class VariantSelection private (
   /** Prompts for missing variant keys, so that the result allows to pick a unique variant of the package. */
   def refineFor(pkgData: JD.Package): RIO[Prompter & ResolutionContext, VariantSelection] = {
     val mod = pkgData.toBareDep
-    lazy val variantInfos = pkgData.upgradeVariantInfo.variantInfo
+    lazy val variantInfos = pkgData.variantInfo
     DecisionTree.fromVariants(pkgData.variants.map(_.variant).zipWithIndex) match {
       case Left(err) => ZIO.fail(new error.UnsatisfiableVariantConstraints(
         s"Unable to choose variants as the metadata of ${mod.orgName} seems incomplete", err.toString))
@@ -189,7 +189,7 @@ class VariantSelection private (
     val mod = pkgData.toBareDep
     ZIO.foreach(JD.Package.buildVariantChoices(pkgData.variants).find(_.variantId == variantId)) { vc =>
       for {
-        variantInfo <- getVariantInfoOrFallback(variantId, mod, pkgData.upgradeVariantInfo.variantInfo)
+        variantInfo <- getVariantInfoOrFallback(variantId, mod, pkgData.variantInfo)
         (initialValueOpt, importedValues) = getSelectedValue(variantId).map(Some(_) -> Nil).merge
       } yield api.PromptMessage.ChooseVariant(
         mod,

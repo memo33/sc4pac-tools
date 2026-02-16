@@ -144,8 +144,6 @@ abstract class SharedData {
     subfolder: SubPath,
     info: Info = Info.empty,
     variants: Seq[VariantData],  // should be non-empty, but can consist of a single empty variant
-    @deprecated("use variantInfo instead", since = "0.5.4")
-    variantDescriptions: Map[String, Map[String, String]] = Map.empty,  // variantId -> variantValue -> description
     variantInfo: Map[String, VariantInfo] = Map.empty,  // variantId -> variantInfo
     variantChoices: Seq[VariantChoice] = Seq.empty,
     metadataSource: Option[SubPath] = None,  // path to yaml file
@@ -155,22 +153,6 @@ abstract class SharedData {
   ) extends PackageAsset {
 
     def toBareDep: BareModule = BareModule(Organization(group), ModuleName(name))
-
-    def upgradeVariantInfo: Package = {
-      val addVariantChoices = variantChoices.isEmpty && (variants.lengthCompare(1) > 0 || variants.exists(_.variant.nonEmpty))
-      if (variantInfo.isEmpty && variantDescriptions.nonEmpty)
-        copy(
-          variantDescriptions = Map.empty,
-          variantInfo = variantDescriptions.mapValues { descs =>
-            VariantInfo(valueDescriptions = descs)
-          }.toMap,
-          variantChoices = if (addVariantChoices) Package.buildVariantChoices(variants) else variantChoices,
-        )
-      else if (addVariantChoices)
-        copy(variantChoices = Package.buildVariantChoices(variants))
-      else
-        this
-    }
   }
   object Package {
     implicit val packageRw: ReadWriter[Package] = macroRW
@@ -256,8 +238,6 @@ abstract class SharedData {
     assets: Seq[ChannelItem] = Seq.empty,  // since scheme 5
     externalPackages: Seq[Channel.ExtPkg] = Seq.empty,  // default for backward compatibility
     externalAssets: Seq[Channel.ExtAsset] = Seq.empty,  // default for backward compatibility
-    @deprecated("use packages or assets instead", since = "0.5.0")
-    contents: Seq[ChannelItem] = Seq.empty,  // TODO remove after deprecation, scheme <= 4
   ) {
     lazy val versions: Map[BareDep, Seq[(String, Checksum)]] =
       (packages.iterator ++ assets).map(item => item.toBareDep -> item.versions.map(v => v -> item.checksums.getOrElse(v, emptyChecksum))).toMap
@@ -266,12 +246,7 @@ abstract class SharedData {
 
     private val channelRwDefault: ReadWriter[Channel] = macroRW
     implicit val channelRw: ReadWriter[Channel] =
-      channelRwDefault.bimap[Channel](identity, { c0 =>
-        var c = c0
-        if (c.contents.nonEmpty) {
-          val (assets, packages) = c.contents.iterator.partition(_.isSc4pacAsset)
-          c = c.copy(contents = Seq.empty, packages = packages.toSeq, assets = assets.toSeq)
-        }
+      channelRwDefault.bimap[Channel](identity, { c =>
         if (c.stats != null) c else createAddStats(c.scheme, c.info, packages = c.packages, assets = c.assets, c.externalPackages, c.externalAssets)
       })
 

@@ -59,8 +59,6 @@ object ChannelUtil {
     assets: Seq[JD.AssetReference] = Seq.empty,  // shared between variants
     conflicting: Seq[BareModule] = Seq.empty,  // shared between variants
     variants: Seq[YamlVariantData] = Seq.empty,
-    @deprecated("use variantDescriptions instead", since = "0.5.4")
-    variantDescriptions: Map[String, Map[String, String]] = Map.empty,  // variantKey -> variantValue -> description
     variantInfo: Seq[YamlVariantInfo] = Seq.empty,
   ) derives ReadWriter {
     def toPackageData(metadataSource: Option[os.SubPath]): ZIO[JD.Channel.Info, ErrStr, JD.Package] = {
@@ -77,13 +75,13 @@ object ChannelUtil {
           JD.Package(
             group = group, name = name, version = version, subfolder = subfolder, info = info.upgradeWebsites,
             variants = variants2,
-            variantDescriptions = variantDescriptions, variantInfo = variantInfo.iterator.map(_.toVariantInfo).toMap,
+            variantInfo = variantInfo.iterator.map(_.toVariantInfo).toMap,
             variantChoices = JD.Package.buildVariantChoices(variants2),
             metadataSource = metadataSource,  // kept for backward compatibility
             metadataSourceUrl = metadataSourceUrl,
             metadataIssueUrl = channelInfo.metadataIssueUrl.filter(_.getHost == "github.com").map(newIssueUrl(_, metadataSourceUrl)),
             channelLabel = channelInfo.channelLabel,
-          ).upgradeVariantInfo
+          )
         }
       }
     }
