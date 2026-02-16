@@ -10,7 +10,7 @@ description := "Package manager for SimCity 4 plugins"
 
 ThisBuild / licenses += ("GPL-3.0-only", url("https://spdx.org/licenses/GPL-3.0-only.html"))
 
-ThisBuild / scalaVersion := "3.4.2"
+ThisBuild / scalaVersion := "3.7.4"
 
 val minJavaVersion = settingKey[String]("minimum supported Java version")
 ThisBuild / minJavaVersion := "17"
@@ -23,7 +23,7 @@ ThisBuild / scalacOptions ++= Seq(
   // "-opt-warnings:at-inline-failed-summary",
   // "-opt:l:inline", "-opt-inline-from:<sources>",
   "-Wvalue-discard",
-  "-source:future",
+  // "-source:future",
   "-encoding", "UTF-8",
   s"-release:${minJavaVersion.value}")
 
