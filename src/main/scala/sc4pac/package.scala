@@ -90,4 +90,15 @@ package object sc4pac {
       )
   }
 
+  object ScdbpfZio {
+    import scdbpf.compat.ExceptionHandler
+    import zio.IO
+    class ZioExceptionHandler extends ExceptionHandler {
+      type ![+T, E <: Exception] = IO[E, T]
+      def wrap[T, E <: Exception: scala.reflect.ClassTag](t: => T): IO[E, T] = zio.ZIO.attempt(t).refineToOrDie[E]
+      override def toString = "[strategy.zio]"
+    }
+    given zioExceptionHandler: ZioExceptionHandler = new ZioExceptionHandler  // strategy
+  }
+
 }
