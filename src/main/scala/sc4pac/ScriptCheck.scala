@@ -35,43 +35,48 @@ object ScriptCheck {
     else safeLuaPattern.matcher(lua).matches() || literalOnlyLuaPattern.matcher(lua).matches()
   }
 
-  def hasUnsafeEmbeddedScripts(ltext: LText): Boolean = {
+  // Return the first unsafe embedded Lua script, if any.
+  def findUnsafeEmbeddedScript(ltext: LText): Option[String] = {
     util.boundary {
       val m = embeddedLuaPattern.matcher(ltext.text)
       while (m.find()) {
-        if (!isSafeLua(m.group(1))) {
-          util.boundary.break(true)
+        val token = m.group(1)
+        if (!isSafeLua(token)) {
+          util.boundary.break(Some(token))
         }
       }
-      ltext.text.contains("sc4://advice/")
+      val link_token = "sc4://advice/"
+      Option.when(ltext.text.contains(link_token))(link_token)
     }
   }
 
   enum Score { case Safe, UnsafeScript, UnsafeUnparseable }
 
-  // entries outside domain are considered Safe
-  val classify: PartialFunction[DbpfEntry, IO[DbpfException, Score]] = {
+  // Entries outside domain are considered Safe.
+  // Returns an optional reason for debugging (in case an unsafe embedded Lua in LText was found).
+  val classify: PartialFunction[DbpfEntry, IO[DbpfException, (Score, Option[String])]] = {
     case e if e.tgi.matches(Tgi.LText) =>
       ZIO.blocking(e.toBufferedEntry).flatMap { be =>
         if (isSoundRelated(be.content)) {
-          ZIO.succeed(Score.UnsafeUnparseable)
+          ZIO.succeed((Score.UnsafeUnparseable, None))
         } else {
           for {
             ltext <- be.content.convertTo(LText)
-          } yield if (hasUnsafeEmbeddedScripts(ltext)) Score.UnsafeScript else Score.Safe
+            reason = findUnsafeEmbeddedScript(ltext)
+          } yield ((if (reason.isDefined) Score.UnsafeScript else Score.Safe), reason)
         }
       }
     case e if e.tgi.matches(Tgi.Lua) =>
-      ZIO.succeed(Score.UnsafeScript)
+      ZIO.succeed((Score.UnsafeScript, None))
   }
 
-  def collectUnsafeTgis(path: os.Path): IO[java.io.IOException, Seq[Tgi]] = {
+  def collectUnsafeTgis(path: os.Path): IO[java.io.IOException, Seq[(Tgi, Option[String])]] = {
     for {
-      dbpf       <- DbpfFile.read(path.toIO)
+      dbpf       <- ZIO.blocking(DbpfFile.read(path.toIO))
       scoreTasks =  dbpf.entries.collect { case e if classify.isDefinedAt(e) =>
-                      classify(e).orElseSucceed(Score.UnsafeUnparseable).map(e.tgi -> _)
-                    }: Seq[zio.UIO[(Tgi, Score)]]
-      unsafeTgis <- ZIO.collectAllWithPar(scoreTasks) { case (tgi, score) if score != Score.Safe => tgi }
+                      classify(e).orElseSucceed((Score.UnsafeUnparseable, None)).map(e.tgi -> _)
+                    }: Seq[zio.UIO[(Tgi, (Score, Option[String]))]]
+      unsafeTgis <- ZIO.collectAllWithPar(scoreTasks) { case (tgi, (score, reason)) if score != Score.Safe => (tgi, reason) }
     } yield unsafeTgis
   }
 

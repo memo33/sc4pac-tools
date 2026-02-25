@@ -77,6 +77,7 @@ object Commands {
         case abort: error.Sc4pacNotInteractive => { System.err.println(s"Operation aborted as terminal is non-interactive: ${abort.getMessage}"); exit(ExitCodes.ExternalReason) }
         case abort: error.SymlinkCreationFailed => { System.err.println(s"Operation aborted. ${abort.getMessage}"); exit(ExitCodes.ExternalReason) }  // channel-build command
         case abort: error.YamlFormatIssue => { System.err.println(s"Operation aborted. ${abort.getMessage}"); exit(ExitCodes.ExternalReason) }  // channel-build command
+        case abort: scdbpf.DbpfExceptions.DbpfIoException => { System.err.println(s"Operation aborted. ${abort.getMessage}"); exit(ExitCodes.ExternalReason) }  // script-check command
         case abort: error.PortOccupied => { System.err.println(abort.getMessage); exit(ExitCodes.PortOccupied) }  // server command
         case e: Throwable => { e.printStackTrace(); exit(ExitCodes.UnknownReason) }
       },
@@ -664,6 +665,61 @@ object Commands {
     }
   }
 
+  @ArgsName("DBPF files or folder paths")
+  @HelpMessage(s"""
+    |Scan DBPF files for Lua scripts and potentially unsafe Lua code embedded in LText files.
+    |
+    |If such scripts are found in any files, the file names are printed to the output and the command exits non-zero.
+    |
+    |Examples:
+    |  sc4pac script-check -0 "folder"                ${gray("# list files (0-separated) containing unsafe scripts")}
+    |  sc4pac script-check --log-tgis "filename.dat"  ${gray("# list TGIs of unsafe contents")}
+    |  sc4pac script-check --log-reasons "folder"     ${gray("# list TGIs and reasons if available")}
+    """.stripMargin.trim)
+  final case class ScriptCheckOptions(
+    @ExtraName("0") @HelpMessage("Separate files by null-characters instead of newlines") @Group("Main") @Tag("Main")
+    `null`: Boolean = false,
+    @HelpMessage("Include TGIs of unsafe contents in output") @Group("Main") @Tag("Main")
+    logTgis: Boolean = false,
+    @HelpMessage("Include TGIs and reasons for unsafe contents") @Group("Main") @Tag("Main")
+    logReasons: Boolean = false,
+  ) extends Sc4pacCommandOptions
+
+  case object ScriptCheck extends Command[ScriptCheckOptions] {
+    def run(options: ScriptCheckOptions, args: RemainingArgs): Unit = {
+      val inputs = args.all.map(os.Path(_, os.pwd))
+      val nameOnly = !options.logTgis && !options.logReasons
+      val separator = if (options.`null`) "\u0000" else f"%n"
+      val task = for {
+        paths   <- ZIO.attemptBlockingIO { inputs.flatMap(path => os.walk(path, includeTarget = true, followLinks = true)) }
+        logger  <- ZIO.service[CliLogger]
+        unsafes <- ZIO.foreach(paths.sorted) { path =>  // not parallel to avoid jumping between multiple files for IO
+                    ZIO.ifZIO(ZIO.attemptBlockingIO(os.isDir(path) || !Extractor.DbpfValidator.hasDbpfSignature(path)))(
+                      onTrue = ZIO.succeed(false),
+                      onFalse = sc4pac.ScriptCheck.collectUnsafeTgis(path)  // TODO scdbpf might lead to defects
+                        .mapError { (e: java.io.IOException) => scdbpf.DbpfExceptions.DbpfIoException(s"""Failed to read DBPF file "$path" (caused by $e)""") }
+                        .map { tgis =>
+                          if (tgis.isEmpty) {
+                            false
+                          } else {
+                            print(s"$path$separator")
+                            if (!nameOnly) {
+                              for ((tgi, reasonOpt) <- tgis) {
+                                val tgiStr = f"  T:${tgi.tid}%08X G:${tgi.gid}%08X I:${tgi.iid}%08X ${tgi.label}"
+                                print(if (options.logReasons && reasonOpt.isDefined) s"$tgiStr; reason: ${logger.gray(reasonOpt.get)}$separator" else s"$tgiStr$separator")
+                              }
+                            }
+                            true
+                          }
+                        },
+                    )
+                  }
+        _ <- ZIO.whenDiscard(unsafes.exists(identity))(exit(ExitCodes.TestsFailed))
+      } yield ()
+      runMainExit(task.provideLayer(cliLayer), exit)
+    }
+  }
+
   @ArgsName("packages...")
   @HelpMessage(s"""
     |Test whether packages can be installed successfully.
@@ -927,6 +983,7 @@ object CliMain extends caseapp.core.app.CommandsEntryPoint {
     Commands.ChannelList,
     Commands.ChannelBuild,
     Commands.Extract,
+    Commands.ScriptCheck,
     Commands.Test,
     Commands.Server)
 

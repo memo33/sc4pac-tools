@@ -55,6 +55,7 @@ channel remove  Select channels to remove.
 channel list    List the channel URLs.
 channel build   Build a channel locally by converting YAML files to JSON.
 extract         Extract a downloaded archive file.
+script-check    Scan DBPF files for potentially unsafe Lua scripts.
 test            Test whether packages can be installed successfully.
 server          Start a local server to use the HTTP API.
 ```
@@ -337,6 +338,28 @@ sc4pac extract -o out --clickteam-version 40 asset.zip                          
 - `--include <pattern>`            Include patterns
 - `--exclude <pattern>`            Exclude patterns
 - `--clickteam-version <version>`  Optional version for extracting Clickteam installers (40, 35, 30, 24, 20)
+
+
+---
+## script-check
+
+**Usage:** `sc4pac script-check [options] [DBPF files or folder paths]`
+
+Scan DBPF files for Lua scripts and potentially unsafe Lua code embedded in LText files.
+
+If such scripts are found in any files, the file names are printed to the output and the command exits non-zero.
+
+**Examples:**
+```sh
+sc4pac script-check -0 "folder"                # list files (0-separated) containing unsafe scripts
+sc4pac script-check --log-tgis "filename.dat"  # list TGIs of unsafe contents
+sc4pac script-check --log-reasons "folder"     # list TGIs and reasons if available
+```
+
+**Options:**
+- `-0, --null`     Separate files by null-characters instead of newlines
+- `--log-tgis`     Include TGIs of unsafe contents in output
+- `--log-reasons`  Include TGIs and reasons for unsafe contents
 
 
 ---
