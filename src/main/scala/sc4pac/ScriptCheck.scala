@@ -52,31 +52,29 @@ object ScriptCheck {
 
   enum Score { case Safe, UnsafeScript, UnsafeUnparseable }
 
-  // Entries outside domain are considered Safe.
+  // Entries outside domain are considered Safe and are discarded.
   // Returns an optional reason for debugging (in case an unsafe embedded Lua in LText was found).
-  val classify: PartialFunction[DbpfEntry, IO[DbpfException, (Score, Option[String])]] = {
+  def classify(entries: Seq[DbpfEntry]): Seq[zio.UIO[(Score, (Tgi, Option[String]))]] = entries.collect {
     case e if e.tgi.matches(Tgi.LText) =>
       ZIO.blocking(e.toBufferedEntry).flatMap { be =>
         if (isSoundRelated(be.content)) {
-          ZIO.succeed((Score.UnsafeUnparseable, None))
+          ZIO.succeed(Score.UnsafeUnparseable -> (be.tgi, None))
         } else {
           for {
             ltext <- be.content.convertTo(LText)
             reason = findUnsafeEmbeddedScript(ltext)
-          } yield ((if (reason.isDefined) Score.UnsafeScript else Score.Safe), reason)
+            score = if (reason.isDefined) Score.UnsafeScript else Score.Safe
+          } yield score -> (be.tgi, reason)
         }
-      }
+      }.orElseSucceed(Score.UnsafeUnparseable -> (e.tgi, None))
     case e if e.tgi.matches(Tgi.Lua) =>
-      ZIO.succeed((Score.UnsafeScript, None))
+      ZIO.succeed(Score.UnsafeScript -> (e.tgi, None))
   }
 
   def collectUnsafeTgis(path: os.Path): IO[java.io.IOException, Seq[(Tgi, Option[String])]] = {
     for {
       dbpf       <- ZIO.blocking(DbpfFile.read(path.toIO))
-      scoreTasks =  dbpf.entries.collect { case e if classify.isDefinedAt(e) =>
-                      classify(e).orElseSucceed((Score.UnsafeUnparseable, None)).map(e.tgi -> _)
-                    }: Seq[zio.UIO[(Tgi, (Score, Option[String]))]]
-      unsafeTgis <- ZIO.collectAllWithPar(scoreTasks) { case (tgi, (score, reason)) if score != Score.Safe => (tgi, reason) }
+      unsafeTgis <- ZIO.collectAllWithPar(classify(dbpf.entries)) { case (score, tgiReason) if score != Score.Safe => tgiReason }
     } yield unsafeTgis
   }
 
