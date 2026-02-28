@@ -77,7 +77,6 @@ object Commands {
         case abort: error.Sc4pacNotInteractive => { System.err.println(s"Operation aborted as terminal is non-interactive: ${abort.getMessage}"); exit(ExitCodes.ExternalReason) }
         case abort: error.SymlinkCreationFailed => { System.err.println(s"Operation aborted. ${abort.getMessage}"); exit(ExitCodes.ExternalReason) }  // channel-build command
         case abort: error.YamlFormatIssue => { System.err.println(s"Operation aborted. ${abort.getMessage}"); exit(ExitCodes.ExternalReason) }  // channel-build command
-        case abort: scdbpf.DbpfExceptions.DbpfIoException => { System.err.println(s"Operation aborted. ${abort.getMessage}"); exit(ExitCodes.ExternalReason) }  // script-check command
         case abort: error.PortOccupied => { System.err.println(abort.getMessage); exit(ExitCodes.PortOccupied) }  // server command
         case e: Throwable => { e.printStackTrace(); exit(ExitCodes.UnknownReason) }
       },
@@ -697,7 +696,7 @@ object Commands {
                     ZIO.ifZIO(ZIO.attemptBlockingIO(os.isDir(path) || !Extractor.DbpfValidator.hasDbpfSignature(path)))(
                       onTrue = ZIO.succeed(false),
                       onFalse = sc4pac.ScriptCheck.collectUnsafeTgis(path)  // TODO scdbpf might lead to defects
-                        .mapError { (e: java.io.IOException) => scdbpf.DbpfExceptions.DbpfIoException(s"""Failed to read DBPF file "$path" (caused by $e)""") }
+                        .mapError { (e: java.io.IOException) => sc4pac.error.ExtractionFailed(s"""Failed to read DBPF file "$path"""", s"(caused by $e)") }
                         .map { tgis =>
                           if (tgis.isEmpty) {
                             false

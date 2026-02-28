@@ -118,6 +118,27 @@ class CliLogger private (out: java.io.PrintStream, useColor: Boolean, isInteract
     }
   }
 
+  def logScriptsInstalled(scriptsInstalled: Seq[Sc4pac.StageResult.LuaInstalled]): Unit = {
+    val grouped = scriptsInstalled
+      .groupMap(lua => (lua.module, lua.asset.url, lua.assetMetadataUrl, lua.pkgMetadataUrl))(_.dbpfFile)
+      .toSeq.sortBy(_._1._1.toBareDep)
+    var idx = 1
+    for (((module, assetUrl, assetMetadataUrl, pkgMetadataUrl), dbpfFiles) <- grouped) {
+      var bullet = ""
+      if (idx != 1) log("")
+      for (dbpfFile <- dbpfFiles) {
+        bullet = s"($idx)"
+        log(s"$bullet DBPF file: ${bold(dbpfFile.toString)}")
+        idx += 1
+      }
+      val indent = " " * bullet.length
+      log(s"$indent Downloaded from: ${cyan(assetUrl.toString)}")
+      log(s"$indent Installed by: ${module.formattedDisplayString(gray)}")
+      log(s"$indent Asset metadata from: ${gray(assetMetadataUrl.toString)}")
+      log(s"$indent Package metadata from: ${gray(pkgMetadataUrl.toString)}")
+    }
+  }
+
   def logRepairPlan(plan: Sc4pac.RepairPlan): Unit = {
     for ((mod, idx) <- plan.incompletePackages.zipWithIndex) {
       log(s"(${idx+1}) " + mod.formattedDisplayString(gray, bold) + " " + cyanBold("[missing]"))

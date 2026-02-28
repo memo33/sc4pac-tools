@@ -86,7 +86,7 @@ class ScriptCheckSpec extends AnyWordSpec with Matchers {
         "#link_id#game..",
         "sc4://advice/000..",
       ).foreach(s => withClue(s) {
-        ScriptCheck.hasUnsafeEmbeddedScripts(LText(s)).shouldBe(true)
+        ScriptCheck.findUnsafeEmbeddedScript(LText(s)).shouldBe(Symbol("isDefined"))
       })
     }
   }

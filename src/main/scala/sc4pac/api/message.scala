@@ -130,6 +130,29 @@ object PromptMessage {
     ) derives UP.ReadWriter
   }
 
+  @upickle.implicits.key("/prompt/confirmation/update/installing-scripts")
+  case class ConfirmInstallingScripts(
+    description: String,
+    scriptsInstalled: Seq[ConfirmInstallingScripts.Item],
+    choices: Seq[String], // = yesNo,
+    token: String,
+    responses: Map[String, ResponseMessage],
+  ) extends PromptMessage derives UP.ReadWriter
+  object ConfirmInstallingScripts {
+    def apply(description: String, scriptsInstalled: Seq[Item]): ConfirmInstallingScripts = {
+      val token = scala.util.Random.nextInt().toHexString
+      ConfirmInstallingScripts(description = description, scriptsInstalled = scriptsInstalled, choices = yesNo, token, responses = responsesFromChoices(yesNo, token))
+    }
+    case class Item(
+      file: os.SubPath,
+      url: java.net.URI,
+      `package`: BareModule,
+      packageVersion: String,
+      assetMetadataUrl: java.net.URI,
+      packageMetadataUrl: java.net.URI,
+      tgis: Seq[String],
+    ) derives UP.ReadWriter
+  }
 
   @upickle.implicits.key("/prompt/json/update/initial-arguments")
   case class InitialArgumentsForUpdate(
