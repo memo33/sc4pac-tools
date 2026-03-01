@@ -28,11 +28,10 @@ SCRIPTDIR="$( cd -P "$( dirname "$(readlink -f "${BASH_SOURCE[0]}")" )" >/dev/nu
 # export SC4PAC_DEBUG=1
 
 #------------------------------------------------------------
-# Uncomment when using Java 24+ to avoid some deprecation warnings caused by Scala and Jansi libraries.
-# See https://github.com/scala/scala3/issues/9013
+# These options silence some deprecation warnings of Java 24+ caused by Scala and Jansi libraries.
+# See https://github.com/scala/scala3/issues/9013  (fixed once all dependencies are compiled with Scala 3.8+)
 # and https://github.com/fusesource/jansi/issues/301
-#
-# export SC4PAC_JAVA_OPTIONS='--sun-misc-unsafe-memory-access=allow --enable-native-access=ALL-UNNAMED'
+export SC4PAC_JAVA_OPTIONS="${SC4PAC_JAVA_OPTIONS-"-XX:+IgnoreUnrecognizedVMOptions --sun-misc-unsafe-memory-access=allow --enable-native-access=ALL-UNNAMED"}"
 
 #------------------------------------------------------------
 # We set defaults for environment variables if they are not defined.

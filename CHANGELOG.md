@@ -3,6 +3,10 @@
 ## [Unreleased]
 
 ### Changed
+- The default `SC4PAC_JAVA_OPTIONS` JVM settings have been changed to avoid deprecation warnings with Java 24+. The new setting is compatible with all Java versions.
+
+
+### Changed
 - The deprecated `variantDescriptions` metadata field has been removed.
 - Support for old channels built before 0.5.4 (scheme 6) has been removed.
 
