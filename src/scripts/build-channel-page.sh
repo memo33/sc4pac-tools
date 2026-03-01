@@ -4,7 +4,7 @@ set -e
 rm -rf web/target/website
 mkdir -p web/target/website/channel
 sbt web/fullLinkJS
-cp -p web/target/scala-3.7.4/sc4pac-web-opt/main.js \
+cp -p web/target/scala-3.8.2/sc4pac-web-opt/main.js \
     web/channel/styles.css \
     web/channel/index.html \
     ./web/target/website/channel/
