@@ -7,7 +7,7 @@ import scala.collection.immutable.TreeSeqMap
 
 import sc4pac.JsonData as JD
 import sc4pac.error.{Sc4pacAssetNotFound, Artifact2Error}
-import Resolution.{Dep, DepAsset, Links}
+import Resolution.{Dep, Links}
 
 /** Wrapper around Coursier's resolution mechanism with more stringent types for
   * our purposes.

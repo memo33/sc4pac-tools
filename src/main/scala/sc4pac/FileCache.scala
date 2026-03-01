@@ -245,7 +245,7 @@ class FileCache private (
 
 object FileCache {
   def apply(location: java.io.File, pool: java.util.concurrent.ExecutorService): FileCache = {
-    import sc4pac.CoursierZio.*  // implicit coursier-zio interop
+    import sc4pac.CoursierZio.given  // implicit coursier-zio interop
     val csCache = CC.FileCache[Task]()
       .withLocation(location)
       .withPool(pool)

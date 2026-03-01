@@ -2,7 +2,7 @@ package io.github.memo33
 package sc4pac
 
 import java.util.regex.Pattern
-import upickle.default.{ReadWriter, readwriter, macroRW}
+import upickle.default.{ReadWriter, macroRW}
 
 sealed trait BareDep {
   def orgName: String
@@ -42,28 +42,28 @@ object JsonRepoUtil {
   val channelContentsFilename = "sc4pac-channel-contents.json"  // only for JSON repositories
 }
 
-abstract class SharedData {
+trait SharedData {
 
   type Variant = Map[String, String]
 
   type Instant
-  implicit val instantRw: ReadWriter[Instant]
+  given instantRw: ReadWriter[Instant] = compiletime.deferred
 
   type SubPath
-  implicit val subPathRw: ReadWriter[SubPath]
+  given subPathRw: ReadWriter[SubPath] = compiletime.deferred
   protected def categoryFromSubPath(subpath: SubPath): Option[String]
 
   type Checksum
-  implicit val checksumRw: ReadWriter[Checksum]
+  given checksumRw: ReadWriter[Checksum] = compiletime.deferred
   protected def emptyChecksum: Checksum
 
   type IncludeWithChecksum
-  implicit val includeWithChecksumRw: ReadWriter[IncludeWithChecksum]
+  given includeWithChecksumRw: ReadWriter[IncludeWithChecksum] = compiletime.deferred
 
-  implicit val bareModuleRw: ReadWriter[BareModule]
+  given bareModuleRw: ReadWriter[BareModule] = compiletime.deferred
 
   type Uri
-  implicit val uriRw: ReadWriter[Uri]
+  given uriRw: ReadWriter[Uri] = compiletime.deferred
 
   case class Dependency(group: String, name: String, version: String) derives ReadWriter
 
@@ -102,7 +102,7 @@ abstract class SharedData {
     def version: String
   } /*derives ReadWriter*/  // <-- causes infinite compile loop, so manually define ReadWriter instead
   object PackageAsset {
-    implicit val packageAssetRw: ReadWriter[PackageAsset] = ReadWriter.merge(Asset.assetRw, Package.packageRw)
+    given packageAssetRw: ReadWriter[PackageAsset] = ReadWriter.merge(Asset.assetRw, Package.packageRw)
   }
 
   case class ArchiveType(format: String, version: String) derives ReadWriter
@@ -133,7 +133,7 @@ abstract class SharedData {
     //   Option(lastModified).map(java.time.Instant.parse)  // throws java.time.format.DateTimeParseException
     // }
 
-    implicit val assetRw: ReadWriter[Asset] = macroRW
+    given assetRw: ReadWriter[Asset] = macroRW
   }
 
   @upickle.implicits.key("Package")
@@ -155,7 +155,7 @@ abstract class SharedData {
     def toBareDep: BareModule = BareModule(Organization(group), ModuleName(name))
   }
   object Package {
-    implicit val packageRw: ReadWriter[Package] = macroRW
+    given packageRw: ReadWriter[Package] = macroRW
 
     def buildVariantChoices(variants: Seq[VariantData]): Seq[VariantChoice] = {
       val entries: Seq[(String, String)] = variants.iterator.flatMap { vd =>
@@ -245,7 +245,7 @@ abstract class SharedData {
   object Channel {
 
     private val channelRwDefault: ReadWriter[Channel] = macroRW
-    implicit val channelRw: ReadWriter[Channel] =
+    given channelRw: ReadWriter[Channel] =
       channelRwDefault.bimap[Channel](identity, { c =>
         if (c.stats != null) c else createAddStats(c.scheme, c.info, packages = c.packages, assets = c.assets, c.externalPackages, c.externalAssets)
       })

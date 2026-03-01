@@ -2,7 +2,7 @@ package io.github.memo33
 package sc4pac
 package api
 
-import zio.{ZIO, Task, UIO, IO}
+import zio.{ZIO, UIO, IO}
 import zio.Ref
 import zio.http.*
 import zio.Config.Secret

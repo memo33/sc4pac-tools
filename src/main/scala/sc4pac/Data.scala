@@ -19,14 +19,14 @@ object JsonData extends SharedData {
   override type Uri = java.net.URI
 
   // We use OffsetDateTime.parse instead of Instant.parse for compatibility with Java 8 to 11
-  implicit val instantRw: ReadWriter[java.time.Instant] =
+  override given instantRw: ReadWriter[java.time.Instant] =
     readwriter[String].bimap[java.time.Instant](_.toString(), Option(_).map(s => java.time.OffsetDateTime.parse(s.trim()).toInstant()).orNull)
 
-  implicit val pathRw: ReadWriter[NioPath] = readwriter[String].bimap[NioPath](_.toString(), java.nio.file.Paths.get(_))
+  given pathRw: ReadWriter[NioPath] = readwriter[String].bimap[NioPath](_.toString(), java.nio.file.Paths.get(_))
 
-  implicit val subPathRw: ReadWriter[os.SubPath] = readwriter[String].bimap[os.SubPath](_.toString(), os.SubPath(_))
+  override given subPathRw: ReadWriter[os.SubPath] = readwriter[String].bimap[os.SubPath](_.toString(), os.SubPath(_))
 
-  implicit val uriRw: ReadWriter[java.net.URI] = readwriter[String].bimap[java.net.URI](_.toString(), new java.net.URI(_))
+  override given uriRw: ReadWriter[java.net.URI] = readwriter[String].bimap[java.net.URI](_.toString(), new java.net.URI(_))
 
   private[sc4pac] def bareModuleRead(s: String) =
     Sc4pac.parseModule(s) match {
@@ -35,8 +35,8 @@ object JsonData extends SharedData {
     }
   // Wrapping with `stringKeyRW` is important for Api/packages.info, so that
   // BareModule can be serialized as key of JSON dictionary (instead of serializing Maps as arrays of arrays).
-  implicit val bareModuleRw: ReadWriter[BareModule] = stringKeyRW(readwriter[String].bimap[BareModule](_.orgName, bareModuleRead))
-  implicit val bareDepRw: ReadWriter[BareDep] = stringKeyRW(readwriter[String].bimap[BareDep](_.orgName, { (s: String) =>
+  override given bareModuleRw: ReadWriter[BareModule] = stringKeyRW(readwriter[String].bimap[BareModule](_.orgName, bareModuleRead))
+  given bareDepRw: ReadWriter[BareDep] = stringKeyRW(readwriter[String].bimap[BareDep](_.orgName, { (s: String) =>
     val prefix = Constants.sc4pacAssetOrg.value + ":"
     if (s.startsWith(prefix)) BareAsset(assetId = C.ModuleName(s.substring(prefix.length))) else bareModuleRead(s)
   }))
@@ -179,9 +179,9 @@ object JsonData extends SharedData {
     assets: Seq[Asset],
     redownload: Seq[BareModule] = Seq.empty,  // since scheme 2+
   ) derives ReadWriter {
-    def dependenciesWithAssets: Set[Resolution.Dep] =
+    def dependenciesWithAssets: Set[Dep] =
       (installed.map(_.toDepModule) ++ assets.map(DepAsset.fromAsset(_))).toSet
-    def packagesToReinstall: Set[Resolution.DepModule] =
+    def packagesToReinstall: Set[DepModule] =
       installed.iterator.filter(_.reinstall).map(_.toDepModule).toSet
     def packagesToRedownload: Set[BareModule] = redownload.toSet
 
@@ -306,13 +306,13 @@ object JsonData extends SharedData {
 
   protected def categoryFromSubPath(subpath: SubPath): Option[String] = subpath.segments0.headOption
 
-  implicit val checksumRw: ReadWriter[Checksum] =
+  override given checksumRw: ReadWriter[Checksum] =
     readwriter[Map[String, String]].bimap[Checksum](
       (checksum: Checksum) => checksum.sha256.map("sha256" -> Checksum.bytesToString(_)).toMap,
       (m: Map[String, String]) => Checksum(sha256 = m.get("sha256").map(Checksum.stringToBytes))
     )
 
-  implicit val etagRw: ReadWriter[zio.http.Header.ETag] =
+  given etagRw: ReadWriter[zio.http.Header.ETag] =
     readwriter[String].bimap[zio.http.Header.ETag](
       _.renderedValue,
       s => zio.http.Header.ETag.parse(s).getOrElse(throw new IllegalArgumentException(s"Invalid etag: $s")),
@@ -387,7 +387,7 @@ object JsonData extends SharedData {
 
   case class IncludeWithChecksum(include: String, sha256: ArraySeq[Byte])
 
-  implicit val includeWithChecksumRw: ReadWriter[IncludeWithChecksum] =
+  override given includeWithChecksumRw: ReadWriter[IncludeWithChecksum] =
     readwriter[Map[String, String]].bimap[IncludeWithChecksum](
       (data: IncludeWithChecksum) => Map("include" -> data.include, "sha256" -> Checksum.bytesToString(data.sha256)),
       (m: Map[String, String]) => IncludeWithChecksum(include = m("include"), sha256 = Checksum.stringToBytes(m("sha256"))),

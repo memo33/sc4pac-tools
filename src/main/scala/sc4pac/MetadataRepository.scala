@@ -2,7 +2,6 @@ package io.github.memo33
 package sc4pac
 
 import coursier.core.{Versions, Version}
-import coursier.cache as CC
 import upickle.default.Reader
 import zio.{ZIO, IO, UIO, RIO}
 

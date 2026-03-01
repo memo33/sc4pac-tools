@@ -13,7 +13,7 @@ package object sc4pac {
     import scala.concurrent.{ExecutionContext, ExecutionContextExecutorService}
     import java.util.concurrent.{ExecutorService}
 
-    implicit lazy val taskSync: Sync[Task] = new Sync[Task] {
+    given taskSync: Sync[Task] = new Sync[Task] {
       override def delay[A](a: => A): Task[A] = ZIO.attempt(a)
 
       override def handle[A](a: Task[A])(f: PartialFunction[Throwable, A]): Task[A] =
@@ -42,7 +42,7 @@ package object sc4pac {
       }
     }
 
-    implicit class EitherTZioOps[L, R](val either: coursier.util.EitherT[Task, L, R]) extends AnyVal {
+    extension [L, R](either: coursier.util.EitherT[Task, L, R]) {
       def toZio(handle: Throwable => IO[L, R]): IO[L, R] = {
         either.run                                    // : IO[Throwable, Either[L, R]]
           .catchAll { t => handle(t).map(Right(_)) }  // : IO[L, Either[L, R]]
@@ -58,10 +58,10 @@ package object sc4pac {
     }
   }
 
-  def unsafeRun[E, A](effect: zio.IO[E, A]): A = zio.Unsafe.unsafe { implicit unsafe =>
+  def unsafeRun[E, A](effect: zio.IO[E, A]): A = zio.Unsafe.unsafe { unsafe ?=>
     zio.Runtime.default.unsafe.run(effect).getOrThrowFiberFailure()
   }
-  def unsafeRunNoWrap[E <: Throwable, A](effect: zio.IO[E, A]): A = zio.Unsafe.unsafe { implicit unsafe =>
+  def unsafeRunNoWrap[E <: Throwable, A](effect: zio.IO[E, A]): A = zio.Unsafe.unsafe { unsafe ?=>
     zio.Runtime.default.unsafe.run(effect).getOrThrow()
   }
 

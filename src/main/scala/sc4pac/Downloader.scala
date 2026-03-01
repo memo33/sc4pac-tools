@@ -12,8 +12,6 @@ import sc4pac.JsonData as JD
 import sc4pac.error.Artifact2Error
 import zio.http.Header.ETag
 
-import Downloader.PartialDownloadSpec
-
 /** This downloader implementation is based on Coursier's downloader (released under Apache License Version 2.0):
   * https://github.com/coursier/coursier/blob/8d93005b56dd84770c062aeae6d7a12c53948596/modules/cache/jvm/src/main/scala/coursier/cache/internal/Downloader.scala
   *

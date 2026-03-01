@@ -16,21 +16,26 @@ import sttp.client4.upicklejson.asJson
 import scalatags.JsDom.all as H  // html tags
 import scalatags.JsDom.all.{stringFrag, stringAttr, SeqFrag, intPixelStyle, stringStyle, bindNode}
 
-object JsonData extends SharedData {
+trait StringRwHelper {
+  // helps avoid given-resolution conflicts (after switch from implicits to givens)
+  def rawStringRwHelper: UP.ReadWriter[String] = UP.readwriter[String]
+}
+
+object JsonData extends SharedData with StringRwHelper {
   opaque type Instant = String
-  val instantRw = UP.readwriter[String]
+  override given instantRw: UP.ReadWriter[Instant] = rawStringRwHelper
   opaque type SubPath = String
-  val subPathRw = UP.readwriter[String]
+  override given subPathRw: UP.ReadWriter[SubPath] = rawStringRwHelper
   protected def categoryFromSubPath(subpath: SubPath) =
     if (subpath.contains("/")) Some(subpath.substring(0, subpath.indexOf("/")))
     else Option.unless(subpath.isEmpty)(subpath)
   opaque type Checksum = Map[String, String]
-  val checksumRw = UP.readwriter[Map[String, String]]
+  override given checksumRw: UP.ReadWriter[Checksum] = ??? // UP.readwriter[Map[String, String]]
   protected def emptyChecksum = Map.empty
   opaque type Uri = String
-  val uriRw = UP.readwriter[String]
+  override given uriRw: UP.ReadWriter[Uri] = rawStringRwHelper
   opaque type IncludeWithChecksum = Map[String, String]
-  val includeWithChecksumRw = UP.readwriter[Map[String, String]]
+  override given includeWithChecksumRw: UP.ReadWriter[IncludeWithChecksum] = UP.readwriter[Map[String, String]]
 
   private val regexModule = """([^:\s]+):([^:\s]+)""".r
   def parseModule(pkgName: String): Either[String, BareModule] =
@@ -39,7 +44,7 @@ object JsonData extends SharedData {
       case _ => Left(s"Malformed package name: <group>:<name> ($pkgName)")
     }
 
-  val bareModuleRw: UP.ReadWriter[BareModule] = UP.readwriter[String].bimap[BareModule](_.orgName,
+  override given bareModuleRw: UP.ReadWriter[BareModule] = rawStringRwHelper.bimap[BareModule](_.orgName,
     parseModule(_).left.map(e => throw new IllegalArgumentException(e)).merge)
 }
 
