@@ -134,14 +134,15 @@ object PromptMessage {
   case class ConfirmInstallingScripts(
     description: String,
     scriptsInstalled: Seq[ConfirmInstallingScripts.Item],
+    luaSandboxInstalled: Boolean,
     choices: Seq[String], // = yesNo,
     token: String,
     responses: Map[String, ResponseMessage],
   ) extends PromptMessage derives UP.ReadWriter
   object ConfirmInstallingScripts {
-    def apply(description: String, scriptsInstalled: Seq[Item]): ConfirmInstallingScripts = {
+    def apply(description: String, scriptsInstalled: Seq[Item], luaSandboxInstalled: Boolean): ConfirmInstallingScripts = {
       val token = scala.util.Random.nextInt().toHexString
-      ConfirmInstallingScripts(description = description, scriptsInstalled = scriptsInstalled, choices = yesNo, token, responses = responsesFromChoices(yesNo, token))
+      ConfirmInstallingScripts(description = description, scriptsInstalled = scriptsInstalled, luaSandboxInstalled = luaSandboxInstalled, choices = yesNo, token, responses = responsesFromChoices(yesNo, token))
     }
     case class Item(
       file: os.SubPath,

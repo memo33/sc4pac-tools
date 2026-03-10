@@ -210,9 +210,9 @@ class WebSocketPrompter(wsChannel: zio.http.WebSocketChannel, logger: WebSocketL
     )).map(_.body.str == yes)
   }
 
-  def confirmScriptsInstalled(scriptsInstalled: Seq[Sc4pac.StageResult.LuaInstalled]): Task[Boolean] = {
+  def confirmScriptsInstalled(scriptsInstalled: Seq[Sc4pac.StageResult.LuaInstalled], luaSandboxInstalled: Boolean): Task[Boolean] = {
     sendPrompt(PromptMessage.ConfirmInstallingScripts(
-      description = confirmScriptsInstalledPretext(scriptsInstalled.length),
+      description = confirmScriptsInstalledPretext(scriptsInstalled.length, luaSandboxInstalled = luaSandboxInstalled),
       scriptsInstalled.map(lua => PromptMessage.ConfirmInstallingScripts.Item(
         file = lua.dbpfFile,
         url = lua.asset.url,
@@ -221,7 +221,8 @@ class WebSocketPrompter(wsChannel: zio.http.WebSocketChannel, logger: WebSocketL
         assetMetadataUrl = lua.assetMetadataUrl,
         packageMetadataUrl = lua.pkgMetadataUrl,
         tgis = lua.tgis.map(_.toString),
-      ))
+      )),
+      luaSandboxInstalled = luaSandboxInstalled,
     )).map(_.body.str == yes)
   }
 
