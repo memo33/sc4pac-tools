@@ -460,8 +460,37 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) {  // TODO d
                                     )
                                   }
                               }
+        luaScripts         <- ZIO.foreach(extractions.flatMap { case (id, files, _) =>
+                                files.filter(f => Extractor.DbpfValidator.hasDbpfSignature(f.path)).map((id, _))
+                              }) {
+                                case (id: BareAsset, item: Extractor.ExtractedItem) =>
+                                  val subpath = item.path.subRelativeTo(stagingDirs.plugins)
+                                  val asset = artifactsById(id)._3
+                                  for {
+                                    unsafeTgis <- ScriptCheck.collectUnsafeTgis(item.path)
+                                                    .mapError { (e: java.io.IOException) =>
+                                                      error.ExtractionFailed(
+                                                        s"""Failed to install package "${module.orgName}" as it seems to contain a corrupted DBPF file.""",
+                                                        Seq(
+                                                          "This file does not seem to be a valid DBPF file. Please inform its author about the issue.",
+                                                          s"- Corrupted file: $subpath",
+                                                          s"- Asset ID: ${id.assetId.value}",
+                                                          s"- Downloaded from: ${asset.url}",
+                                                          s"- Cause: $e",
+                                                        ).mkString(f"%n")
+                                                      )
+                                                    }
+                                  } yield Option.unless(unsafeTgis.isEmpty) {
+                                    StageResult.LuaInstalled(
+                                      subpath, dependency, asset,
+                                      pkgMetadataUrl = resolution.metadataUrls(module),
+                                      assetMetadataUrl = resolution.metadataUrls(id),
+                                      tgis = unsafeTgis.map(_._1),
+                                    )
+                                  }
+                              }.map(_.flatten)
         warningOpt         <- ZIO.when(pkgData.info.warning.nonEmpty)(ZIO.attempt { val w = pkgData.info.warning; logger.warn(w); JD.InformativeWarning(w) })
-      } yield StageResult.Item(dependency, Seq(pkgFolder) ++ dlls.map(_.dll), pkgData, warningOpt.toSeq ++ artifactWarnings, dlls)
+      } yield StageResult.Item(dependency, Seq(pkgFolder) ++ dlls.map(_.dll), pkgData, warningOpt.toSeq ++ artifactWarnings, dlls, luaScripts)
     }
 
     /** For the list of non-asset packages to install, extract all of them
@@ -478,17 +507,22 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) {  // TODO d
         stagedItems <- ZIO.foreach(deps.zipWithIndex) { case (dep, idx) =>   // sequentially stages each package
                          stage(stagingDirs, dep, artifactsById, Sc4pac.Progress(idx+1, numDeps), resolution, pathLimit = pathLimit)
                        }
-      } yield StageResult(stagingDirs, stagedItems)
+      } yield StageResult(stagingDirs, stagedItems, luaSandboxInstalled = resolution.metadata.contains(Constants.luaSandboxDll))  // TODO ensure sandbox is not overwritten by other channel, or that dll is present
     }
 
     private def confirmStageResultOrAbort(stageResult: StageResult): RIO[Prompter, Unit] = {
       val pkgWarnings = stageResult.items.collect { case item if item.warnings.nonEmpty => (item.dep.toBareDep, item.warnings) }
       val dllsInstalled = stageResult.items.flatMap(_.dlls)
+      val scriptsInstalled = stageResult.items.flatMap(_.scripts)
       for {
         _  <- ZIO.serviceWithZIO[Prompter](_.confirmInstallationWarnings(pkgWarnings))
                 .filterOrFail(_ == true)(error.Sc4pacAbort())
         _  <- ZIO.whenDiscard(dllsInstalled.nonEmpty) {
                 ZIO.serviceWithZIO[Prompter](_.confirmDllsInstalled(dllsInstalled))
+                  .filterOrFail(_ == true)(error.Sc4pacAbort())
+              }
+        _  <- ZIO.whenDiscard(scriptsInstalled.nonEmpty) {
+                ZIO.serviceWithZIO[Prompter](_.confirmScriptsInstalled(scriptsInstalled, luaSandboxInstalled = stageResult.luaSandboxInstalled))
                   .filterOrFail(_ == true)(error.Sc4pacAbort())
               }
       } yield ()
@@ -845,9 +879,9 @@ object Sc4pac {
     override def toString = s"($numerator/$denominator)"
   }
 
-  case class StageResult(dirs: Sc4pac.StagingDirs, items: Seq[StageResult.Item])
+  case class StageResult(dirs: Sc4pac.StagingDirs, items: Seq[StageResult.Item], luaSandboxInstalled: Boolean)
   object StageResult {
-    class Item(val dep: DepModule, val files: Seq[os.SubPath], val pkgData: JD.Package, val warnings: Seq[Warning], val dlls: Seq[DllInstalled])
+    class Item(val dep: DepModule, val files: Seq[os.SubPath], val pkgData: JD.Package, val warnings: Seq[Warning], val dlls: Seq[DllInstalled], val scripts: Seq[LuaInstalled])
     class DllInstalled(
       val dll: os.SubPath,
       val module: DepModule,
@@ -855,6 +889,14 @@ object Sc4pac {
       val pkgMetadataUrl: java.net.URI,
       val assetMetadataUrl: java.net.URI,
       val validatedSha256: collection.immutable.ArraySeq[Byte],
+    )
+    class LuaInstalled(
+      val dbpfFile: os.SubPath,
+      val module: DepModule,
+      val asset: DepAsset,
+      val pkgMetadataUrl: java.net.URI,
+      val assetMetadataUrl: java.net.URI,
+      val tgis: Seq[scdbpf.Tgi],
     )
   }
 

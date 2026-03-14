@@ -72,6 +72,7 @@ object Constants {
 
   lazy val maxPathLength: Option[Int] = Option(System.getenv("SC4PAC_MAX_PATH_LENGTH")).filter(_.nonEmpty).flatMap(_.toIntOption).filter(_ > 0)
   val startupPerformanceOptimizationDll = BareModule(coursier.core.Organization("null-45"), coursier.core.ModuleName("startup-performance-optimization-dll"))
+  val luaSandboxDll = BareModule(coursier.core.Organization("memo"), coursier.core.ModuleName("lua-sandbox-dll"))
 
   /* On non-Windows platforms, cicdec is invoked by `mono cicdec [args]`, but on Windows Mono is not required: `cicdec [args]`.
    * We choose reasonable defaults, but allow customizing these two commands via environment variables (which are set in the launch scripts).

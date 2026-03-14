@@ -61,6 +61,9 @@ The GUI is located in the <a href="https://github.com/memo33/sc4pac-gui/releases
   (This adds support for plugin file paths exceeding the 260 character limit on Windows,
   which could otherwise be a problem for a small number of packages that use deeply-nested, long file names.)
 
+- Install `pkg=memo:lua-sandbox-dll` if you use the Windows digital edition of the game.
+  (This provides a more secure environment for your plugins by preventing mods from using unsafe Lua functions.)
+
 - Be aware that Simtropolis has a download limit of 20 files per day for guests.
   To avoid the limit, go to **Settings** and set up your [personal authentication token](https://community.simtropolis.com/sc4pac/my-token/) for Simtropolis.
   Alternatively, simply continue the installation process the next day.
@@ -133,7 +136,7 @@ Each Profile corresponds to a Plugins folder.
 ## Uninstalling
 
 - Uninstall all packages for each Profile. Either:
-  * with the GUI: unstar all starred packages and hit **Update**, or
+  * with the GUI: uninstall all packages (see **Dashboard** → *Profile* → *Delete options*), or
   * with the CLI: run `sc4pac remove --interactive` and select everything, or
   * delete every folder named `*.sc4pac` from your plugins folder, or
   * delete the entire plugins folder.

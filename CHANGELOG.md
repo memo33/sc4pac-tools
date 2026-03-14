@@ -2,11 +2,14 @@
 
 ## [Unreleased]
 
+### Added
+- Whenever plugins containing Lua scripts are about to be installed, sc4pac now shows a warning about this.
+  For added security, install `memo:lua-sandbox-dll`.
+  This also requires that all DBPF files are correctly formatted, so corrupted DBPF files will now fail to install.
+- a new command `script-check` to scan DBPF files for embedded Lua scripts.
+
 ### Changed
 - The default `SC4PAC_JAVA_OPTIONS` JVM settings have been changed to avoid deprecation warnings with Java 24+. The new setting is compatible with all Java versions.
-
-
-### Changed
 - The deprecated `variantDescriptions` metadata field has been removed.
 - Support for old channels built before 0.5.4 (scheme 6) has been removed.
 

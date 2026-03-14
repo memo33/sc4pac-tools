@@ -28,6 +28,13 @@ trait Prompter {
     f""" They have the ability to execute arbitrary code on your system once the game is started.%n%n""" +
     s"""Only continue if you consider ${if (numDlls == 1) "this DLL file" else "these DLL files"} to be trustworthy."""
 
+  def confirmScriptsInstalled(scriptsInstalled: Seq[Sc4pac.StageResult.LuaInstalled], luaSandboxInstalled: Boolean): Task[Boolean]
+
+  protected def confirmScriptsInstalledPretext(numScripts: Int, luaSandboxInstalled: Boolean): String =
+    s"""You are about to install ${if (numScripts == 1) "a file" else s"$numScripts files"} with embedded Lua scripts.""" +
+    f""" Lua scripts contain code that extends the functionality of the game (e.g. advisor messages, rewards, and automata generators).%n%n""" +
+    s"""Only continue if you consider ${if (numScripts == 1) "this file" else "these files"} to be trustworthy.""" +
+    Option.unless(luaSandboxInstalled)(f"%n%nFor added security, install `pkg=${Constants.luaSandboxDll.orgName}`.").getOrElse("")
 }
 
 class CliPrompter(val logger: CliLogger, autoYes: Boolean) extends Prompter {
@@ -154,6 +161,21 @@ class CliPrompter(val logger: CliLogger, autoYes: Boolean) extends Prompter {
       else Prompt.ifInteractive(
         onFalse = ZIO.succeed(true),
         onTrue = Prompt.yesNo("Continue with installation of DLL files?"),
+      )
+    }
+  }
+
+  def confirmScriptsInstalled(scriptsInstalled: Seq[Sc4pac.StageResult.LuaInstalled], luaSandboxInstalled: Boolean): Task[Boolean] = {
+    if (scriptsInstalled.isEmpty) ZIO.succeed(true)
+    else {
+      logger.warn(confirmScriptsInstalledPretext(scriptsInstalled.length, luaSandboxInstalled = luaSandboxInstalled))
+      logger.log("")
+      logger.logScriptsInstalled(scriptsInstalled)
+      logger.log("")
+      if (autoYes) ZIO.succeed(true)
+      else Prompt.ifInteractive(
+        onFalse = ZIO.succeed(true),
+        onTrue = Prompt.yesNo("Continue with installation of Lua script files?"),
       )
     }
   }

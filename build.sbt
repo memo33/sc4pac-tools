@@ -107,6 +107,8 @@ libraryDependencies += "org.fusesource.jansi" % "jansi" % "2.4.1"  // color supp
 
 libraryDependencies += "me.xdrop" % "fuzzywuzzy" % "1.4.0"  // fuzzy search
 
+libraryDependencies += "io.github.memo33" %% "scdbpf" % "0.2.3-SNAPSHOT"
+
 libraryDependencies += "net.sf.sevenzipjbinding" % "sevenzipjbinding" % "16.02-2.01"  // native 7z for NSIS extraction
 
 // libraryDependencies += "net.sf.sevenzipjbinding" % "sevenzipjbinding-all-platforms" % "16.02-2.01"  // native 7z for NSIS extraction
