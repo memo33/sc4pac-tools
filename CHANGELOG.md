@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+
+## [0.9.4] - 2026-03-14
 ### Added
 - Whenever plugins containing Lua scripts are about to be installed, sc4pac now shows a warning about this.
   For added security, install `memo:lua-sandbox-dll`.
@@ -380,7 +382,8 @@
 ## [0.1.5] - 2023-09-26
 …
 
-[Unreleased]: https://github.com/memo33/sc4pac-tools/compare/0.9.3...HEAD
+[Unreleased]: https://github.com/memo33/sc4pac-tools/compare/0.9.4...HEAD
+[0.9.4]: https://github.com/memo33/sc4pac-tools/compare/0.9.3...0.9.4
 [0.9.3]: https://github.com/memo33/sc4pac-tools/compare/0.9.2...0.9.3
 [0.9.2]: https://github.com/memo33/sc4pac-tools/compare/0.9.1...0.9.2
 [0.9.1]: https://github.com/memo33/sc4pac-tools/compare/0.9.0...0.9.1

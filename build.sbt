@@ -2,7 +2,7 @@ name := "sc4pac"
 
 ThisBuild / organization := "io.github.memo33"
 
-ThisBuild / version := "0.9.4-SNAPSHOT"
+ThisBuild / version := "0.9.4"
 
 // ThisBuild / versionScheme := Some("early-semver")
 
@@ -107,7 +107,7 @@ libraryDependencies += "org.fusesource.jansi" % "jansi" % "2.4.1"  // color supp
 
 libraryDependencies += "me.xdrop" % "fuzzywuzzy" % "1.4.0"  // fuzzy search
 
-libraryDependencies += "io.github.memo33" %% "scdbpf" % "0.2.3-SNAPSHOT"
+libraryDependencies += "io.github.memo33" %% "scdbpf" % "0.3.0"
 
 libraryDependencies += "net.sf.sevenzipjbinding" % "sevenzipjbinding" % "16.02-2.01"  // native 7z for NSIS extraction
 
