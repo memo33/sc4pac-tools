@@ -11,7 +11,8 @@
 - a new command `script-check` to scan DBPF files for embedded Lua scripts.
 
 ### Changed
-- The default `SC4PAC_JAVA_OPTIONS` JVM settings have been changed to avoid deprecation warnings with Java 24+. The new setting is compatible with all Java versions.
+- The default `SC4PAC_JAVA_OPTIONS` JVM settings have been changed to avoid deprecation warnings with Java 24+.
+  The [new setting](https://github.com/memo33/sc4pac-tools/blob/5827aeb68e3718a470f5c8f45e760c91e014b99f/src/scripts/sc4pac.bat#L42) is compatible with all Java versions.
 - The deprecated `variantDescriptions` metadata field has been removed.
 - Support for old channels built before 0.5.4 (scheme 6) has been removed.
 
