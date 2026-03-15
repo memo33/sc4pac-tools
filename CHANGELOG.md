@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+### Fixed
+- an issue with 0.9.4 that prevented installing DLLs on Windows
+
 
 ## [0.9.4] - 2026-03-14
 ### Added

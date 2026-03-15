@@ -459,13 +459,13 @@ object Extractor {
   object DbpfValidator extends Validator {
     private val dbpfSignature = Array[Byte]('D', 'B', 'P', 'F')
 
-    def hasDbpfSignature(path: os.Path): Boolean = {
+    def hasDbpfSignatureSync(path: os.Path): Boolean = {
       val signature = os.read.bytes(path, offset = 0, count = 4)
       signature.sameElements(dbpfSignature)
     }
 
     def validate(path: os.Path): ExtractedItem = {
-      if (!hasDbpfSignature(path))
+      if (!hasDbpfSignatureSync(path))
         throw NotADbpfFile("Extracted file is not a DBPF file. " +
           "If this error is caused by a malformed DBPF file, report this to the original author of the file. " +
           "Otherwise, if it is a DLL file, the channel metadata must include a checksum for verifying file integrity. " +

@@ -444,25 +444,10 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path, val fileSys:
                               } yield extracted)  // (asset, files, warnings)
         artifactWarnings   =  extractions.flatMap(_._3)
         _                  <- ZIO.foreach(artifactWarnings)(w => ZIO.attempt(logger.warn(w.value)))  // to avoid conflicts with spinner animation, we print warnings after extraction already finished
-        dlls               <- ZIO.foreach(extractions.flatMap { case (id, files, _) =>
-                                files.filter(f => isDll(f.path)).map((id, _))
-                              }) {
-                                case (id: BareAsset, item: Extractor.ExtractedItem) =>
-                                  for {
-                                    dll <- linkDll(item.path)
-                                  } yield {
-                                    assert(item.validatedSha256.isDefined, s"Checksum of DLL ${item.path} (${id.assetId}) should have been verified")
-                                    StageResult.DllInstalled(
-                                      dll, dependency, artifactsById(id)._3,
-                                      pkgMetadataUrl = resolution.metadataUrls(module),
-                                      assetMetadataUrl = resolution.metadataUrls(id),
-                                      validatedSha256 = item.validatedSha256.get,
-                                    )
-                                  }
-                              }
-        luaScripts         <- ZIO.foreach(extractions.flatMap { case (id, files, _) =>
-                                files.filter(f => Extractor.DbpfValidator.hasDbpfSignature(f.path)).map((id, _))
-                              }) {
+        luaScripts         <- ZIO.attemptBlockingIO(extractions.flatMap { case (id, files, _) =>
+                                files.filter(f => Extractor.DbpfValidator.hasDbpfSignatureSync(f.path)).map((id, _))  // this check must run before `linkDll` as the latter can move the DLL to a different location
+                              })
+                              .flatMap(ZIO.foreach(_) {
                                 case (id: BareAsset, item: Extractor.ExtractedItem) =>
                                   val subpath = item.path.subRelativeTo(stagingDirs.plugins)
                                   val asset = artifactsById(id)._3
@@ -488,7 +473,24 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path, val fileSys:
                                       tgis = unsafeTgis.map(_._1),
                                     )
                                   }
-                              }.map(_.flatten)
+                              })
+                              .map(_.flatten)
+        dlls               <- ZIO.foreach(extractions.flatMap { case (id, files, _) =>
+                                files.filter(f => isDll(f.path)).map((id, _))
+                              }) {
+                                case (id: BareAsset, item: Extractor.ExtractedItem) =>
+                                  for {
+                                    dll <- linkDll(item.path)  // this potentially moves the DLL away from its original location
+                                  } yield {
+                                    assert(item.validatedSha256.isDefined, s"Checksum of DLL ${item.path} (${id.assetId}) should have been verified")
+                                    StageResult.DllInstalled(
+                                      dll, dependency, artifactsById(id)._3,
+                                      pkgMetadataUrl = resolution.metadataUrls(module),
+                                      assetMetadataUrl = resolution.metadataUrls(id),
+                                      validatedSha256 = item.validatedSha256.get,
+                                    )
+                                  }
+                              }
         warningOpt         <- ZIO.when(pkgData.info.warning.nonEmpty)(ZIO.attempt { val w = pkgData.info.warning; logger.warn(w); JD.InformativeWarning(w) })
       } yield StageResult.Item(dependency, Seq(pkgFolder) ++ dlls.map(_.dll), pkgData, warningOpt.toSeq ++ artifactWarnings, dlls, luaScripts)
     }

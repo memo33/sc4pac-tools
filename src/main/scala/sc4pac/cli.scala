@@ -693,7 +693,7 @@ object Commands {
         paths   <- ZIO.attemptBlockingIO { inputs.flatMap(path => os.walk(path, includeTarget = true, followLinks = true)) }
         logger  <- ZIO.service[CliLogger]
         unsafes <- ZIO.foreach(paths.sorted) { path =>  // not parallel to avoid jumping between multiple files for IO
-                    ZIO.ifZIO(ZIO.attemptBlockingIO(os.isDir(path) || !Extractor.DbpfValidator.hasDbpfSignature(path)))(
+                    ZIO.ifZIO(ZIO.attemptBlockingIO(os.isDir(path) || !Extractor.DbpfValidator.hasDbpfSignatureSync(path)))(
                       onTrue = ZIO.succeed(false),
                       onFalse = sc4pac.ScriptCheck.collectUnsafeTgis(path)  // TODO scdbpf might lead to defects
                         .mapError { (e: java.io.IOException) => sc4pac.error.ExtractionFailed(s"""Failed to read DBPF file "$path"""", s"(caused by $e)") }
