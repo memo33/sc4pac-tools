@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+
+## [0.9.5] - 2026-03-15
 ### Fixed
 - an issue with 0.9.4 that prevented installing DLLs on Windows
 
@@ -386,7 +388,8 @@
 ## [0.1.5] - 2023-09-26
 …
 
-[Unreleased]: https://github.com/memo33/sc4pac-tools/compare/0.9.4...HEAD
+[Unreleased]: https://github.com/memo33/sc4pac-tools/compare/0.9.5...HEAD
+[0.9.5]: https://github.com/memo33/sc4pac-tools/compare/0.9.4...0.9.5
 [0.9.4]: https://github.com/memo33/sc4pac-tools/compare/0.9.3...0.9.4
 [0.9.3]: https://github.com/memo33/sc4pac-tools/compare/0.9.2...0.9.3
 [0.9.2]: https://github.com/memo33/sc4pac-tools/compare/0.9.1...0.9.2
