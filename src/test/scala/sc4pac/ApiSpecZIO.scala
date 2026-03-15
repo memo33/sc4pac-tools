@@ -26,9 +26,13 @@ object ApiSpecZIO extends ZIOSpecDefault {
     )
 
   private var injectError: Task[Unit] = ZIO.unit
+  private var disallowSymLinking: Boolean = false
   val testFileSystemLayer: ZLayer[Any, Throwable, service.FileSystem] =
     ZLayer.succeed(new service.FileSystem {
       override def injectErrorInTest = injectError
+      override def createSymLink(link: os.Path, dest: os.FilePath): Unit =
+        if (!disallowSymLinking) super.createSymLink(link, dest)
+        else throw new java.io.IOException("Creating symlink not allowed during this test")
     })
 
   class TestConfig(val clientSecret: Secret, val clientSecretWeb: Secret, val token: Ref[Option[Secret]], val tokenWeb: Ref[Option[Token]])
@@ -160,6 +164,37 @@ object ApiSpecZIO extends ZIOSpecDefault {
       pkgs <- parseBody[Seq[String]](resp.body)
       resp <- postEndpoint(s"plugins.remove?profile=$id", jsonBody(pkgs))
       _    <- ZIO.whenDiscard(resp.status.code != 200)(ZIO.fail(AssertionError(s"/plugins.remove responded with ${resp.status.code}")))
+    } yield ()
+
+  def remove(pkg: String): RIO[JD.ProfileData & ServerOptions & Client & TestConfig, Unit] =
+    for {
+      id   <- ZIO.serviceWith[JD.ProfileData](_.id)
+      resp <- postEndpoint(s"plugins.remove?profile=$id", jsonBody(Seq(pkg)))
+      _    <- ZIO.whenDiscard(resp.status.code != 200)(ZIO.fail(AssertionError(s"/plugins.remove responded with ${resp.status.code}")))
+    } yield ()
+
+  def add(pkg: String): RIO[JD.ProfileData & ServerOptions & Client & TestConfig, Unit] =
+    for {
+      id   <- ZIO.serviceWith[JD.ProfileData](_.id)
+      resp <- postEndpoint(s"plugins.add?profile=$id", jsonBody(Seq(pkg)))
+      _    <- ZIO.whenDiscard(resp.status.code != 200)(ZIO.fail(AssertionError(s"/plugins.add responded with ${resp.status.code}")))
+    } yield ()
+
+  val update: RIO[JD.ProfileData & ServerOptions & Client & Ref[TestResult] & Scope & TestConfig, Unit] =
+    for {
+      id   <- ZIO.serviceWith[JD.ProfileData](_.id)
+      _    <- wsEndpoint(s"update?profile=$id",
+                respond = {
+                  case msg: api.PromptMessage.InitialArgumentsForUpdate => ZIO.succeed(msg.responses("Default"))
+                  case msg: api.PromptMessage.ConfirmUpdatePlan => ZIO.succeed(msg.responses("Yes"))
+                  case msg: api.PromptMessage.ConfirmInstallation => ZIO.succeed(msg.responses("Yes"))
+                  // add additional prompts when needed
+                },
+                filter = msg => msg.json("$type").str.startsWith("/result"),
+                checkMessages = queue => (for {
+                  _  <- queue.take.flatMap(f => addTestResult(assertTrue(f.json == jsonOk)))
+                } yield ()),
+              )
     } yield ()
 
   def takeUntil[A](queue: Queue[A])(predicate: A => Boolean): UIO[(Seq[A], A)] =
@@ -827,7 +862,7 @@ object ApiSpecZIO extends ZIOSpecDefault {
           test("/update (conditional variants)") {
             withTestResultRef(ZIO.scoped {
               for {
-                _    <- postEndpoint(s"plugins.add?profile=$profileId", jsonBody(Seq("test:conditional-variants"))).flatMap(isOk200)
+                _    <- add("test:conditional-variants")
                 _    <- wsEndpoint(s"update?profile=$profileId",
                           respond = {
                             case msg: api.PromptMessage.InitialArgumentsForUpdate => ZIO.succeed(msg.responses("Default"))
@@ -880,7 +915,7 @@ object ApiSpecZIO extends ZIOSpecDefault {
                   } yield msg.responses("Yes")
               }
               for {
-                _    <- postEndpoint(s"plugins.add?profile=$profileId", jsonBody(Seq("test:nonexistent"))).flatMap(isOk200)
+                _    <- add("test:nonexistent")
                 _    <- wsEndpoint(s"update?profile=$profileId",
                           respond = respond("No"),
                           filter = msg => !msg.json("$type").str.startsWith("/progress/download"),
@@ -924,7 +959,7 @@ object ApiSpecZIO extends ZIOSpecDefault {
                   } yield msg.responses("Yes")
               }
               for {
-                _    <- postEndpoint(s"plugins.add?profile=$profileId", jsonBody(Seq("memo:conflicting-package"))).flatMap(isOk200)
+                _    <- add("memo:conflicting-package")
                 _    <- wsEndpoint(s"update?profile=$profileId",
                           respond = respond(cancel = true),
                           filter = msg => !msg.json("$type").str.startsWith("/progress/download"),
@@ -994,7 +1029,7 @@ object ApiSpecZIO extends ZIOSpecDefault {
           test("/update (invalid asset checksum)") {
             withTestResultRef(ZIO.scoped {
               for {
-                _    <- postEndpoint(s"plugins.add?profile=$profileId", jsonBody(Seq("test:wrong-asset-checksum"))).flatMap(isOk200)
+                _    <- add("test:wrong-asset-checksum")
                 _    <- wsEndpoint(s"update?profile=$profileId",
                           respond = {
                             case msg: api.PromptMessage.InitialArgumentsForUpdate => ZIO.succeed(msg.responses("Default"))
@@ -1014,7 +1049,7 @@ object ApiSpecZIO extends ZIOSpecDefault {
           test("/update (dll invalid checksum)") {
             withTestResultRef(ZIO.scoped {
               for {
-                _    <- postEndpoint(s"plugins.add?profile=$profileId", jsonBody(Seq("test:dll-wrong-checksum"))).flatMap(isOk200)
+                _    <- add("test:dll-wrong-checksum")
                 _    <- wsEndpoint(s"update?profile=$profileId",
                           respond = {
                             case msg: api.PromptMessage.InitialArgumentsForUpdate => ZIO.succeed(msg.responses("Default"))
@@ -1031,42 +1066,52 @@ object ApiSpecZIO extends ZIOSpecDefault {
               } yield ()
             })
           },
-          test("/update (dll)") {
-            withTestResultRef(ZIO.scoped {
-              for {
-                _    <- postEndpoint(s"plugins.add?profile=$profileId", jsonBody(Seq("test:dll"))).flatMap(isOk200)
-                _    <- wsEndpoint(s"update?profile=$profileId",
-                          respond = {
-                            case msg: api.PromptMessage.InitialArgumentsForUpdate => ZIO.succeed(msg.responses("Default"))
-                            case msg: api.PromptMessage.ConfirmUpdatePlan => ZIO.succeed(msg.responses("Yes"))
-                            case msg: api.PromptMessage.ConfirmInstallation => ZIO.succeed(msg.responses("Yes"))
-                            case msg: api.PromptMessage.ConfirmInstallingDlls =>
-                              for {
-                                _  <- addTestResult(assertTrue(
-                                        msg.dllsInstalled.size == 1,
-                                        msg.dllsInstalled.head.url.toString == "http://localhost:8090/files/package-bFile.dll",
-                                        msg.dllsInstalled.head.assetMetadataUrl.toString == "http://localhost:8090/metadata/sc4pacAsset/memo-demo-package-file-b-dll/1.0/pkg.json",
-                                        msg.dllsInstalled.head.packageMetadataUrl.toString == "http://localhost:8090/metadata/test/dll/1/pkg.json",
-                                        msg.choices == Seq("Yes", "No"),
-                                      ))
-                              } yield msg.responses("Yes")
-                          },
-                          filter = msg => !msg.json("$type").str.startsWith("/progress"),
-                          checkMessages = queue => (for {
-                            _ <- queue.take.flatMap(f => addTestResult(assertTrue(f.json("$type").str == "/prompt/json/update/initial-arguments")))
-                            _ <- queue.take.flatMap(f => addTestResult(assertTrue(f.json("$type").str == "/prompt/confirmation/update/plan")))
-                            _ <- queue.take.flatMap(f => addTestResult(assertTrue(f.json("$type").str == "/prompt/confirmation/update/warnings")))
-                            _ <- queue.take.flatMap(f => addTestResult(assertTrue(f.json("$type").str == "/prompt/confirmation/update/installing-dlls")))
-                            _ <- queue.take.flatMap(f => addTestResult(assertTrue(f.json == jsonOk)))
-                          } yield ()),
-                        )
-              } yield ()
-            })
+          suite("/update (dll)") {
+            Chunk(true, false).map { disallowSymLinking0 =>  // tests both *symlinking* DLLs and *moving* DLLs (fallback on Windows)
+              test(if (disallowSymLinking0) "no symlink (for Windows)" else "symlink") {
+                withTestResultRef(ZIO.scoped {
+                  for {
+                    _    <- ZIO.whenDiscard(disallowSymLinking0)(ZIO.acquireRelease(ZIO.succeed { disallowSymLinking = true })(_ => ZIO.succeed { disallowSymLinking = false }))
+                    _    <- add("test:dll")
+                    _    <- wsEndpoint(s"update?profile=$profileId",
+                              respond = {
+                                case msg: api.PromptMessage.InitialArgumentsForUpdate => ZIO.succeed(msg.responses("Default"))
+                                case msg: api.PromptMessage.ConfirmUpdatePlan => ZIO.succeed(msg.responses("Yes"))
+                                case msg: api.PromptMessage.ConfirmInstallation => ZIO.succeed(msg.responses("Yes"))
+                                case msg: api.PromptMessage.ConfirmInstallingDlls =>
+                                  for {
+                                    _  <- addTestResult(assertTrue(
+                                            msg.dllsInstalled.size == 1,
+                                            msg.dllsInstalled.head.url.toString == "http://localhost:8090/files/package-bFile.dll",
+                                            msg.dllsInstalled.head.assetMetadataUrl.toString == "http://localhost:8090/metadata/sc4pacAsset/memo-demo-package-file-b-dll/1.0/pkg.json",
+                                            msg.dllsInstalled.head.packageMetadataUrl.toString == "http://localhost:8090/metadata/test/dll/1/pkg.json",
+                                            msg.choices == Seq("Yes", "No"),
+                                          ))
+                                  } yield msg.responses("Yes")
+                              },
+                              filter = msg => !msg.json("$type").str.startsWith("/progress"),
+                              checkMessages = queue => (for {
+                                _ <- queue.take.flatMap(f => addTestResult(assertTrue(f.json("$type").str == "/prompt/json/update/initial-arguments")))
+                                _ <- queue.take.flatMap(f => addTestResult(assertTrue(f.json("$type").str == "/prompt/confirmation/update/plan")))
+                                _ <- queue.take.flatMap(f => addTestResult(assertTrue(f.json("$type").str == "/prompt/confirmation/update/warnings")))
+                                _ <- queue.take.flatMap(f => addTestResult(assertTrue(f.json("$type").str == "/prompt/confirmation/update/installing-dlls")))
+                                _ <- queue.take.flatMap(f => addTestResult(assertTrue(f.json == jsonOk)))
+                              } yield ()),
+                            )
+                    pluginsRoot  <- ZIO.serviceWith[ProfilesDir](_.path / s"$profileId" / "plugins")
+                    dll          =  pluginsRoot / "package-bFile.dll"
+                    isLink       <- ZIO.attemptBlockingIO(os.isLink(dll))
+                    _            <- addTestResult(assertTrue(isLink != disallowSymLinking0))
+                    _            <- remove("test:dll") *> update  // cleanup
+                  } yield ()
+                })
+              }
+            }
           },
           test("/update (lua)") {
             withTestResultRef(ZIO.scoped {
               for {
-                _    <- postEndpoint(s"plugins.add?profile=$profileId", jsonBody(Seq("test:lua"))).flatMap(isOk200)
+                _    <- add("test:lua")
                 _    <- wsEndpoint(s"update?profile=$profileId",
                           respond = {
                             case msg: api.PromptMessage.InitialArgumentsForUpdate => ZIO.succeed(msg.responses("Default"))

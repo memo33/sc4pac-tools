@@ -173,7 +173,7 @@ object ChannelUtil {
         val link = tempJsonDir / MetadataRepository.latestSubPath(item.group, item.name)
         val linkTarget = os.rel / latest.repr
         try {
-          os.symlink(link, linkTarget)
+          os.symlink(link, linkTarget)  // TODO use fs.createSymLink
         } catch {
           case e: java.io.IOException =>
             if (Constants.debugMode) {

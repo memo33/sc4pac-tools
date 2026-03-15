@@ -15,7 +15,7 @@ import sc4pac.Resolution.{Dep, DepModule, DepAsset}
 
 // TODO Use `Runtime#reportFatal` or `Runtime.setReportFatal` to log fatal errors like stack overflow
 
-class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) {  // TODO defaults
+class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path, val fileSys: service.FileSystem) {  // TODO defaults
 
   val logger = context.logger
 
@@ -422,7 +422,7 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) {  // TODO d
             }
             val linkTarget = dll.subRelativeTo(stagingDirs.plugins)
             try {
-              os.symlink(dllLink, linkTarget)
+              fileSys.createSymLink(dllLink, linkTarget)
             } catch { case _: java.io.IOException =>
               // On Windows, symbolic link creation usually fails without elevated privileges
               // (see documentation of channel-build command), so instead of using a link,
@@ -569,7 +569,7 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path) {  // TODO d
             relPathOpt match {
               case Some(relPath) =>
                 logger.debug(s"Recreating symlink $dest -> $relPath")
-                os.symlink(dest, relPath)
+                fileSys.createSymLink(dest, relPath)
               case None =>  // e.g. moving directories between devices
                 os.copy.over(src, dest, replaceExisting = true, createFolders = true, followLinks = true)
             }
@@ -931,7 +931,7 @@ object Sc4pac {
   /** Limits parallel downloads to 2 (ST rejects too many connections). */
   private[sc4pac] def createThreadPool() = coursier.cache.internal.ThreadUtil.fixedThreadPool(size = 2)
 
-  def init(config: JD.Config, refreshChannels: Boolean = false): RIO[ProfileRoot & Logger & Ref[Option[FileCache]], Sc4pac] = {
+  def init(config: JD.Config, refreshChannels: Boolean = false): RIO[ProfileRoot & Logger & Ref[Option[FileCache]] & service.FileSystem, Sc4pac] = {
     // val refreshLogger = coursier.cache.loggers.RefreshLogger.create(System.err)  // TODO System.err seems to cause less collisions between refreshing progress and ordinary log messages
     val channelContentsTtl = if (refreshChannels) Constants.channelContentsTtlRefresh else Constants.channelContentsTtl  // 0 or 30 minutes
     for {
@@ -954,7 +954,8 @@ object Sc4pac {
       tempRoot  <- config.tempRootAbs
       profileRoot <- ZIO.service[ProfileRoot]
       context   = new ResolutionContext(repos, cache, logger, profileRoot.path)
-    } yield Sc4pac(context, tempRoot)
+      fileSys   <- ZIO.service[service.FileSystem]
+    } yield Sc4pac(context, tempRoot, fileSys)
   }
 
   def parseModules(modules: Seq[String]): Either[ErrStr, Seq[BareModule]] = {

@@ -31,6 +31,8 @@ trait FileSystem {
 
   def injectErrorInTest: zio.Task[Unit] = zio.ZIO.unit
 
+  def createSymLink(link: os.Path, dest: os.FilePath): Unit = os.symlink(link, dest)
+
 }
 object FileSystem {
   val live: zio.ULayer[FileSystem] = zio.ZLayer.succeed(new FileSystem {})
