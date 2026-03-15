@@ -15,6 +15,9 @@ trait Logger {
   /** For generic messages to the console, not user-facing. */
   def debug(msg: => String): Unit
 
+  /** Like `log`, but using `zio.Console` to reduce log output during tests. */
+  def logZIO(msg: String): zio.IO[java.io.IOException, Unit]
+
   def checkingArtifact(url: String, artifact: Artifact): Unit = {}
   def downloadingArtifact(url: String, artifact: Artifact): Unit = {}
   def downloadedArtifact(url: String, success: Boolean): Unit = {}
@@ -48,7 +51,7 @@ object Logger {
 /** A plain Coursier logger, since Coursier's RefreshLogger results in dropped
   * or invisible messages, hiding the downloading activity.
   */
-class CliLogger private (out: java.io.PrintStream, useColor: Boolean, isInteractive: Boolean) extends Logger {
+class CliLogger private (out: java.io.PrintStream, useColor: Boolean, isInteractive: Boolean, console: Option[zio.Console]) extends Logger {
 
   def green(msg: String): String = if (useColor) Console.GREEN + msg + Console.RESET else msg
   def red(msg: String): String = if (useColor) Console.RED + msg + Console.RESET else msg
@@ -85,6 +88,7 @@ class CliLogger private (out: java.io.PrintStream, useColor: Boolean, isInteract
     debug(s"[${if (include) Console.GREEN + "include" + grayEscape else "exclude"}] $entry")
 
   def log(msg: String): Unit = out.println(msg)
+  def logZIO(msg: String): zio.IO[java.io.IOException, Unit] = console.fold(ZIO.succeed(log(msg)))(_.printLine(msg))
   def warn(msg: String): Unit = out.println(yellowBold("Warning:") + " " + applyMarkdown(msg))
   def debug(msg: => String): Unit = if (Constants.debugMode) out.println(gray(s"--> $msg"))
 
@@ -235,16 +239,16 @@ class CliLogger private (out: java.io.PrintStream, useColor: Boolean, isInteract
 }
 
 object CliLogger {
-  def apply(): CliLogger = {
+  def apply(console: Option[zio.Console] = None): CliLogger = {
     val isInteractive = Constants.isInteractive
     try {
       val useColor = org.fusesource.jansi.AnsiConsole.out().getMode() != org.fusesource.jansi.AnsiMode.Strip
       // the streams have been installed in `main` (installation is required since jansi 2.1.0)
-      new CliLogger(org.fusesource.jansi.AnsiConsole.out(), useColor, isInteractive)  // this PrintStream uses color only if it is supported (so not on uncolored terminals and not when outputting to a file)
+      new CliLogger(org.fusesource.jansi.AnsiConsole.out(), useColor, isInteractive, console)  // this PrintStream uses color only if it is supported (so not on uncolored terminals and not when outputting to a file)
     } catch {
       case e: java.lang.UnsatisfiedLinkError =>  // in case something goes really wrong and no suitable jansi native library is included
         System.err.println(s"Using colorless output as fallback due to $e")
-      new CliLogger(System.out, useColor = false, isInteractive)
+      new CliLogger(System.out, useColor = false, isInteractive, console)
     }
   }
 }

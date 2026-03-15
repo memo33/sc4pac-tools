@@ -22,7 +22,7 @@ class ApiSpec extends AnyWordSpec with Matchers {
 
   "API endpoints" should {
     "have correct permission scopes" in {
-      val routes = api.Api(cli.Commands.ServerOptions()).tokenRoutes0
+      val routes = api.Api(cli.Commands.ServerOptions(), zio.Console.ConsoleLive).tokenRoutes0
       val realScope = routes.map{ case (route, scope) => route.routePattern -> scope }.toMap
 
       val regexEndpoint = raw"^([\*†‡])(GET|POST)\s+/([^?\s]+).*".r

@@ -62,8 +62,8 @@ object Find {
             // For simplicity, we do not store the new repositories -- this should
             // only affect few packages that have been updated, anyway.
             val repoUris = context.repositories.map(_.baseUri)
-            context.logger.log(s"Could not find metadata of ${dep.orgName}. Trying to update channel contents.")
             for {
+              _       <- context.logger.logZIO(s"Could not find metadata of ${dep.orgName}. Trying to update channel contents.")
               repos   <- Sc4pac.initializeRepositories(repoUris, context.cache, Constants.channelContentsTtlShort)  // 60 seconds
                           .provideSomeLayer(zio.ZLayer.succeed(ProfileRoot(context.profileRoot)))
                           .provideSomeLayer(zio.ZLayer.succeed(context.logger))

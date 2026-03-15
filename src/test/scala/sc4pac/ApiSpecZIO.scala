@@ -65,7 +65,10 @@ object ApiSpecZIO extends ZIOSpecDefault {
                           autoShutdown = false,
                           indent = 1,
                         )
-        fiber        <- cli.Commands.Server.serve(options, webAppDir = None)
+        // We create this layer here instead of in input environment to circumvent problems with non-live clock of `testEnvironment`.
+        // (Consider adding `++ zio.ZLayer.succeed(Clock.ClockLive)` in case it still causes problems here.)
+        console      <- ZIO.service[Console].provideSomeLayer(testEnvironment >>> TestConsole.silent)
+        fiber        <- cli.Commands.Server.serve(options, console, webAppDir = None)
         _            <- ZIO.addFinalizerExit(exitVal => ZIO.succeed {
                           println(s"...Sc4pac server on port ${options.port} has been shut down: $exitVal")
                         })

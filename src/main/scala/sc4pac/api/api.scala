@@ -13,7 +13,7 @@ import JD.{bareModuleRw, uriRw}
 import sc4pac.cli.Commands.Server.{ServerFiber, ServerConnection}
 
 
-class Api(val options: sc4pac.cli.Commands.ServerOptions) extends AuthMiddleware {
+class Api(val options: sc4pac.cli.Commands.ServerOptions, console: zio.Console) extends AuthMiddleware {
   private val connectionsSinceLaunch = java.util.concurrent.atomic.AtomicInteger(0)
   private val currentRepairPlan = java.util.concurrent.atomic.AtomicReference(Option.empty[PromptMessage.ConfirmRepairPlan])
 
@@ -89,7 +89,7 @@ class Api(val options: sc4pac.cli.Commands.ServerOptions) extends AuthMiddleware
   val jsonOk = jsonResponse(ResultMessage(ok = true))
 
   private val httpLogger = {
-    val cliLogger: Logger = CliLogger()
+    val cliLogger: Logger = CliLogger(Some(console))
     zio.ZLayer.succeed(cliLogger)
   }
 
@@ -343,7 +343,7 @@ class Api(val options: sc4pac.cli.Commands.ServerOptions) extends AuthMiddleware
                 pac          <- Sc4pac.init(pluginsSpec.config, refreshChannels = req.url.queryParams.getAll("refreshChannels").nonEmpty)
                 pluginsRoot  <- pluginsSpec.config.pluginsRootAbs
                 wsLogger     <- ZIO.service[WebSocketLogger]
-                _            <- ZIO.succeed(wsLogger.log(s"Updating... ($credentialsDesc)"))
+                _            <- wsLogger.logZIO(s"Updating... ($credentialsDesc)")
                 flag         <- ZIO.serviceWithZIO[WebSocketPrompter](_.promptForInitialArguments())
                                   .flatMap { args =>
                                     val variantSelection = VariantSelection(
@@ -360,7 +360,7 @@ class Api(val options: sc4pac.cli.Commands.ServerOptions) extends AuthMiddleware
               } yield ResultMessage(ok = true)
 
             val wsTask: zio.RIO[ProfileRouteEnv[ProfileRoot & Ref[Option[FileCache]]], Unit] =
-              WebSocketLogger.run(send = msg => wsChannel.send(Read(jsonFrame(msg)))) {
+              WebSocketLogger.run(console, send = msg => wsChannel.send(Read(jsonFrame(msg)))) {
                 for {
                   finalMsg <- updateTask.catchAll {
                                 case err: cli.Commands.ExpectedFailure => ZIO.succeed(expectedFailureMessage(err))
@@ -381,11 +381,11 @@ class Api(val options: sc4pac.cli.Commands.ServerOptions) extends AuthMiddleware
               leftDone = (result, fiberRight) =>  // normal shutdown
                 wsChannel.shutdown
                   .zipRight(fiberRight.await)
-                  .zipRight(ZIO.serviceWith[Logger](_.log("Update task completed.")))
+                  .zipRight(ZIO.serviceWithZIO[Logger](_.logZIO("Update task completed.")))
                   .zipRight(result),
               rightDone = (result, fiberLeft) =>  // cancel the update
                 fiberLeft.interruptFork  // forking is important here to be able to interrupt a blocked fiber
-                  .zipRight(ZIO.serviceWith[Logger](_.log("Update task was canceled.")))
+                  .zipRight(ZIO.serviceWithZIO[Logger](_.logZIO("Update task was canceled.")))
                   .zipRight(result)
             ).provideSomeLayer(httpLogger): zio.RIO[ProfileRouteEnv[ProfileRoot], Unit]
 
@@ -677,18 +677,17 @@ class Api(val options: sc4pac.cli.Commands.ServerOptions) extends AuthMiddleware
       Handler.webSocket { wsChannel =>
         val wsTask = for {
           logger <- ZIO.service[Logger]
-          _      <- ZIO.succeed(logger.log(s"Registered websocket connection $num."))
+          _      <- logger.logZIO(s"Registered websocket connection $num.")
           _      <- wsChannel.receiveAll {
                       case UserEventTriggered(UserEvent.HandshakeComplete) => ZIO.unit  // ignore expected event
                       case Unregistered =>
-                        logger.log(s"Unregistered websocket connection $num.")  // client closed websocket (results in websocket shutdown)
-                        ZIO.unit
+                        logger.logZIO(s"Unregistered websocket connection $num.")  // client closed websocket (results in websocket shutdown)
                       case event =>
                         logger.warn(s"Discarding unexpected websocket event: $event")
                         ZIO.unit  // discard all unexpected messages (and events) and continue receiving
                     }
           _      <- wsChannel.shutdown: zio.UIO[Unit]  // may be redundant
-          _      <- ZIO.succeed(logger.log(s"Shut down websocket connection $num."))
+          _      <- logger.logZIO(s"Shut down websocket connection $num.")
         } yield ()
 
         // keeps track of number of open connections
@@ -766,13 +765,13 @@ class Api(val options: sc4pac.cli.Commands.ServerOptions) extends AuthMiddleware
                     ).status(Status.BadRequest))
         profileRoot <- ZIO.service[ProfileRoot].provideSomeLayer(profileRootFromId(data.profiles(idx).id))
         logger <- ZIO.service[Logger]
-        _      <- ZIO.attemptBlockingIO {
-                    if (os.exists(profileRoot.path)) {
+        _      <- ZIO.whenZIODiscard(ZIO.attemptBlockingIO(os.exists(profileRoot.path))) {
+                    logger.logZIO(s"Deleting profile directory: ${profileRoot.path}") *>
+                    ZIO.attemptBlockingIO {
                       for (path <- os.list.stream(profileRoot.path).find(os.isDir)) {
                         // sanity check (profileRoot was created by GUI, so should only contain two .json files)
                         throw java.nio.file.AccessDeniedException(s"Failed to remove profile directory as it contains unexpected subdirectories: $path")
                       }
-                      logger.log(s"Deleting profile directory: ${profileRoot.path}")
                       Sc4pac.removeAllForcibly(profileRoot.path)
                     }
                   }

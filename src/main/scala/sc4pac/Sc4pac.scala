@@ -726,7 +726,7 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path, val fileSys:
                                 _           <- confirmStageResultOrAbort(stageResult)
                                 flag        <- publishToPlugins(stageResult, pluginsRoot, pluginsLockData, pluginsLockData1, plan)
                              } yield flag)
-          _               <- ZIO.attempt(logger.log("Done."))
+          _               <- logger.logZIO("Done.")
         } yield flag)
       } yield flagOpt.getOrElse(false)  // TODO decide what flag means
 

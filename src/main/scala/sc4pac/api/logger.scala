@@ -10,9 +10,10 @@ import JsonData as JD
 import Resolution.DepModule
 import PromptMessage.{yes, oneTwoCancel}
 
-class WebSocketLogger private (private[api] val queue: java.util.concurrent.LinkedBlockingQueue[WebSocketLogger.Event]) extends Logger {
+class WebSocketLogger private (private[api] val queue: java.util.concurrent.LinkedBlockingQueue[WebSocketLogger.Event], console: zio.Console) extends Logger {
 
   def log(msg: String): Unit = println(s"[info] $msg")
+  def logZIO(msg: String): zio.IO[java.io.IOException, Unit] = console.printLine(s"[info] $msg")
   def warn(msg: String): Unit = println(s"[warn] $msg")
   def debug(msg: => String): Unit = if (Constants.debugMode) println(s"[debug] $msg")
 
@@ -77,15 +78,16 @@ object WebSocketLogger {
     * The messages are buffered in a queue and are sent asynchronously from
     * another thread.
     */
-  def run[R : izumi.reflect.Tag, A](send: Message => Task[Unit])(task: zio.RIO[R & WebSocketLogger, A]): ZIO[R, Throwable, A] = {
+  def run[R : izumi.reflect.Tag, A](console: zio.Console, send: Message => Task[Unit])(task: zio.RIO[R & WebSocketLogger, A]): ZIO[R, Throwable, A] = {
     val queue = new java.util.concurrent.LinkedBlockingQueue[Event]
-    val logger = WebSocketLogger(queue)
+    val logger = WebSocketLogger(queue, console)
     val consume: Task[Boolean] =
       ZIO.iterate(true)(identity) { _ =>
         ZIO.attemptBlocking(queue.take()).flatMap(_ match {
           case Event.ShutDownMessageQueue =>
-            logger.log("Shutting down message queue.")
-            ZIO.succeed(false)
+            for {
+              _ <- logger.logZIO("Shutting down message queue.")
+            } yield false
           case Event.Plain(msg) =>
             for {
               _ <- send(msg)

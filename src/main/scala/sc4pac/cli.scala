@@ -839,8 +839,8 @@ object Commands {
       ZIO.logInfo(message).as(resp)
     })
 
-    def serve(options: ServerOptions, webAppDir: Option[(os.Path, java.net.URI)]): RIO[zio.Scope & service.FileSystem & TokenService, zio.Fiber[Throwable, Nothing]] = {
-      val api = sc4pac.api.Api(options)
+    def serve(options: ServerOptions, console: zio.Console, webAppDir: Option[(os.Path, java.net.URI)]): RIO[zio.Scope & service.FileSystem & TokenService, zio.Fiber[Throwable, Nothing]] = {
+      val api = sc4pac.api.Api(options, console)
       // Enabling CORS is important so that web browsers do not block the
       // request response for lack of the following response header:
       //     access-control-allow-origin: http://localhost:12345
@@ -935,7 +935,7 @@ object Commands {
           _  <- ZIO.unlessDiscard(options.clientSecretStdin || webAppDir.nonEmpty)(ZIO.succeed(println(s"Configured new client_secret=${clientSecret.stringValue}")))
           _  <- ZIO.scoped {
                   for {
-                    fiber    <- serve(options, webAppDir = webAppDir.map((_, createWebAppUrl(port = options.port, clientSecret))))
+                    fiber    <- serve(options, zio.Console.ConsoleLive, webAppDir = webAppDir.map((_, createWebAppUrl(port = options.port, clientSecret))))
                                   .provideSomeLayer(sc4pac.api.TokenService.live(
                                     ProfilesDir(profilesDir),
                                     zio.http.Credentials(Constants.sc4pacGuiClientId, clientSecret),
