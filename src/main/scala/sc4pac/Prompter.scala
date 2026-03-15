@@ -42,7 +42,11 @@ class CliPrompter(val logger: CliLogger, autoYes: Boolean) extends Prompter {
   def withAutoYes(yes: Boolean): CliPrompter = CliPrompter(logger, yes)
 
   def promptForVariant(message: api.PromptMessage.ChooseVariant): Task[String] = {
-    val prefix = s"${message.variantId} = "
+    val coloredVariantId = message.variantId.lastIndexWhere(_ == ':') match {
+      case -1 => message.variantId  // white
+      case idx => logger.gray(message.variantId.substring(0, idx + 1)) + message.variantId.substring(idx + 1)  // gray:white
+    }
+    val prefix = s"$coloredVariantId = "
     val columnWidth = message.choices.map(_.length).max + 8  // including some whitespace for separation, excluding prefix
     def renderDesc(value: String): String = {
       val desc: String = Seq[Option[String]](
@@ -51,9 +55,9 @@ class CliPrompter(val logger: CliLogger, autoYes: Boolean) extends Prompter {
         message.info.valueDescriptions.get(value),
       ).flatten.mkString(" ")
       if (desc.nonEmpty) {
-        prefix + value + (" " * ((columnWidth - value.length) max 0)) + desc
+        prefix + logger.yellow(value) + (" " * ((columnWidth - value.length) max 0)) + desc
       } else {
-        prefix + value
+        prefix + logger.yellow(value)
       }
     }
     val pretext = if (message.info.description.nonEmpty) f"%n%n${logger.applyMarkdown(message.info.description)}" else ""
