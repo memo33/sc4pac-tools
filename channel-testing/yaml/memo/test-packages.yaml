@@ -3,9 +3,9 @@ name: dll
 subfolder: 150-mods
 version: "1"
 assets:
-- assetId: memo-demo-package-file-b-dll
+- assetId: test-magic-dll
   withChecksum:
-  - include: package-bFile.dll
+  - include: /magic.dll
     sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
 
 ---
@@ -14,10 +14,16 @@ name: dll-wrong-checksum
 subfolder: 150-mods
 version: "1"
 assets:
-- assetId: memo-demo-package-file-b-dll
+- assetId: test-magic-dll
   withChecksum:
-  - include: package-bFile.dll
+  - include: /magic.dll
     sha256: ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+
+---
+assetId: test-magic-dll
+version: "1"
+lastModified: "2026-03-15T17:17:00Z"
+url: http://localhost:8090/files/magic.dll
 
 ---
 group: test

@@ -1,0 +1,11 @@
+{
+ "$type": "Asset",
+ "assetId": "test-magic-dll",
+ "version": "1",
+ "url": "http://localhost:8090/files/magic.dll",
+ "lastModified": "2026-03-15T17:17:00Z",
+ "requiredBy": [
+  "test:dll",
+  "test:dll-wrong-checksum"
+ ]
+}

@@ -1082,8 +1082,8 @@ object ApiSpecZIO extends ZIOSpecDefault {
                                   for {
                                     _  <- addTestResult(assertTrue(
                                             msg.dllsInstalled.size == 1,
-                                            msg.dllsInstalled.head.url.toString == "http://localhost:8090/files/package-bFile.dll",
-                                            msg.dllsInstalled.head.assetMetadataUrl.toString == "http://localhost:8090/metadata/sc4pacAsset/memo-demo-package-file-b-dll/1.0/pkg.json",
+                                            msg.dllsInstalled.head.url.toString == "http://localhost:8090/files/magic.dll",
+                                            msg.dllsInstalled.head.assetMetadataUrl.toString == "http://localhost:8090/metadata/sc4pacAsset/test-magic-dll/1/pkg.json",
                                             msg.dllsInstalled.head.packageMetadataUrl.toString == "http://localhost:8090/metadata/test/dll/1/pkg.json",
                                             msg.choices == Seq("Yes", "No"),
                                           ))
@@ -1099,7 +1099,7 @@ object ApiSpecZIO extends ZIOSpecDefault {
                               } yield ()),
                             )
                     pluginsRoot  <- ZIO.serviceWith[ProfilesDir](_.path / s"$profileId" / "plugins")
-                    dll          =  pluginsRoot / "package-bFile.dll"
+                    dll          =  pluginsRoot / "magic.dll"
                     isLink       <- ZIO.attemptBlockingIO(os.isLink(dll))
                     _            <- addTestResult(assertTrue(isLink != disallowSymLinking0))
                     _            <- remove("test:dll") *> update  // cleanup

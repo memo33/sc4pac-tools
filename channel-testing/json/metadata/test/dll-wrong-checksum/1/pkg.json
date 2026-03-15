@@ -9,10 +9,10 @@
    "variant": {},
    "assets": [
     {
-     "assetId": "memo-demo-package-file-b-dll",
+     "assetId": "test-magic-dll",
      "withChecksum": [
       {
-       "include": "package-bFile.dll",
+       "include": "/magic.dll",
        "sha256": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
       }
      ]

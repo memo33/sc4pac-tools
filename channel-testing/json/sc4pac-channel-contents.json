@@ -104,7 +104,7 @@
    ],
    "checksums": {
     "1": {
-     "sha256": "751cf4cf5c8f452dd02debfc00844d82fe5f5d899075c6f2d182d04cd0b07339"
+     "sha256": "1d5be99b05ba32f728f18859160d000524a2615de3c159711475579e1770e36f"
     }
    },
    "category": [
@@ -119,7 +119,7 @@
    ],
    "checksums": {
     "1": {
-     "sha256": "74fcf5973e93581dde4c509a56b95c95325e9ef5c529b167cca689b317cfeb3a"
+     "sha256": "d475ede00e68abd3ab7accbb73f4f6b887615775ae1de734b26bba74ac9633c1"
     }
    },
    "category": [
@@ -190,7 +190,7 @@
    ],
    "checksums": {
     "1.0": {
-     "sha256": "64de71132346cabdaeb6d9a1a7609645f951c212cda983b944bba279febbf409"
+     "sha256": "6ab4cba6df9775e08a5d498f026aeadef14834c0dbeb1896df19cc9b06ec1c80"
     }
    }
   },
@@ -251,6 +251,18 @@
    "checksums": {
     "1": {
      "sha256": "57e90be4986b4a4964ee866d1efc2212c793cfb4b471e81870a2079515a0edad"
+    }
+   }
+  },
+  {
+   "group": "sc4pacAsset",
+   "name": "test-magic-dll",
+   "versions": [
+    "1"
+   ],
+   "checksums": {
+    "1": {
+     "sha256": "bebe51b6d8d25037329846f3c6396c10ec2003c37e23467ca542996fbff0161a"
     }
    }
   },
