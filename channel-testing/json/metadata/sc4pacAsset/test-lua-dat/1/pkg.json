@@ -1,0 +1,10 @@
+{
+ "$type": "Asset",
+ "assetId": "test-lua-dat",
+ "version": "1",
+ "url": "http://localhost:8090/files/lua.dat",
+ "lastModified": "2026-03-15T18:36:00Z",
+ "requiredBy": [
+  "test:lua"
+ ]
+}

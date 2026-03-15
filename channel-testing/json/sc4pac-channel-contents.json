@@ -7,7 +7,7 @@
   "metadataSourceUrl": []
  },
  "stats": {
-  "totalPackageCount": 5,
+  "totalPackageCount": 9,
   "categories": [
    {
     "category": "100-props-textures",
@@ -15,7 +15,7 @@
    },
    {
     "category": "150-mods",
-    "count": 3
+    "count": 7
    }
   ]
  },
@@ -95,6 +95,66 @@
    "category": [
     "150-mods"
    ]
+  },
+  {
+   "group": "test",
+   "name": "dll",
+   "versions": [
+    "1"
+   ],
+   "checksums": {
+    "1": {
+     "sha256": "751cf4cf5c8f452dd02debfc00844d82fe5f5d899075c6f2d182d04cd0b07339"
+    }
+   },
+   "category": [
+    "150-mods"
+   ]
+  },
+  {
+   "group": "test",
+   "name": "dll-wrong-checksum",
+   "versions": [
+    "1"
+   ],
+   "checksums": {
+    "1": {
+     "sha256": "74fcf5973e93581dde4c509a56b95c95325e9ef5c529b167cca689b317cfeb3a"
+    }
+   },
+   "category": [
+    "150-mods"
+   ]
+  },
+  {
+   "group": "test",
+   "name": "lua",
+   "versions": [
+    "1"
+   ],
+   "checksums": {
+    "1": {
+     "sha256": "2c57140a5263275778fdee5d5cf3b1dbf9083947f8f0b1434daf4677a41b3f5c"
+    }
+   },
+   "category": [
+    "150-mods"
+   ]
+  },
+  {
+   "group": "test",
+   "name": "wrong-asset-checksum",
+   "versions": [
+    "1"
+   ],
+   "checksums": {
+    "1": {
+     "sha256": "68c047324351f974446eedc3dd35559f14a4a198f3997f490ca3666bb84f28ad"
+    }
+   },
+   "category": [
+    "150-mods"
+   ]
   }
  ],
  "assets": [
@@ -130,7 +190,7 @@
    ],
    "checksums": {
     "1.0": {
-     "sha256": "6ab4cba6df9775e08a5d498f026aeadef14834c0dbeb1896df19cc9b06ec1c80"
+     "sha256": "64de71132346cabdaeb6d9a1a7609645f951c212cda983b944bba279febbf409"
     }
    }
   },
@@ -179,6 +239,30 @@
    "checksums": {
     "1.0": {
      "sha256": "abaf0ad4fc2371b768b4a1f34371943b58ee52f322b671ce62bd0532176765b9"
+    }
+   }
+  },
+  {
+   "group": "sc4pacAsset",
+   "name": "test-lua-dat",
+   "versions": [
+    "1"
+   ],
+   "checksums": {
+    "1": {
+     "sha256": "57e90be4986b4a4964ee866d1efc2212c793cfb4b471e81870a2079515a0edad"
+    }
+   }
+  },
+  {
+   "group": "sc4pacAsset",
+   "name": "test-wrong-asset-checksum",
+   "versions": [
+    "1"
+   ],
+   "checksums": {
+    "1": {
+     "sha256": "e3708a6e1aae09cd7e5fb978ae20c9782398f486215c12d6501b6823429a8f12"
     }
    }
   }

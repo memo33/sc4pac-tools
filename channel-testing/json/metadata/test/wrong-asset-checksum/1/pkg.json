@@ -1,0 +1,23 @@
+{
+ "$type": "Package",
+ "group": "test",
+ "name": "wrong-asset-checksum",
+ "version": "1",
+ "subfolder": "150-mods",
+ "variants": [
+  {
+   "variant": {},
+   "assets": [
+    {
+     "assetId": "test-wrong-asset-checksum"
+    }
+   ]
+  }
+ ],
+ "metadataSource": [
+  "memo/test-packages.yaml"
+ ],
+ "channelLabel": [
+  "Test-Local"
+ ]
+}

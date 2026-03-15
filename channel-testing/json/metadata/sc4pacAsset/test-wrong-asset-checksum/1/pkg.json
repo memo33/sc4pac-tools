@@ -1,0 +1,13 @@
+{
+ "$type": "Asset",
+ "assetId": "test-wrong-asset-checksum",
+ "version": "1",
+ "url": "http://localhost:8090/files/package-aFile3.zip",
+ "lastModified": "2023-07-29T21:33:56Z",
+ "requiredBy": [
+  "test:wrong-asset-checksum"
+ ],
+ "checksum": {
+  "sha256": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+ }
+}

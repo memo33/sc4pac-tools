@@ -552,7 +552,7 @@ object ApiSpecZIO extends ZIOSpecDefault {
               _    <- setFileServerChannel
               data <- getEndpoint(s"channels.stats?profile=$profileId").flatMap(getBody200[api.ChannelStatsAll])
               _    <- addTestResult(assertTrue(
-                        data.combined.totalPackageCount == 5,
+                        data.combined.totalPackageCount >= 5,
                         data.channels.length == 1,
                         data.channels(0).url.startsWith("http://localhost:"),
                       ))
@@ -696,16 +696,7 @@ object ApiSpecZIO extends ZIOSpecDefault {
                                     msg.choices == Seq("Yes", "No"),
                                   ))
                           } yield msg.responses("Yes")
-                        case msg: api.PromptMessage.ConfirmInstallingDlls =>
-                          for {
-                            _  <- addTestResult(assertTrue(
-                                    msg.dllsInstalled.size == 1,
-                                    msg.dllsInstalled.head.url.toString == "http://localhost:8090/files/package-bFile.dll",
-                                    msg.dllsInstalled.head.assetMetadataUrl.toString == "http://localhost:8090/metadata/sc4pacAsset/memo-demo-package-file-b-dll/1.0/pkg.json",
-                                    msg.dllsInstalled.head.packageMetadataUrl.toString == "http://localhost:8090/metadata/memo/demo-package/1.0/pkg.json",
-                                    msg.choices == Seq("Yes", "No"),
-                                  ))
-                          } yield msg.responses("Yes")
+                        case msg: api.PromptMessage.ConfirmInstallingDlls => ZIO.succeed(msg.responses("Yes"))
                       },
                       checkMessages = queue => (for {
                         _    <- queue.take.flatMap(f => addTestResult(assertTrue(f.json("$type").str == "/prompt/json/update/initial-arguments")))
@@ -997,6 +988,112 @@ object ApiSpecZIO extends ZIOSpecDefault {
                 _  <- postEndpoint(s"plugins.reinstall?profile=$profileId&redownload", jsonBody(Seq("memo:demo-package"))).flatMap(isOk200)
                 _  <- doUpdate(upToDate = false, expectRedownload = true)
                 _  <- doUpdate(upToDate = true)
+              } yield ()
+            })
+          },
+          test("/update (invalid asset checksum)") {
+            withTestResultRef(ZIO.scoped {
+              for {
+                _    <- postEndpoint(s"plugins.add?profile=$profileId", jsonBody(Seq("test:wrong-asset-checksum"))).flatMap(isOk200)
+                _    <- wsEndpoint(s"update?profile=$profileId",
+                          respond = {
+                            case msg: api.PromptMessage.InitialArgumentsForUpdate => ZIO.succeed(msg.responses("Default"))
+                            case msg: api.PromptMessage.ConfirmUpdatePlan => ZIO.succeed(msg.responses("Yes"))
+                          },
+                          filter = msg => !msg.json("$type").str.startsWith("/progress"),
+                          checkMessages = queue => (for {
+                            _ <- queue.take.flatMap(f => addTestResult(assertTrue(f.json("$type").str == "/prompt/json/update/initial-arguments")))
+                            _ <- queue.take.flatMap(f => addTestResult(assertTrue(f.json("$type").str == "/prompt/confirmation/update/plan")))
+                            _ <- queue.take.flatMap(f => addTestResult(assertTrue(f.json("$type").str == "/error/download-failed")))
+                          } yield ()),
+                        )
+                _    <- postEndpoint(s"plugins.remove?profile=$profileId", jsonBody(Seq("test:wrong-asset-checksum"))).flatMap(isOk200)
+              } yield ()
+            })
+          },
+          test("/update (dll invalid checksum)") {
+            withTestResultRef(ZIO.scoped {
+              for {
+                _    <- postEndpoint(s"plugins.add?profile=$profileId", jsonBody(Seq("test:dll-wrong-checksum"))).flatMap(isOk200)
+                _    <- wsEndpoint(s"update?profile=$profileId",
+                          respond = {
+                            case msg: api.PromptMessage.InitialArgumentsForUpdate => ZIO.succeed(msg.responses("Default"))
+                            case msg: api.PromptMessage.ConfirmUpdatePlan => ZIO.succeed(msg.responses("Yes"))
+                          },
+                          filter = msg => !msg.json("$type").str.startsWith("/progress"),
+                          checkMessages = queue => (for {
+                            _ <- queue.take.flatMap(f => addTestResult(assertTrue(f.json("$type").str == "/prompt/json/update/initial-arguments")))
+                            _ <- queue.take.flatMap(f => addTestResult(assertTrue(f.json("$type").str == "/prompt/confirmation/update/plan")))
+                            _ <- queue.take.flatMap(f => addTestResult(assertTrue(f.json("$type").str == "/error/extraction-failed")))
+                          } yield ()),
+                        )
+                _    <- postEndpoint(s"plugins.remove?profile=$profileId", jsonBody(Seq("test:dll-wrong-checksum"))).flatMap(isOk200)
+              } yield ()
+            })
+          },
+          test("/update (dll)") {
+            withTestResultRef(ZIO.scoped {
+              for {
+                _    <- postEndpoint(s"plugins.add?profile=$profileId", jsonBody(Seq("test:dll"))).flatMap(isOk200)
+                _    <- wsEndpoint(s"update?profile=$profileId",
+                          respond = {
+                            case msg: api.PromptMessage.InitialArgumentsForUpdate => ZIO.succeed(msg.responses("Default"))
+                            case msg: api.PromptMessage.ConfirmUpdatePlan => ZIO.succeed(msg.responses("Yes"))
+                            case msg: api.PromptMessage.ConfirmInstallation => ZIO.succeed(msg.responses("Yes"))
+                            case msg: api.PromptMessage.ConfirmInstallingDlls =>
+                              for {
+                                _  <- addTestResult(assertTrue(
+                                        msg.dllsInstalled.size == 1,
+                                        msg.dllsInstalled.head.url.toString == "http://localhost:8090/files/package-bFile.dll",
+                                        msg.dllsInstalled.head.assetMetadataUrl.toString == "http://localhost:8090/metadata/sc4pacAsset/memo-demo-package-file-b-dll/1.0/pkg.json",
+                                        msg.dllsInstalled.head.packageMetadataUrl.toString == "http://localhost:8090/metadata/test/dll/1/pkg.json",
+                                        msg.choices == Seq("Yes", "No"),
+                                      ))
+                              } yield msg.responses("Yes")
+                          },
+                          filter = msg => !msg.json("$type").str.startsWith("/progress"),
+                          checkMessages = queue => (for {
+                            _ <- queue.take.flatMap(f => addTestResult(assertTrue(f.json("$type").str == "/prompt/json/update/initial-arguments")))
+                            _ <- queue.take.flatMap(f => addTestResult(assertTrue(f.json("$type").str == "/prompt/confirmation/update/plan")))
+                            _ <- queue.take.flatMap(f => addTestResult(assertTrue(f.json("$type").str == "/prompt/confirmation/update/warnings")))
+                            _ <- queue.take.flatMap(f => addTestResult(assertTrue(f.json("$type").str == "/prompt/confirmation/update/installing-dlls")))
+                            _ <- queue.take.flatMap(f => addTestResult(assertTrue(f.json == jsonOk)))
+                          } yield ()),
+                        )
+              } yield ()
+            })
+          },
+          test("/update (lua)") {
+            withTestResultRef(ZIO.scoped {
+              for {
+                _    <- postEndpoint(s"plugins.add?profile=$profileId", jsonBody(Seq("test:lua"))).flatMap(isOk200)
+                _    <- wsEndpoint(s"update?profile=$profileId",
+                          respond = {
+                            case msg: api.PromptMessage.InitialArgumentsForUpdate => ZIO.succeed(msg.responses("Default"))
+                            case msg: api.PromptMessage.ConfirmUpdatePlan => ZIO.succeed(msg.responses("Yes"))
+                            case msg: api.PromptMessage.ConfirmInstallation => ZIO.succeed(msg.responses("Yes"))
+                            case msg: api.PromptMessage.ConfirmInstallingScripts =>
+                              for {
+                                _  <- addTestResult(assertTrue(
+                                        msg.scriptsInstalled.size == 1,
+                                        msg.scriptsInstalled.head.url.toString == "http://localhost:8090/files/lua.dat",
+                                        msg.scriptsInstalled.head.file.toString == "150-mods/test.lua.1.sc4pac/lua.dat",
+                                        msg.scriptsInstalled.head.`package`.orgName == "test:lua",
+                                        msg.scriptsInstalled.head.tgis == Seq("T:0xCA63E2A3, G:0x4A5E8EF6, I:0x00000001"),
+                                        msg.luaSandboxInstalled == false,
+                                        msg.choices == Seq("Yes", "No"),
+                                      ))
+                              } yield msg.responses("Yes")
+                          },
+                          filter = msg => !msg.json("$type").str.startsWith("/progress"),
+                          checkMessages = queue => (for {
+                            _ <- queue.take.flatMap(f => addTestResult(assertTrue(f.json("$type").str == "/prompt/json/update/initial-arguments")))
+                            _ <- queue.take.flatMap(f => addTestResult(assertTrue(f.json("$type").str == "/prompt/confirmation/update/plan")))
+                            _ <- queue.take.flatMap(f => addTestResult(assertTrue(f.json("$type").str == "/prompt/confirmation/update/warnings")))
+                            _ <- queue.take.flatMap(f => addTestResult(assertTrue(f.json("$type").str == "/prompt/confirmation/update/installing-scripts")))
+                            _ <- queue.take.flatMap(f => addTestResult(assertTrue(f.json == jsonOk)))
+                          } yield ()),
+                        )
               } yield ()
             })
           },

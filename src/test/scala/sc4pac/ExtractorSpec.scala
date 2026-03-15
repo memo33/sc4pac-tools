@@ -212,6 +212,7 @@ class ExtractorSpec extends AnyWordSpec with Matchers {
 
     "not extract archive with checksum error" ignore {
       // this is a property of the FileCache/Downloader, not the Extractor, so needs to be tested elsewhere
+      // See ApiSpecZIO: /update (invalid asset checksum)
     }
 
     "handle conditional variants" in {

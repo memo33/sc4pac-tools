@@ -1,0 +1,29 @@
+{
+ "$type": "Package",
+ "group": "test",
+ "name": "dll-wrong-checksum",
+ "version": "1",
+ "subfolder": "150-mods",
+ "variants": [
+  {
+   "variant": {},
+   "assets": [
+    {
+     "assetId": "memo-demo-package-file-b-dll",
+     "withChecksum": [
+      {
+       "include": "package-bFile.dll",
+       "sha256": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+      }
+     ]
+    }
+   ]
+  }
+ ],
+ "metadataSource": [
+  "memo/test-packages.yaml"
+ ],
+ "channelLabel": [
+  "Test-Local"
+ ]
+}

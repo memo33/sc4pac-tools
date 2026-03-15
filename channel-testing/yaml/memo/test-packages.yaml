@@ -1,0 +1,50 @@
+group: test
+name: dll
+subfolder: 150-mods
+version: "1"
+assets:
+- assetId: memo-demo-package-file-b-dll
+  withChecksum:
+  - include: package-bFile.dll
+    sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+
+---
+group: test
+name: dll-wrong-checksum
+subfolder: 150-mods
+version: "1"
+assets:
+- assetId: memo-demo-package-file-b-dll
+  withChecksum:
+  - include: package-bFile.dll
+    sha256: ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+
+---
+group: test
+name: lua
+subfolder: 150-mods
+version: "1"
+assets:
+- assetId: test-lua-dat
+
+---
+assetId: test-lua-dat
+version: "1"
+lastModified: "2026-03-15T18:36:00Z"
+url: http://localhost:8090/files/lua.dat
+
+---
+assetId: test-wrong-asset-checksum
+version: "1"
+lastModified: "2023-07-29T21:33:56Z"
+url: http://localhost:8090/files/package-aFile3.zip
+checksum:
+  sha256: ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+
+---
+group: test
+name: wrong-asset-checksum
+subfolder: 150-mods
+version: "1"
+assets:
+- assetId: test-wrong-asset-checksum

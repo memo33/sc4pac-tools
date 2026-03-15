@@ -5,6 +5,8 @@
  "url": "http://localhost:8090/files/package-bFile.dll",
  "lastModified": "2024-03-15T17:43:14Z",
  "requiredBy": [
-  "memo:demo-package"
+  "memo:demo-package",
+  "test:dll",
+  "test:dll-wrong-checksum"
  ]
 }

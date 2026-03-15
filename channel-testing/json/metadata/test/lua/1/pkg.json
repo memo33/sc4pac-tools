@@ -1,0 +1,23 @@
+{
+ "$type": "Package",
+ "group": "test",
+ "name": "lua",
+ "version": "1",
+ "subfolder": "150-mods",
+ "variants": [
+  {
+   "variant": {},
+   "assets": [
+    {
+     "assetId": "test-lua-dat"
+    }
+   ]
+  }
+ ],
+ "metadataSource": [
+  "memo/test-packages.yaml"
+ ],
+ "channelLabel": [
+  "Test-Local"
+ ]
+}
