@@ -183,7 +183,7 @@ object ApiSpecZIO extends ZIOSpecDefault {
       _    <- ZIO.whenDiscard(resp.status.code != 200)(ZIO.fail(AssertionError(s"/plugins.add responded with ${resp.status.code}")))
     } yield ()
 
-  val update: RIO[JD.ProfileData & ServerOptions & Client & Ref[TestResult] & Scope & TestConfig, Unit] =
+  val update: RIO[JD.ProfileData & ServerOptions & Client & Ref[TestResult] & TestConfig, Unit] =
     for {
       id   <- ZIO.serviceWith[JD.ProfileData](_.id)
       _    <- wsEndpoint(s"update?profile=$id",
@@ -203,7 +203,7 @@ object ApiSpecZIO extends ZIOSpecDefault {
 
   class MsgFrame(val msg: api.Message, val json: ujson.Value)
 
-  def expectMessages(queue: Queue[MsgFrame])(typeOrJson: (String | ujson.Value)*): ZIO[Scope & Ref[TestResult], Throwable, Unit] =
+  def expectMessages(queue: Queue[MsgFrame])(typeOrJson: (String | ujson.Value)*): ZIO[Ref[TestResult], Throwable, Unit] =
     ZIO.foreachDiscard(typeOrJson) {
       case msgType: String => queue.take.flatMap(f => addTestResult(assertTrue(f.json("$type").str == msgType)))
       case json: ujson.Value => queue.take.flatMap(f => addTestResult(assertTrue(f.json == json)))
@@ -221,9 +221,9 @@ object ApiSpecZIO extends ZIOSpecDefault {
     path: String,
     respond: PartialFunction[api.PromptMessage, RIO[Ref[TestResult], api.ResponseMessage]],
     filter: MsgFrame => Boolean = _ => true,
-    checkMessages: Queue[MsgFrame] => ZIO[Scope & Ref[TestResult], Throwable, Unit] = _ => ZIO.unit,
-  ): ZIO[ServerOptions & Client & Ref[TestResult] & Scope & TestConfig, Throwable, Response] =
-    for {
+    checkMessages: Queue[MsgFrame] => ZIO[Ref[TestResult], Throwable, Unit] = _ => ZIO.unit,
+  ): ZIO[ServerOptions & Client & Ref[TestResult] & TestConfig, Throwable, Response] =
+    ZIO.scoped(for {
       url      <- endpoint(path).map(_.scheme(zio.http.Scheme.WS))
       promise  <- Promise.make[Throwable, Unit]  // abnormal exit of websocket channel
       queue    <- Queue.unbounded[MsgFrame]
@@ -276,7 +276,7 @@ object ApiSpecZIO extends ZIOSpecDefault {
                       case Exit.Failure(cause) => fiberLeft.interrupt.zipRight(ZIO.refailCause(cause))
                     },
                   ).zipRight(queue.shutdown)
-    } yield resp
+    } yield resp)
 
   val respondYes: PartialFunction[api.PromptMessage, RIO[Any, api.ResponseMessage]] = {
     case msg: api.PromptMessage.InitialArgumentsForUpdate => ZIO.succeed(msg.responses("Default"))
@@ -1077,7 +1077,7 @@ object ApiSpecZIO extends ZIOSpecDefault {
                 withTestResultRef(ZIO.scoped {
                   for {
                     _    <- ZIO.whenDiscard(disallowSymLinking0)(ZIO.acquireRelease(ZIO.succeed { disallowSymLinking = true })(_ => ZIO.succeed { disallowSymLinking = false }))
-                    _    <- add("test:dll")
+                    _    <- ZIO.acquireRelease(add("test:dll"))(_ => (remove("test:dll") *> update).orDie)
                     _    <- wsEndpoint(s"update?profile=$profileId",
                               respond = {
                                 case msg: api.PromptMessage.ConfirmInstallingDlls =>
@@ -1105,7 +1105,6 @@ object ApiSpecZIO extends ZIOSpecDefault {
                     dll          =  pluginsRoot / "magic.dll"
                     isLink       <- ZIO.attemptBlockingIO(os.isLink(dll))
                     _            <- addTestResult(assertTrue(isLink != disallowSymLinking0))
-                    _            <- remove("test:dll") *> update  // cleanup
                   } yield ()
                 })
               }
