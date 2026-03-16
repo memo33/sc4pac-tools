@@ -221,7 +221,7 @@ object ApiSpecZIO extends ZIOSpecDefault {
     path: String,
     respond: PartialFunction[api.PromptMessage, RIO[Ref[TestResult], api.ResponseMessage]],
     filter: MsgFrame => Boolean = _ => true,
-    checkMessages: Queue[MsgFrame] => ZIO[Ref[TestResult], Throwable, Unit] = _ => ZIO.unit,
+    checkMessages: Queue[MsgFrame] => ZIO[Ref[TestResult], Throwable, Unit] /*= _ => ZIO.unit*/,
   ): ZIO[ServerOptions & Client & Ref[TestResult] & TestConfig, Throwable, Response] =
     ZIO.scoped(for {
       url      <- endpoint(path).map(_.scheme(zio.http.Scheme.WS))
@@ -275,7 +275,11 @@ object ApiSpecZIO extends ZIOSpecDefault {
                         .zipRight(fiberLeft.interrupt)
                       case Exit.Failure(cause) => fiberLeft.interrupt.zipRight(ZIO.refailCause(cause))
                     },
-                  ).zipRight(queue.shutdown)
+                  ) *>
+                  ZIO.unlessZIODiscard(queue.isEmpty)(
+                    queue.take.flatMap(f => ZIO.fail(AssertionError(s"Websocket messages have not been fully consumed. Next message = ${f.json}")))
+                  ) *>
+                  queue.shutdown
     } yield resp)
 
   val respondYes: PartialFunction[api.PromptMessage, RIO[Any, api.ResponseMessage]] = {
