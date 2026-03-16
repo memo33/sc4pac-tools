@@ -187,12 +187,7 @@ object ApiSpecZIO extends ZIOSpecDefault {
     for {
       id   <- ZIO.serviceWith[JD.ProfileData](_.id)
       _    <- wsEndpoint(s"update?profile=$id",
-                respond = {
-                  case msg: api.PromptMessage.InitialArgumentsForUpdate => ZIO.succeed(msg.responses("Default"))
-                  case msg: api.PromptMessage.ConfirmUpdatePlan => ZIO.succeed(msg.responses("Yes"))
-                  case msg: api.PromptMessage.ConfirmInstallation => ZIO.succeed(msg.responses("Yes"))
-                  // add additional prompts when needed
-                },
+                respond = respondYes,
                 filter = msg => msg.json("$type").str.startsWith("/result"),
                 checkMessages = queue => (for {
                   _  <- queue.take.flatMap(f => addTestResult(assertTrue(f.json == jsonOk)))
@@ -207,6 +202,12 @@ object ApiSpecZIO extends ZIOSpecDefault {
     .map { buf => (buf.tail.reverse, buf.head) }
 
   class MsgFrame(val msg: api.Message, val json: ujson.Value)
+
+  def expectMessages(queue: Queue[MsgFrame])(typeOrJson: (String | ujson.Value)*): ZIO[Scope & Ref[TestResult], Throwable, Unit] =
+    ZIO.foreachDiscard(typeOrJson) {
+      case msgType: String => queue.take.flatMap(f => addTestResult(assertTrue(f.json("$type").str == msgType)))
+      case json: ujson.Value => queue.take.flatMap(f => addTestResult(assertTrue(f.json == json)))
+    }
 
   /** Calls a websocket endpoint, allowing to verify messages against
     * expectations:
@@ -276,6 +277,15 @@ object ApiSpecZIO extends ZIOSpecDefault {
                     },
                   ).zipRight(queue.shutdown)
     } yield resp
+
+  val respondYes: PartialFunction[api.PromptMessage, RIO[Any, api.ResponseMessage]] = {
+    case msg: api.PromptMessage.InitialArgumentsForUpdate => ZIO.succeed(msg.responses("Default"))
+    case msg: api.PromptMessage.ConfirmRemoveUnresolvablePackages => ZIO.succeed(msg.responses("Yes"))
+    case msg: api.PromptMessage.ConfirmUpdatePlan => ZIO.succeed(msg.responses("Yes"))
+    case msg: api.PromptMessage.ConfirmInstallation => ZIO.succeed(msg.responses("Yes"))
+    case msg: api.PromptMessage.ConfirmInstallingDlls => ZIO.succeed(msg.responses("Yes"))
+    case msg: api.PromptMessage.ConfirmInstallingScripts => ZIO.succeed(msg.responses("Yes"))
+  }
 
   def spec = suite[Spec[ProfilesDir & ServerOptions & Client & TestConfig, Throwable]]("ApiSpecZIO")(
     suite("/auth/token") {
@@ -668,11 +678,11 @@ object ApiSpecZIO extends ZIOSpecDefault {
                                    ))
                            } yield msg.responses("No")
                        },
-                       checkMessages = queue => (for {
-                         _ <- queue.take.flatMap(f => addTestResult(assertTrue(f.json("$type").str == "/prompt/json/update/initial-arguments")))
-                         _ <- queue.take.flatMap(f => addTestResult(assertTrue(f.json("$type").str == "/prompt/confirmation/update/plan")))
-                         _ <- queue.take.flatMap(f => addTestResult(assertTrue(f.json("$type").str == "/error/aborted")))
-                       } yield ()),
+                       checkMessages = expectMessages(_)(
+                         "/prompt/json/update/initial-arguments",
+                         "/prompt/confirmation/update/plan",
+                         "/error/aborted",
+                       ),
                      )
               } yield ()
             })
@@ -693,11 +703,11 @@ object ApiSpecZIO extends ZIOSpecDefault {
                                     ))
                             } yield msg.responses("Yes")
                         },
-                        checkMessages = queue => (for {
-                          _  <- queue.take.flatMap(f => addTestResult(assertTrue(f.json("$type").str == "/prompt/json/update/initial-arguments")))
-                          _  <- queue.take.flatMap(f => addTestResult(assertTrue(f.json("$type").str == "/prompt/confirmation/update/plan")))
-                          _  <- queue.take.flatMap(f => addTestResult(assertTrue(f.json == jsonOk)))
-                        } yield ()),
+                        checkMessages = expectMessages(_)(
+                          "/prompt/json/update/initial-arguments",
+                          "/prompt/confirmation/update/plan",
+                          jsonOk,
+                        ),
                       )
               } yield ()
             })
@@ -706,7 +716,7 @@ object ApiSpecZIO extends ZIOSpecDefault {
             withTestResultRef(ZIO.scoped {
               for {
                 _ <- removeAll
-                _ <- postEndpoint(s"plugins.add?profile=$profileId", jsonBody(Seq("memo:demo-package"))).flatMap(isOk200)
+                _ <- add("memo:demo-package")
                 _ <- wsEndpoint(s"update?profile=$profileId",
                         respond = {
                         case msg: api.PromptMessage.InitialArgumentsForUpdate => ZIO.succeed(msg.responses("Default"))
@@ -777,11 +787,12 @@ object ApiSpecZIO extends ZIOSpecDefault {
                                   sums("/progress/download/started") == 6,
                                 ))
                         _    <- addTestResult(assertTrue(f.json("$type").str == "/progress/update/extraction"))
-                        _    <- queue.take.flatMap(f => addTestResult(assertTrue(f.json("$type").str == "/progress/update/extraction")))
-                        _    <- queue.take.flatMap(f => addTestResult(assertTrue(f.json("$type").str == "/progress/update/extraction")))
-                        _    <- queue.take.flatMap(f => addTestResult(assertTrue(f.json("$type").str == "/prompt/confirmation/update/warnings")))
-                        _    <- queue.take.flatMap(f => addTestResult(assertTrue(f.json("$type").str == "/prompt/confirmation/update/installing-dlls")))
-                        _    <- queue.take.flatMap(f => addTestResult(assertTrue(f.json == jsonOk)))
+                        _    <- expectMessages(queue)(
+                                  "/progress/update/extraction",
+                                  "/progress/update/extraction",
+                                  "/prompt/confirmation/update/warnings",
+                                  "/prompt/confirmation/update/installing-dlls",
+                                  jsonOk)
                       } yield ()),
                     )
               } yield ()
@@ -850,14 +861,14 @@ object ApiSpecZIO extends ZIOSpecDefault {
                                 } yield msg.responses("Yes")
                             },
                             filter = msg => !msg.json("$type").str.startsWith("/progress/download"),
-                            checkMessages = queue => (for {
-                              _ <- queue.take.flatMap(f => addTestResult(assertTrue(f.json("$type").str == "/prompt/json/update/initial-arguments")))
-                              _ <- queue.take.flatMap(f => addTestResult(assertTrue(f.json("$type").str == "/prompt/choice/update/variant")))
-                              _ <- queue.take.flatMap(f => addTestResult(assertTrue(f.json("$type").str == "/prompt/confirmation/update/plan")))
-                              _ <- queue.take.flatMap(f => addTestResult(assertTrue(f.json("$type").str == "/progress/update/extraction")))
-                              _ <- queue.take.flatMap(f => addTestResult(assertTrue(f.json("$type").str == "/prompt/confirmation/update/warnings")))
-                              _ <- queue.take.flatMap(f => addTestResult(assertTrue(f.json == jsonOk)))
-                            } yield ()),
+                            checkMessages = expectMessages(_)(
+                              "/prompt/json/update/initial-arguments",
+                              "/prompt/choice/update/variant",
+                              "/prompt/confirmation/update/plan",
+                              "/progress/update/extraction",
+                              "/prompt/confirmation/update/warnings",
+                              jsonOk,
+                            ),
                           )
               } yield ()
             })
@@ -865,7 +876,7 @@ object ApiSpecZIO extends ZIOSpecDefault {
           test("/update (conditional variants)") {
             withTestResultRef(ZIO.scoped {
               for {
-                _    <- add("test:conditional-variants")
+                _    <- ZIO.acquireRelease(add("test:conditional-variants"))(_ => remove("test:conditional-variants").orDie)
                 _    <- wsEndpoint(s"update?profile=$profileId",
                           respond = {
                             case msg: api.PromptMessage.InitialArgumentsForUpdate => ZIO.succeed(msg.responses("Default"))
@@ -889,18 +900,17 @@ object ApiSpecZIO extends ZIOSpecDefault {
                               } yield msg.responses("No")
                           },
                           filter = msg => !msg.json("$type").str.startsWith("/progress/"),
-                          checkMessages = queue => (for {
-                            _ <- queue.take.flatMap(f => addTestResult(assertTrue(f.json("$type").str == "/prompt/json/update/initial-arguments")))
-                            _ <- queue.take.flatMap(f => addTestResult(assertTrue(f.json("$type").str == "/prompt/choice/update/variant")))
-                            _ <- queue.take.flatMap(f => addTestResult(assertTrue(f.json("$type").str == "/prompt/choice/update/variant")))
-                            _ <- queue.take.flatMap(f => addTestResult(assertTrue(f.json("$type").str == "/prompt/choice/update/variant")))
-                            _ <- queue.take.flatMap(f => addTestResult(assertTrue(f.json("$type").str == "/prompt/choice/update/variant")))
-                            _ <- queue.take.flatMap(f => addTestResult(assertTrue(f.json("$type").str == "/prompt/choice/update/variant")))
-                            _ <- queue.take.flatMap(f => addTestResult(assertTrue(f.json("$type").str == "/prompt/confirmation/update/plan")))
-                            _ <- queue.take.flatMap(f => addTestResult(assertTrue(f.json("$type").str == "/error/aborted")))
-                          } yield ()),
+                          checkMessages = expectMessages(_)(
+                            "/prompt/json/update/initial-arguments",
+                            "/prompt/choice/update/variant",
+                            "/prompt/choice/update/variant",
+                            "/prompt/choice/update/variant",
+                            "/prompt/choice/update/variant",
+                            "/prompt/choice/update/variant",
+                            "/prompt/confirmation/update/plan",
+                            "/error/aborted",
+                          ),
                         )
-                _    <- postEndpoint(s"plugins.remove?profile=$profileId", jsonBody(Seq("test:conditional-variants"))).flatMap(isOk200)
               } yield ()
             })
           },
@@ -922,23 +932,23 @@ object ApiSpecZIO extends ZIOSpecDefault {
                 _    <- wsEndpoint(s"update?profile=$profileId",
                           respond = respond("No"),
                           filter = msg => !msg.json("$type").str.startsWith("/progress/download"),
-                          checkMessages = queue => (for {
-                            _ <- queue.take.flatMap(f => addTestResult(assertTrue(f.json("$type").str == "/prompt/json/update/initial-arguments")))
-                            _ <- queue.take.flatMap(f => addTestResult(assertTrue(f.json("$type").str == "/prompt/confirmation/update/remove-unresolvable-packages")))
-                            _ <- queue.take.flatMap(f => addTestResult(assertTrue(f.json("$type").str == "/error/unresolvable-dependencies")))
-                          } yield ()),
+                          checkMessages = expectMessages(_)(
+                            "/prompt/json/update/initial-arguments",
+                            "/prompt/confirmation/update/remove-unresolvable-packages",
+                            "/error/unresolvable-dependencies",
+                          ),
                         )
                 data <- getEndpoint(s"plugins.added.list?profile=$profileId").flatMap(getBody200[Seq[String]])
                 _    <- addTestResult(assertTrue(data.contains("test:nonexistent")))
                 _    <- wsEndpoint(s"update?profile=$profileId",
                           respond = respond("Yes"),
                           filter = msg => !msg.json("$type").str.startsWith("/progress/download"),
-                          checkMessages = queue => (for {
-                            _ <- queue.take.flatMap(f => addTestResult(assertTrue(f.json("$type").str == "/prompt/json/update/initial-arguments")))
-                            _ <- queue.take.flatMap(f => addTestResult(assertTrue(f.json("$type").str == "/prompt/confirmation/update/remove-unresolvable-packages")))
-                            _ <- queue.take.flatMap(f => addTestResult(assertTrue(f.json("$type").str == "/prompt/confirmation/update/plan")))
-                            _ <- queue.take.flatMap(f => addTestResult(assertTrue(f.json == jsonOk)))
-                          } yield ()),
+                          checkMessages = expectMessages(_)(
+                            "/prompt/json/update/initial-arguments",
+                            "/prompt/confirmation/update/remove-unresolvable-packages",
+                            "/prompt/confirmation/update/plan",
+                            jsonOk,
+                          ),
                         )
                 data <- getEndpoint(s"plugins.added.list?profile=$profileId").flatMap(getBody200[Seq[String]])
                 _    <- addTestResult(assertTrue(!data.contains("test:nonexistent")))
@@ -966,23 +976,23 @@ object ApiSpecZIO extends ZIOSpecDefault {
                 _    <- wsEndpoint(s"update?profile=$profileId",
                           respond = respond(cancel = true),
                           filter = msg => !msg.json("$type").str.startsWith("/progress/download"),
-                          checkMessages = queue => (for {
-                            _ <- queue.take.flatMap(f => addTestResult(assertTrue(f.json("$type").str == "/prompt/json/update/initial-arguments")))
-                            _ <- queue.take.flatMap(f => addTestResult(assertTrue(f.json("$type").str == "/prompt/choice/update/remove-conflicting-packages")))
-                            _ <- queue.take.flatMap(f => addTestResult(assertTrue(f.json("$type").str == "/error/conflicting-packages")))
-                          } yield ()),
+                          checkMessages = expectMessages(_)(
+                            "/prompt/json/update/initial-arguments",
+                            "/prompt/choice/update/remove-conflicting-packages",
+                            "/error/conflicting-packages",
+                          ),
                         )
                 data <- getEndpoint(s"plugins.added.list?profile=$profileId").flatMap(getBody200[Seq[String]])
                 _    <- addTestResult(assertTrue(data.contains("memo:conflicting-package")))
                 _    <- wsEndpoint(s"update?profile=$profileId",
                           respond = respond(cancel = false),
                           filter = msg => !msg.json("$type").str.startsWith("/progress/download"),
-                          checkMessages = queue => (for {
-                            _ <- queue.take.flatMap(f => addTestResult(assertTrue(f.json("$type").str == "/prompt/json/update/initial-arguments")))
-                            _ <- queue.take.flatMap(f => addTestResult(assertTrue(f.json("$type").str == "/prompt/choice/update/remove-conflicting-packages")))
-                            _ <- queue.take.flatMap(f => addTestResult(assertTrue(f.json("$type").str == "/prompt/confirmation/update/plan")))
-                            _ <- queue.take.flatMap(f => addTestResult(assertTrue(f.json == jsonOk)))
-                          } yield ()),
+                          checkMessages = expectMessages(_)(
+                            "/prompt/json/update/initial-arguments",
+                            "/prompt/choice/update/remove-conflicting-packages",
+                            "/prompt/confirmation/update/plan",
+                            jsonOk,
+                          ),
                         )
                 data <- getEndpoint(s"plugins.added.list?profile=$profileId").flatMap(getBody200[Seq[String]])
                 _    <- addTestResult(assertTrue(!data.contains("memo:conflicting-package")))
@@ -992,7 +1002,6 @@ object ApiSpecZIO extends ZIOSpecDefault {
           test("/update (reinstall)") {
             withTestResultRef(ZIO.scoped {
               def respond(upToDate: Boolean): PartialFunction[api.PromptMessage, RIO[Ref[TestResult], api.ResponseMessage]] = {
-                case msg: api.PromptMessage.InitialArgumentsForUpdate => ZIO.succeed(msg.responses("Default"))
                 case msg: api.PromptMessage.ConfirmUpdatePlan =>
                   for {
                     _  <- addTestResult(
@@ -1004,8 +1013,9 @@ object ApiSpecZIO extends ZIOSpecDefault {
                             )
                           )
                   } yield msg.responses("Yes")
-                case msg: api.PromptMessage.ConfirmInstallation => ZIO.succeed(msg.responses("Yes"))
-                case msg: api.PromptMessage.ConfirmInstallingDlls => ZIO.succeed(msg.responses("Yes"))
+                case msg: (api.PromptMessage.InitialArgumentsForUpdate
+                        | api.PromptMessage.ConfirmInstallation
+                        | api.PromptMessage.ConfirmInstallingDlls) => respondYes(msg)
               }
               def doUpdate(upToDate: Boolean, expectRedownload: Boolean = false) =
                 wsEndpoint(s"update?profile=$profileId",
@@ -1032,40 +1042,32 @@ object ApiSpecZIO extends ZIOSpecDefault {
           test("/update (invalid asset checksum)") {
             withTestResultRef(ZIO.scoped {
               for {
-                _    <- add("test:wrong-asset-checksum")
+                _    <- ZIO.acquireRelease(add("test:wrong-asset-checksum"))(_ => remove("test:wrong-asset-checksum").orDie)
                 _    <- wsEndpoint(s"update?profile=$profileId",
-                          respond = {
-                            case msg: api.PromptMessage.InitialArgumentsForUpdate => ZIO.succeed(msg.responses("Default"))
-                            case msg: api.PromptMessage.ConfirmUpdatePlan => ZIO.succeed(msg.responses("Yes"))
-                          },
+                          respond = respondYes,
                           filter = msg => !msg.json("$type").str.startsWith("/progress"),
-                          checkMessages = queue => (for {
-                            _ <- queue.take.flatMap(f => addTestResult(assertTrue(f.json("$type").str == "/prompt/json/update/initial-arguments")))
-                            _ <- queue.take.flatMap(f => addTestResult(assertTrue(f.json("$type").str == "/prompt/confirmation/update/plan")))
-                            _ <- queue.take.flatMap(f => addTestResult(assertTrue(f.json("$type").str == "/error/download-failed")))
-                          } yield ()),
+                          checkMessages = expectMessages(_)(
+                            "/prompt/json/update/initial-arguments",
+                            "/prompt/confirmation/update/plan",
+                            "/error/download-failed",
+                          ),
                         )
-                _    <- postEndpoint(s"plugins.remove?profile=$profileId", jsonBody(Seq("test:wrong-asset-checksum"))).flatMap(isOk200)
               } yield ()
             })
           },
           test("/update (dll invalid checksum)") {
             withTestResultRef(ZIO.scoped {
               for {
-                _    <- add("test:dll-wrong-checksum")
+                _    <- ZIO.acquireRelease(add("test:dll-wrong-checksum"))(_ => remove("test:dll-wrong-checksum").orDie)
                 _    <- wsEndpoint(s"update?profile=$profileId",
-                          respond = {
-                            case msg: api.PromptMessage.InitialArgumentsForUpdate => ZIO.succeed(msg.responses("Default"))
-                            case msg: api.PromptMessage.ConfirmUpdatePlan => ZIO.succeed(msg.responses("Yes"))
-                          },
+                          respond = respondYes,
                           filter = msg => !msg.json("$type").str.startsWith("/progress"),
-                          checkMessages = queue => (for {
-                            _ <- queue.take.flatMap(f => addTestResult(assertTrue(f.json("$type").str == "/prompt/json/update/initial-arguments")))
-                            _ <- queue.take.flatMap(f => addTestResult(assertTrue(f.json("$type").str == "/prompt/confirmation/update/plan")))
-                            _ <- queue.take.flatMap(f => addTestResult(assertTrue(f.json("$type").str == "/error/extraction-failed")))
-                          } yield ()),
+                          checkMessages = expectMessages(_)(
+                            "/prompt/json/update/initial-arguments",
+                            "/prompt/confirmation/update/plan",
+                            "/error/extraction-failed",
+                          ),
                         )
-                _    <- postEndpoint(s"plugins.remove?profile=$profileId", jsonBody(Seq("test:dll-wrong-checksum"))).flatMap(isOk200)
               } yield ()
             })
           },
@@ -1078,9 +1080,6 @@ object ApiSpecZIO extends ZIOSpecDefault {
                     _    <- add("test:dll")
                     _    <- wsEndpoint(s"update?profile=$profileId",
                               respond = {
-                                case msg: api.PromptMessage.InitialArgumentsForUpdate => ZIO.succeed(msg.responses("Default"))
-                                case msg: api.PromptMessage.ConfirmUpdatePlan => ZIO.succeed(msg.responses("Yes"))
-                                case msg: api.PromptMessage.ConfirmInstallation => ZIO.succeed(msg.responses("Yes"))
                                 case msg: api.PromptMessage.ConfirmInstallingDlls =>
                                   for {
                                     _  <- addTestResult(assertTrue(
@@ -1091,15 +1090,16 @@ object ApiSpecZIO extends ZIOSpecDefault {
                                             msg.choices == Seq("Yes", "No"),
                                           ))
                                   } yield msg.responses("Yes")
+                                case msg => respondYes(msg)
                               },
                               filter = msg => !msg.json("$type").str.startsWith("/progress"),
-                              checkMessages = queue => (for {
-                                _ <- queue.take.flatMap(f => addTestResult(assertTrue(f.json("$type").str == "/prompt/json/update/initial-arguments")))
-                                _ <- queue.take.flatMap(f => addTestResult(assertTrue(f.json("$type").str == "/prompt/confirmation/update/plan")))
-                                _ <- queue.take.flatMap(f => addTestResult(assertTrue(f.json("$type").str == "/prompt/confirmation/update/warnings")))
-                                _ <- queue.take.flatMap(f => addTestResult(assertTrue(f.json("$type").str == "/prompt/confirmation/update/installing-dlls")))
-                                _ <- queue.take.flatMap(f => addTestResult(assertTrue(f.json == jsonOk)))
-                              } yield ()),
+                              checkMessages = expectMessages(_)(
+                                "/prompt/json/update/initial-arguments",
+                                "/prompt/confirmation/update/plan",
+                                "/prompt/confirmation/update/warnings",
+                                "/prompt/confirmation/update/installing-dlls",
+                                jsonOk,
+                              ),
                             )
                     pluginsRoot  <- ZIO.serviceWith[ProfilesDir](_.path / s"$profileId" / "plugins")
                     dll          =  pluginsRoot / "magic.dll"
@@ -1117,9 +1117,6 @@ object ApiSpecZIO extends ZIOSpecDefault {
                 _    <- add("test:lua")
                 _    <- wsEndpoint(s"update?profile=$profileId",
                           respond = {
-                            case msg: api.PromptMessage.InitialArgumentsForUpdate => ZIO.succeed(msg.responses("Default"))
-                            case msg: api.PromptMessage.ConfirmUpdatePlan => ZIO.succeed(msg.responses("Yes"))
-                            case msg: api.PromptMessage.ConfirmInstallation => ZIO.succeed(msg.responses("Yes"))
                             case msg: api.PromptMessage.ConfirmInstallingScripts =>
                               for {
                                 _  <- addTestResult(assertTrue(
@@ -1132,15 +1129,16 @@ object ApiSpecZIO extends ZIOSpecDefault {
                                         msg.choices == Seq("Yes", "No"),
                                       ))
                               } yield msg.responses("Yes")
+                            case msg => respondYes(msg)
                           },
                           filter = msg => !msg.json("$type").str.startsWith("/progress"),
-                          checkMessages = queue => (for {
-                            _ <- queue.take.flatMap(f => addTestResult(assertTrue(f.json("$type").str == "/prompt/json/update/initial-arguments")))
-                            _ <- queue.take.flatMap(f => addTestResult(assertTrue(f.json("$type").str == "/prompt/confirmation/update/plan")))
-                            _ <- queue.take.flatMap(f => addTestResult(assertTrue(f.json("$type").str == "/prompt/confirmation/update/warnings")))
-                            _ <- queue.take.flatMap(f => addTestResult(assertTrue(f.json("$type").str == "/prompt/confirmation/update/installing-scripts")))
-                            _ <- queue.take.flatMap(f => addTestResult(assertTrue(f.json == jsonOk)))
-                          } yield ()),
+                          checkMessages = expectMessages(_)(
+                            "/prompt/json/update/initial-arguments",
+                            "/prompt/confirmation/update/plan",
+                            "/prompt/confirmation/update/warnings",
+                            "/prompt/confirmation/update/installing-scripts",
+                            jsonOk,
+                          ),
                         )
               } yield ()
             })
@@ -1150,15 +1148,9 @@ object ApiSpecZIO extends ZIOSpecDefault {
               for {
                 _    <- removeAll
                 _    <- wsEndpoint(s"update?profile=$profileId",
-                          respond = {
-                            case msg: api.PromptMessage.InitialArgumentsForUpdate => ZIO.succeed(msg.responses("Default"))
-                            case msg: api.PromptMessage.ConfirmUpdatePlan => ZIO.succeed(msg.responses("Yes"))
-                            case msg: api.PromptMessage.ConfirmInstallation => ZIO.succeed(msg.responses("Yes"))
-                          },
+                          respond = respondYes,
                           filter = msg => msg.json("$type").str.startsWith("/result"),
-                          checkMessages = queue => (for {
-                            _ <- queue.take.flatMap(f => addTestResult(assertTrue(f.json == jsonOk)))
-                          } yield ()),
+                          checkMessages = expectMessages(_)(jsonOk),
                         )
                 data <- getEndpoint(s"plugins.added.list?profile=$profileId").flatMap(getBody200[Seq[String]])
                 _    <- addTestResult(assertTrue(data == Nil))
