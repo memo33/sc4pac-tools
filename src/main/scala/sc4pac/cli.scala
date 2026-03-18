@@ -27,7 +27,7 @@ object Commands {
 
   val cliEnvironment = {
     val logger = CliLogger()
-    zio.ZEnvironment(ProfileRoot(os.pwd), logger, CliPrompter(logger, autoYes = false))
+    zio.ZEnvironment(Profile(os.pwd), logger, CliPrompter(logger, autoYes = false))
   }
   val cliLayer =
     zio.ZLayer(Ref.make(Option.empty[FileCache]))
@@ -375,7 +375,7 @@ object Commands {
       runMainExit(task.provideLayer(cliLayer), exit)
     }
 
-    def iterateInstalled(pluginsSpec: JD.PluginsSpec): zio.RIO[ProfileRoot, Iterator[(DepModule, Boolean)]] = {
+    def iterateInstalled(pluginsSpec: JD.PluginsSpec): zio.RIO[Profile, Iterator[(DepModule, Boolean)]] = {
       for (installed <- JD.PluginsLock.listInstalled) yield {
         val sorted = installed.sortBy(mod => (mod.group.value, mod.name.value))
         val explicit: Set[BareModule] = pluginsSpec.explicit.toSet
@@ -428,7 +428,7 @@ object Commands {
       }
     }
 
-    def removeAndWrite(data: JD.PluginsSpec, selected: Seq[String]): zio.RIO[ProfileRoot, Unit] = {
+    def removeAndWrite(data: JD.PluginsSpec, selected: Seq[String]): zio.RIO[Profile, Unit] = {
       val data2 = data.copy(config = data.config.copy(variant = data.config.variant -- selected))
       for {
         path <- JD.PluginsSpec.pathURIO

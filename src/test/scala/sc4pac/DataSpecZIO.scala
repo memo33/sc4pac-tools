@@ -10,7 +10,7 @@ import JsonData as JD
 
 object JsonDataSpecZIO extends ZIOSpecDefault {
 
-  val profileLayer = zio.ZLayer.succeed(ProfileRoot(os.pwd / "target" / "profiles" / "1"))
+  val profileLayer = zio.ZLayer.succeed(Profile(os.pwd / "target" / "profiles" / "1"))
 
   def dummyFileSystem(overrideDirs: Boolean, env: Map[String, String] = Map.empty) = {
     val env0 = env

@@ -106,7 +106,7 @@ url: dummy
 
       val logger = CliLogger()
       val cache = FileCache((tmpDir / "cache").toIO, Sc4pac.createThreadPool())
-      val context = new ResolutionContext(repos, cache, logger, tmpDir / "profile")
+      val context = new ResolutionContext(repos, cache, logger, Profile(tmpDir / "profile"))
       val layer = zio.ZLayer.succeed(context)
       import JsonData.bareModuleRw
 

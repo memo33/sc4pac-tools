@@ -65,7 +65,7 @@ object Find {
             for {
               _       <- context.logger.logZIO(s"Could not find metadata of ${dep.orgName}. Trying to update channel contents.")
               repos   <- Sc4pac.initializeRepositories(repoUris, context.cache, Constants.channelContentsTtlShort)  // 60 seconds
-                          .provideSomeLayer(zio.ZLayer.succeed(ProfileRoot(context.profileRoot)))
+                          .provideSomeLayer(zio.ZLayer.succeed(Profile(context.profile.root)))
                           .provideSomeLayer(zio.ZLayer.succeed(context.logger))
               result  <- tryAllRepos(repos, context)  // 2nd try
             } yield result
