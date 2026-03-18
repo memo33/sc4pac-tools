@@ -40,8 +40,9 @@ trait TokenService {
   def verifyAccessToken(token: Token, scope: AuthScope): IO[ErrStr, UserInfo]
 }
 object TokenService {
-  def live(profilesDir: ProfilesDir, credentials: Credentials): zio.ZLayer[Any, Nothing, TokenService] = zio.ZLayer.fromZIO {
+  def live(credentials: Credentials): zio.ZLayer[ProfilesDir, Nothing, TokenService] = zio.ZLayer.fromZIO {
     for {
+      profilesDir <- ZIO.service[ProfilesDir]
       initialCredentials <- Ref.make(Set(credentials))
       tokenStore <- Ref.make(Map.empty[Token, Set[AuthScope]])
     } yield InmemoryTokenService(initialCredentials, tokenStore, profilesDir)

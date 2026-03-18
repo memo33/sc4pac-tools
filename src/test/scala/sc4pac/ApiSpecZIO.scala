@@ -55,7 +55,7 @@ object ApiSpecZIO extends ZIOSpecDefault {
     } yield InmemoryTokenService(initialCredentials, tokenStore, profilesDir))
 
   /** Launches an API server for the duration of the Scope. */
-  val serverLayer: zio.ZLayer[ProfilesDir & service.FileSystem & TokenService, Throwable, ServerOptions] =
+  val serverLayer: zio.ZLayer[ProfilesDir & service.FileSystem & TokenService & api.MultiProfileStorage, Throwable, ServerOptions] =
     zio.ZLayer.scoped(
       for {
         profilesDir  <- ZIO.service[ProfilesDir]
@@ -1238,6 +1238,7 @@ object ApiSpecZIO extends ZIOSpecDefault {
     profilesDirLayer,
     testFileSystemLayer,
     serverLayer,
+    api.MultiProfileStorage.live,
     tokenServiceLayer,
     testConfigLayer,
     Client.default,

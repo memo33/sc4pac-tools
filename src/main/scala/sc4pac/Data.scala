@@ -66,9 +66,6 @@ object JsonData extends SharedData {
 
   case class PluginsSpec(config: Config, explicit: Seq[BareModule]) derives ReadWriter
   object PluginsSpec {
-    def path(profile: os.Path): os.Path = profile / "sc4pac-plugins.json"
-
-    def pathURIO: URIO[Profile, os.Path] = ZIO.service[Profile].map(profile => PluginsSpec.path(profile.root))
 
     val defaultPluginsRoot: URIO[Profile, Seq[os.Path]] = ZIO.serviceWith[Profile](profile => Seq(
       os.home / "Documents" / "SimCity 4" / "Plugins",
@@ -106,10 +103,10 @@ object JsonData extends SharedData {
         onFalse = ZIO.fail(new error.Sc4pacNotInteractive("Path to plugins folder cannot be configured non-interactively (yet).")))  // TODO fallback
     }
 
-    /** Init and write. Here `tempRoot` may be absolute or relative (to profile
+    /** Init (without writing). Here `tempRoot` may be absolute or relative (to profile
       * root) to allow GUI to use a shared `../temp` folder for all profiles.
       */
-    def init(pluginsRoot: os.Path, cacheRoot: os.Path, tempRoot: os.FilePath): RIO[Profile, PluginsSpec] = {
+    def initNoWrite(pluginsRoot: os.Path, cacheRoot: os.Path, tempRoot: os.FilePath): RIO[Profile, PluginsSpec] = {
       for {
         profile      <- ZIO.service[Profile]
         spec         =  PluginsSpec(
@@ -120,38 +117,17 @@ object JsonData extends SharedData {
                             variant = Map.empty,
                             channels = Constants.defaultChannelUrls),
                           explicit = Seq.empty)
-        pluginsPath  <- PluginsSpec.pathURIO
-        _            <- JsonIo.write(pluginsPath, spec, None)(ZIO.succeed(()))
       } yield spec
     }
 
-    /** Reads the PluginsSpec JSON file if it exists, otherwise returns None */
-    val readMaybe: ZIO[Profile, error.ReadingProfileFailed, Option[PluginsSpec]] = PluginsSpec.pathURIO.flatMap { pluginsPath =>
-      val task: IO[ErrStr | java.io.IOException, Option[PluginsSpec]] =
-        ZIO.ifZIO(ZIO.attemptBlockingIO(os.exists(pluginsPath)))(
-          onFalse = ZIO.succeed(None),
-          onTrue = ZIO.attemptBlockingIO(JsonIo.readBlocking[PluginsSpec](pluginsPath)).absolve.map(Some(_))
-        )
-      task.mapError(e => error.ReadingProfileFailed(
-        s"Failed to read profile JSON file ${pluginsPath.last}.",
-        f"Make sure the file is correctly formatted: $pluginsPath.%n$e"),
-      )
-    }
-
-    /** Read PluginsSpec from file if it exists, else create it and write it to file. */
-    val readOrInit: RIO[Profile & service.FileSystem & CliPrompter, PluginsSpec] = PluginsSpec.pathURIO.flatMap { pluginsPath =>
-      ZIO.ifZIO(ZIO.attemptBlocking(os.exists(pluginsPath)))(
-        onTrue = JsonIo.read[PluginsSpec](pluginsPath),
-        onFalse = for {
+    /* Read or initialize (with writing). */
+    val readOrInit: RIO[ProfileStorage & Profile & service.FileSystem & CliPrompter, PluginsSpec] =
+      ZIO.serviceWithZIO[Profile] { profile =>
+        ZIO.serviceWithZIO[ProfileStorage](_.loadSpecOrInitWith(profile)(init = for {
           (pluginsRoot, cacheRoot) <- promptForPaths
-          spec                     <- PluginsSpec.init(pluginsRoot, cacheRoot, tempRoot = defaultTempRoot)
-        } yield spec
-      )
-      .mapError(e => error.ReadingProfileFailed(
-        s"Failed to read profile JSON file ${pluginsPath.last}.",
-        f"Make sure the file is correctly formatted: $pluginsPath.%n${e.getMessage}"),
-      )
-    }
+          spec <- PluginsSpec.initNoWrite(pluginsRoot, cacheRoot, tempRoot = defaultTempRoot)
+        } yield spec))
+      }
   }
 
   private val installedAtDummy = java.time.Instant.parse("2024-01-01T00:00:00Z")  // placeholder for upgrading from scheme 1
@@ -258,35 +234,14 @@ object JsonData extends SharedData {
       }
     }
 
-    def path(profile: os.Path): os.Path = profile / "sc4pac-plugins-lock.json"
-
-    def pathURIO: URIO[Profile, os.Path] = ZIO.service[Profile].map(profile => PluginsLock.path(profile.root))
-
-    /** Read PluginsLock from file if it exists, else create it and write it to file.
-      * Does *not* automatically upgrade from scheme 1.*/
-    val readOrInit: RIO[Profile, PluginsLock] = PluginsLock.pathURIO.flatMap { pluginsLockPath =>
-      ZIO.ifZIO(ZIO.attemptBlocking(os.exists(pluginsLockPath)))(
-        onTrue = JsonIo.read[PluginsLock](pluginsLockPath),
-        onFalse = {
-          val data = PluginsLock(Constants.pluginsLockScheme, Seq.empty, Seq.empty)
-          JsonIo.write(pluginsLockPath, data, None)(ZIO.succeed(data))
-        }
-      )
-      .mapError(e => error.ReadingProfileFailed(
-        s"Failed to read profile lock file ${pluginsLockPath.last}.",
-        f"Make sure the file is correctly formatted: $pluginsLockPath.%n${e.getMessage}"),
-      )
-    }
-
     // does *not* automatically upgrade from scheme 1 (this function is only used for reading, not writing)
-    val listInstalled2: RIO[Profile, Seq[InstalledData]] = PluginsLock.pathURIO.flatMap { pluginsLockPath =>
-      ZIO.ifZIO(ZIO.attemptBlocking(os.exists(pluginsLockPath)))(
-        onTrue = JsonIo.read[PluginsLock](pluginsLockPath).map(_.installed),
-        onFalse = ZIO.succeed(Seq.empty)
-      )
-    }
+    val listInstalled2: RIO[Profile & ProfileStorage, Seq[InstalledData]] =
+      for {
+        profile <- ZIO.service[Profile]
+        lockOpt <- ZIO.serviceWithZIO[ProfileStorage](_.loadLockMaybe(profile))
+      } yield lockOpt.map(_.installed).getOrElse(Seq.empty)
 
-    val listInstalled: RIO[Profile, Seq[DepModule]] = listInstalled2.map(_.map(_.toDepModule))
+    val listInstalled: RIO[Profile & ProfileStorage, Seq[DepModule]] = listInstalled2.map(_.map(_.toDepModule))
 
   }
 
@@ -339,10 +294,10 @@ object JsonData extends SharedData {
   }
   object Profiles {
 
-    def parseProfilesRoot(path: Option[String]): ZIO[service.FileSystem, error.ObtainingUserDirsFailed, os.Path] = {
+    def parseProfilesRoot(path: Option[String]): ZIO[service.FileSystem, error.ObtainingUserDirsFailed, ProfilesDir] = {
       ZIO.serviceWithZIO[service.FileSystem] { fs =>
         ZIO.attempt {
-          path match {
+          ProfilesDir(path match {
             case None =>
               if (fs.env.sc4pacProfilesDir.isDefined)  // environment variable
                 os.Path(java.nio.file.Paths.get(fs.env.sc4pacProfilesDir.get))  // absolute only
@@ -358,7 +313,7 @@ object JsonData extends SharedData {
               }
             case Some(p) =>
               os.Path(java.nio.file.Paths.get(p), os.pwd)  // relative allowed
-          }
+          })
         }.mapError(e => error.ObtainingUserDirsFailed(
           "Failed to determine sc4pac profiles directory."
           + " As a workaround, either use the --profiles-dir launch parameter or set the SC4PAC_PROFILES_DIR environment variable –"
@@ -366,22 +321,6 @@ object JsonData extends SharedData {
           e.getMessage,  // see https://github.com/memo33/sc4pac-gui/issues/25
         ))
       }
-    }
-
-    def path(profilesDir: os.Path): os.Path = profilesDir / "sc4pac-profiles.json"
-
-    def pathURIO: URIO[ProfilesDir, os.Path] = ZIO.service[ProfilesDir].map(profilesDir => Profiles.path(profilesDir.path))
-
-    /** Read Profiles from file if it exists, else create it and write it to file. */
-    val readOrInit: RIO[ProfilesDir, Profiles] = Profiles.pathURIO.flatMap { jsonPath =>
-      ZIO.ifZIO(ZIO.attemptBlocking(os.exists(jsonPath)))(
-        onTrue = JsonIo.read[Profiles](jsonPath),
-        onFalse = ZIO.succeed(Profiles(Seq.empty, None))
-      )
-      .mapError(e => error.ReadingProfileFailed(
-        s"Failed to read profiles file ${jsonPath.last}.",
-        f"Make sure the file is correctly formatted: $jsonPath.%n${e.getMessage}"),
-      )
     }
   }
 

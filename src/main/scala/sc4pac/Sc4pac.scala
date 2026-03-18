@@ -15,7 +15,7 @@ import sc4pac.Resolution.{Dep, DepModule, DepAsset}
 
 // TODO Use `Runtime#reportFatal` or `Runtime.setReportFatal` to log fatal errors like stack overflow
 
-class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path, val fileSys: service.FileSystem) {  // TODO defaults
+class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path, fileSys: service.FileSystem, profileStorage: ProfileStorage) {  // TODO defaults
 
   val logger = context.logger
 
@@ -23,13 +23,13 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path, val fileSys:
 
   private def modifyExplicitModules[R](modify: Seq[BareModule] => ZIO[R, Throwable, Seq[BareModule]]): ZIO[R, Throwable, Seq[BareModule]] = {
     for {
-      pluginsSpec  <- JsonIo.read[JD.PluginsSpec](JD.PluginsSpec.path(context.profile.root))  // at this point, file should already exist
+      pluginsSpec  <- profileStorage.loadSpec(context.profile)  // at this point, file should already exist
       modsOrig     =  pluginsSpec.explicit
       modsNext     <- modify(modsOrig)
       _            <- ZIO.unless(modsNext == modsOrig) {
                         val pluginsDataNext = pluginsSpec.copy(explicit = modsNext)
                         // we do not check whether file was modified as this entire operation is synchronous and fast, in most cases
-                        JsonIo.write(JD.PluginsSpec.path(context.profile.root), pluginsDataNext, None)(ZIO.unit)
+                        profileStorage.saveSpec(context.profile, pluginsDataNext)
                       }
     } yield modsNext
   }
@@ -47,7 +47,7 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path, val fileSys:
     * if they are not yet installed, but e.g. they're pending updates.
     */
   def reinstall(modules: Set[BareModule], redownload: Boolean): Task[Boolean] = {
-    JsonIo.read[JD.PluginsLock](JD.PluginsLock.path(context.profile.root)).flatMap { pluginsLockData =>  // at this point, file should already exist
+    profileStorage.loadLock(context.profile).flatMap { pluginsLockData =>  // at this point, file should already exist
       require(pluginsLockData.scheme > 1, "run an Update before trying to reinstall packages, as scheme=1 is not supported anymore")
       var foundAny = false
       val pluginsLockDataNext = pluginsLockData.copy(
@@ -58,7 +58,7 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path, val fileSys:
         redownload = if (redownload) (pluginsLockData.redownload ++ modules.iterator).distinct else pluginsLockData.redownload,
       )
       for {
-        _ <- JsonIo.write(JD.PluginsLock.path(context.profile.root), pluginsLockDataNext, Some(pluginsLockData))(ZIO.unit)
+        _ <- profileStorage.updateLock(context.profile, pluginsLockDataNext, previous = pluginsLockData)(ZIO.unit)
       } yield foundAny
     }
   }
@@ -102,7 +102,7 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path, val fileSys:
   def repairScan(pluginsRoot: os.Path): Task[RepairPlan] = {
     def isPackageSubfolder(path: os.Path): Boolean = path.last.endsWith(".sc4pac") && path != pluginsRoot && os.isDir(path)
     (for {
-      pluginsLockData <- JsonIo.read[JD.PluginsLock](JD.PluginsLock.path(context.profile.root))  // at this point, file should already exist
+      pluginsLockData <- profileStorage.loadLock(context.profile)  // at this point, file should already exist
       _ = require(pluginsLockData.scheme > 1, "run an Update before trying to repair plugins, as scheme=1 is not supported anymore")
       incompletePackages <-
         ZIO.attemptBlockingIO {
@@ -602,7 +602,7 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path, val fileSys:
       // - remove old packages
       // - move new packages into plugins folder
       // - write json database and release lock
-      val task = (JsonIo.write(JD.PluginsLock.path(context.profile.root), pluginsLockData.updateTo(plan, staged.items), Some(pluginsLockDataOrig)) {
+      val task = (profileStorage.updateLock(context.profile, next = pluginsLockData.updateTo(plan, staged.items), previous = pluginsLockDataOrig) {
         for {
           _ <- removeInstalledFiles(plan.toRemove, pluginsLockData.installed, pluginsRoot)
                  // .catchAll(???)  // TODO catch exceptions
@@ -660,14 +660,10 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path, val fileSys:
       }.map(_.toOption.get)
     }
 
-    private def storeUpdatedSpec(selections: Variant, explicitModules: Seq[BareModule]): Task[Unit] = for {
-      pluginsSpec <- JsonIo.read[JD.PluginsSpec](JD.PluginsSpec.path(context.profile.root))  // json file should exist already
-      _           <- JsonIo.write(
-                       JD.PluginsSpec.path(context.profile.root),
-                       pluginsSpec.copy(config = pluginsSpec.config.copy(variant = selections), explicit = explicitModules),
-                       None
-                     )(ZIO.unit)
-    } yield ()
+    private def storeUpdatedSpec(selections: Variant, explicitModules: Seq[BareModule]): Task[Unit] =
+      profileStorage.modifySpecSync(context.profile) { pluginsSpec =>
+        pluginsSpec.copy(config = pluginsSpec.config.copy(variant = selections), explicit = explicitModules)
+      }
 
     private def doDownloadWithMirror(resolution: Resolution, plan: UpdatePlan): RIO[Prompter & ResolutionContext & Downloader.Credentials, Seq[(DepAsset, Artifact, java.io.File)]] = {
       val depsToInstall = resolution.transitiveDependencies.filter(plan.toInstall).reverse  // we start by fetching artifacts in reverse as those have fewest dependencies of their own
@@ -702,7 +698,7 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path, val fileSys:
 
       // TODO catch coursier.error.ResolutionError$CantDownloadModule (e.g. when json files have syntax issues)
       val updateTask = for {
-        pluginsLockData1 <- JD.PluginsLock.readOrInit
+        pluginsLockData1 <- ZIO.serviceWithZIO(profileStorage.loadLockOrInit)
         pluginsLockData <- JD.PluginsLock.upgradeFromScheme1(pluginsLockData1, iterateAllChannelPackages(channelUrl = None), logger, pluginsRoot)
         (resolution, modules, variantSelection) <- doResolveHandleUnresolvable(modules0, variantSelection0)
         finalSelections =  variantSelection.buildFinalSelections()
@@ -933,7 +929,7 @@ object Sc4pac {
   /** Limits parallel downloads to 2 (ST rejects too many connections). */
   private[sc4pac] def createThreadPool() = coursier.cache.internal.ThreadUtil.fixedThreadPool(size = 2)
 
-  def init(config: JD.Config, refreshChannels: Boolean = false): RIO[Profile & Logger & Ref[Option[FileCache]] & service.FileSystem, Sc4pac] = {
+  def init(config: JD.Config, refreshChannels: Boolean = false): RIO[Profile & Logger & Ref[Option[FileCache]] & service.FileSystem & ProfileStorage, Sc4pac] = {
     // val refreshLogger = coursier.cache.loggers.RefreshLogger.create(System.err)  // TODO System.err seems to cause less collisions between refreshing progress and ordinary log messages
     val channelContentsTtl = if (refreshChannels) Constants.channelContentsTtlRefresh else Constants.channelContentsTtl  // 0 or 30 minutes
     for {
@@ -957,7 +953,8 @@ object Sc4pac {
       profile   <- ZIO.service[Profile]
       context   =  new ResolutionContext(repos, cache, logger, profile)
       fileSys   <- ZIO.service[service.FileSystem]
-    } yield Sc4pac(context, tempRoot, fileSys)
+      profileStorage <- ZIO.service[ProfileStorage]
+    } yield Sc4pac(context, tempRoot, fileSys, profileStorage)
   }
 
   def parseModules(modules: Seq[String]): Either[ErrStr, Seq[BareModule]] = {
