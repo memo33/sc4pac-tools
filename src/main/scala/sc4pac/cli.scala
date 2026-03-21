@@ -840,11 +840,11 @@ object Commands {
       ZIO.logInfo(message).as(resp)
     })
 
-    def serve(options: ServerOptions, console: zio.Console, webAppDir: Option[(os.Path, java.net.URI)]): RIO[zio.Scope & service.FileSystem & TokenService & api.MultiProfileStorage, zio.Fiber[Throwable, Nothing]] = {
+    def serve(options: ServerOptions, webAppDir: Option[(os.Path, java.net.URI)]): RIO[zio.Scope & service.FileSystem & TokenService & zio.Console & api.ProfileRepo & ProfileStorage, zio.Fiber[Throwable, Nothing]] = {
       def createPortOccupiedMsg(e: Throwable): sc4pac.error.PortOccupied =
         sc4pac.error.PortOccupied(s"Failed to run sc4pac server on port ${options.port}. ${e.getMessage}")
 
-      val serverTask: RIO[ServerFiber & service.FileSystem & TokenService & api.MultiProfileStorage, Nothing] = ZIO.serviceWith[api.MultiProfileStorage](sc4pac.api.Api(options, console, _)).flatMap { api =>
+      val serverTask: RIO[ServerFiber & service.FileSystem & TokenService & zio.Console & api.ProfileRepo & ProfileStorage, Nothing] = ZIO.serviceWithZIO[api.Api] { api =>
         // Enabling CORS is important so that web browsers do not block the
         // request response for lack of the following response header:
         //     access-control-allow-origin: http://localhost:12345
@@ -900,7 +900,7 @@ object Commands {
             zio.ZLayer(zio.Ref.make(ServerConnection(numConnections = 0, currentChannel = None))),
             zio.ZLayer(zio.Ref.make(Option.empty[FileCache])),
           )
-      }
+      }.provideSomeLayer(api.Api.layer(options))
 
       for {
         promise  <- zio.Promise.make[Nothing, zio.Fiber[Throwable, Nothing]]
@@ -936,9 +936,11 @@ object Commands {
           _  <- ZIO.unlessDiscard(options.clientSecretStdin || webAppDir.nonEmpty)(ZIO.succeed(println(s"Configured new client_secret=${clientSecret.stringValue}")))
           _  <- ZIO.scoped {
                   for {
-                    fiber    <- serve(options, zio.Console.ConsoleLive, webAppDir = webAppDir.map((_, createWebAppUrl(port = options.port, clientSecret))))
+                    fiber    <- serve(options, webAppDir = webAppDir.map((_, createWebAppUrl(port = options.port, clientSecret))))
                                   .provideSome[zio.Scope & service.FileSystem](
                                     sc4pac.api.TokenService.live(zio.http.Credentials(Constants.sc4pacGuiClientId, clientSecret)),
+                                    zio.ZLayer.succeed(zio.Console.ConsoleLive),
+                                    api.ProfileRepo.live,
                                     api.MultiProfileStorage.live,
                                     zio.ZLayer.succeed(profilesDir),
                                   )

@@ -106,27 +106,23 @@ object JsonData extends SharedData {
     /** Init (without writing). Here `tempRoot` may be absolute or relative (to profile
       * root) to allow GUI to use a shared `../temp` folder for all profiles.
       */
-    def initNoWrite(pluginsRoot: os.Path, cacheRoot: os.Path, tempRoot: os.FilePath): RIO[Profile, PluginsSpec] = {
-      for {
-        profile      <- ZIO.service[Profile]
-        spec         =  PluginsSpec(
-                          config = Config(
-                            pluginsRoot = Config.subRelativize(pluginsRoot, profile),
-                            cacheRoot = Config.subRelativize(cacheRoot, profile),
-                            tempRoot = tempRoot.toNIO,  // may be relative or absolute
-                            variant = Map.empty,
-                            channels = Constants.defaultChannelUrls),
-                          explicit = Seq.empty)
-      } yield spec
-    }
+    def apply(profile: Profile, pluginsRoot: os.Path, cacheRoot: os.Path, tempRoot: os.FilePath): PluginsSpec =
+      PluginsSpec(
+        config = Config(
+          pluginsRoot = Config.subRelativize(pluginsRoot, profile),
+          cacheRoot = Config.subRelativize(cacheRoot, profile),
+          tempRoot = tempRoot.toNIO,  // may be relative or absolute
+          variant = Map.empty,
+          channels = Constants.defaultChannelUrls),
+        explicit = Seq.empty,
+      )
 
     /* Read or initialize (with writing). */
     val readOrInit: RIO[ProfileStorage & Profile & service.FileSystem & CliPrompter, PluginsSpec] =
       ZIO.serviceWithZIO[Profile] { profile =>
         ZIO.serviceWithZIO[ProfileStorage](_.loadSpecOrInitWith(profile)(init = for {
           (pluginsRoot, cacheRoot) <- promptForPaths
-          spec <- PluginsSpec.initNoWrite(pluginsRoot, cacheRoot, tempRoot = defaultTempRoot)
-        } yield spec))
+        } yield PluginsSpec(profile, pluginsRoot, cacheRoot, tempRoot = defaultTempRoot)))
       }
   }
 

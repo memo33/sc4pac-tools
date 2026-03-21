@@ -130,10 +130,11 @@ package api {
     def deleteProfileFolder(profile: Profile): IO[java.io.IOException, Unit]
     def profileFilesExist(profile: Profile): IO[java.io.IOException, Boolean]
     def makeProfileFolders(profile: Profile, pluginsRoot: os.Path, cacheRoot: os.Path): IO[java.io.IOException, Unit]
+    def profileFromId(id: String): zio.UIO[Profile]  // only for use in API, not CLI, in particular to ensure only profile roots constructed by ID can be deleted via API
   }
 
   object MultiProfileStorage {
-    val live: zio.RLayer[ProfilesDir, MultiProfileStorage] = zio.ZLayer.fromFunction(Impl.apply)  // for api
+    val live: zio.URLayer[ProfilesDir, MultiProfileStorage] = zio.ZLayer.fromFunction(Impl.apply)  // for api
 
     class Impl(profilesDir: ProfilesDir) extends ProfileStorage.Impl with MultiProfileStorage {
       lazy val profilesJsonPath: os.Path = profilesDir.path / "sc4pac-profiles.json"
@@ -183,6 +184,8 @@ package api {
           os.makeDir.all(pluginsRoot)  // TODO ask for confirmation?
           os.makeDir.all(cacheRoot)
         }
+
+      override def profileFromId(id: String) = ZIO.succeed(Profile(profilesDir.path / id))
     }
   }
 }

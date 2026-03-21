@@ -13,17 +13,21 @@ import JD.{bareModuleRw, uriRw}
 import sc4pac.cli.Commands.Server.{ServerFiber, ServerConnection}
 
 
-class Api(val options: sc4pac.cli.Commands.ServerOptions, console: zio.Console, profileStorage: MultiProfileStorage) extends AuthMiddleware {
+object Api {
+  def layer(options: sc4pac.cli.Commands.ServerOptions): zio.URLayer[zio.Console & ProfileRepo & ProfileStorage, Api] =
+    zio.ZLayer(for {
+      console <- ZIO.service[zio.Console]
+      profileRepo <- ZIO.service[ProfileRepo]
+      profileStorage <- ZIO.service[ProfileStorage]
+    } yield Api(options, console, profileRepo, profileStorage))
+}
+
+class Api(val options: sc4pac.cli.Commands.ServerOptions, console: zio.Console, profileRepo: ProfileRepo, profileStorage: ProfileStorage) extends AuthMiddleware {
   private val connectionsSinceLaunch = java.util.concurrent.atomic.AtomicInteger(0)
   private val currentRepairPlan = java.util.concurrent.atomic.AtomicReference(Option.empty[PromptMessage.ConfirmRepairPlan])
 
   def jsonResponse[A : UP.Writer](obj: A): Response = Response.json(UP.write(obj, indent = options.indent))
   private def jsonFrame[A : UP.Writer](obj: A): WebSocketFrame = WebSocketFrame.Text(UP.write(obj, indent = options.indent))
-
-  // only for use in API, not CLI, in particular to ensure only profile roots constructed by ID can be deleted via API
-  private def profileFromId(id: String)/*: zio.RLayer[ProfilesDir, Profile]*/ =  // inferred type is more specific which helps the compiler
-    zio.ZLayer.fromFunction(profileFromId0(id, _))
-  private def profileFromId0(id: String, dir: ProfilesDir): Profile = Profile(dir.path / id)
 
   private val makePlatformDefaults: URIO[Profile & service.FileSystem, Map[String, Seq[String]]] =
     for {
@@ -201,8 +205,8 @@ class Api(val options: sc4pac.cli.Commands.ServerOptions, console: zio.Console, 
       handler { (req: Request) =>
         req.url.queryParams.getAll("profile").headOption match {
           case Some[ProfileId](id) =>
-            ZIO.serviceWith[UserInfo] { userInfo =>
-              (req, profileFromId0(id = id, userInfo.profilesDir))
+            ZIO.serviceWithZIO[UserInfo] { userInfo =>  // unused, but enforced requirement
+              profileRepo.profileFromId(id).map(req -> _)  // TODO check that id exists
             }
           case None =>
             ZIO.fail(jsonResponse(ErrorMessage.BadRequest(
@@ -230,25 +234,17 @@ class Api(val options: sc4pac.cli.Commands.ServerOptions, console: zio.Console, 
     Method.POST / "profile.init" -> handler { (req: Request) =>
       wrapHttpEndpoint {
         for {
-          profile     <- ZIO.service[Profile]
-          _           <- profileStorage.profileFilesExist(profile)
-                           .filterOrFail(_ == false)(jsonResponse(
-                             ErrorMessage.InitNotAllowed("Profile already initialized.",
-                               "Manually delete the corresponding .json files if you are sure you want to initialize a new profile.")
-                           ).status(Status.Conflict))
-          defaults    <- makePlatformDefaults
-          initArgs    <- parseOr400[InitArgs](req.body, ErrorMessage.BadInit(
-                           """Parameters "plugins", "cache" and "temp" are required.""",
-                           "Pass the locations of the folders as JSON dictionary: {plugins: <path>, cache: <path>, temp: <path>}.",
-                           platformDefaults = defaults,
-                         ))
-          pluginsRoot =  os.Path(initArgs.plugins, profile.root)
-          cacheRoot   =  os.Path(initArgs.cache, profile.root)
-          tempRoot    =  os.FilePath(initArgs.temp)
-          _           <- profileStorage.makeProfileFolders(profile, pluginsRoot = pluginsRoot, cacheRoot = cacheRoot)
-          pluginsSpec <- JD.PluginsSpec.initNoWrite(pluginsRoot = pluginsRoot, cacheRoot = cacheRoot, tempRoot = tempRoot)
-          _           <- profileStorage.saveSpec(profile, pluginsSpec)
-        } yield jsonResponse(pluginsSpec.config)
+          defaults <- makePlatformDefaults
+          initArgs <- parseOr400[InitArgs](req.body, ErrorMessage.BadInit(
+                        """Parameters "plugins", "cache" and "temp" are required.""",
+                        "Pass the locations of the folders as JSON dictionary: {plugins: <path>, cache: <path>, temp: <path>}.",
+                        platformDefaults = defaults,
+                      ))
+          config   <- ZIO.serviceWithZIO[Profile](profileRepo.initProfile(_, initArgs)).mapError {
+                        case msg: ErrorMessage.InitNotAllowed => jsonResponse(msg).status(Status.Conflict)
+                        case e: Throwable => e
+                      }
+        } yield jsonResponse(config)
       }
     } @@ interceptProfile -> AuthScope.write,
 
@@ -715,23 +711,7 @@ class Api(val options: sc4pac.cli.Commands.ServerOptions, console: zio.Console, 
     Method.GET / "profiles.list" -> handler { (req: Request) =>
       val includePlugins = req.url.queryParams.getAll("includePlugins").nonEmpty
       wrapHttpEndpoint {
-        for {
-          profilesDir <- ZIO.service[ProfilesDir]
-          profiles <- profileStorage.loadProfilesOrInit
-          profilesData <-
-            if (!includePlugins)
-              ZIO.succeed(profiles.profiles.map(p => ProfilesList.ProfileData2(id = p.id, name = p.name)))
-            else
-              ZIO.foreachPar(profiles.profiles) { p =>
-                for {
-                  pluginsSpecOpt <- profileStorage.loadSpecMaybe(profileFromId0(p.id, profilesDir))
-                } yield ProfilesList.ProfileData2(id = p.id, name = p.name, pluginsRoot = pluginsSpecOpt.map(_.config.pluginsRoot).orNull)
-              }
-        } yield jsonResponse(ProfilesList(
-          profiles = profilesData,
-          currentProfileId = profiles.currentProfileId,
-          profilesDir = profilesDir.path.toNIO,
-        ))
+        profileRepo.listProfiles(includePlugins = includePlugins).map(jsonResponse)
       }.provideSomeLayer(UserInfo.toProfile)
     } -> AuthScope.read,
 
@@ -740,10 +720,8 @@ class Api(val options: sc4pac.cli.Commands.ServerOptions, console: zio.Console, 
       wrapHttpEndpoint {
         for {
           profileName <- parseOr400[ProfileName](req.body, ErrorMessage.BadRequest("Missing profile name.", "Pass the \"name\" of the new profile."))
-          ps          <- profileStorage.loadProfilesOrInit
-          (ps2, p)    = ps.add(profileName.name)
-          _           <- profileStorage.saveProfiles(ps2)
-        } yield jsonResponse(p)
+          pData       <- profileRepo.add(profileName.name)
+        } yield jsonResponse(pData)
       }.provideSomeLayer(UserInfo.toProfile)
     } -> AuthScope.write,
 
@@ -751,19 +729,10 @@ class Api(val options: sc4pac.cli.Commands.ServerOptions, console: zio.Console, 
     Method.POST / "profiles.remove" -> handler((req: Request) => wrapHttpEndpoint {
       for {
         arg    <- parseOr400[ProfileIdObj](req.body, ErrorMessage.BadRequest("Missing profile ID.", "Pass the \"id\" for the profile to remove."))
-        data   <- profileStorage.loadProfilesOrInit
-        idx    <- ZIO.succeed(data.profiles.indexWhere(_.id == arg.id))
-                    .filterOrFail(_ != -1)(jsonResponse(
+        _      <- profileRepo.removeMaybe(arg.id)
+                    .someOrFail(jsonResponse(
                       ErrorMessage.BadRequest(s"""Profile ID "${arg.id}" does not exist.""", "Make sure to only remove existing profiles.")
                     ).status(Status.BadRequest))
-        profile <- ZIO.service[Profile].provideSomeLayer(profileFromId(data.profiles(idx).id))
-        _      <- profileStorage.deleteProfileFolder(profile)
-        ps2    =  data.profiles.patch(from = idx, Nil, replaced = 1)
-        data2  =  data.copy(
-                    profiles = ps2,
-                    currentProfileId = data.currentProfileId.filter(_ != arg.id).orElse(ps2.lastOption.map(_.id)),
-                  )
-        _      <- profileStorage.updateProfiles(next = data2, previous = data)
       } yield jsonOk
     }.provideSomeLayer(UserInfo.toProfile)) -> AuthScope.write,
 
@@ -771,14 +740,10 @@ class Api(val options: sc4pac.cli.Commands.ServerOptions, console: zio.Console, 
     Method.POST / "profiles.switch" -> handler((req: Request) => wrapHttpEndpoint {
       for {
         arg  <- parseOr400[ProfileIdObj](req.body, ErrorMessage.BadRequest("Missing profile ID.", "Pass the \"id\" for the profile to switch to."))
-        ps   <- profileStorage.loadProfilesOrInit
-                  .filterOrFail(_.profiles.exists(_.id == arg.id))(jsonResponse(
+        _    <- profileRepo.switchMaybe(arg.id)
+                  .someOrFail(jsonResponse(
                     ErrorMessage.BadRequest(s"""Profile ID "${arg.id}" does not exist.""", "Make sure to only switch to existing profiles.")
                   ).status(Status.BadRequest))
-        _    <- ZIO.unlessDiscard(ps.currentProfileId.contains(arg.id)) {
-                  val ps2 = ps.copy(currentProfileId = Some(arg.id))
-                  profileStorage.updateProfiles(next = ps2, previous = ps)
-                }
       } yield jsonOk
     }.provideSomeLayer(UserInfo.toProfile)) -> AuthScope.write,
 
@@ -786,27 +751,23 @@ class Api(val options: sc4pac.cli.Commands.ServerOptions, console: zio.Console, 
     Method.POST / "profiles.rename" -> handler((req: Request) => wrapHttpEndpoint {
       for {
         arg  <- parseOr400[JD.ProfileData](req.body, ErrorMessage.BadRequest("Missing profile ID or name.", "Pass the \"id\" and \"name\" for the profile."))
-        data <- profileStorage.loadProfilesOrInit
-                  .filterOrFail(_.profiles.exists(_.id == arg.id))(jsonResponse(
+        _    <- profileRepo.renameMaybe(id = arg.id, newName = arg.name)
+                  .someOrFail(jsonResponse(
                     ErrorMessage.BadRequest(s"""Profile ID "${arg.id}" does not exist.""", "Make sure to only rename existing profiles.")
                   ).status(Status.BadRequest))
-        data2 = data.copy(profiles = data.profiles.map(p => if (p.id == arg.id) p.copy(name = arg.name) else p))
-        _    <- profileStorage.updateProfiles(next = data2, previous = data)
       } yield jsonOk
     }.provideSomeLayer(UserInfo.toProfile)) -> AuthScope.write,
 
     // 200
     Method.GET / "settings.all.get" -> handler(wrapHttpEndpoint {
-      profileStorage.loadProfilesOrInit.map(profiles => jsonResponse(profiles.settings))
+      profileRepo.loadSettings.map(jsonResponse)
     }.provideSomeLayer(UserInfo.toProfile)) -> AuthScope.write,  // not `AuthScope.read` as this might contain sensitive info like the ST token
 
     // 200, 400
     Method.POST / "settings.all.set" -> handler((req: Request) => wrapHttpEndpoint {
       for {
         newSettings <- parseOr400[ujson.Value](req.body, ErrorMessage.BadRequest("Missing settings", "Pass the settings as JSON body of the request."))
-        ps          <- profileStorage.loadProfilesOrInit
-        ps2         =  ps.copy(settings = newSettings)
-        _           <- profileStorage.saveProfiles(ps2)
+        _           <- profileRepo.saveSettings(newSettings)
       } yield jsonOk
     }.provideSomeLayer(UserInfo.toProfile)) -> AuthScope.write,
 

@@ -55,7 +55,7 @@ object ApiSpecZIO extends ZIOSpecDefault {
     } yield InmemoryTokenService(initialCredentials, tokenStore, profilesDir))
 
   /** Launches an API server for the duration of the Scope. */
-  val serverLayer: zio.ZLayer[ProfilesDir & service.FileSystem & TokenService & api.MultiProfileStorage, Throwable, ServerOptions] =
+  val serverLayer: zio.ZLayer[ProfilesDir & service.FileSystem & TokenService & api.ProfileRepo & ProfileStorage, Throwable, ServerOptions] =
     zio.ZLayer.scoped(
       for {
         profilesDir  <- ZIO.service[ProfilesDir]
@@ -67,8 +67,7 @@ object ApiSpecZIO extends ZIOSpecDefault {
                         )
         // We create this layer here instead of in input environment to circumvent problems with non-live clock of `testEnvironment`.
         // (Consider adding `++ zio.ZLayer.succeed(Clock.ClockLive)` in case it still causes problems here.)
-        console      <- ZIO.service[Console].provideSomeLayer(testEnvironment >>> TestConsole.silent)
-        fiber        <- cli.Commands.Server.serve(options, console, webAppDir = None)
+        fiber        <- cli.Commands.Server.serve(options, webAppDir = None).provideSomeLayer(testEnvironment >>> TestConsole.silent)
         _            <- ZIO.addFinalizerExit(exitVal => ZIO.succeed {
                           println(s"...Sc4pac server on port ${options.port} has been shut down: $exitVal")
                         })
@@ -1238,6 +1237,7 @@ object ApiSpecZIO extends ZIOSpecDefault {
     profilesDirLayer,
     testFileSystemLayer,
     serverLayer,
+    api.ProfileRepo.live,
     api.MultiProfileStorage.live,
     tokenServiceLayer,
     testConfigLayer,
