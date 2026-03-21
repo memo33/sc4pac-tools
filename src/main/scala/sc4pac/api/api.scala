@@ -350,6 +350,7 @@ class Api(val options: sc4pac.cli.Commands.ServerOptions, console: zio.Console, 
                                     WebSocketPrompter(wsChannel, wsLogger),
                                     credentials,
                                   )))
+                                  .provideSome[Profile & WebSocketLogger & service.FileSystem](Staging.live)
               } yield ResultMessage(ok = true)
 
             val wsTask: zio.RIO[ProfileRouteEnv[Profile & Ref[Option[FileCache]]], Unit] =

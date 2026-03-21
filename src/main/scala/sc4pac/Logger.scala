@@ -30,9 +30,9 @@ trait Logger {
 
   def extractingArchiveEntry(entry: os.SubPath, include: Boolean): Unit
 
-  def extractingPackage[A](dependency: DepModule, progress: Sc4pac.Progress)(extraction: Task[A]): Task[A]
+  def extractingPackage[R, A](dependency: DepModule, progress: Sc4pac.Progress)(extraction: RIO[R, A]): RIO[R, A]
 
-  def publishing[A](removalOnly: Boolean)(publishing: Task[A]): Task[A]
+  def publishing[R, A](removalOnly: Boolean)(publishing: RIO[R, A]): RIO[R, A]
 
   def fetchingAssets[R, A](fetching: RIO[R, A]): RIO[R, A]
 
@@ -109,7 +109,7 @@ class CliLogger private (out: java.io.PrintStream, useColor: Boolean, isInteract
     log(module.formattedDisplayString(gray) + (if (explicit) " " + cyanBold("[explicit]") else ""))
   }
 
-  def logDllsInstalled(dllsInstalled: Seq[Sc4pac.StageResult.DllInstalled]): Unit = {
+  def logDllsInstalled(dllsInstalled: Seq[Staging.StageResult.DllInstalled]): Unit = {
     for ((dll, idx) <- dllsInstalled.zipWithIndex) {
       val bullet = s"(${idx+1})"
       val indent = " " * bullet.length
@@ -123,7 +123,7 @@ class CliLogger private (out: java.io.PrintStream, useColor: Boolean, isInteract
     }
   }
 
-  def logScriptsInstalled(scriptsInstalled: Seq[Sc4pac.StageResult.LuaInstalled]): Unit = {
+  def logScriptsInstalled(scriptsInstalled: Seq[Staging.StageResult.LuaInstalled]): Unit = {
     val grouped = scriptsInstalled
       .groupMap(lua => (lua.module, lua.asset.url, lua.assetMetadataUrl, lua.pkgMetadataUrl))(_.dbpfFile)
       .toSeq.sortBy(_._1._1.toBareDep)
@@ -202,12 +202,12 @@ class CliLogger private (out: java.io.PrintStream, useColor: Boolean, isInteract
     }
   }
 
-  def extractingPackage[A](dependency: DepModule, progress: Sc4pac.Progress)(extraction: Task[A]): Task[A] = {
+  def extractingPackage[R, A](dependency: DepModule, progress: Sc4pac.Progress)(extraction: RIO[R, A]): RIO[R, A] = {
     val msg = s"$progress Extracting ${dependency.orgName} ${dependency.version}"
     withSpinner(Some(msg), sameLine = Constants.debugMode)(extraction)  // sameLine due to debug output
   }
 
-  def publishing[A](removalOnly: Boolean)(publishing: Task[A]): Task[A] = {
+  def publishing[R, A](removalOnly: Boolean)(publishing: RIO[R, A]): RIO[R, A] = {
     val msg = if (!removalOnly) "Moving extracted files to plugins folder." else "Removing files from plugins folder."
     withSpinner(Some(msg), sameLine = false)(publishing)
   }

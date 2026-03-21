@@ -28,13 +28,13 @@ class WebSocketLogger private (private[api] val queue: java.util.concurrent.Link
 
   def extractingArchiveEntry(entry: os.SubPath, include: Boolean): Unit = ()
 
-  def extractingPackage[A](dependency: DepModule, progress: Sc4pac.Progress)(extraction: Task[A]): Task[A] = {
+  def extractingPackage[R, A](dependency: DepModule, progress: Sc4pac.Progress)(extraction: RIO[R, A]): RIO[R, A] = {
     ZIO.succeed(sendMessageAsync(ProgressMessage.Extraction(dependency.toBareDep, progress))).zipRight(extraction)
   }
 
   def fetchingAssets[R, A](fetching: RIO[R, A]): RIO[R, A] = fetching  // no message needed
 
-  def publishing[A](removalOnly: Boolean)(publishing: Task[A]): Task[A] = publishing  // no message needed
+  def publishing[R, A](removalOnly: Boolean)(publishing: RIO[R, A]): RIO[R, A] = publishing  // no message needed
 
   def discardingUnexpectedMessage(msg: String): Unit = warn(s"Discarding unexpected message: $msg")
 
@@ -197,7 +197,7 @@ class WebSocketPrompter(wsChannel: zio.http.WebSocketChannel, logger: WebSocketL
     sendPrompt(PromptMessage.ConfirmInstallation(warnings.map { case (pkg, ws) => (pkg, ws.map(_.value)) }.toMap)).map(_.body.str == yes)
   }
 
-  def confirmDllsInstalled(dllsInstalled: Seq[Sc4pac.StageResult.DllInstalled]): Task[Boolean] = {
+  def confirmDllsInstalled(dllsInstalled: Seq[Staging.StageResult.DllInstalled]): Task[Boolean] = {
     sendPrompt(PromptMessage.ConfirmInstallingDlls(
       description = confirmDllsInstalledPretext(dllsInstalled.length),
       dllsInstalled.map(dll => PromptMessage.ConfirmInstallingDlls.Item(
@@ -212,7 +212,7 @@ class WebSocketPrompter(wsChannel: zio.http.WebSocketChannel, logger: WebSocketL
     )).map(_.body.str == yes)
   }
 
-  def confirmScriptsInstalled(scriptsInstalled: Seq[Sc4pac.StageResult.LuaInstalled], luaSandboxInstalled: Boolean): Task[Boolean] = {
+  def confirmScriptsInstalled(scriptsInstalled: Seq[Staging.StageResult.LuaInstalled], luaSandboxInstalled: Boolean): Task[Boolean] = {
     sendPrompt(PromptMessage.ConfirmInstallingScripts(
       description = confirmScriptsInstalledPretext(scriptsInstalled.length, luaSandboxInstalled = luaSandboxInstalled),
       scriptsInstalled.map(lua => PromptMessage.ConfirmInstallingScripts.Item(

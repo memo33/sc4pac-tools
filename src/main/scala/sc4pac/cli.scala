@@ -144,7 +144,7 @@ object Commands {
         flag         <- pac.update(pluginsSpec.explicit, variantSelection, pluginsRoot = pluginsRoot)
                           .provideSomeLayer(zio.ZLayer.succeed(Downloader.Credentials(simtropolisToken = fs.env.simtropolisToken)))
       } yield ()
-      runMainExit(task.provideLayer(cliLayer.map(_.update((_: CliPrompter).withAutoYes(options.yes)))), exit)
+      runMainExit(task.provide(Staging.live, cliLayer.map(_.update((_: CliPrompter).withAutoYes(options.yes)))), exit)
     }
   }
 
@@ -642,7 +642,7 @@ object Commands {
             logger <- ZIO.service[Logger]
             archive = java.io.File(input)
             destination = os.Path(java.nio.file.Paths.get(options.output), os.pwd)
-            stagingDirs <- Sc4pac.makeStagingDirs(destination, logger)
+            stagingDirs <- ZIO.serviceWithZIO[Staging](_.makeStagingDirs(destination))
             assetData = JD.AssetReference(assetId = "dummy-asset", include = options.include, exclude = options.exclude)
             (recipe, regexWarnings) = Extractor.InstallRecipe.fromAssetReference(assetData, variant = Map.empty)  // variant is not needed, as there aren't any conditionals in our dummy asset
             (_, usedPatterns) <- ZIO.attemptBlocking {
@@ -659,7 +659,7 @@ object Commands {
             }
             _ <- ZIO.foreachDiscard(regexWarnings ++ recipe.usedPatternWarnings(usedPatterns, BareAsset(ModuleName(assetData.assetId)), short = true)) { msg => ZIO.succeed(logger.warn(msg.value)) }
           } yield ())
-          runMainExit(task.provideSomeLayer(zio.ZLayer.succeed(CliLogger())), exit)
+          runMainExit(task.provide(Staging.live, service.FileSystem.live, zio.ZLayer.succeed(CliLogger())), exit)
         case _ => error(caseapp.core.Error.Other("A single argument is needed: input-archive-file"))
       }
     }
@@ -786,7 +786,7 @@ object Commands {
                     .provideSomeLayer(zio.ZLayer.succeed(Downloader.Credentials(simtropolisToken = fs.env.simtropolisToken)))
         _      <- ZIO.unlessDiscard(passed)(exit(ExitCodes.TestsFailed))
       } yield ()
-      runMainExit(task.provideLayer(cliLayer.map(_.update((_: CliPrompter).withAutoYes(options.yes)))), exit)
+      runMainExit(task.provide(cliLayer.map(_.update((_: CliPrompter).withAutoYes(options.yes))), Staging.live), exit)
     }
   }
 

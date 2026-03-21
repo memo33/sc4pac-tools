@@ -157,7 +157,7 @@ object JsonData extends SharedData {
       installed.iterator.filter(_.reinstall).map(_.toDepModule).toSet
     def packagesToRedownload: Set[BareModule] = redownload.toSet
 
-    def updateTo(plan: Sc4pac.UpdatePlan, stagedItems: Seq[Sc4pac.StageResult.Item]): PluginsLock = {
+    def updateTo(plan: Sc4pac.UpdatePlan, stagedItems: Seq[Staging.StageResult.Item]): PluginsLock = {
       val now = java.time.Instant.now().truncatedTo(ChronoUnit.SECONDS)
       val stagedItemsMap = stagedItems.iterator.map(item => item.dep -> item).toMap
       val orig = dependenciesWithAssets

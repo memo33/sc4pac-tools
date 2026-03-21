@@ -29,7 +29,7 @@ trait ProfileStorage {
   def loadLockOrInit(profile: Profile): IO[error.ReadingProfileFailed, JD.PluginsLock]
 
   /** `previous` is expected state before writing */
-  def updateLock[A](profile: Profile, next: JD.PluginsLock, previous: JD.PluginsLock)(action: Task[A]): Task[A]
+  def updateLock[R, A](profile: Profile, next: JD.PluginsLock, previous: JD.PluginsLock)(action: RIO[R, A]): RIO[R, A]
 }
 
 object ProfileStorage {
@@ -116,7 +116,7 @@ object ProfileStorage {
       )
     }
 
-    override def updateLock[A](profile: Profile, next: JD.PluginsLock, previous: JD.PluginsLock)(action: Task[A]) =
+    override def updateLock[R, A](profile: Profile, next: JD.PluginsLock, previous: JD.PluginsLock)(action: RIO[R, A]) =
       JsonIo.write(lockPath(profile), next, Some(previous))(action)
   }
 }
