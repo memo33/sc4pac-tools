@@ -104,7 +104,7 @@ class ExtractorSpec extends AnyWordSpec with Matchers {
     "support mixed levels of subfolders (7z)" in withSampleFiles { (in, out, files) =>
       val archiveFile = in / os.up / "in.7z"
       createArchive(in, archiveFile, SZ.ArchiveFormat.SEVEN_ZIP)
-      val wrappedArchive = new Wrapped7z(new org.apache.commons.compress.archivers.sevenz.SevenZFile(archiveFile.toIO))
+      val wrappedArchive = new Wrapped7z(org.apache.commons.compress.archivers.sevenz.SevenZFile.builder().setFile(archiveFile.toIO).get())
       wrappedArchive.extractByPredicate(out, createPredicate(), overwrite = true, flatten = false, CliLogger())
       os.exists(out).shouldBe(true)
       os.walk(out).filter(os.isFile(_)).map(_.subRelativeTo(out)).sorted
@@ -127,7 +127,7 @@ class ExtractorSpec extends AnyWordSpec with Matchers {
       s"support mixed levels of subfolders ($suffix)" in withSampleFiles { (in, out, files) =>
         val archiveFile = in / os.up / s"in.$suffix"
         os.zip(archiveFile, Seq(in))  // using SZ would fail inexplicably (fake test for .rar files)
-        val wrappedArchive = new WrappedZip(new org.apache.commons.compress.archivers.zip.ZipFile(archiveFile.toIO))
+        val wrappedArchive = new WrappedZip(org.apache.commons.compress.archivers.zip.ZipFile.builder().setFile(archiveFile.toIO).get())
         wrappedArchive.extractByPredicate(out, createPredicate(), overwrite = true, flatten = false, CliLogger())
         os.exists(out).shouldBe(true)
         os.walk(out).filter(os.isFile(_)).map(_.subRelativeTo(out)).sorted

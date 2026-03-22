@@ -3,7 +3,7 @@ package sc4pac
 
 import org.apache.commons.compress.archivers.zip.{ZipFile, ZipArchiveEntry}
 import org.apache.commons.compress.archivers.sevenz.{SevenZFile, SevenZArchiveEntry}
-import org.apache.commons.compress.utils.IOUtils
+import org.apache.commons.io.IOUtils
 import java.nio.file.StandardOpenOption
 import java.util.regex.Pattern
 import scala.collection.mutable.Builder
@@ -160,7 +160,7 @@ object Extractor {
         }
       } else if (lcNames.exists(_.endsWith(".7z"))) {
         /* pure 7zip file (using portable 7zip implementation for extraction) */
-        new Wrapped7z(new SevenZFile(file))
+        new Wrapped7z(SevenZFile.builder().setFile(file).get())
       } else {
         /* single file or zip or jar file */
         val remoteOrLocalFallback: Option[String] =
@@ -173,7 +173,7 @@ object Extractor {
         if (remoteOrLocalFallback.isDefined)
           new WrappedNonarchive(os.Path(file.getAbsolutePath()), remoteOrLocalFallback.get)  // .dat/.sc4*/.dll
         else  // zip or jar (default case in case file extension is not known)
-          new WrappedZip(new ZipFile(file))
+          new WrappedZip(ZipFile.builder().setFile(file).get())
       }
     }
   }
