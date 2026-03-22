@@ -30,10 +30,11 @@ object Commands {
     zio.ZEnvironment(Profile(os.pwd), logger, CliPrompter(logger, autoYes = false))
   }
   val cliLayer =
-    zio.ZLayer(Ref.make(Option.empty[FileCache]))
-      .map(_.union(cliEnvironment))
+    zio.ZLayer.succeedEnvironment(cliEnvironment) >+> (
+      Fetcher.live
       ++ ProfileStorage.live
       ++ service.FileSystem.live
+    )
 
   // TODO strip escape sequences if jansi failed with a link error
   private[sc4pac] def gray(msg: String): String = s"${27.toChar}[90m" + msg + Console.RESET  // aka bright black
@@ -840,11 +841,11 @@ object Commands {
       ZIO.logInfo(message).as(resp)
     })
 
-    def serve(options: ServerOptions, webAppDir: Option[(os.Path, java.net.URI)]): RIO[zio.Scope & service.FileSystem & TokenService & zio.Console & api.ProfileRepo & ProfileStorage, zio.Fiber[Throwable, Nothing]] = {
+    def serve(options: ServerOptions, webAppDir: Option[(os.Path, java.net.URI)]): RIO[zio.Scope & service.FileSystem & TokenService & zio.Console & CliLogger & Fetcher & api.ProfileRepo & ProfileStorage, zio.Fiber[Throwable, Nothing]] = {
       def createPortOccupiedMsg(e: Throwable): sc4pac.error.PortOccupied =
         sc4pac.error.PortOccupied(s"Failed to run sc4pac server on port ${options.port}. ${e.getMessage}")
 
-      val serverTask: RIO[ServerFiber & service.FileSystem & TokenService & zio.Console & api.ProfileRepo & ProfileStorage, Nothing] = ZIO.serviceWithZIO[api.Api] { api =>
+      val serverTask: RIO[ServerFiber & service.FileSystem & TokenService & zio.Console & CliLogger & Fetcher & api.ProfileRepo & ProfileStorage, Nothing] = ZIO.serviceWithZIO[api.Api] { api =>
         // Enabling CORS is important so that web browsers do not block the
         // request response for lack of the following response header:
         //     access-control-allow-origin: http://localhost:12345
@@ -885,7 +886,7 @@ object Commands {
             }
           )
           .zipRight(ZIO.never)  // keep server running indefinitely unless interrupted
-          .provideSome[ServerFiber & service.FileSystem & TokenService & ProfileStorage](
+          .provideSome[ServerFiber & service.FileSystem & TokenService & Fetcher & ProfileStorage](
             zio.http.Server.defaultWith(config => config.port(options.port)
                 .requestStreaming(zio.http.Server.RequestStreaming.Enabled)  // enabling request streaming to avoid 413 "content too large" on large POST requests
               )
@@ -898,7 +899,6 @@ object Commands {
             zio.http.Client.default  // for /image.fetch
               .map(_.update[zio.http.Client](_.updateHeaders(_.addHeader("User-Agent", Constants.userAgent)) @@ followRedirects)),
             zio.ZLayer(zio.Ref.make(ServerConnection(numConnections = 0, currentChannel = None))),
-            zio.ZLayer(zio.Ref.make(Option.empty[FileCache])),
           )
       }.provideSomeLayer(api.Api.layer(options))
 
@@ -939,7 +939,8 @@ object Commands {
                     fiber    <- serve(options, webAppDir = webAppDir.map((_, createWebAppUrl(port = options.port, clientSecret))))
                                   .provideSome[zio.Scope & service.FileSystem](
                                     sc4pac.api.TokenService.live(zio.http.Credentials(Constants.sc4pacGuiClientId, clientSecret)),
-                                    zio.ZLayer.succeed(zio.Console.ConsoleLive),
+                                    zio.ZLayer.succeed(zio.Console.ConsoleLive) >+> zio.ZLayer.fromFunction((console: zio.Console) => CliLogger(Some(console))),
+                                    Fetcher.live,
                                     api.ProfileRepo.live,
                                     api.MultiProfileStorage.live,
                                     zio.ZLayer.succeed(profilesDir),

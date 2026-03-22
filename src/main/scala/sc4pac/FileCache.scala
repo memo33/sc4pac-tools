@@ -165,46 +165,10 @@ class FileCache private (
     } yield (result: java.io.File)
   }
 
-  /** Retrieve the file contents as String from the cache or download if necessary. */
-  private def fetchText: Artifact => ZIO[Logger, Artifact2Error, String] = { artifact =>
-    fetchFile(artifact).flatMap { (f: java.io.File) =>
-      zio.ZIO.attemptBlockingIO {
-        new String(java.nio.file.Files.readAllBytes(f.toPath), java.nio.charset.StandardCharsets.UTF_8)
-      }.mapError {
-        case e: IOException => new Artifact2Error.DownloadError(
-          s"Caught ${e.getClass().getName()}${Option(e.getMessage).fold("")(" (" + _ + ")")} while reading $f",
-          Some(e)
-        )
-      }
-    }
-    .provideSomeLayer(Downloader.emptyCredentialsLayer)  // as we do not fetch text files from Simtropolis, no need for credentials
-  }
-
-  val fetchJson: MetadataRepository.Fetch[Logger] = [A] => (artifact: Artifact) => {
-    def helper(artifact: Artifact): ZIO[Logger, Artifact2Error, A] =
-      fetchText(artifact)
-        .flatMap { (jsonStr: String) =>
-          JsonIo.read[A](jsonStr, errMsg = artifact.url.toString)
-            .mapError(e => Artifact2Error.JsonFormatError(
-              reason = s"Json format error in file ${localFile(artifact.url)}. If the problem persists, try to manually delete the file from the cache.",
-              e,
-            ))
-        }
-
-    helper(artifact)
-      .catchSome { case scala.util.control.NonFatal(e) =>
-        // retry once (e.g. when downloaded file is corrupted and cannot be parsed as JSON)
-        ZIO.serviceWithZIO[Logger] { logger =>
-          logger.debug(s"""Redownloading artifact "${artifact.url}" due to error: $e""")
-          helper(artifact.withForceRedownload(true))
-        }
-      }
-  }
-
   /** If artifact has an expected checksum, check that it matches the cached
     * file. This is mainly used for checking whether certain cached json files are
     * out-of-date, and for ensuring data integrity of assets that define a checksum in their metadata. */
-  def verifyChecksum(file: java.io.File, artifact: Artifact, getCheckFile: ZIO[Logger, IOException, Option[JD.CheckFile]]): ZIO[Logger, IOException, Either[Artifact2Error, Unit]] = {
+  private def verifyChecksum(file: java.io.File, artifact: Artifact, getCheckFile: ZIO[Logger, IOException, Option[JD.CheckFile]]): ZIO[Logger, IOException, Either[Artifact2Error, Unit]] = {
     if (!isManagedByCache(artifact.url, file))
       // For local channels, there's no need to verify checksums as the local
       // channel files are always up-to-date and Downloader .checked files do not exist.

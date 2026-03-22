@@ -8,6 +8,7 @@ import sc4pac.{JsonData => JD}
 import sc4pac.Constants.isDll
 import sc4pac.Sc4pac.UpdatePlan
 import sc4pac.error.Sc4pacPublishIncomplete
+import sc4pac.Fetcher.Blob
 
 class Staging(logger: Logger, fileSys: service.FileSystem) {
 
@@ -69,12 +70,12 @@ class Staging(logger: Logger, fileSys: service.FileSystem) {
   private def stageOne(
     stagingDirs: StagingDirs,
     dependency: DepModule,
-    artifactsById: Map[BareAsset, (Artifact, java.io.File, DepAsset)],
+    artifactsById: Map[BareAsset, (Artifact, Blob, DepAsset)],
     progress: Sc4pac.Progress,
     resolution: Resolution,
     pathLimit: Option[Int],
-  ): RIO[ResolutionContext, StageResult.Item] = {
-    def extract(assetData: JD.AssetReference, pkgFolder: os.SubPath, variant: Variant, debugModule: BareModule): RIO[ResolutionContext, (BareAsset, Chunk[Extractor.ExtractedItem], Seq[JD.Warning])] = {
+  ): Task[StageResult.Item] = {
+    def extract(assetData: JD.AssetReference, pkgFolder: os.SubPath, variant: Variant, debugModule: BareModule): Task[(BareAsset, Chunk[Extractor.ExtractedItem], Seq[JD.Warning])] = {
       // Given an AssetReference, we look up the corresponding artifact file
       // by ID. This relies on the 1-to-1-correspondence between sc4pacAssets
       // and artifact files.
@@ -89,13 +90,13 @@ class Staging(logger: Logger, fileSys: service.FileSystem) {
               "Please report this to the maintainers of the package metadata."
             )),
           ))
-        case Some(art, archive, depAsset) =>
+        case Some(art, blob, depAsset) =>
           val (recipe, regexWarnings) = Extractor.InstallRecipe.fromAssetReference(assetData, variant)
           val extractor = new Extractor(logger)
 
           def doExtract(fallbackFilename: Option[String]) = try {
             extractor.extract(
-              archive,
+              blob.path.toIO,
               fallbackFilename,
               stagingDirs.plugins / pkgFolder,
               recipe,
@@ -114,15 +115,14 @@ class Staging(logger: Logger, fileSys: service.FileSystem) {
             ) ++ Option.when(variant.nonEmpty)(
               s"- Variant: ${JD.VariantData.variantString(variant)}",
             ) ++ Seq(
-              s"- Downloaded and cached file: $archive",
+              s"- Downloaded and cached file: ${blob.path}",
             )).mkString(f"%n"))
           }
 
           for {
-            context          <- ZIO.service[ResolutionContext]  // TODO ideally, remove from environment of service
-            fallbackFilename <- context.cache.getFallbackFilename(archive).provideSomeLayer(zio.ZLayer.succeed(logger))
-            archiveSize      <- ZIO.attemptBlockingIO(archive.length())
-            (files, patterns)<- if (archiveSize >= Constants.largeArchiveSizeInterruptible) {
+            fallbackFilename <- blob.fallbackFilename
+            blobSize         <- ZIO.attemptBlockingIO(os.size(blob.path))
+            (files, patterns)<- if (blobSize >= Constants.largeArchiveSizeInterruptible) {
                                   logger.debug(s"(Interruptible extraction of ${assetData.assetId})")
                                   // comes at a performance cost, so we only make extraction interruptible for large files
                                   ZIO.attemptBlockingInterrupt(doExtract(fallbackFilename))
@@ -210,8 +210,8 @@ class Staging(logger: Logger, fileSys: service.FileSystem) {
     * If everything is properly extracted, the files are later moved to the
     * actual plugins folder in the publication step.
     */
-  def stageAll(stagingDirs: StagingDirs, deps: Seq[DepModule], fetchedAssets: Seq[(DepAsset, Artifact, java.io.File)], resolution: Resolution, pathLimit: Option[Int]): RIO[ResolutionContext, StageResult] = {
-    val artifactsById = fetchedAssets.map((dep, art, file) => dep.toBareDep -> (art, file, dep)).toMap
+  def stageAll(stagingDirs: StagingDirs, deps: Seq[DepModule], fetchedAssets: Seq[(DepAsset, Artifact, Blob)], resolution: Resolution, pathLimit: Option[Int]): Task[StageResult] = {
+    val artifactsById = fetchedAssets.map((dep, art, blob) => dep.toBareDep -> (art, blob, dep)).toMap
     val numDeps = deps.length
     for {
       _           <- ZIO.attempt(require(artifactsById.size == fetchedAssets.size, s"artifactsById is not 1-to-1: $fetchedAssets"))

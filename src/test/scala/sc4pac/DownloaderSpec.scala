@@ -9,7 +9,7 @@ class DownloaderSpec extends AnyWordSpec with Matchers {
 
   "Downloads" should {
     "run in parallel (2 max) and be interruptible" in {
-      val pool = Sc4pac.createThreadPool()
+      val pool = Fetcher.createThreadPool()
       val deltaMs = 100
       val count = java.util.concurrent.atomic.AtomicInteger(0)
 

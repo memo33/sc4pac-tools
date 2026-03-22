@@ -3,7 +3,7 @@ package sc4pac
 
 import coursier.core.{Versions, Version}
 import upickle.default.Reader
-import zio.{ZIO, IO, UIO, RIO}
+import zio.{ZIO, IO, UIO, RIO, Task}
 
 import sc4pac.error.*
 import sc4pac.JsonData as JD
@@ -42,16 +42,14 @@ sealed abstract class MetadataRepository(val baseUri: java.net.URI) {
   /** For a package or asset (no variant) of a given version, fetch the
     * corresponding `JD.Package` or `JD.Asset` contained in its json file.
     */
-  def fetchModuleJson[R, A <: JD.PackageAsset : Reader](dep: BareDep, version: String, fetch: MetadataRepository.Fetch[R]): RIO[R, (A, java.net.URI)]
+  def fetchModuleJson[A <: JD.PackageAsset : Reader](dep: BareDep, version: String, fetcher: Fetcher): Task[(A, java.net.URI)]
 
-  def fetchExternalPackage[R](module: BareModule, fetch: MetadataRepository.Fetch[R]): RIO[R, Option[JD.ExternalPackage]]
+  def fetchExternalPackage(module: BareModule, fetcher: Fetcher): Task[Option[JD.ExternalPackage]]
 
   def iterateChannelPackages: Iterator[JD.ChannelItem]
 }
 
 object MetadataRepository {
-
-  type Fetch[R] = [A] => Artifact => Reader[A] ?=> ZIO[R, Artifact2Error, A]
 
   def channelContentsUrl(baseUri: java.net.URI): java.net.URI =
     if (baseUri.getPath.endsWith(".yaml")) baseUri else baseUri.resolve(JsonRepoUtil.channelContentsFilename)
@@ -139,7 +137,7 @@ private class JsonRepository(
   /** For a module (no asset, no variant) of a given version, fetch the
     * corresponding `JD.Package` contained in its json file.
     */
-  def fetchModuleJson[R, A <: JD.PackageAsset : Reader](dep: BareDep, version: String, fetch: MetadataRepository.Fetch[R]): RIO[R, (A, java.net.URI)] = {
+  override def fetchModuleJson[A <: JD.PackageAsset : Reader](dep: BareDep, version: String, fetcher: Fetcher): Task[(A, java.net.URI)] = {
     channel.versions.get(dep).flatMap(_.find(_._1 == version)) match
       // This only works for concrete versions (so not for "latest.release").
       // The assumption is that all methods of MetadataRepository are only called with concrete versions.
@@ -155,16 +153,16 @@ private class JsonRepository(
         // channel files are always up-to-date and Downloader .checked files do not exist.)
         val jsonArtifact = Artifact(remoteUrl, changing = false, checksum = checksum, redownloadOnChecksumError = true)
 
-        fetch[A](jsonArtifact).map((_, remoteUrl))
+        fetcher.fetchAsJson[A](jsonArtifact).map((_, remoteUrl))
   }
 
-  def fetchExternalPackage[R](module: BareModule, fetch: MetadataRepository.Fetch[R]): RIO[R, Option[JD.ExternalPackage]] = {
+  def fetchExternalPackage(module: BareModule, fetcher: Fetcher): Task[Option[JD.ExternalPackage]] = {
     externalPackages.get(module) match {
       case None => ZIO.succeed(None)
       case Some(extPkg) =>
         val remoteUrl = MetadataRepository.resolveUriWithSubPath(baseUri, MetadataRepository.extPkgJsonSubPath(module))
         val jsonArtifact = Artifact(remoteUrl, changing = false, checksum = extPkg.checksum)
-        fetch[JD.ExternalPackage](jsonArtifact)
+        fetcher.fetchAsJson[JD.ExternalPackage](jsonArtifact)
           .map(Some(_))
     }
   }
@@ -186,7 +184,7 @@ private class YamlRepository(
     channelData.get(dep).map(_.keys.toSeq).getOrElse(Seq.empty)
   }
 
-  def fetchModuleJson[R, A <: JD.PackageAsset : Reader](dep: BareDep, version: String, fetch: MetadataRepository.Fetch[R]): RIO[R, (A, java.net.URI)] = {
+  def fetchModuleJson[A <: JD.PackageAsset : Reader](dep: BareDep, version: String, fetcher: Fetcher): Task[(A, java.net.URI)] = {
     channelData.get(dep).flatMap(_.get(version)) match {
       case None =>
         ZIO.fail(new Sc4pacVersionNotFound(s"No versions of ${dep.orgName} found in repository $baseUri.",
@@ -196,7 +194,7 @@ private class YamlRepository(
     }
   }
 
-  def fetchExternalPackage[R](module: BareModule, fetch: MetadataRepository.Fetch[R]): RIO[R, Option[JD.ExternalPackage]] = {
+  def fetchExternalPackage(module: BareModule, fetcher: Fetcher): Task[Option[JD.ExternalPackage]] = {
     ZIO.succeed(externalPackages.get(module))
   }
 

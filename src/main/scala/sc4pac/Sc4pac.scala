@@ -12,6 +12,7 @@ import JD.{Warning, bareModuleRw, subPathRw}
 import sc4pac.Sc4pac.{UpdatePlan, RepairPlan}
 import sc4pac.Staging.{StageResult, StagingDirs}
 import sc4pac.Resolution.{Dep, DepModule, DepAsset}
+import sc4pac.Fetcher.Blob
 
 // TODO Use `Runtime#reportFatal` or `Runtime.setReportFatal` to log fatal errors like stack overflow
 
@@ -412,9 +413,9 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path, fileSys: ser
         pluginsSpec.copy(config = pluginsSpec.config.copy(variant = selections), explicit = explicitModules)
       }
 
-    private def doDownloadWithMirror(resolution: Resolution, plan: UpdatePlan): RIO[Prompter & ResolutionContext & Downloader.Credentials, Seq[(DepAsset, Artifact, java.io.File)]] = {
+    private def doDownloadWithMirror(resolution: Resolution, plan: UpdatePlan): RIO[Prompter & ResolutionContext & Downloader.Credentials, Seq[(DepAsset, Artifact, Blob)]] = {
       val depsToInstall = resolution.transitiveDependencies.filter(plan.toInstall).reverse  // we start by fetching artifacts in reverse as those have fewest dependencies of their own
-      ZIO.iterate(Left((Map.empty, None)): Either[(Map[java.net.URI, os.Path], Option[Downloader.Credentials]), Seq[(DepAsset, Artifact, java.io.File)]])(_.isLeft) {
+      ZIO.iterate(Left((Map.empty, None)): Either[(Map[java.net.URI, os.Path], Option[Downloader.Credentials]), Seq[(DepAsset, Artifact, Blob)]])(_.isLeft) {
         case Left((urlFallbacks, credentialsFallback)) =>
           Resolution.fetchArtifacts(depsToInstall.collect{ case d: DepAsset => d }, urlFallbacks, plan.toRedownload)
             .updateService[Downloader.Credentials](origCredentials => credentialsFallback.getOrElse(origCredentials))
@@ -481,10 +482,10 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path, fileSys: ser
     private def testInstallOne(
       module: BareModule,
       resolutions: Seq[Resolution],
-      fetchedAssets: Seq[(DepAsset, Artifact, java.io.File)],
+      fetchedAssets: Seq[(DepAsset, Artifact, Blob)],
       stagingDirs: StagingDirs,
       outputDir: Option[os.Path],
-    ): RIO[ResolutionContext & Staging & Downloader.Credentials, Unit] = {
+    ): RIO[Staging & Downloader.Credentials, Unit] = {
       ZIO.foreachDiscard(resolutions) { resolution =>
         val depsToStage = resolution.transitiveDependencies.collect{ case d: DepModule => d }.toSeq  // keep only non-assets
         (for {
@@ -626,60 +627,42 @@ object Sc4pac {
     override def toString = s"($numerator/$denominator)"
   }
 
-  private def fetchChannelData(repoUri: java.net.URI, cache: FileCache, channelContentsTtl: scala.concurrent.duration.Duration): ZIO[Profile & Logger, error.ChannelsNotAvailable, MetadataRepository] = {
+  private def fetchChannelData(repoUri: java.net.URI, fetcher: Fetcher, channelContentsTtl: scala.concurrent.duration.Duration): ZIO[Profile, error.ChannelsNotAvailable, MetadataRepository] = {
     val contentsUrl = MetadataRepository.channelContentsUrl(repoUri)
     val artifact = Artifact(contentsUrl, changing = true)  // changing as the remote file is updated whenever any remote package is added or updated
     for {
-      channelContentsFile <- cache
-                              .withTtl(Some(channelContentsTtl))
-                              .fetchFile(artifact)  // requires initialized logger
-                              .provideSomeLayer(Downloader.emptyCredentialsLayer)  // as we do not fetch channel file from Simtropolis, no need for credentials
+      channelContentsFile <- fetcher.fetch(artifact, credentials = None, ttl = Some(channelContentsTtl))  // as we do not fetch channel file from Simtropolis, no need for credentials
                               .mapError {
                                 case err: error.Artifact2Error =>
                                   error.ChannelsNotAvailable(s"Channel not available. Check your internet connection and that the channel URL is correct: $repoUri", err.getMessage)
                               }
       profile             <- ZIO.service[Profile]
-      repo                <- MetadataRepository.create(os.Path(channelContentsFile: java.io.File, profile.root), repoUri)
+      repo                <- MetadataRepository.create(channelContentsFile.path, repoUri)
                               .mapError {
                                 case errStr: ErrStr => error.ChannelsNotAvailable(s"Failed to read channel data: $errStr", "")  // e.g. unsupported scheme
                               }
     } yield repo
   }
 
-  private[sc4pac] def initializeRepositories(repoUris: Seq[java.net.URI], cache: FileCache, channelContentsTtl: scala.concurrent.duration.Duration): RIO[Profile & Logger, Seq[MetadataRepository]] = {
+  private[sc4pac] def initializeRepositories(repoUris: Seq[java.net.URI], fetcher: Fetcher, channelContentsTtl: scala.concurrent.duration.Duration): RIO[Profile & Logger, Seq[MetadataRepository]] = {
     ZIO.foreachPar(repoUris) { url =>
-      fetchChannelData(url, cache, channelContentsTtl)
+      fetchChannelData(url, fetcher, channelContentsTtl)
     }
     // TODO for long running processes, we might need a way to refresh the channel
     // data occasionally (but for now this is good enough)
   }
 
-  /** Limits parallel downloads to 2 (ST rejects too many connections). */
-  private[sc4pac] def createThreadPool() = coursier.cache.internal.ThreadUtil.fixedThreadPool(size = 2)
-
-  def init(config: JD.Config, refreshChannels: Boolean = false): RIO[Profile & Logger & Ref[Option[FileCache]] & service.FileSystem & ProfileStorage, Sc4pac] = {
-    // val refreshLogger = coursier.cache.loggers.RefreshLogger.create(System.err)  // TODO System.err seems to cause less collisions between refreshing progress and ordinary log messages
+  def init(config: JD.Config, refreshChannels: Boolean = false): RIO[Profile & Logger & Fetcher & service.FileSystem & ProfileStorage, Sc4pac] = {
     val channelContentsTtl = if (refreshChannels) Constants.channelContentsTtlRefresh else Constants.channelContentsTtl  // 0 or 30 minutes
     for {
       cacheRoot <- config.cacheRootAbs
-      location  =  (cacheRoot / "coursier").toIO
       logger    <- ZIO.service[Logger]
-      cache     <- ZIO.serviceWithZIO[Ref[Option[FileCache]]](_.modify[FileCache] {
-                     // Re-use existing cache or initialize it. This is important so that
-                     // concurrent access to the API does not hit a locked cache.
-                     // We don't expect concurrent API access for different cache locations,
-                     // so it's fine to store just a reference to the most recent cache.
-                     case opt @ Some(cache) if cache.location == location => (cache, opt)
-                     case _ =>
-                       val coursierPool = createThreadPool()
-                       val cache = FileCache(location = location, pool = coursierPool)
-                                     .withTtl(Some(Constants.cacheTtl))  // 12 hours
-                       (cache, Some(cache))
-                   })
-      repos     <- initializeRepositories(config.channels, cache, channelContentsTtl)
+      fetcher   <- ZIO.service[Fetcher]
+      _         <- fetcher.setCacheLocation(cacheRoot / "coursier")
+      repos     <- initializeRepositories(config.channels, fetcher, channelContentsTtl)
       tempRoot  <- config.tempRootAbs
       profile   <- ZIO.service[Profile]
-      context   =  new ResolutionContext(repos, cache, logger, profile)
+      context   =  new ResolutionContext(repos, fetcher, logger, profile)
       fileSys   <- ZIO.service[service.FileSystem]
       profileStorage <- ZIO.service[ProfileStorage]
     } yield Sc4pac(context, tempRoot, fileSys, profileStorage)

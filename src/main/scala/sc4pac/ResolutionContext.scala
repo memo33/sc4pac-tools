@@ -3,7 +3,7 @@ package sc4pac
 
 class ResolutionContext(
   val repositories: Seq[MetadataRepository],
-  val cache: FileCache,
+  val fetcher: Fetcher,
   val logger: Logger,
   val profile: Profile
 ) {

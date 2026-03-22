@@ -14,15 +14,11 @@ import sc4pac.cli.Commands.Server.{ServerFiber, ServerConnection}
 
 
 object Api {
-  def layer(options: sc4pac.cli.Commands.ServerOptions): zio.URLayer[zio.Console & ProfileRepo & ProfileStorage, Api] =
-    zio.ZLayer(for {
-      console <- ZIO.service[zio.Console]
-      profileRepo <- ZIO.service[ProfileRepo]
-      profileStorage <- ZIO.service[ProfileStorage]
-    } yield Api(options, console, profileRepo, profileStorage))
+  def layer(options: sc4pac.cli.Commands.ServerOptions): zio.URLayer[zio.Console & CliLogger & ProfileRepo & ProfileStorage, Api] =
+    zio.ZLayer.fromFunction(Api(options, _, _, _, _))
 }
 
-class Api(val options: sc4pac.cli.Commands.ServerOptions, console: zio.Console, profileRepo: ProfileRepo, profileStorage: ProfileStorage) extends AuthMiddleware {
+class Api(val options: sc4pac.cli.Commands.ServerOptions, console: zio.Console, logger0: CliLogger, profileRepo: ProfileRepo, profileStorage: ProfileStorage) extends AuthMiddleware {
   private val connectionsSinceLaunch = java.util.concurrent.atomic.AtomicInteger(0)
   private val currentRepairPlan = java.util.concurrent.atomic.AtomicReference(Option.empty[PromptMessage.ConfirmRepairPlan])
 
@@ -93,7 +89,7 @@ class Api(val options: sc4pac.cli.Commands.ServerOptions, console: zio.Console, 
   val jsonOk = jsonResponse(ResultMessage(ok = true))
 
   private val httpLogger = {
-    val cliLogger: Logger = CliLogger(Some(console))
+    val cliLogger: Logger = logger0  // CliLogger(Some(console))  // TODO refactor to make this less awkward
     zio.ZLayer.succeed(cliLogger)
   }
 
@@ -216,7 +212,7 @@ class Api(val options: sc4pac.cli.Commands.ServerOptions, console: zio.Console, 
       }
     }
 
-  type ProfileRouteEnv[R] = R & service.FileSystem & Ref[Option[FileCache]] & ProfileStorage
+  type ProfileRouteEnv[R] = R & service.FileSystem & Fetcher & ProfileStorage
 
   /** Routes that require a `profile=id` query parameter as part of the URL. */
   def profileRoutes = zio.Chunk[(Route[ProfileRouteEnv[UserInfo], Nothing], AuthScope)](
@@ -353,9 +349,9 @@ class Api(val options: sc4pac.cli.Commands.ServerOptions, console: zio.Console, 
                                   .provideSome[Profile & WebSocketLogger & service.FileSystem](Staging.live)
               } yield ResultMessage(ok = true)
 
-            val wsTask: zio.RIO[ProfileRouteEnv[Profile & Ref[Option[FileCache]]], Unit] =
+            val wsTask: zio.RIO[Profile & service.FileSystem & ProfileStorage, Unit] =
               WebSocketLogger.run(console, send = msg => wsChannel.send(Read(jsonFrame(msg)))) {
-                for {
+                (for {
                   finalMsg <- updateTask.catchAll {
                                 case err: cli.Commands.ExpectedFailure => ZIO.succeed(expectedFailureMessage(err))
                                 case err => ZIO.succeed(ErrorMessage.ServerError("Unexpected error during Update. This looks like a bug. Please report it.", Logger.stackTraceToString(err)))
@@ -364,7 +360,7 @@ class Api(val options: sc4pac.cli.Commands.ServerOptions, console: zio.Console, 
                                 case err => ZIO.succeed(ErrorMessage.ServerError("Unexpected error during Update (defect). This looks like a bug. Please report it.", Logger.stackTraceToString(err)))
                               }
                   unit     <- ZIO.serviceWithZIO[WebSocketLogger](_.sendMessageAwait(finalMsg))
-                } yield unit
+                } yield unit).provideSomeLayer(Fetcher.live)  // NOTE For Update, this fetcher depends on WebSocketLogger instead of CliLogger.
               } // wsLogger is shut down here (TODO use resource for safer closing)
               // wsChannel needs to be explicitly shutdown afterwards
 
@@ -374,13 +370,13 @@ class Api(val options: sc4pac.cli.Commands.ServerOptions, console: zio.Console, 
             wsTask.raceWith(wsChannel.awaitShutdown: zio.RIO[Any, Unit])(
               leftDone = (result, fiberRight) =>  // normal shutdown
                 wsChannel.shutdown
-                  .zipRight(fiberRight.await)
-                  .zipRight(ZIO.serviceWithZIO[Logger](_.logZIO("Update task completed.")))
-                  .zipRight(result),
+                  *> fiberRight.await
+                  *> ZIO.serviceWithZIO[Logger](_.logZIO("Update task completed."))
+                  *> result,
               rightDone = (result, fiberLeft) =>  // cancel the update
                 fiberLeft.interruptFork  // forking is important here to be able to interrupt a blocked fiber
-                  .zipRight(ZIO.serviceWithZIO[Logger](_.logZIO("Update task was canceled.")))
-                  .zipRight(result)
+                  *> ZIO.serviceWithZIO[Logger](_.logZIO("Update task was canceled."))
+                  *> result,
             ).provideSomeLayer(httpLogger): zio.RIO[ProfileRouteEnv[Profile], Unit]
 
           }.toResponse: zio.URIO[ProfileRouteEnv[Profile], Response]
@@ -808,7 +804,7 @@ class Api(val options: sc4pac.cli.Commands.ServerOptions, console: zio.Console, 
     r
   }
 
-  def routes(webAppDir: Option[os.Path]): Routes[TokenService & service.FileSystem & ServerFiber & Client & Ref[ServerConnection] & Ref[Option[FileCache]] & ProfileStorage, Nothing] = {
+  def routes(webAppDir: Option[os.Path]): Routes[TokenService & service.FileSystem & ServerFiber & Client & Ref[ServerConnection] & Fetcher & ProfileStorage, Nothing] = {
     val authRoutes = literal("auth") / authEndpoints
     (authRoutes ++ tokenRoutes ++ webAppDir.map(staticRoutes).getOrElse(Routes.empty))
   }
