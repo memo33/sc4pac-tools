@@ -499,10 +499,11 @@ class Extractor(logger: Logger) {
     val (usedPatternsBuilder, predicate, predicateNested) = recipe.makeAcceptancePredicates(validate = validate)  // tracks used patterns to warn about unused patterns
     val extractedFilesBuilder = Chunk.newBuilder[Extractor.ExtractedItem]
     scala.util.Using.resource(Extractor.WrappedArchive(archive, fallbackFilename, stagingRoot, logger, hints)) { wrappedArchive =>
+      logger.debug(s"Archive type: ${wrappedArchive.getClass.getSimpleName}")
       // first extract just the main files
       extractedFilesBuilder ++= wrappedArchive.extractByPredicate(destination, predicate, overwrite = true, flatten = false, logger)
       // additionally, extract jar files/nested archives contained in the zip file to a temporary location
-      for (Extractor.JarExtraction(jarsDir) <- jarExtractionOpt) {
+      for (Extractor.JarExtraction(jarsDir) <- jarExtractionOpt) {  // TODO avoid searching for nested archives inside WrappedNonarchive
         logger.debug(s"Searching for nested archives:")
         val jarFiles = wrappedArchive.extractByPredicate(jarsDir, predicateNested, overwrite = false, flatten = true, logger)  // overwrite=false, as we want to extract any given jar only once per staging process
         // finally extract the jar files themselves (without recursively extracting jars contained inside)

@@ -9,7 +9,7 @@ object Constants {
   export JsonRepoUtil.sc4pacAssetOrg  // val sc4pacAssetOrg = Organization("sc4pacAsset")
   val defaultIncludePattern = Pattern.compile("""(?<=\.dat|\.sc4model|\.sc4lot|\.sc4desc|\.sc4)$""", Pattern.CASE_INSENSITIVE)  // includes only plugin files (without dll)
   val defaultExcludePattern = Pattern.compile("""(?<!\.dat|\.sc4model|\.sc4lot|\.sc4desc|\.sc4)$""", Pattern.CASE_INSENSITIVE)  // excludes files with other file types
-  val sc4fileTypePattern = Pattern.compile("""\.dat|\.sc4model|\.sc4lot|\.sc4desc|\.sc4|\.dll$""", Pattern.CASE_INSENSITIVE)
+  val sc4fileTypePattern = Pattern.compile("""(?:\.dat|\.sc4model|\.sc4lot|\.sc4desc|\.sc4|\.dll)$""", Pattern.CASE_INSENSITIVE)
   val versionLatestRelease = "latest.release"
   val defaultChannelUrls = Seq(
     MetadataRepository.parseChannelUrl("https://memo33.github.io/sc4pac/channel/").toOption.get,
