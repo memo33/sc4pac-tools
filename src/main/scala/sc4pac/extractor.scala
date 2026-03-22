@@ -5,6 +5,7 @@ import org.apache.commons.compress.archivers.zip.{ZipFile, ZipArchiveEntry}
 import org.apache.commons.compress.archivers.sevenz.{SevenZFile, SevenZArchiveEntry}
 import org.apache.commons.io.IOUtils
 import java.nio.file.StandardOpenOption
+import java.nio.charset.StandardCharsets
 import java.util.regex.Pattern
 import scala.collection.mutable.Builder
 import zio.Chunk
@@ -163,19 +164,23 @@ object Extractor {
         new Wrapped7z(SevenZFile.builder().setFile(file).get())
       } else {
         /* single file or zip or jar file */
-        val remoteOrLocalFallback: Option[String] =
-          if (fallbackFilename.exists(filename => Constants.sc4fileTypePattern.matcher(filename).find()))
-            fallbackFilename  // For remote files, fallbackFilename is extracted from HTTP header.
-          else if (Constants.sc4fileTypePattern.matcher(file.getName).find())
-            Some(file.getName)  // For local `file://` files, we rely on correct file extensions instead.
-          else None
-
-        if (remoteOrLocalFallback.isDefined)
-          new WrappedNonarchive(os.Path(file.getAbsolutePath()), remoteOrLocalFallback.get)  // .dat/.sc4*/.dll
-        else  // zip or jar (default case in case file extension is not known)
-          new WrappedZip(ZipFile.builder().setFile(file).get())
+        filenameMatching(Constants.sc4fileTypePattern, file, fallbackFilename) match {
+          case Some(sc4Filename) =>
+            new WrappedNonarchive(os.Path(file.getAbsolutePath()), sc4Filename)  // single .dat/.sc4*/.dll file
+          case None =>
+            new WrappedZip(file, isJar = lcNames.exists(_.endsWith(".jar")))  // jar or zip file (default case in case file extension is not known)
+        }
       }
     }
+
+    private def filenameMatching(pattern: java.util.regex.Pattern, file: java.io.File, fallbackFilename: Option[String]): Option[String] = {
+      if (fallbackFilename.exists(filename => pattern.matcher(filename).find()))
+        fallbackFilename  // For remote files, fallbackFilename is extracted from HTTP header.
+      else if (pattern.matcher(file.getName).find())
+        Some(file.getName)  // For local `file://` files, we rely on correct file extensions instead.
+      else None
+    }
+
   }
 
   private[sc4pac] sealed trait WrappedArchive[A] extends AutoCloseable {
@@ -289,7 +294,17 @@ object Extractor {
     }
   }
 
-  private[sc4pac] class WrappedZip(archive: ZipFile) extends WrappedArchive[ZipArchiveEntry] {
+  private lazy val CP437 = java.nio.charset.Charset.forName("CP437")
+
+  private[sc4pac] class WrappedZip(file: java.io.File, isJar: Boolean) extends WrappedArchive[ZipArchiveEntry] {
+    // See https://commons.apache.org/proper/commons-compress/zip.html#Encoding
+    // and https://github.com/memo33/sc4pac-tools/issues/51
+    // - Jar files always use UTF-8.
+    // - Zip files traditionally use only CP437, but will use UTF-8 if the "language encoding flag" is set,
+    //   regardless of the charset we choose here.
+    // - (Non-standard archivers might encode non-ASCII characters in other encodings,
+    //   such as the platform default, but that is non-standard and should be rare.)
+    private val archive: ZipFile = ZipFile.builder().setFile(file).setCharset(if (isJar) StandardCharsets.UTF_8 else CP437).get()
     export archive.close
     import scala.jdk.CollectionConverters.*
     def iterateEntries = archive.getEntries.asScala

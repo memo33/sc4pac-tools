@@ -64,6 +64,7 @@ class ExtractorSpec extends AnyWordSpec with Matchers {
       in / "common" / "prefix" / "c" / "f.SC4Desc" -> "DBPF dummy",
       in / "common" / "prefix" / "c" / "g.dat" -> "DBPF dummy",
       in / "common" / "prefix" / "c" / "h.dll" -> "MZ dll dummy",
+      in / "common" / "prefix" / "c" / "straße.dat" -> "DBPF dummy",  // for CP437 encoding test
     )
     val ignoredFiles = Seq(
       in / "readme.txt" -> "dummy",
@@ -123,11 +124,28 @@ class ExtractorSpec extends AnyWordSpec with Matchers {
       }
     }
 
+    def compressZipFile(sourceDir: os.Path, output: os.Path, encoding: String): Unit = {
+      import org.apache.commons.compress.archivers.zip.*
+      util.Using.resource(new ZipArchiveOutputStream(new java.io.FileOutputStream(output.toIO))) { out =>
+        out.setEncoding(encoding)
+        for (p <- os.walk(sourceDir)) {
+          val e = out.createArchiveEntry(p.toIO, p.subRelativeTo(sourceDir).toString)
+          e.setSize(os.size(p))
+          out.putArchiveEntry(e)
+          if (os.isFile(p)) {
+            out.write(os.read.bytes(p))
+          }
+          out.closeArchiveEntry()
+        }
+      }
+    }
+
     for (suffix <- Seq("zip", "jar", "rar")) {
       s"support mixed levels of subfolders ($suffix)" in withSampleFiles { (in, out, files) =>
         val archiveFile = in / os.up / s"in.$suffix"
-        os.zip(archiveFile, Seq(in))  // using SZ would fail inexplicably (fake test for .rar files)
-        val wrappedArchive = new WrappedZip(org.apache.commons.compress.archivers.zip.ZipFile.builder().setFile(archiveFile.toIO).get())
+        // os.zip(archiveFile, Seq(in))  // using SZ below instead allows setting encoding
+        compressZipFile(in, archiveFile, encoding = if (suffix == "zip") "CP437" else "UTF-8")  // (fake test for .rar files)
+        val wrappedArchive = new WrappedZip(archiveFile.toIO, isJar = suffix != "zip")
         wrappedArchive.extractByPredicate(out, createPredicate(), overwrite = true, flatten = false, CliLogger())
         os.exists(out).shouldBe(true)
         os.walk(out).filter(os.isFile(_)).map(_.subRelativeTo(out)).sorted
