@@ -66,7 +66,7 @@ package object sc4pac {
   }
 
   /** Root directory of an individual profile. */
-  class ProfileRoot(val path: os.Path)
+  class Profile(val root: os.Path)
   /** Directory containing all the profiles. */
   class ProfilesDir(val path: os.Path)
 

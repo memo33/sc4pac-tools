@@ -10,7 +10,7 @@ import JsonData as JD
 
 object JsonDataSpecZIO extends ZIOSpecDefault {
 
-  val profileLayer = zio.ZLayer.succeed(ProfileRoot(os.pwd / "target" / "profiles" / "1"))
+  val profileLayer = zio.ZLayer.succeed(Profile(os.pwd / "target" / "profiles" / "1"))
 
   def dummyFileSystem(overrideDirs: Boolean, env: Map[String, String] = Map.empty) = {
     val env0 = env
@@ -35,10 +35,10 @@ object JsonDataSpecZIO extends ZIOSpecDefault {
             .provideSomeLayer(dummyFileSystem(overrideDirs = false, env = customEnv))
           p4 <- JD.Profiles.parseProfilesRoot(None)
         } yield assertTrue(
-          p1 == os.pwd / "target" / "profiles",
-          p2 == os.pwd / "target" / "profiles",
-          p3 == os.pwd / "target" / "profiles2",
-          p4.isInstanceOf[os.Path], p4.last == "profiles",
+          p1.path == os.pwd / "target" / "profiles",
+          p2.path == os.pwd / "target" / "profiles",
+          p3.path == os.pwd / "target" / "profiles2",
+          p4.path.isInstanceOf[os.Path], p4.path.last == "profiles",
         )
       },
       test("cache dir") {
@@ -64,11 +64,11 @@ object JsonDataSpecZIO extends ZIOSpecDefault {
           p5 <- JD.Profiles.parseProfilesRoot(None)
             .provideSomeLayer(dummyFileSystem(overrideDirs = true, env = Map("APPDATA" -> (os.pwd / "target" / "appdata-roaming").toString)))
         } yield assertTrue(
-          p1 == os.pwd / "target" / "profiles",
-          p2 == os.pwd / "target" / "profiles",
-          p3 == os.pwd / "target" / "profiles2",
+          p1.path == os.pwd / "target" / "profiles",
+          p2.path == os.pwd / "target" / "profiles",
+          p3.path == os.pwd / "target" / "profiles2",
           p4.isLeft, p4.left.toOption.exists(_.isInstanceOf[error.ObtainingUserDirsFailed]),
-          p5 == os.pwd / "target" / "appdata-roaming" / "io.github.memo33" / "sc4pac" / "config" / "profiles",
+          p5.path == os.pwd / "target" / "appdata-roaming" / "io.github.memo33" / "sc4pac" / "config" / "profiles",
         )
       },
       test("cache dir") {

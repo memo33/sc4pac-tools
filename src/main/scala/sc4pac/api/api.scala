@@ -13,19 +13,19 @@ import JD.{bareModuleRw, uriRw}
 import sc4pac.cli.Commands.Server.{ServerFiber, ServerConnection}
 
 
-class Api(val options: sc4pac.cli.Commands.ServerOptions, console: zio.Console) extends AuthMiddleware {
+object Api {
+  def layer(options: sc4pac.cli.Commands.ServerOptions): zio.URLayer[zio.Console & CliLogger & ProfileRepo & ProfileStorage, Api] =
+    zio.ZLayer.fromFunction(Api(options, _, _, _, _))
+}
+
+class Api(val options: sc4pac.cli.Commands.ServerOptions, console: zio.Console, logger0: CliLogger, profileRepo: ProfileRepo, profileStorage: ProfileStorage) extends AuthMiddleware {
   private val connectionsSinceLaunch = java.util.concurrent.atomic.AtomicInteger(0)
   private val currentRepairPlan = java.util.concurrent.atomic.AtomicReference(Option.empty[PromptMessage.ConfirmRepairPlan])
 
   def jsonResponse[A : UP.Writer](obj: A): Response = Response.json(UP.write(obj, indent = options.indent))
   private def jsonFrame[A : UP.Writer](obj: A): WebSocketFrame = WebSocketFrame.Text(UP.write(obj, indent = options.indent))
 
-  // only for use in API, not CLI, in particular to ensure only profile roots constructed by ID can be deleted via API
-  private def profileRootFromId(id: String)/*: zio.RLayer[ProfilesDir, ProfileRoot]*/ =  // inferred type is more specific which helps the compiler
-    zio.ZLayer.fromFunction(profileRootFromId0(id, _))
-  private def profileRootFromId0(id: String, dir: ProfilesDir): ProfileRoot = ProfileRoot(dir.path / id)
-
-  private val makePlatformDefaults: URIO[ProfileRoot & service.FileSystem, Map[String, Seq[String]]] =
+  private val makePlatformDefaults: URIO[Profile & service.FileSystem, Map[String, Seq[String]]] =
     for {
       defPlugins  <- JD.PluginsSpec.defaultPluginsRoot
       defCache    <- JD.PluginsSpec.defaultCacheRoot
@@ -36,8 +36,8 @@ class Api(val options: sc4pac.cli.Commands.ServerOptions, console: zio.Console) 
     )
 
   /** Sends a 409 ProfileNotInitialized or 500 ReadingProfileFailed if PluginsSpec cannot be loaded. */
-  private val readPluginsSpecOr409: ZIO[ProfileRoot & service.FileSystem, Response, JD.PluginsSpec] =
-    JD.PluginsSpec.readMaybe
+  private val readPluginsSpecOr409: ZIO[Profile & service.FileSystem, Response, JD.PluginsSpec] =
+    ZIO.serviceWithZIO(profileStorage.loadSpecMaybe)
       .mapError((e: error.ReadingProfileFailed) => jsonResponse(expectedFailureMessage(e)).status(expectedFailureStatus(e)))
       .someOrElseZIO((  // PluginsSpec file does not exist
         for {
@@ -89,7 +89,7 @@ class Api(val options: sc4pac.cli.Commands.ServerOptions, console: zio.Console) 
   val jsonOk = jsonResponse(ResultMessage(ok = true))
 
   private val httpLogger = {
-    val cliLogger: Logger = CliLogger(Some(console))
+    val cliLogger: Logger = logger0  // CliLogger(Some(console))  // TODO refactor to make this less awkward
     zio.ZLayer.succeed(cliLogger)
   }
 
@@ -180,7 +180,7 @@ class Api(val options: sc4pac.cli.Commands.ServerOptions, console: zio.Console) 
     (JD.Channel.Stats.fromMap(categoryStats), results.sortBy((item, ratio) => (-ratio, item.group, item.name)))
   }
 
-  def installedStatusBuilder(pluginsSpec: JD.PluginsSpec): zio.RIO[ProfileRoot, BareModule => InstalledStatus] = {
+  def installedStatusBuilder(pluginsSpec: JD.PluginsSpec): zio.RIO[Profile & ProfileStorage, BareModule => InstalledStatus] = {
     val explicit = pluginsSpec.explicit.toSet
     for {
       installed <- JD.PluginsLock.listInstalled2.map(mods => mods.iterator.map(m => m.toBareModule -> m).toMap)
@@ -196,13 +196,13 @@ class Api(val options: sc4pac.cli.Commands.ServerOptions, console: zio.Console) 
 
   // Extract profile ID from URL query parameter and add it to environment.
   // 400 error if "profile" parameter is absent.
-  val interceptProfile: HandlerAspect[UserInfo, ProfileRoot] =
+  val interceptProfile: HandlerAspect[UserInfo, Profile] =
     HandlerAspect.interceptIncomingHandler {
       handler { (req: Request) =>
         req.url.queryParams.getAll("profile").headOption match {
           case Some[ProfileId](id) =>
-            ZIO.serviceWith[UserInfo] { userInfo =>
-              (req, profileRootFromId0(id = id, userInfo.profilesDir))
+            ZIO.serviceWithZIO[UserInfo] { userInfo =>  // unused, but enforced requirement
+              profileRepo.profileFromId(id).map(req -> _)  // TODO check that id exists
             }
           case None =>
             ZIO.fail(jsonResponse(ErrorMessage.BadRequest(
@@ -212,7 +212,7 @@ class Api(val options: sc4pac.cli.Commands.ServerOptions, console: zio.Console) 
       }
     }
 
-  type ProfileRouteEnv[R] = R & service.FileSystem & Ref[Option[FileCache]]
+  type ProfileRouteEnv[R] = R & service.FileSystem & Fetcher & ProfileStorage
 
   /** Routes that require a `profile=id` query parameter as part of the URL. */
   def profileRoutes = zio.Chunk[(Route[ProfileRouteEnv[UserInfo], Nothing], AuthScope)](
@@ -230,28 +230,17 @@ class Api(val options: sc4pac.cli.Commands.ServerOptions, console: zio.Console) 
     Method.POST / "profile.init" -> handler { (req: Request) =>
       wrapHttpEndpoint {
         for {
-          profileRoot <- ZIO.serviceWith[ProfileRoot](_.path)
-          _           <- ZIO.attemptBlockingIO(os.exists(JD.PluginsSpec.path(profileRoot)) || os.exists(JD.PluginsLock.path(profileRoot)))
-                           .filterOrFail(_ == false)(jsonResponse(
-                             ErrorMessage.InitNotAllowed("Profile already initialized.",
-                               "Manually delete the corresponding .json files if you are sure you want to initialize a new profile.")
-                           ).status(Status.Conflict))
-          defaults    <- makePlatformDefaults
-          initArgs    <- parseOr400[InitArgs](req.body, ErrorMessage.BadInit(
-                           """Parameters "plugins", "cache" and "temp" are required.""",
-                           "Pass the locations of the folders as JSON dictionary: {plugins: <path>, cache: <path>, temp: <path>}.",
-                           platformDefaults = defaults,
-                         ))
-          pluginsRoot =  os.Path(initArgs.plugins, profileRoot)
-          cacheRoot   =  os.Path(initArgs.cache, profileRoot)
-          tempRoot    =  os.FilePath(initArgs.temp)
-          _           <- ZIO.attemptBlockingIO {
-                           os.makeDir.all(profileRoot)
-                           os.makeDir.all(pluginsRoot)  // TODO ask for confirmation?
-                           os.makeDir.all(cacheRoot)
-                         }
-          pluginsSpec <- JD.PluginsSpec.init(pluginsRoot = pluginsRoot, cacheRoot = cacheRoot, tempRoot = tempRoot)
-        } yield jsonResponse(pluginsSpec.config)
+          defaults <- makePlatformDefaults
+          initArgs <- parseOr400[InitArgs](req.body, ErrorMessage.BadInit(
+                        """Parameters "plugins", "cache" and "temp" are required.""",
+                        "Pass the locations of the folders as JSON dictionary: {plugins: <path>, cache: <path>, temp: <path>}.",
+                        platformDefaults = defaults,
+                      ))
+          config   <- ZIO.serviceWithZIO[Profile](profileRepo.initProfile(_, initArgs)).mapError {
+                        case msg: ErrorMessage.InitNotAllowed => jsonResponse(msg).status(Status.Conflict)
+                        case e: Throwable => e
+                      }
+        } yield jsonResponse(config)
       }
     } @@ interceptProfile -> AuthScope.write,
 
@@ -332,7 +321,7 @@ class Api(val options: sc4pac.cli.Commands.ServerOptions, console: zio.Console) 
         failure = ZIO.succeed[Response](_),
         success = pluginsSpec =>
           Handler.webSocket { wsChannel =>
-            val updateTask: zio.RIO[ProfileRouteEnv[ProfileRoot & WebSocketLogger], Message] =
+            val updateTask: zio.RIO[ProfileRouteEnv[Profile & WebSocketLogger], Message] =
               for {
                 fs           <- ZIO.service[service.FileSystem]
                 _            <- fs.injectErrorInTest
@@ -357,11 +346,12 @@ class Api(val options: sc4pac.cli.Commands.ServerOptions, console: zio.Console) 
                                     WebSocketPrompter(wsChannel, wsLogger),
                                     credentials,
                                   )))
+                                  .provideSome[Profile & WebSocketLogger & service.FileSystem](Staging.live)
               } yield ResultMessage(ok = true)
 
-            val wsTask: zio.RIO[ProfileRouteEnv[ProfileRoot & Ref[Option[FileCache]]], Unit] =
+            val wsTask: zio.RIO[Profile & service.FileSystem & ProfileStorage, Unit] =
               WebSocketLogger.run(console, send = msg => wsChannel.send(Read(jsonFrame(msg)))) {
-                for {
+                (for {
                   finalMsg <- updateTask.catchAll {
                                 case err: cli.Commands.ExpectedFailure => ZIO.succeed(expectedFailureMessage(err))
                                 case err => ZIO.succeed(ErrorMessage.ServerError("Unexpected error during Update. This looks like a bug. Please report it.", Logger.stackTraceToString(err)))
@@ -370,7 +360,7 @@ class Api(val options: sc4pac.cli.Commands.ServerOptions, console: zio.Console) 
                                 case err => ZIO.succeed(ErrorMessage.ServerError("Unexpected error during Update (defect). This looks like a bug. Please report it.", Logger.stackTraceToString(err)))
                               }
                   unit     <- ZIO.serviceWithZIO[WebSocketLogger](_.sendMessageAwait(finalMsg))
-                } yield unit
+                } yield unit).provideSomeLayer(Fetcher.live)  // NOTE For Update, this fetcher depends on WebSocketLogger instead of CliLogger.
               } // wsLogger is shut down here (TODO use resource for safer closing)
               // wsChannel needs to be explicitly shutdown afterwards
 
@@ -380,16 +370,16 @@ class Api(val options: sc4pac.cli.Commands.ServerOptions, console: zio.Console) 
             wsTask.raceWith(wsChannel.awaitShutdown: zio.RIO[Any, Unit])(
               leftDone = (result, fiberRight) =>  // normal shutdown
                 wsChannel.shutdown
-                  .zipRight(fiberRight.await)
-                  .zipRight(ZIO.serviceWithZIO[Logger](_.logZIO("Update task completed.")))
-                  .zipRight(result),
+                  *> fiberRight.await
+                  *> ZIO.serviceWithZIO[Logger](_.logZIO("Update task completed."))
+                  *> result,
               rightDone = (result, fiberLeft) =>  // cancel the update
                 fiberLeft.interruptFork  // forking is important here to be able to interrupt a blocked fiber
-                  .zipRight(ZIO.serviceWithZIO[Logger](_.logZIO("Update task was canceled.")))
-                  .zipRight(result)
-            ).provideSomeLayer(httpLogger): zio.RIO[ProfileRouteEnv[ProfileRoot], Unit]
+                  *> ZIO.serviceWithZIO[Logger](_.logZIO("Update task was canceled."))
+                  *> result,
+            ).provideSomeLayer(httpLogger): zio.RIO[ProfileRouteEnv[Profile], Unit]
 
-          }.toResponse: zio.URIO[ProfileRouteEnv[ProfileRoot], Response]
+          }.toResponse: zio.URIO[ProfileRouteEnv[Profile], Response]
       )
     } @@ interceptProfile -> AuthScope.write,
 
@@ -564,8 +554,7 @@ class Api(val options: sc4pac.cli.Commands.ServerOptions, console: zio.Console) 
         pluginsSpec2 =  pluginsSpec.copy(config = pluginsSpec.config.copy(
                           variant = pluginsSpec.config.variant ++ selections,
                         ))
-        path         <- JD.PluginsSpec.pathURIO
-        _            <- JsonIo.write(path, pluginsSpec2, None)(ZIO.unit)
+        _            <- ZIO.serviceWithZIO[Profile](profileStorage.saveSpec(_, pluginsSpec2))
       } yield jsonOk
     }) @@ interceptProfile -> AuthScope.write,
 
@@ -613,8 +602,7 @@ class Api(val options: sc4pac.cli.Commands.ServerOptions, console: zio.Console) 
           pluginsSpec2 =  pluginsSpec.copy(config = pluginsSpec.config.copy(channels =
                             if (urls2.nonEmpty) urls2.distinct else Constants.defaultChannelUrls
                           ))
-          path         <- JD.PluginsSpec.pathURIO
-          _            <- JsonIo.write(path, pluginsSpec2, None)(ZIO.unit)
+          _            <- ZIO.serviceWithZIO[Profile](profileStorage.saveSpec(_, pluginsSpec2))
         } yield jsonOk
       }
     } @@ interceptProfile -> AuthScope.write,
@@ -720,23 +708,7 @@ class Api(val options: sc4pac.cli.Commands.ServerOptions, console: zio.Console) 
     Method.GET / "profiles.list" -> handler { (req: Request) =>
       val includePlugins = req.url.queryParams.getAll("includePlugins").nonEmpty
       wrapHttpEndpoint {
-        for {
-          profilesDir <- ZIO.service[ProfilesDir]
-          profiles <- JD.Profiles.readOrInit
-          profilesData <-
-            if (!includePlugins)
-              ZIO.succeed(profiles.profiles.map(p => ProfilesList.ProfileData2(id = p.id, name = p.name)))
-            else
-              ZIO.foreachPar(profiles.profiles) { p =>
-                for {
-                  pluginsSpecOpt <- JD.PluginsSpec.readMaybe.provideSomeLayer(profileRootFromId(p.id))
-                } yield ProfilesList.ProfileData2(id = p.id, name = p.name, pluginsRoot = pluginsSpecOpt.map(_.config.pluginsRoot).orNull)
-              }
-        } yield jsonResponse(ProfilesList(
-          profiles = profilesData,
-          currentProfileId = profiles.currentProfileId,
-          profilesDir = profilesDir.path.toNIO,
-        ))
+        profileRepo.listProfiles(includePlugins = includePlugins).map(jsonResponse)
       }.provideSomeLayer(UserInfo.toProfile)
     } -> AuthScope.read,
 
@@ -745,12 +717,8 @@ class Api(val options: sc4pac.cli.Commands.ServerOptions, console: zio.Console) 
       wrapHttpEndpoint {
         for {
           profileName <- parseOr400[ProfileName](req.body, ErrorMessage.BadRequest("Missing profile name.", "Pass the \"name\" of the new profile."))
-          ps          <- JD.Profiles.readOrInit
-          (ps2, p)    = ps.add(profileName.name)
-          jsonPath    <- JD.Profiles.pathURIO
-          _           <- ZIO.attemptBlockingIO { os.makeDir.all(jsonPath / os.up) }
-          _           <- JsonIo.write(jsonPath, ps2, None)(ZIO.unit)
-        } yield jsonResponse(p)
+          pData       <- profileRepo.add(profileName.name)
+        } yield jsonResponse(pData)
       }.provideSomeLayer(UserInfo.toProfile)
     } -> AuthScope.write,
 
@@ -758,29 +726,10 @@ class Api(val options: sc4pac.cli.Commands.ServerOptions, console: zio.Console) 
     Method.POST / "profiles.remove" -> handler((req: Request) => wrapHttpEndpoint {
       for {
         arg    <- parseOr400[ProfileIdObj](req.body, ErrorMessage.BadRequest("Missing profile ID.", "Pass the \"id\" for the profile to remove."))
-        data   <- JD.Profiles.readOrInit
-        idx    <- ZIO.succeed(data.profiles.indexWhere(_.id == arg.id))
-                    .filterOrFail(_ != -1)(jsonResponse(
+        _      <- profileRepo.removeMaybe(arg.id)
+                    .someOrFail(jsonResponse(
                       ErrorMessage.BadRequest(s"""Profile ID "${arg.id}" does not exist.""", "Make sure to only remove existing profiles.")
                     ).status(Status.BadRequest))
-        profileRoot <- ZIO.service[ProfileRoot].provideSomeLayer(profileRootFromId(data.profiles(idx).id))
-        logger <- ZIO.service[Logger]
-        _      <- ZIO.whenZIODiscard(ZIO.attemptBlockingIO(os.exists(profileRoot.path))) {
-                    logger.logZIO(s"Deleting profile directory: ${profileRoot.path}") *>
-                    ZIO.attemptBlockingIO {
-                      for (path <- os.list.stream(profileRoot.path).find(os.isDir)) {
-                        // sanity check (profileRoot was created by GUI, so should only contain two .json files)
-                        throw java.nio.file.AccessDeniedException(s"Failed to remove profile directory as it contains unexpected subdirectories: $path")
-                      }
-                      Sc4pac.removeAllForcibly(profileRoot.path)
-                    }
-                  }
-        ps2    =  data.profiles.patch(from = idx, Nil, replaced = 1)
-        data2  =  data.copy(
-                    profiles = ps2,
-                    currentProfileId = data.currentProfileId.filter(_ != arg.id).orElse(ps2.lastOption.map(_.id)),
-                  )
-        _      <- JD.Profiles.pathURIO.flatMap(JsonIo.write(_, data2, origState = Some(data))(ZIO.unit))
       } yield jsonOk
     }.provideSomeLayer(UserInfo.toProfile)) -> AuthScope.write,
 
@@ -788,14 +737,10 @@ class Api(val options: sc4pac.cli.Commands.ServerOptions, console: zio.Console) 
     Method.POST / "profiles.switch" -> handler((req: Request) => wrapHttpEndpoint {
       for {
         arg  <- parseOr400[ProfileIdObj](req.body, ErrorMessage.BadRequest("Missing profile ID.", "Pass the \"id\" for the profile to switch to."))
-        ps   <- JD.Profiles.readOrInit
-                  .filterOrFail(_.profiles.exists(_.id == arg.id))(jsonResponse(
+        _    <- profileRepo.switchMaybe(arg.id)
+                  .someOrFail(jsonResponse(
                     ErrorMessage.BadRequest(s"""Profile ID "${arg.id}" does not exist.""", "Make sure to only switch to existing profiles.")
                   ).status(Status.BadRequest))
-        _    <- ZIO.unlessDiscard(ps.currentProfileId.contains(arg.id)) {
-                  val ps2 = ps.copy(currentProfileId = Some(arg.id))
-                  JD.Profiles.pathURIO.flatMap(JsonIo.write(_, ps2, origState = Some(ps))(ZIO.unit))
-                }
       } yield jsonOk
     }.provideSomeLayer(UserInfo.toProfile)) -> AuthScope.write,
 
@@ -803,28 +748,23 @@ class Api(val options: sc4pac.cli.Commands.ServerOptions, console: zio.Console) 
     Method.POST / "profiles.rename" -> handler((req: Request) => wrapHttpEndpoint {
       for {
         arg  <- parseOr400[JD.ProfileData](req.body, ErrorMessage.BadRequest("Missing profile ID or name.", "Pass the \"id\" and \"name\" for the profile."))
-        data <- JD.Profiles.readOrInit
-                  .filterOrFail(_.profiles.exists(_.id == arg.id))(jsonResponse(
+        _    <- profileRepo.renameMaybe(id = arg.id, newName = arg.name)
+                  .someOrFail(jsonResponse(
                     ErrorMessage.BadRequest(s"""Profile ID "${arg.id}" does not exist.""", "Make sure to only rename existing profiles.")
                   ).status(Status.BadRequest))
-        data2 = data.copy(profiles = data.profiles.map(p => if (p.id == arg.id) p.copy(name = arg.name) else p))
-        _    <- JD.Profiles.pathURIO.flatMap(JsonIo.write(_, data2, origState = Some(data))(ZIO.unit))
       } yield jsonOk
     }.provideSomeLayer(UserInfo.toProfile)) -> AuthScope.write,
 
     // 200
     Method.GET / "settings.all.get" -> handler(wrapHttpEndpoint {
-      JD.Profiles.readOrInit.map(profiles => jsonResponse(profiles.settings))
+      profileRepo.loadSettings.map(jsonResponse)
     }.provideSomeLayer(UserInfo.toProfile)) -> AuthScope.write,  // not `AuthScope.read` as this might contain sensitive info like the ST token
 
     // 200, 400
     Method.POST / "settings.all.set" -> handler((req: Request) => wrapHttpEndpoint {
       for {
         newSettings <- parseOr400[ujson.Value](req.body, ErrorMessage.BadRequest("Missing settings", "Pass the settings as JSON body of the request."))
-        ps          <- JD.Profiles.readOrInit
-        ps2         =  ps.copy(settings = newSettings)
-        jsonPath    <- JD.Profiles.pathURIO
-        _           <- JsonIo.write(jsonPath, ps2, None)(ZIO.unit)
+        _           <- profileRepo.saveSettings(newSettings)
       } yield jsonOk
     }.provideSomeLayer(UserInfo.toProfile)) -> AuthScope.write,
 
@@ -864,7 +804,7 @@ class Api(val options: sc4pac.cli.Commands.ServerOptions, console: zio.Console) 
     r
   }
 
-  def routes(webAppDir: Option[os.Path]): Routes[TokenService & service.FileSystem & ServerFiber & Client & Ref[ServerConnection] & Ref[Option[FileCache]], Nothing] = {
+  def routes(webAppDir: Option[os.Path]): Routes[TokenService & service.FileSystem & ServerFiber & Client & Ref[ServerConnection] & Fetcher & ProfileStorage, Nothing] = {
     val authRoutes = literal("auth") / authEndpoints
     (authRoutes ++ tokenRoutes ++ webAppDir.map(staticRoutes).getOrElse(Routes.empty))
   }

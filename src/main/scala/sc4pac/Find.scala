@@ -42,7 +42,7 @@ object Find {
     * repository channel contents updated. */
   def packageData[A <: JD.Package | JD.Asset : Reader](dep: BareDep, version: String): RIO[ResolutionContext, Option[(A, java.net.URI)]] = {
     def tryAllRepos(repos: Seq[MetadataRepository], context: ResolutionContext): Task[Option[(A, java.net.URI)]] = ZIO.collectFirst(repos) { repo =>
-        repo.fetchModuleJson[Logger, A](dep, version, context.cache.fetchJson)
+        repo.fetchModuleJson[A](dep, version, context.fetcher)
           .uninterruptible  // uninterruptile to avoid incomplete-download error messages when resolving is interrupted to prompt for a variant selection (downloading json should be fairly quick anyway)
           .map(Some(_))
           .catchSome(handleMetadataDownloadError(dep.orgName, context))
@@ -64,8 +64,8 @@ object Find {
             val repoUris = context.repositories.map(_.baseUri)
             for {
               _       <- context.logger.logZIO(s"Could not find metadata of ${dep.orgName}. Trying to update channel contents.")
-              repos   <- Sc4pac.initializeRepositories(repoUris, context.cache, Constants.channelContentsTtlShort)  // 60 seconds
-                          .provideSomeLayer(zio.ZLayer.succeed(ProfileRoot(context.profileRoot)))
+              repos   <- Sc4pac.initializeRepositories(repoUris, context.fetcher, Constants.channelContentsTtlShort)  // 60 seconds
+                          .provideSomeLayer(zio.ZLayer.succeed(Profile(context.profile.root)))
                           .provideSomeLayer(zio.ZLayer.succeed(context.logger))
               result  <- tryAllRepos(repos, context)  // 2nd try
             } yield result
@@ -99,7 +99,7 @@ object Find {
     for {
       context      <- ZIO.service[ResolutionContext]
       (errs, rels) <- ZIO.partitionPar(context.repositories) { repo =>
-                        repo.fetchExternalPackage(module, context.cache.fetchJson)
+                        repo.fetchExternalPackage(module, context.fetcher)
                           .catchSome(handleMetadataDownloadError(module.orgName, context))
                           .map(extPkgOpt => repo.baseUri -> (extPkgOpt.toSeq.flatMap(_.requiredBy), extPkgOpt.toSeq.flatMap(_.reverseConflictingPackages)))
                       }

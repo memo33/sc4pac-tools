@@ -205,8 +205,8 @@ object Resolution {
 
   /** Download artifacts corresponding to resolved assets, or take files from cache in case they are still up-to-date.
     */
-  def fetchArtifacts(assets: Seq[DepAsset], urlFallbacks: Map[java.net.URI, os.Path], assetsToRedownload: Set[DepAsset]): RIO[ResolutionContext & Downloader.Credentials, Seq[(DepAsset, Artifact, java.io.File)]] = {
-    def fetchTask(context: ResolutionContext) =
+  def fetchArtifacts(assets: Seq[DepAsset], urlFallbacks: Map[java.net.URI, os.Path], assetsToRedownload: Set[DepAsset]): RIO[ResolutionContext & Downloader.Credentials, Seq[(DepAsset, Artifact, Fetcher.Blob)]] = {
+    def fetchTask(context: ResolutionContext) = ZIO.serviceWithZIO[Downloader.Credentials] { credentials =>
       ZIO.foreachPar(assets) { dep =>
         val art = Artifact(
           dep.url,
@@ -217,7 +217,7 @@ object Resolution {
           forceRedownload = assetsToRedownload.contains(dep),
           localMirror = urlFallbacks.get(dep.url),
         )
-        context.cache.fetchFile(art).map(file => (dep, art, file))
+        context.fetcher.fetch(art, credentials = Some(credentials)).map(blob => (dep, art, blob))
           .catchAll {
             // See also download-error handling in Find.
             case e: (Artifact2Error.WrongChecksum | Artifact2Error.ChecksumFormatError | Artifact2Error.ChecksumNotFound) =>
@@ -274,7 +274,7 @@ object Resolution {
               ZIO.fail(new error.DownloadFailed("Unexpected download error.", e.getMessage, url = Some(art.url)))
           }
       }
-      .provideSomeLayer(zio.ZLayer.succeed(context.logger))
+    }
 
     for {
       context <- ZIO.service[ResolutionContext]

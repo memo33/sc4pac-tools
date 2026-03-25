@@ -105,9 +105,11 @@ url: dummy
       repos(1).channel.externalAssets should have length 0
 
       val logger = CliLogger()
-      val cache = FileCache((tmpDir / "cache").toIO, Sc4pac.createThreadPool())
-      val context = new ResolutionContext(repos, cache, logger, tmpDir / "profile")
-      val layer = zio.ZLayer.succeed(context)
+      val layer =
+        zio.ZLayer.succeed(logger) >+> Fetcher.live >>> zio.ZLayer(for {
+          fetcher <- zio.ZIO.service[Fetcher]
+          _       <- fetcher.setCacheLocation(tmpDir / "cache")
+        } yield new ResolutionContext(repos, fetcher, logger, Profile(tmpDir / "profile")))
       import JsonData.bareModuleRw
 
       unsafeRunNoWrap(

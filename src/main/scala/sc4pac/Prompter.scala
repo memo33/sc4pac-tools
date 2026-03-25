@@ -20,7 +20,7 @@ trait Prompter {
 
   def confirmInstallationWarnings(warnings: Seq[(BareModule, Seq[JD.Warning])]): Task[Boolean]
 
-  def confirmDllsInstalled(dllsInstalled: Seq[Sc4pac.StageResult.DllInstalled]): Task[Boolean]
+  def confirmDllsInstalled(dllsInstalled: Seq[Staging.StageResult.DllInstalled]): Task[Boolean]
 
   protected def confirmDllsInstalledPretext(numDlls: Int): String =
     s"""You are about to install ${if (numDlls == 1) "a DLL file" else s"$numDlls DLL files"}.""" +
@@ -28,7 +28,7 @@ trait Prompter {
     f""" They have the ability to execute arbitrary code on your system once the game is started.%n%n""" +
     s"""Only continue if you consider ${if (numDlls == 1) "this DLL file" else "these DLL files"} to be trustworthy."""
 
-  def confirmScriptsInstalled(scriptsInstalled: Seq[Sc4pac.StageResult.LuaInstalled], luaSandboxInstalled: Boolean): Task[Boolean]
+  def confirmScriptsInstalled(scriptsInstalled: Seq[Staging.StageResult.LuaInstalled], luaSandboxInstalled: Boolean): Task[Boolean]
 
   protected def confirmScriptsInstalledPretext(numScripts: Int, luaSandboxInstalled: Boolean): String =
     s"""You are about to install ${if (numScripts == 1) "a file" else s"$numScripts files"} with embedded Lua scripts.""" +
@@ -154,7 +154,7 @@ class CliPrompter(val logger: CliLogger, autoYes: Boolean) extends Prompter {
       onFalse = ZIO.succeed(true))  // in non-interactive mode, we continue despite warnings
   }
 
-  def confirmDllsInstalled(dllsInstalled: Seq[Sc4pac.StageResult.DllInstalled]): Task[Boolean] = {
+  def confirmDllsInstalled(dllsInstalled: Seq[Staging.StageResult.DllInstalled]): Task[Boolean] = {
     if (dllsInstalled.isEmpty) ZIO.succeed(true)
     else {
       logger.warn(confirmDllsInstalledPretext(dllsInstalled.length))
@@ -169,7 +169,7 @@ class CliPrompter(val logger: CliLogger, autoYes: Boolean) extends Prompter {
     }
   }
 
-  def confirmScriptsInstalled(scriptsInstalled: Seq[Sc4pac.StageResult.LuaInstalled], luaSandboxInstalled: Boolean): Task[Boolean] = {
+  def confirmScriptsInstalled(scriptsInstalled: Seq[Staging.StageResult.LuaInstalled], luaSandboxInstalled: Boolean): Task[Boolean] = {
     if (scriptsInstalled.isEmpty) ZIO.succeed(true)
     else {
       logger.warn(confirmScriptsInstalledPretext(scriptsInstalled.length, luaSandboxInstalled = luaSandboxInstalled))

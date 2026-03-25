@@ -50,7 +50,7 @@ object JsonIo {
   // - if action successful, write json file
   // The json file is not locked, but the modification timestamps are checked
   // just before over-writing to guard against concurrent modifications.
-  def write[S : ReadWriter, A](jsonPath: os.Path, newState: S, origState: Option[S])(action: zio.Task[A]): zio.Task[A] = {
+  def write[S : ReadWriter, A](jsonPath: os.Path, newState: S, origState: Option[S])[R](action: zio.RIO[R, A]): zio.RIO[R, A] = {
     val preparationSteps =
       ZIO.attemptBlocking {
         val mtimeOpt =

@@ -27,12 +27,14 @@ object Commands {
 
   val cliEnvironment = {
     val logger = CliLogger()
-    zio.ZEnvironment(ProfileRoot(os.pwd), logger, CliPrompter(logger, autoYes = false))
+    zio.ZEnvironment(Profile(os.pwd), logger, CliPrompter(logger, autoYes = false))
   }
   val cliLayer =
-    zio.ZLayer(Ref.make(Option.empty[FileCache]))
-      .map(_.union(cliEnvironment))
+    zio.ZLayer.succeedEnvironment(cliEnvironment) >+> (
+      Fetcher.live
+      ++ ProfileStorage.live
       ++ service.FileSystem.live
+    )
 
   // TODO strip escape sequences if jansi failed with a link error
   private[sc4pac] def gray(msg: String): String = s"${27.toChar}[90m" + msg + Console.RESET  // aka bright black
@@ -143,7 +145,7 @@ object Commands {
         flag         <- pac.update(pluginsSpec.explicit, variantSelection, pluginsRoot = pluginsRoot)
                           .provideSomeLayer(zio.ZLayer.succeed(Downloader.Credentials(simtropolisToken = fs.env.simtropolisToken)))
       } yield ()
-      runMainExit(task.provideLayer(cliLayer.map(_.update((_: CliPrompter).withAutoYes(options.yes)))), exit)
+      runMainExit(task.provide(Staging.live, cliLayer.map(_.update((_: CliPrompter).withAutoYes(options.yes)))), exit)
     }
   }
 
@@ -375,7 +377,7 @@ object Commands {
       runMainExit(task.provideLayer(cliLayer), exit)
     }
 
-    def iterateInstalled(pluginsSpec: JD.PluginsSpec): zio.RIO[ProfileRoot, Iterator[(DepModule, Boolean)]] = {
+    def iterateInstalled(pluginsSpec: JD.PluginsSpec): zio.RIO[Profile & ProfileStorage, Iterator[(DepModule, Boolean)]] = {
       for (installed <- JD.PluginsLock.listInstalled) yield {
         val sorted = installed.sortBy(mod => (mod.group.value, mod.name.value))
         val explicit: Set[BareModule] = pluginsSpec.explicit.toSet
@@ -428,11 +430,11 @@ object Commands {
       }
     }
 
-    def removeAndWrite(data: JD.PluginsSpec, selected: Seq[String]): zio.RIO[ProfileRoot, Unit] = {
+    def removeAndWrite(data: JD.PluginsSpec, selected: Seq[String]): zio.RIO[Profile & ProfileStorage, Unit] = {
       val data2 = data.copy(config = data.config.copy(variant = data.config.variant -- selected))
       for {
-        path <- JD.PluginsSpec.pathURIO
-        _    <- JsonIo.write(path, data2, None)(ZIO.succeed(()))
+        profile <- ZIO.service[Profile]
+        _       <- ZIO.serviceWithZIO[ProfileStorage](_.saveSpec(profile, data2))
       } yield ()
     }
   }
@@ -468,8 +470,8 @@ object Commands {
                 val task = for {
                   data  <- JD.PluginsSpec.readOrInit
                   data2 =  data.copy(config = data.config.copy(channels = (data.config.channels :+ uri).distinct))
-                  path  <- JD.PluginsSpec.pathURIO
-                  _     <- JsonIo.write(path, data2, None)(ZIO.succeed(()))
+                  profile <- ZIO.service[Profile]
+                  _     <- ZIO.serviceWithZIO[ProfileStorage](_.saveSpec(profile, data2))
                   count =  data2.config.channels.length - data.config.channels.length
                   _     <- ZIO.succeed{ println(if (count == 0) "Channel already exists." else s"Added 1 channel.") }
                 } yield ()
@@ -522,8 +524,8 @@ object Commands {
                                   println("No matching channel found, so none of the channels have been removed.")
                               }
               data2        =  data.copy(config = data.config.copy(channels = keep))
-              path         <- JD.PluginsSpec.pathURIO
-              _            <- JsonIo.write(path, data2, None)(ZIO.succeed(()))
+              profile      <- ZIO.service[Profile]
+              _            <- ZIO.serviceWithZIO[ProfileStorage](_.saveSpec(profile, data2))
             } yield ()
           }
         }
@@ -641,7 +643,7 @@ object Commands {
             logger <- ZIO.service[Logger]
             archive = java.io.File(input)
             destination = os.Path(java.nio.file.Paths.get(options.output), os.pwd)
-            stagingDirs <- Sc4pac.makeStagingDirs(destination, logger)
+            stagingDirs <- ZIO.serviceWithZIO[Staging](_.makeStagingDirs(destination))
             assetData = JD.AssetReference(assetId = "dummy-asset", include = options.include, exclude = options.exclude)
             (recipe, regexWarnings) = Extractor.InstallRecipe.fromAssetReference(assetData, variant = Map.empty)  // variant is not needed, as there aren't any conditionals in our dummy asset
             (_, usedPatterns) <- ZIO.attemptBlocking {
@@ -658,7 +660,7 @@ object Commands {
             }
             _ <- ZIO.foreachDiscard(regexWarnings ++ recipe.usedPatternWarnings(usedPatterns, BareAsset(ModuleName(assetData.assetId)), short = true)) { msg => ZIO.succeed(logger.warn(msg.value)) }
           } yield ())
-          runMainExit(task.provideSomeLayer(zio.ZLayer.succeed(CliLogger())), exit)
+          runMainExit(task.provide(Staging.live, service.FileSystem.live, zio.ZLayer.succeed(CliLogger())), exit)
         case _ => error(caseapp.core.Error.Other("A single argument is needed: input-archive-file"))
       }
     }
@@ -785,7 +787,7 @@ object Commands {
                     .provideSomeLayer(zio.ZLayer.succeed(Downloader.Credentials(simtropolisToken = fs.env.simtropolisToken)))
         _      <- ZIO.unlessDiscard(passed)(exit(ExitCodes.TestsFailed))
       } yield ()
-      runMainExit(task.provideLayer(cliLayer.map(_.update((_: CliPrompter).withAutoYes(options.yes)))), exit)
+      runMainExit(task.provide(cliLayer.map(_.update((_: CliPrompter).withAutoYes(options.yes))), Staging.live), exit)
     }
   }
 
@@ -839,17 +841,16 @@ object Commands {
       ZIO.logInfo(message).as(resp)
     })
 
-    def serve(options: ServerOptions, console: zio.Console, webAppDir: Option[(os.Path, java.net.URI)]): RIO[zio.Scope & service.FileSystem & TokenService, zio.Fiber[Throwable, Nothing]] = {
-      val api = sc4pac.api.Api(options, console)
-      // Enabling CORS is important so that web browsers do not block the
-      // request response for lack of the following response header:
-      //     access-control-allow-origin: http://localhost:12345
-      // (e.g. when Flutter-web is hosted on port 12345)
-      val app = api.routes(webAppDir.map(_._1)) @@ zio.http.Middleware.cors
+    def serve(options: ServerOptions, webAppDir: Option[(os.Path, java.net.URI)]): RIO[zio.Scope & service.FileSystem & TokenService & zio.Console & CliLogger & Fetcher & api.ProfileRepo & ProfileStorage, zio.Fiber[Throwable, Nothing]] = {
       def createPortOccupiedMsg(e: Throwable): sc4pac.error.PortOccupied =
         sc4pac.error.PortOccupied(s"Failed to run sc4pac server on port ${options.port}. ${e.getMessage}")
 
-      val serverTask: RIO[ServerFiber & service.FileSystem & TokenService, Nothing] =
+      val serverTask: RIO[ServerFiber & service.FileSystem & TokenService & zio.Console & CliLogger & Fetcher & api.ProfileRepo & ProfileStorage, Nothing] = ZIO.serviceWithZIO[api.Api] { api =>
+        // Enabling CORS is important so that web browsers do not block the
+        // request response for lack of the following response header:
+        //     access-control-allow-origin: http://localhost:12345
+        // (e.g. when Flutter-web is hosted on port 12345)
+        val app = api.routes(webAppDir.map(_._1)) @@ zio.http.Middleware.cors
         zio.http.Server.install(app)
           .catchSomeDefect {
             // usually: "bind(..) failed: Address already in use"
@@ -885,7 +886,7 @@ object Commands {
             }
           )
           .zipRight(ZIO.never)  // keep server running indefinitely unless interrupted
-          .provideSome[ServerFiber & service.FileSystem & TokenService](
+          .provideSome[ServerFiber & service.FileSystem & TokenService & Fetcher & ProfileStorage](
             zio.http.Server.defaultWith(config => config.port(options.port)
                 .requestStreaming(zio.http.Server.RequestStreaming.Enabled)  // enabling request streaming to avoid 413 "content too large" on large POST requests
               )
@@ -898,8 +899,8 @@ object Commands {
             zio.http.Client.default  // for /image.fetch
               .map(_.update[zio.http.Client](_.updateHeaders(_.addHeader("User-Agent", Constants.userAgent)) @@ followRedirects)),
             zio.ZLayer(zio.Ref.make(ServerConnection(numConnections = 0, currentChannel = None))),
-            zio.ZLayer(zio.Ref.make(Option.empty[FileCache])),
           )
+      }.provideSomeLayer(api.Api.layer(options))
 
       for {
         promise  <- zio.Promise.make[Nothing, zio.Fiber[Throwable, Nothing]]
@@ -927,19 +928,23 @@ object Commands {
                   error(caseapp.core.Error.Other(s"Webapp directory does not exist: ${webAppDir.get}"))
                 )
           profilesDir <- JD.Profiles.parseProfilesRoot(Option(options.profilesDir).filter(_.nonEmpty))
-          _  <- ZIO.attemptBlockingIO(if (!os.exists(profilesDir)) {
-                  println(s"Creating sc4pac profiles directory: $profilesDir")
-                  os.makeDir.all(profilesDir)
+          _  <- ZIO.attemptBlockingIO(if (!os.exists(profilesDir.path)) {
+                  println(s"Creating sc4pac profiles directory: ${profilesDir.path}")
+                  os.makeDir.all(profilesDir.path)
                 })
           clientSecret <- if (options.clientSecretStdin) Prompt.readClientSecret else sc4pac.api.TokenService.generateSecureToken(short = webAppDir.nonEmpty)
           _  <- ZIO.unlessDiscard(options.clientSecretStdin || webAppDir.nonEmpty)(ZIO.succeed(println(s"Configured new client_secret=${clientSecret.stringValue}")))
           _  <- ZIO.scoped {
                   for {
-                    fiber    <- serve(options, zio.Console.ConsoleLive, webAppDir = webAppDir.map((_, createWebAppUrl(port = options.port, clientSecret))))
-                                  .provideSomeLayer(sc4pac.api.TokenService.live(
-                                    ProfilesDir(profilesDir),
-                                    zio.http.Credentials(Constants.sc4pacGuiClientId, clientSecret),
-                                  ))
+                    fiber    <- serve(options, webAppDir = webAppDir.map((_, createWebAppUrl(port = options.port, clientSecret))))
+                                  .provideSome[zio.Scope & service.FileSystem](
+                                    sc4pac.api.TokenService.live(zio.http.Credentials(Constants.sc4pacGuiClientId, clientSecret)),
+                                    zio.ZLayer.succeed(zio.Console.ConsoleLive) >+> zio.ZLayer.fromFunction((console: zio.Console) => CliLogger(Some(console))),
+                                    Fetcher.live,
+                                    api.ProfileRepo.live,
+                                    api.MultiProfileStorage.live,
+                                    zio.ZLayer.succeed(profilesDir),
+                                  )
                     exitVal  <- fiber.await
                     _        <- exitVal match {
                                   case zio.Exit.Failure(cause) =>
