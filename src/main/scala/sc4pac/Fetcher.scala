@@ -58,12 +58,8 @@ object Fetcher {
     override def fetch(artifact: Artifact, credentials: Option[Downloader.Credentials], ttl: Option[scala.concurrent.duration.Duration]) =
       for {
         cache                <- getCache.map(c => if (ttl.isDefined) c.withTtl(ttl) else c)
-        loggerLayer          =  zio.ZLayer.succeed(logger)
-        file                 <- cache.fetchFile(artifact).provide(  // TODO avoid using layers here
-                                  loggerLayer,
-                                  credentials.map(zio.ZLayer.succeed).getOrElse(Downloader.emptyCredentialsLayer),
-                                )
-        fallbackFilenameLazy <- cache.getFallbackFilename(file).provide(loggerLayer).memoize
+        file                 <- cache.fetchFile(artifact, credentials, logger)
+        fallbackFilenameLazy <- cache.getFallbackFilename(file, logger).memoize
       } yield Blob(os.Path(file), fallbackFilenameLazy)  // file should already be absolute
 
     private def blobToText(blob: Blob): IO[java.io.IOException, String] =

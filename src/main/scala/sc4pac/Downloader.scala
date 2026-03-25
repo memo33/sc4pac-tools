@@ -327,7 +327,8 @@ object Downloader {
     //   } else req
     // }
   }
-  val emptyCredentialsLayer = zio.ZLayer.succeed(Credentials(simtropolisToken = None))
+  val emptyCredentials = Credentials(simtropolisToken = None)
+  val emptyCredentialsLayer = zio.ZLayer.succeed(emptyCredentials)
 
   /** Returns true on success, false if data transfer was canceled. */
   private def readFullyTo(
