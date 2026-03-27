@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fixed
+- a problem where a zip file was treated like a plain DBPF file if `.SC4` was contained anywhere in its name.
+- a problem where files with names using "extended ASCII" (CP437) were silently ignored during extraction of a zip file (#51).
+
 
 ## [0.9.5] - 2026-03-15
 ### Fixed
