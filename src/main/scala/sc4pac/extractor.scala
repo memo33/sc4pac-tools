@@ -190,6 +190,7 @@ object Extractor {
     def getEntryPath(entry: A): String
     def isDirectory(entry: A): Boolean
     def isUnixSymlink(entry: A): Boolean
+    def canHaveNested: Boolean = true
     /** Perform the actual extraction of the selected archive entries.
       *
       * Here, `entries` consists of a sequence of:
@@ -328,6 +329,7 @@ object Extractor {
     def getEntryPath(entry: os.Path) = filename  // entry.last has no meaningful relevance
     def isDirectory(entry: os.Path) = false
     def isUnixSymlink(entry: os.Path) = false
+    override def canHaveNested = false
     protected def extractEntry(src: os.Path, target: os.Path, overwrite: Boolean): Unit =
       os.copy.over(src, target, replaceExisting = overwrite)
   }
@@ -523,7 +525,7 @@ class Extractor(logger: Logger) {
       // first extract just the main files
       extractedFilesBuilder ++= wrappedArchive.extractByPredicate(destination, predicate, overwrite = true, flatten = false, logger)
       // additionally, extract jar files/nested archives contained in the zip file to a temporary location
-      for (Extractor.JarExtraction(jarsDir) <- jarExtractionOpt) {  // TODO avoid searching for nested archives inside WrappedNonarchive
+      for (Extractor.JarExtraction(jarsDir) <- jarExtractionOpt if wrappedArchive.canHaveNested) {
         logger.debug(s"Searching for nested archives:")
         val jarFiles = wrappedArchive.extractByPredicate(jarsDir, predicateNested, overwrite = false, flatten = true, logger)  // overwrite=false, as we want to extract any given jar only once per staging process
         // finally extract the jar files themselves (without recursively extracting jars contained inside)
