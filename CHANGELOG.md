@@ -6,6 +6,12 @@
 - a problem where a zip file was treated like a plain DBPF file if `.SC4` was contained anywhere in its name.
 - a problem where files with names using "extended ASCII" (CP437) were silently ignored during extraction of a zip file (#51).
 
+### Changed
+- Packages with INI configuration files now install the INI files into the root of the Plugins folder, but named as `_sc4pacnew.ini`.
+  To activate the INI files, rename them to remove `_sc4pacnew` from their name. (#52)
+- API upgraded to 3.1:
+  - added a new `/prompt/confirmation/update/ini-manual-edit` message to `/update` (#52)
+
 
 ## [0.9.5] - 2026-03-15
 ### Fixed

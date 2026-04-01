@@ -467,9 +467,12 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path, fileSys: ser
                                 pathLimit   =  Option.unless(resolution.metadata.contains(Constants.startupPerformanceOptimizationDll))(
                                                  Constants.maxPathLength.map(_ - pluginsRoot.toString.length + stagingDirs.plugins.toString.length)
                                                ).flatten
-                                stageResult <- staging.stageAll(stagingDirs, depsToStage, fetchedAssets, resolution, pathLimit = pathLimit)
+                                iniContext  =  Staging.IniContext(pluginsLockData.installed, Some(pluginsRoot))
+                                stageResult <- staging.stageAll(stagingDirs, depsToStage, fetchedAssets, resolution, pathLimit = pathLimit, iniContext)
                                 _           <- confirmStageResultOrAbort(stageResult)
                                 _           <- publishToPlugins(stageResult, pluginsRoot, pluginsLockData, pluginsLockData1, plan)
+                                iniPrompts  =  stageResult.items.flatMap(_.inis.filter(_.strategy == Staging.IniStrategy.InstallNew))
+                                _           <- ZIO.whenDiscard(iniPrompts.nonEmpty)(ZIO.serviceWithZIO[Prompter](_.confirmIniManualEdit(iniPrompts)))
                              } yield ())
           _               <- logger.logZIO("Done.")
         } yield ())
@@ -490,7 +493,7 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path, fileSys: ser
         val depsToStage = resolution.transitiveDependencies.collect{ case d: DepModule => d }.toSeq  // keep only non-assets
         (for {
           staging <- ZIO.service[Staging]
-          staged <- staging.stageAll(stagingDirs, depsToStage, fetchedAssets, resolution, pathLimit = None)
+          staged <- staging.stageAll(stagingDirs, depsToStage, fetchedAssets, resolution, pathLimit = None, Staging.IniContext(Seq.empty, outputDir))
           _      <- ZIO.foreachDiscard(outputDir)(staging.movePackagesToPlugins(staged, _))  // moves files only when output dir is defined
           fatal  =  staged.items.iterator.flatMap(_.warnings).filter {
                       case _: JD.InformativeWarning => false

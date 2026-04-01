@@ -187,6 +187,13 @@ object ApiSpecZIO extends ZIOSpecDefault {
       _    <- ZIO.whenDiscard(resp.status.code != 200)(ZIO.fail(AssertionError(s"/plugins.add responded with ${resp.status.code}")))
     } yield ()
 
+  def reinstall(pkg: String): RIO[JD.ProfileData & ServerOptions & Client & TestConfig, Unit] =
+    for {
+      id   <- ZIO.serviceWith[JD.ProfileData](_.id)
+      resp <- postEndpoint(s"plugins.reinstall?profile=$id", jsonBody(Seq(pkg)))
+      _    <- ZIO.whenDiscard(resp.status.code != 200)(ZIO.fail(AssertionError(s"/plugins.reinstall responded with ${resp.status.code}")))
+    } yield ()
+
   val update: RIO[JD.ProfileData & ServerOptions & Client & Ref[TestResult] & TestConfig, Unit] =
     for {
       id   <- ZIO.serviceWith[JD.ProfileData](_.id)
@@ -292,6 +299,7 @@ object ApiSpecZIO extends ZIOSpecDefault {
     case msg: api.PromptMessage.ConfirmUpdatePlan => ZIO.succeed(msg.responses("Yes"))
     case msg: api.PromptMessage.ConfirmInstallation => ZIO.succeed(msg.responses("Yes"))
     case msg: api.PromptMessage.ConfirmInstallingDlls => ZIO.succeed(msg.responses("Yes"))
+    case msg: api.PromptMessage.ConfirmIniManualEdit => ZIO.succeed(msg.responses("Yes"))
     case msg: api.PromptMessage.ConfirmInstallingScripts => ZIO.succeed(msg.responses("Yes"))
   }
 
@@ -1117,6 +1125,66 @@ object ApiSpecZIO extends ZIOSpecDefault {
                 })
               }
             }
+          },
+          test("/update (ini)") {
+            withTestResultRef(ZIO.scoped {
+              for {
+                _            <- ZIO.acquireRelease(add("test:ini"))(_ => (remove("test:ini") *> update).orDie)
+                _            <- wsEndpoint(s"update?profile=$profileId",
+                                  respond = {
+                                    case msg: api.PromptMessage.ConfirmIniManualEdit =>
+                                      addTestResult(assertTrue(
+                                        msg.iniFiles.exists(item =>
+                                          item.tmpIni.toString == "magic_sc4pacnew.ini" &&
+                                          item.finalName == "magic.ini" &&
+                                          item.`package`.orgName == "test:ini"
+                                        ),
+                                        msg.iniFiles.length == 1,
+                                      )) *>
+                                      ZIO.succeed(msg.responses("Yes"))
+                                    case msg => respondYes(msg)
+                                  },
+                                  filter = msg => !msg.json("$type").str.startsWith("/progress"),
+                                  checkMessages = expectMessages(_)(
+                                    "/prompt/json/update/initial-arguments",
+                                    "/prompt/confirmation/update/plan",
+                                    "/prompt/confirmation/update/warnings",
+                                    "/prompt/confirmation/update/ini-manual-edit",
+                                    jsonOk,
+                                  ),
+                                )
+                pluginsRoot  <- ZIO.serviceWith[ProfilesDir](_.path / s"$profileId" / "plugins")
+                iniTmpPath   =  pluginsRoot / "magic_sc4pacnew.ini"
+                exists       <- ZIO.attemptBlockingIO(os.exists(iniTmpPath))
+                _            <- addTestResult(assertTrue(exists))
+              } yield ()
+            })
+          },
+          test("/update (ini reinstall, manual-edit prompt only if final ini missing)") {
+            withTestResultRef(ZIO.scoped {
+              def doUpdateExpectIniMessages(msg: (String | ujson.Value)*) =
+                wsEndpoint(s"update?profile=$profileId",
+                  respond = respondYes,
+                  filter = msg => { val t = msg.json("$type").str; t.contains("/ini-manual-edit") || t.startsWith("/result") || t.contains("/error") },
+                  checkMessages = expectMessages(_)(msg*),
+                )
+              for {
+                pluginsRoot  <- ZIO.serviceWith[ProfilesDir](_.path / s"$profileId" / "plugins")
+                iniFinalPath = pluginsRoot / "magic.ini"
+                iniTmpPath   = pluginsRoot / "magic_sc4pacnew.ini"
+                _    <- add("test:ini") *> doUpdateExpectIniMessages("/prompt/confirmation/update/ini-manual-edit", jsonOk)
+                // Rename the ini file to its final location
+                // Reinstall: should NOT see prompt if final ini exists
+                _    <- ZIO.attemptBlockingIO(os.copy.over(iniTmpPath, iniFinalPath, replaceExisting = true))
+                _    <- reinstall("test:ini") *> doUpdateExpectIniMessages(/*no ini prompt*/ jsonOk)
+                _    <- ZIO.attemptBlockingIO(os.remove(iniTmpPath, checkExists = false))
+                _    <- reinstall("test:ini") *> doUpdateExpectIniMessages(/*no ini prompt*/ jsonOk)
+                _    <- ZIO.attemptBlockingIO(os.exists(iniTmpPath)).flatMap(exists => addTestResult(assertTrue(!exists)))
+                // Remove the final ini, reinstall: should see prompt again
+                _    <- ZIO.attemptBlockingIO(os.remove(iniFinalPath, checkExists = false))
+                _    <- reinstall("test:ini") *> doUpdateExpectIniMessages("/prompt/confirmation/update/ini-manual-edit", jsonOk)
+              } yield ()
+            })
           },
           test("/update (lua)") {
             withTestResultRef(ZIO.scoped {

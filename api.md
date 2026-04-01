@@ -1,4 +1,4 @@
-# API - version 3.0
+# API - version 3.1
 
 The API allows other programs to control *sc4pac* in a client-server fashion.
 
@@ -691,6 +691,7 @@ Messages sent:
 - `/prompt/confirmation/update/warnings` once (if the warnings are empty, you can accept without user input)
 - `/prompt/confirmation/update/installing-dlls` at most once
 - `/prompt/confirmation/update/installing-scripts` at most once
+- `/prompt/confirmation/update/ini-manual-edit` at most once
 - final message: either an error message or `{"$type": "/result", "ok": true}`.
   Afterwards the websocket is closed.
 

@@ -1,11 +1,10 @@
 package io.github.memo33
 package sc4pac
 
-import zio.{ZIO, IO, Task, RIO, Scope, Chunk}
+import zio.{ZIO, UIO, IO, Task, RIO, Scope, Chunk}
 import sc4pac.Resolution.{Dep, DepModule, DepAsset}
-import sc4pac.Staging.{StagingDirs, StageResult}
+import sc4pac.Staging.{StagingDirs, StageResult, IniContext, IniStrategy}
 import sc4pac.{JsonData => JD}
-import sc4pac.Constants.isDll
 import sc4pac.Sc4pac.UpdatePlan
 import sc4pac.error.Sc4pacPublishIncomplete
 import sc4pac.Fetcher.Blob
@@ -62,6 +61,22 @@ class Staging(logger: Logger, fileSys: service.FileSystem) {
       dllLink.subRelativeTo(stagingDirs.plugins)
     }
 
+  // moves the INI file from the package subfolder to the staging root if needed
+  private def placeIni(stagingDirs: StagingDirs, ini: os.Path, sha256: collection.immutable.ArraySeq[Byte], iniContext: IniContext): Task[(os.SubPath, IniStrategy, String)] = {
+    assert(Constants.isIni(ini), s"Expected INI file, got: $ini")
+    val newIni = os.SubPath(ini.last.dropRight(".ini".length) + "_sc4pacnew" + ini.last.takeRight(".ini".length))
+    val finalName = ini.last
+    for {
+      strategy <- iniContext.getStrategy(newIni, sha256, finalName)
+      _        <- ZIO.attemptBlockingIO { strategy match
+                    case IniStrategy.InstallNew | IniStrategy.ReinstallSilently =>
+                      os.move.over(ini, stagingDirs.plugins / newIni, replaceExisting = true)
+                    case IniStrategy.Skip =>
+                      os.remove(ini, checkExists = false)  // previously installed INI file was identical to the new one, so we can just remove the new one and keep the old one in place (e.g. to preserve user modifications)
+                  }
+    } yield (newIni, strategy, finalName)
+  }
+
   /** Stage a single package into the temp plugins folder and return a list of
     * files or folders containing the files belonging to the package,
     * the JD.Package info containing metadata relevant for the lock file,
@@ -74,6 +89,7 @@ class Staging(logger: Logger, fileSys: service.FileSystem) {
     progress: Sc4pac.Progress,
     resolution: Resolution,
     pathLimit: Option[Int],
+    iniContext: IniContext,
   ): Task[StageResult.Item] = {
     def extract(assetData: JD.AssetReference, pkgFolder: os.SubPath, variant: Variant, debugModule: BareModule): Task[(BareAsset, Chunk[Extractor.ExtractedItem], Seq[JD.Warning])] = {
       // Given an AssetReference, we look up the corresponding artifact file
@@ -185,23 +201,34 @@ class Staging(logger: Logger, fileSys: service.FileSystem) {
                             })
                             .map(_.flatten)
       dlls               <- ZIO.foreach(extractions.flatMap { case (id, files, _) =>
-                              files.filter(f => isDll(f.path)).map((id, _))
+                              files.filter(f => f.validated.exists(_.isDll)).map((id, _))
                             }) {
                               case (id: BareAsset, item: Extractor.ExtractedItem) =>
                                 for {
                                   dll <- linkDll(stagingDirs, item.path)  // this potentially moves the DLL away from its original location
                                 } yield {
-                                  assert(item.validatedSha256.isDefined, s"Checksum of DLL ${item.path} (${id.assetId}) should have been verified")
+                                  assert(item.validated.isDefined, s"Checksum of DLL ${item.path} (${id.assetId}) should have been verified")
                                   StageResult.DllInstalled(
                                     dll, dependency, artifactsById(id)._3,
                                     pkgMetadataUrl = resolution.metadataUrls(module),
                                     assetMetadataUrl = resolution.metadataUrls(id),
-                                    validatedSha256 = item.validatedSha256.get,
+                                    validatedSha256 = item.validated.get.sha256,
                                   )
                                 }
                             }
+      inis               <- ZIO.foreach(extractions.flatMap { case (_, files, _) =>
+                              files.filter(f => f.validated.exists(_.isIni))
+                            }) {
+                              case item: Extractor.ExtractedItem =>
+                                for {
+                                  (newIni, strategy, finalName) <- placeIni(stagingDirs, item.path, sha256 = item.validated.get.sha256, iniContext)  // this moves or removes the INI file
+                                } yield StageResult.IniInstalled(newIni, dependency, validatedSha256 = item.validated.get.sha256, finalIniName = finalName, strategy)
+                            }
       warningOpt         <- ZIO.when(pkgData.info.warning.nonEmpty)(ZIO.attempt { val w = pkgData.info.warning; logger.warn(w); JD.InformativeWarning(w) })
-    } yield StageResult.Item(dependency, Seq(pkgFolder) ++ dlls.map(_.dll), pkgData, warningOpt.toSeq ++ artifactWarnings, dlls, luaScripts)
+    } yield StageResult.Item(dependency,
+      files = Seq(pkgFolder) ++ (dlls.map(_.dll) ++ inis.filter(_.strategy != IniStrategy.Skip).map(_.ini)),
+      pkgData, warningOpt.toSeq ++ artifactWarnings, dlls, inis, luaScripts,
+    )
   }
 
   /** For the list of non-asset packages to install, extract all of them
@@ -210,13 +237,13 @@ class Staging(logger: Logger, fileSys: service.FileSystem) {
     * If everything is properly extracted, the files are later moved to the
     * actual plugins folder in the publication step.
     */
-  def stageAll(stagingDirs: StagingDirs, deps: Seq[DepModule], fetchedAssets: Seq[(DepAsset, Artifact, Blob)], resolution: Resolution, pathLimit: Option[Int]): Task[StageResult] = {
+  def stageAll(stagingDirs: StagingDirs, deps: Seq[DepModule], fetchedAssets: Seq[(DepAsset, Artifact, Blob)], resolution: Resolution, pathLimit: Option[Int], iniContext: IniContext): Task[StageResult] = {
     val artifactsById = fetchedAssets.map((dep, art, blob) => dep.toBareDep -> (art, blob, dep)).toMap
     val numDeps = deps.length
     for {
       _           <- ZIO.attempt(require(artifactsById.size == fetchedAssets.size, s"artifactsById is not 1-to-1: $fetchedAssets"))
       stagedItems <- ZIO.foreach(deps.zipWithIndex) { case (dep, idx) =>   // sequentially stages each package
-                       stageOne(stagingDirs, dep, artifactsById, Sc4pac.Progress(idx+1, numDeps), resolution, pathLimit = pathLimit)
+                       stageOne(stagingDirs, dep, artifactsById, Sc4pac.Progress(idx+1, numDeps), resolution, pathLimit = pathLimit, iniContext)
                      }
     } yield StageResult(stagingDirs, stagedItems, luaSandboxInstalled = resolution.metadata.contains(Constants.luaSandboxDll))  // TODO ensure sandbox is not overwritten by other channel, or that dll is present
   }
@@ -231,12 +258,14 @@ class Staging(logger: Logger, fileSys: service.FileSystem) {
       val path = pluginsRoot / sub
       ZIO.attemptBlocking {
         require(path != pluginsRoot, "subpath must not be empty")  // sanity check to avoid accidental deletion of entire plugins folder
-        if (isDll(path) && os.isLink(path)) {
+        if (Constants.isDll(path) && os.isLink(path)) {
           os.remove(path, checkExists = false)
         } else if (os.exists(path)) {
           Sc4pac.removeAllForcibly(path)
         } else {
-          logger.warn(s"removal failed as file did not exist: $path")
+          if (!Constants.isIni(path)) {  // INI files are expected to be renamed by the user
+            logger.warn(s"removal failed as file did not exist: $path")
+          }
         }
       }
     }
@@ -298,7 +327,15 @@ object Staging {
 
   case class StageResult(dirs: StagingDirs, items: Seq[StageResult.Item], luaSandboxInstalled: Boolean)
   object StageResult {
-    class Item(val dep: DepModule, val files: Seq[os.SubPath], val pkgData: JD.Package, val warnings: Seq[JD.Warning], val dlls: Seq[DllInstalled], val scripts: Seq[LuaInstalled])
+    class Item(
+      val dep: DepModule,
+      val files: Seq[os.SubPath],
+      val pkgData: JD.Package,
+      val warnings: Seq[JD.Warning],
+      val dlls: Seq[DllInstalled],
+      val inis: Seq[IniInstalled],
+      val scripts: Seq[LuaInstalled],
+    )
     class DllInstalled(
       val dll: os.SubPath,
       val module: DepModule,
@@ -307,6 +344,15 @@ object Staging {
       val assetMetadataUrl: java.net.URI,
       val validatedSha256: collection.immutable.ArraySeq[Byte],
     )
+    class IniInstalled(
+      val ini: os.SubPath,  // filename_sc4pacnew.ini
+      val module: DepModule,
+      val validatedSha256: collection.immutable.ArraySeq[Byte],
+      val finalIniName: String,  // filename.ini
+      val strategy: IniStrategy,
+    ) {
+      def toJsonData: JD.IniFileData = JD.IniFileData(file = ini, checksum = JD.Checksum(sha256 = Some(validatedSha256)), finalName = finalIniName)
+    }
     class LuaInstalled(
       val dbpfFile: os.SubPath,
       val module: DepModule,
@@ -315,6 +361,22 @@ object Staging {
       val assetMetadataUrl: java.net.URI,
       val tgis: Seq[scdbpf.Tgi],
     )
+  }
+
+  enum IniStrategy { case InstallNew, Skip, ReinstallSilently }
+  class IniContext(installedData: Seq[JD.InstalledData], pluginsRoot: Option[os.Path]) {
+    private lazy val iniFilesByFinalName: Map[String, JD.IniFileData] = installedData.flatMap(_.iniFiles).map(ini => ini.finalName -> ini).toMap  // INI name clashes are ignored
+    def getStrategy(newIni: os.SubPath, newIniSha256: collection.immutable.ArraySeq[Byte], finalIniName: String): IO[java.io.IOException, IniStrategy] = {
+      pluginsRoot match {
+        case None => ZIO.succeed(IniStrategy.InstallNew)
+        case Some(root) => ZIO.attemptBlockingIO {
+          if (!os.exists(root / finalIniName)) IniStrategy.InstallNew
+          else if (!iniFilesByFinalName.get(finalIniName).exists(data => data.checksum.sha256.exists(_.sameElements(newIniSha256)))) IniStrategy.InstallNew
+          else if (os.exists(root / newIni)) IniStrategy.ReinstallSilently  // uninstalling a package will remove the previously installed INI file, but user has already been informed
+          else IniStrategy.Skip  // previously installed INI file is identical to the new one, and has already been renamed by the user
+        }
+      }
+    }
   }
 
 }

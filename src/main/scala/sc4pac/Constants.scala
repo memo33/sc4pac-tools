@@ -94,6 +94,7 @@ object Constants {
   }
 
   def isDll(path: os.Path): Boolean = path.last.toLowerCase(java.util.Locale.ENGLISH).endsWith(".dll")
+  def isIni(path: os.Path): Boolean = path.last.toLowerCase(java.util.Locale.ENGLISH).endsWith(".ini")
 
   lazy val isPosix = java.nio.file.FileSystems.getDefault().supportedFileAttributeViews().contains("posix");
 }

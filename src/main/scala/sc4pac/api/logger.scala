@@ -228,4 +228,15 @@ class WebSocketPrompter(wsChannel: zio.http.WebSocketChannel, logger: WebSocketL
     )).map(_.body.str == yes)
   }
 
+  override def confirmIniManualEdit(iniFiles: Seq[Staging.StageResult.IniInstalled]): Task[Unit] = {
+    sendPrompt(PromptMessage.ConfirmIniManualEdit(
+      iniFiles.map { ini =>
+        PromptMessage.ConfirmIniManualEdit.Item(
+          tmpIni = ini.ini,
+          finalName = ini.finalIniName,
+          `package` = ini.module.toBareDep,
+        )
+      }
+    )).unit
+  }
 }

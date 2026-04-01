@@ -35,6 +35,8 @@ trait Prompter {
     f""" Lua scripts contain code that extends the functionality of the game (e.g. advisor messages, rewards, and automata generators).%n%n""" +
     s"""Only continue if you consider ${if (numScripts == 1) "this file" else "these files"} to be trustworthy.""" +
     Option.unless(luaSandboxInstalled)(f"%n%nFor added security, install `pkg=${Constants.luaSandboxDll.orgName}`.").getOrElse("")
+
+  def confirmIniManualEdit(iniFiles: Seq[Staging.StageResult.IniInstalled]): Task[Unit]
 }
 
 class CliPrompter(val logger: CliLogger, autoYes: Boolean) extends Prompter {
@@ -198,5 +200,24 @@ class CliPrompter(val logger: CliLogger, autoYes: Boolean) extends Prompter {
       onFalse = ZIO.fail(new error.Sc4pacNotInteractive(s"Pass --yes to fix broken packages non-interactively.")),
       onTrue = Prompt.yesNo("Delete orphan files and mark incomplete packages for re-installation?"),
     )
+  }
+
+  def confirmIniManualEdit(iniFiles: Seq[Staging.StageResult.IniInstalled]): Task[Unit] = {
+    val pacnewPattern = "(.*)_sc4pacnew(.*)".r
+    val msg =
+      f"""The following INI configuration files have been installed in your Plugins folder:%n%n""" +
+      iniFiles.map { ini =>
+        val nameFormatted = ini.ini.toString match {
+          case pacnewPattern(before, after) => logger.bold(before) + logger.magentaBold("_sc4pacnew") + logger.bold(after)
+          case s => logger.bold(s)
+        }
+        s"    $nameFormatted (for package ${ini.module.toBareDep.formattedDisplayString(logger.gray, logger.bold)}), rename to ${logger.bold(ini.finalIniName)}"
+      }.mkString(f"%n") +
+      s"""
+         |
+         |To activate these INI files, rename each file by removing ${logger.magentaBold("_sc4pacnew")} from its name.
+         |Review and edit the INI files to set your preferences.
+         |""".stripMargin
+    ZIO.succeed(logger.warn(msg))
   }
 }
