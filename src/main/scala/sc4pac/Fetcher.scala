@@ -21,11 +21,10 @@ trait Fetcher {
 }
 
 object Fetcher {
-  val live: zio.URLayer[Logger, Fetcher] =
-    zio.ZLayer(for {
-      logger <- ZIO.service[Logger]
-      cacheRef <- Ref.make(Option.empty[FileCache])
-    } yield Impl(logger, cacheRef))
+
+  private lazy val globalCacheRef: Ref[Option[FileCache]] = Ref.unsafe.make(None)(using zio.Unsafe)
+
+  val live: zio.URLayer[Logger, Fetcher] = zio.ZLayer.fromFunction(Impl(_, globalCacheRef))
 
   class Blob(
     val path: os.Path,
@@ -44,7 +43,7 @@ object Fetcher {
          // concurrent access to the API does not hit a locked cache.
          // We don't expect concurrent API access for different cache locations,
          // so it's fine to store just a reference to the most recent cache.
-         case opt if !opt.contains(location) =>
+         case opt if !opt.exists(_.location == location) =>
            val coursierPool = createThreadPool()
            val cache = FileCache(location = location, pool = coursierPool)
                          .withTtl(Some(Constants.cacheTtl))  // 12 hours
