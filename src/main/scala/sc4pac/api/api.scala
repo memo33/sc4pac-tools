@@ -333,7 +333,7 @@ class Api(val options: sc4pac.cli.Commands.ServerOptions, console: zio.Console, 
                 pluginsRoot  <- pluginsSpec.config.pluginsRootAbs
                 wsLogger     <- ZIO.service[WebSocketLogger]
                 _            <- wsLogger.logZIO(s"Updating... ($credentialsDesc)")
-                flag         <- ZIO.serviceWithZIO[WebSocketPrompter](_.promptForInitialArguments())
+                _            <- ZIO.serviceWithZIO[WebSocketPrompter](_.promptForInitialArguments())
                                   .flatMap { args =>
                                     val variantSelection = VariantSelection(
                                       currentSelections = Map.empty,
