@@ -251,7 +251,7 @@ trait ChannelBuilder[+E] {
       for {
         map  <- ZIO.succeed((new java.util.concurrent.ConcurrentHashMap[BareDep, (Set[BareModule], Set[BareModule])]()).asScala)  // concurrent for thread-safe access later on
         _    <- ZIO.foreachParDiscard(packages) {
-                  case _: JD.Asset => ZIO.succeed(()) // assets do not depend on or conflict with anything
+                  case _: JD.Asset => ZIO.unit // assets do not depend on or conflict with anything
                   case pkgData: JD.Package =>
                     val mod = pkgData.toBareDep
                     val addDeps =

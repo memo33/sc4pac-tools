@@ -95,7 +95,7 @@ object WebSocketLogger {
           case Event.WithCompletion(msg, promise) =>
             for {
               _ <- send(msg)
-              _ <- promise.completeWith(ZIO.succeed(()))
+              _ <- promise.completeWith(ZIO.unit)
             } yield true
           case Event.WithResponse(msg, promise, receiveMatchingResponse) =>
             for {
