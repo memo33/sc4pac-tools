@@ -633,6 +633,31 @@ class Api(val options: sc4pac.cli.Commands.ServerOptions, console: zio.Console, 
       } yield jsonResponse(data)
     }) @@ interceptProfile -> AuthScope.read,
 
+    // 200, 400, 404, 409, 500
+    Method.POST / "plugins.folder.open" -> handler((req: Request) => wrapHttpEndpoint {
+      val pkgOpt = req.url.queryParams.getAll("pkg").headOption
+      for {
+        pluginsSpec  <- readPluginsSpecOr409
+        pluginsRoot  <- pluginsSpec.config.pluginsRootAbs
+        folder       <- pkgOpt match {
+                          case None => ZIO.succeed(pluginsRoot)
+                          case Some(pkg) => for {
+                            mod        <- parseModuleOr400(pkg)
+                            pkgFolder  <- JD.PluginsLock.listInstalled2
+                                            .map(_.find(data => data.group == mod.group.value && data.name == mod.name.value))
+                                            .map(_.flatMap(_.files.find(_.last.endsWith(".sc4pac"))))
+                                            .someOrFail(jsonResponse(ErrorMessage.PackageNotFound(
+                                              s"Package is not installed.", mod.orgName,
+                                            )).status(Status.NotFound))
+                          } yield pluginsRoot / (pkgFolder: os.SubPath)
+                        }
+        _            <- cli.DesktopOps.openDirectory(folder)
+                          .mapError(e => jsonResponse(ErrorMessage.FileOperationsFailed(
+                            "Failed to open folder.", e.toString,
+                          )).status(Status.InternalServerError))
+      } yield jsonOk
+    }) @@ interceptProfile -> AuthScope.write,
+
   )
 
   type GenericRouteEnv[R] = R & service.FileSystem & ServerFiber & Client & Ref[ServerConnection]

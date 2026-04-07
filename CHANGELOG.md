@@ -11,6 +11,7 @@
   To activate the INI files, rename them to remove `_sc4pacnew` from their name. (#52)
 - API upgraded to 3.1:
   - added a new `/prompt/confirmation/update/ini-manual-edit` message to `/update` (#52)
+  - added new `/plugins.folder.open` endpoint
 
 
 ## [0.9.5] - 2026-03-15

@@ -25,6 +25,7 @@ In a nutshell:
 †GET  /plugins.repair.scan?profile=id
 *POST /plugins.repair?profile=id      <object>
 †POST /plugins.export?profile=id      ["<pkg1>", "<pkg2>", …]
+*POST /plugins.folder.open?profile=id
 
 †GET  /variants.list?profile=id
 *POST /variants.reset?profile=id      ["<variantId1>", "<variantId2>", …]
@@ -547,6 +548,19 @@ Result:
   "channels": ["https://memo33.github.io/sc4pac/channel/"]
 }
 ```
+
+## plugins.folder.open
+
+Open the Plugins folder or a package folder of an installed package.
+
+Synopsis: `POST /plugins.folder.open?profile=id&pkg=<pkg>`
+
+The `pkg` parameter is optional, in which case the root of the Plugins is opened.
+
+Returns:
+- 200 `{"$type": "/result", "ok": true}`
+- 404 if package is not in `/plugins.installed.list`
+- 500 in case of file system errors
 
 ## variants.list
 
