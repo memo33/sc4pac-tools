@@ -130,6 +130,21 @@ object PromptMessage {
     ) derives UP.ReadWriter
   }
 
+  @upickle.implicits.key("/prompt/confirmation/update/ini-manual-edit")
+  case class ConfirmIniManualEdit(
+    iniFiles: Seq[ConfirmIniManualEdit.Item],
+    choices: Seq[String], // = yes,
+    token: String,
+    responses: Map[String, ResponseMessage],
+  ) extends PromptMessage derives UP.ReadWriter
+  object ConfirmIniManualEdit {
+    def apply(iniFiles: Seq[Item]): ConfirmIniManualEdit = {
+      val token = scala.util.Random.nextInt().toHexString
+      ConfirmIniManualEdit(iniFiles = iniFiles, choices = Seq(yes), token = token, responsesFromChoices(Seq(yes), token))
+    }
+    case class Item(tmpIni: os.SubPath, finalName: String, `package`: BareModule) derives UP.ReadWriter
+  }
+
   @upickle.implicits.key("/prompt/confirmation/update/installing-scripts")
   case class ConfirmInstallingScripts(
     description: String,

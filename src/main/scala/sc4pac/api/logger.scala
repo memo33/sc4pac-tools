@@ -95,7 +95,7 @@ object WebSocketLogger {
           case Event.WithCompletion(msg, promise) =>
             for {
               _ <- send(msg)
-              _ <- promise.completeWith(ZIO.succeed(()))
+              _ <- promise.completeWith(ZIO.unit)
             } yield true
           case Event.WithResponse(msg, promise, receiveMatchingResponse) =>
             for {
@@ -228,4 +228,15 @@ class WebSocketPrompter(wsChannel: zio.http.WebSocketChannel, logger: WebSocketL
     )).map(_.body.str == yes)
   }
 
+  override def confirmIniManualEdit(iniFiles: Seq[Staging.StageResult.IniInstalled]): Task[Unit] = {
+    sendPrompt(PromptMessage.ConfirmIniManualEdit(
+      iniFiles.map { ini =>
+        PromptMessage.ConfirmIniManualEdit.Item(
+          tmpIni = ini.ini,
+          finalName = ini.finalIniName,
+          `package` = ini.module.toBareDep,
+        )
+      }
+    )).unit
+  }
 }

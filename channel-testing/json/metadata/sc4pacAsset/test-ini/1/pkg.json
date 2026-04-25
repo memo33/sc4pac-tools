@@ -1,0 +1,10 @@
+{
+ "$type": "Asset",
+ "assetId": "test-ini",
+ "version": "1",
+ "url": "http://localhost:8090/files/magic.ini.zip",
+ "lastModified": "2026-03-15T19:00:00Z",
+ "requiredBy": [
+  "test:ini"
+ ]
+}

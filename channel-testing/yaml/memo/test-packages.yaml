@@ -54,3 +54,21 @@ subfolder: 150-mods
 version: "1"
 assets:
 - assetId: test-wrong-asset-checksum
+
+---
+group: test
+name: ini
+subfolder: 150-mods
+version: "1"
+assets:
+- assetId: test-ini
+  withChecksum:
+  - include: /magic.ini
+    sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+    isIni: true
+
+---
+assetId: test-ini
+version: "1"
+lastModified: "2026-03-15T19:00:00Z"
+url: http://localhost:8090/files/magic.ini.zip

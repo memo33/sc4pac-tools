@@ -126,6 +126,8 @@ object JsonData extends SharedData {
       }
   }
 
+  case class IniFileData(file: SubPath, checksum: Checksum, finalName: String) derives ReadWriter
+
   private val installedAtDummy = java.time.Instant.parse("2024-01-01T00:00:00Z")  // placeholder for upgrading from scheme 1
   case class InstalledData(
     group: String,
@@ -138,6 +140,7 @@ object JsonData extends SharedData {
     installedAt: Instant = installedAtDummy,  // since scheme 2
     updatedAt: Instant = installedAtDummy,  // since scheme 2
     reinstall: Boolean = false,  // since scheme 2+
+    iniFiles: Seq[IniFileData] = Seq.empty,  // since scheme 2+
   ) derives ReadWriter {
     def toDepModule = DepModule(Organization(group), ModuleName(name), version = version, variant = variant)
     def toBareModule = BareModule(Organization(group), ModuleName(name))
@@ -172,17 +175,19 @@ object JsonData extends SharedData {
         installed = insts.map { dep =>
           val stagedItem = stagedItemsMap.get(dep)  // possibly None
           val bareDep = dep.toBareDep  // we ignore variants when looking up previous package data (mainly for preserving `installedAt`)
+          lazy val previousPkg = previousPkgs(bareDep)
           InstalledData(
             group = dep.group.value,
             name = dep.name.value,
             variant = dep.variant,
             version = dep.version,
-            files = stagedItem.map(_.files).getOrElse(previousPkgs(bareDep).files),
-            summary = stagedItem.map(item => item.pkgData.info.summary).getOrElse(previousPkgs(bareDep).summary),
-            category = stagedItem.map(item => categoryFromSubPath(item.pkgData.subfolder)).getOrElse(previousPkgs(bareDep).category),
+            files = stagedItem.map(_.files).getOrElse(previousPkg.files),
+            summary = stagedItem.map(item => item.pkgData.info.summary).getOrElse(previousPkg.summary),
+            category = stagedItem.map(item => categoryFromSubPath(item.pkgData.subfolder)).getOrElse(previousPkg.category),
             installedAt = previousPkgs.get(bareDep).map(_.installedAt).getOrElse(now),
-            updatedAt = if (stagedItem.isDefined) now else previousPkgs(bareDep).updatedAt,
+            updatedAt = if (stagedItem.isDefined) now else previousPkg.updatedAt,
             reinstall = false,
+            iniFiles = stagedItem.map(_.inis.map(_.toJsonData)).getOrElse(previousPkg.iniFiles),
           )
         },
         assets = arts.map(dep => Asset(
@@ -320,12 +325,27 @@ object JsonData extends SharedData {
     }
   }
 
-  case class IncludeWithChecksum(include: String, sha256: ArraySeq[Byte])
+  private val isIniDefault = false
+  case class IncludeWithChecksum(include: String, sha256: ArraySeq[Byte], isIni: Boolean = isIniDefault)
 
   override given includeWithChecksumRw: ReadWriter[IncludeWithChecksum] =
-    readwriter[Map[String, String]].bimap[IncludeWithChecksum](
-      (data: IncludeWithChecksum) => Map("include" -> data.include, "sha256" -> Checksum.bytesToString(data.sha256)),
-      (m: Map[String, String]) => IncludeWithChecksum(include = m("include"), sha256 = Checksum.stringToBytes(m("sha256"))),
+    readwriter[ujson.Value].bimap[IncludeWithChecksum](
+      (data: IncludeWithChecksum) => {
+        val j = ujson.Obj(
+          "include" -> data.include,
+          "sha256" -> Checksum.bytesToString(data.sha256),
+        )
+        if (data.isIni != isIniDefault) j("isIni") = data.isIni
+        j
+      },
+      (j: ujson.Value) => {
+        val m = j.obj
+        IncludeWithChecksum(
+          include = m("include").str,
+          sha256 = Checksum.stringToBytes(m("sha256").str),
+          isIni = m.get("isIni").map(_.bool).getOrElse(isIniDefault),
+        )
+      },
     )
 
   case class ExportData(

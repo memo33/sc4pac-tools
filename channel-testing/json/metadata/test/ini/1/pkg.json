@@ -1,0 +1,30 @@
+{
+ "$type": "Package",
+ "group": "test",
+ "name": "ini",
+ "version": "1",
+ "subfolder": "150-mods",
+ "variants": [
+  {
+   "variant": {},
+   "assets": [
+    {
+     "assetId": "test-ini",
+     "withChecksum": [
+      {
+       "include": "/magic.ini",
+       "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+       "isIni": true
+      }
+     ]
+    }
+   ]
+  }
+ ],
+ "metadataSource": [
+  "memo/test-packages.yaml"
+ ],
+ "channelLabel": [
+  "Test-Local"
+ ]
+}

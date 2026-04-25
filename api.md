@@ -1,4 +1,4 @@
-# API - version 3.0
+# API - version 3.1
 
 The API allows other programs to control *sc4pac* in a client-server fashion.
 
@@ -25,6 +25,7 @@ In a nutshell:
 †GET  /plugins.repair.scan?profile=id
 *POST /plugins.repair?profile=id      <object>
 †POST /plugins.export?profile=id      ["<pkg1>", "<pkg2>", …]
+*POST /plugins.folder.open?profile=id
 
 †GET  /variants.list?profile=id
 *POST /variants.reset?profile=id      ["<variantId1>", "<variantId2>", …]
@@ -548,6 +549,19 @@ Result:
 }
 ```
 
+## plugins.folder.open
+
+Open the Plugins folder or a package folder of an installed package.
+
+Synopsis: `POST /plugins.folder.open?profile=id&pkg=<pkg>`
+
+The `pkg` parameter is optional, in which case the root of the Plugins is opened.
+
+Returns:
+- 200 `{"$type": "/result", "ok": true}`
+- 404 if package is not in `/plugins.installed.list`
+- 500 in case of file system errors
+
 ## variants.list
 
 Get the list of configured variants of your plugins folder.
@@ -691,6 +705,7 @@ Messages sent:
 - `/prompt/confirmation/update/warnings` once (if the warnings are empty, you can accept without user input)
 - `/prompt/confirmation/update/installing-dlls` at most once
 - `/prompt/confirmation/update/installing-scripts` at most once
+- `/prompt/confirmation/update/ini-manual-edit` at most once
 - final message: either an error message or `{"$type": "/result", "ok": true}`.
   Afterwards the websocket is closed.
 

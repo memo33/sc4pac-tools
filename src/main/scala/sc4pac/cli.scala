@@ -142,7 +142,7 @@ object Commands {
         pluginsRoot  <- pluginsSpec.config.pluginsRootAbs
         fs           <- ZIO.service[service.FileSystem]
         variantSelection = VariantSelection(currentSelections = Map.empty, initialSelections = pluginsSpec.config.variant, importedSelections = Nil)  // importedSelections supported by API/GUI only
-        flag         <- pac.update(pluginsSpec.explicit, variantSelection, pluginsRoot = pluginsRoot)
+        _            <- pac.update(pluginsSpec.explicit, variantSelection, pluginsRoot = pluginsRoot)
                           .provideSomeLayer(zio.ZLayer.succeed(Downloader.Credentials(simtropolisToken = fs.env.simtropolisToken)))
       } yield ()
       runMainExit(task.provide(Staging.live, cliLayer.map(_.update((_: CliPrompter).withAutoYes(options.yes)))), exit)
@@ -870,7 +870,7 @@ object Commands {
               val url = webAppDir.get._2
               println(f"%nTo start the sc4pac-gui web-app, open the following URL in your web browser if it does not launch automatically:%n%n  ${url}%n")
               ZIO.whenDiscard(options.launchBrowser) {
-                DesktopOps.openUrl(url).catchAll(_ => ZIO.succeed(()))  // errors can be ignored
+                DesktopOps.openUrl(url).catchAll(_ => ZIO.unit)  // errors can be ignored
               }
             }
           )
@@ -949,7 +949,7 @@ object Commands {
                     _        <- exitVal match {
                                   case zio.Exit.Failure(cause) =>
                                     if (cause.isInterruptedOnly) {
-                                      ZIO.succeed(())  // interrupt is expected following autoShutdown after /server.connect
+                                      ZIO.unit  // interrupt is expected following autoShutdown after /server.connect
                                     } else cause.failureOrCause match {
                                       case Left(err) => ZIO.fail(err)  // converts PortOccupied failure cause to plain error
                                       case Right(cause2) => ZIO.refailCause(cause2)

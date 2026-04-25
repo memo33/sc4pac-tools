@@ -345,7 +345,7 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path, fileSys: ser
     /** Remove old files from plugins and move staged files and folders into
       * plugins folder. Also update the json database of installed files.
       */
-    private def publishToPlugins(staged: StageResult, pluginsRoot: os.Path, pluginsLockData: JD.PluginsLock, pluginsLockDataOrig: JD.PluginsLock, plan: UpdatePlan): RIO[Staging, Boolean] = {
+    private def publishToPlugins(staged: StageResult, pluginsRoot: os.Path, pluginsLockData: JD.PluginsLock, pluginsLockDataOrig: JD.PluginsLock, plan: UpdatePlan): RIO[Staging, Unit] = {
       // - lock the json database using file lock
       // - remove old packages
       // - move new packages into plugins folder
@@ -354,7 +354,7 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path, fileSys: ser
         for {
           staging  <- ZIO.service[Staging]
           _        <- staging.removeInstalledFiles(plan.toRemove, pluginsLockData.installed, pluginsRoot)
-          result   <- staging.movePackagesToPlugins(staged, pluginsRoot).map(_ => true).either  // switch to Either so that PluginsLock file can be written despite Sc4pacPublishIncomplete warning
+          result   <- staging.movePackagesToPlugins(staged, pluginsRoot).either  // switch to Either so that PluginsLock file can be written despite Sc4pacPublishIncomplete warning
         } yield result
       }).absolve
       // As this task alters the actual plugins, we make it uninterruptible to ensure completion in case the update is canceled.
@@ -435,7 +435,7 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path, fileSys: ser
     }
 
     /** `def update`: Update all installed packages from modules (the list of explicitly added packages). */
-    def apply(modules0: Seq[BareModule], variantSelection0: VariantSelection, pluginsRoot: os.Path): RIO[Profile & Prompter & Downloader.Credentials & Staging, Boolean] = {
+    def apply(modules0: Seq[BareModule], variantSelection0: VariantSelection, pluginsRoot: os.Path): RIO[Profile & Prompter & Downloader.Credentials & Staging, Unit] = {
 
       // - before starting to remove anything, we download and extract everything
       //   to install into temp folders (staging)
@@ -457,23 +457,26 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path, fileSys: ser
                            )
         continue        <- ZIO.serviceWithZIO[Prompter](_.confirmUpdatePlan(plan))
                              .filterOrFail(_ == true)(error.Sc4pacAbort())
-        _               <- ZIO.unless(!continue || finalSelections == variantSelection0.initialSelections && modules == modules0)(storeUpdatedSpec(finalSelections, modules))  // only store something after confirmation
-        flagOpt         <- ZIO.unless(!continue || plan.isUpToDate)(for {
+        _               <- ZIO.unlessDiscard(!continue || finalSelections == variantSelection0.initialSelections && modules == modules0)(storeUpdatedSpec(finalSelections, modules))  // only store something after confirmation
+        _               <- ZIO.unlessDiscard(!continue || plan.isUpToDate)(for {
           fetchedAssets   <- doDownloadWithMirror(resolution, plan)
           depsToStage     =  plan.toInstall.collect{ case d: DepModule => d }.toSeq  // keep only non-assets
-          flag            <- ZIO.scoped(for {
+          _               <- ZIO.scoped(for {
                                 staging     <- ZIO.service[Staging]
                                 stagingDirs <- staging.makeStagingDirs(tempRoot)
                                 pathLimit   =  Option.unless(resolution.metadata.contains(Constants.startupPerformanceOptimizationDll))(
                                                  Constants.maxPathLength.map(_ - pluginsRoot.toString.length + stagingDirs.plugins.toString.length)
                                                ).flatten
-                                stageResult <- staging.stageAll(stagingDirs, depsToStage, fetchedAssets, resolution, pathLimit = pathLimit)
+                                iniContext  =  Staging.IniContext(pluginsLockData.installed, Some(pluginsRoot))
+                                stageResult <- staging.stageAll(stagingDirs, depsToStage, fetchedAssets, resolution, pathLimit = pathLimit, iniContext)
                                 _           <- confirmStageResultOrAbort(stageResult)
-                                flag        <- publishToPlugins(stageResult, pluginsRoot, pluginsLockData, pluginsLockData1, plan)
-                             } yield flag)
+                                _           <- publishToPlugins(stageResult, pluginsRoot, pluginsLockData, pluginsLockData1, plan)
+                                iniPrompts  =  stageResult.items.flatMap(_.inis.filter(_.strategy == Staging.IniStrategy.InstallNew))
+                                _           <- ZIO.whenDiscard(iniPrompts.nonEmpty)(ZIO.serviceWithZIO[Prompter](_.confirmIniManualEdit(iniPrompts)))
+                             } yield ())
           _               <- logger.logZIO("Done.")
-        } yield flag)
-      } yield flagOpt.getOrElse(false)  // TODO decide what flag means
+        } yield ())
+      } yield ()
 
       updateTask.provideSomeLayer(zio.ZLayer.succeed(context))
     }
@@ -490,7 +493,7 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path, fileSys: ser
         val depsToStage = resolution.transitiveDependencies.collect{ case d: DepModule => d }.toSeq  // keep only non-assets
         (for {
           staging <- ZIO.service[Staging]
-          staged <- staging.stageAll(stagingDirs, depsToStage, fetchedAssets, resolution, pathLimit = None)
+          staged <- staging.stageAll(stagingDirs, depsToStage, fetchedAssets, resolution, pathLimit = None, Staging.IniContext(Seq.empty, outputDir))
           _      <- ZIO.foreachDiscard(outputDir)(staging.movePackagesToPlugins(staged, _))  // moves files only when output dir is defined
           fatal  =  staged.items.iterator.flatMap(_.warnings).filter {
                       case _: JD.InformativeWarning => false

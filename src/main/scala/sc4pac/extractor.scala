@@ -457,7 +457,8 @@ object Extractor {
   }
 
   /** A certificate to keep track of files whose checksums have been validated. */
-  class ExtractedItem private[Extractor] (val path: os.Path, val validatedSha256: Option[collection.immutable.ArraySeq[Byte]])
+  class Validated private[Extractor] (val sha256: collection.immutable.ArraySeq[Byte], val isDll: Boolean, val isIni: Boolean)
+  class ExtractedItem private[Extractor] (val path: os.Path, val validated: Option[Validated])
 
   sealed trait Validator {
     def validate(path: os.Path): ExtractedItem
@@ -473,7 +474,7 @@ object Extractor {
           "Report this to the maintainers of the metadata.",
           s"File: $path, got: ${JD.Checksum.bytesToString(sha256Actual)}, expected: ${JD.Checksum.bytesToString(includeWithChecksum.sha256)}")
       } else {
-        ExtractedItem(path, validatedSha256 = Some(sha256Actual))
+        ExtractedItem(path, validated = Some(Validated(sha256 = sha256Actual, isDll = Constants.isDll(path), isIni = includeWithChecksum.isIni && Constants.isIni(path))))
       }
     }
   }
@@ -493,13 +494,13 @@ object Extractor {
           "Otherwise, if it is a DLL file, the channel metadata must include a checksum for verifying file integrity. " +
           "Report this to the maintainers of the metadata.",
           s"File: $path")
-      else ExtractedItem(path, validatedSha256 = None)
+      else ExtractedItem(path, validated = None)
     }
   }
 
   // Nested archives currently do not use checksums for validation. If desired, the outer archive should use a checksum instead.
   object NoopValidator extends Validator {
-    def validate(path: os.Path): ExtractedItem = ExtractedItem(path, validatedSha256 = None)
+    def validate(path: os.Path): ExtractedItem = ExtractedItem(path, validated = None)
   }
 
 }

@@ -57,6 +57,7 @@ class CliLogger private (out: java.io.PrintStream, useColor: Boolean, isInteract
   def red(msg: String): String = if (useColor) Console.RED + msg + Console.RESET else msg
   private def cyan(msg: String): String = if (useColor) Console.CYAN + msg + Console.RESET else msg
   def cyanBold(msg: String): String = if (useColor) Console.CYAN + Console.BOLD + msg + Console.RESET else msg
+  def magentaBold(msg: String): String = if (useColor) Console.MAGENTA + Console.BOLD + msg + Console.RESET else msg
   def yellow(msg: String): String = if (useColor) Console.YELLOW + msg + Console.RESET else msg
   private def yellowBold(msg: String): String = if (useColor) Console.YELLOW + Console.BOLD + msg + Console.RESET else msg
   def bold(msg: String): String = if (useColor) Console.BOLD + msg + Console.RESET else msg

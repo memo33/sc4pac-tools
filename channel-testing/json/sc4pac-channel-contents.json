@@ -7,7 +7,7 @@
   "metadataSourceUrl": []
  },
  "stats": {
-  "totalPackageCount": 9,
+  "totalPackageCount": 10,
   "categories": [
    {
     "category": "100-props-textures",
@@ -15,7 +15,7 @@
    },
    {
     "category": "150-mods",
-    "count": 7
+    "count": 8
    }
   ]
  },
@@ -120,6 +120,21 @@
    "checksums": {
     "1": {
      "sha256": "d475ede00e68abd3ab7accbb73f4f6b887615775ae1de734b26bba74ac9633c1"
+    }
+   },
+   "category": [
+    "150-mods"
+   ]
+  },
+  {
+   "group": "test",
+   "name": "ini",
+   "versions": [
+    "1"
+   ],
+   "checksums": {
+    "1": {
+     "sha256": "820e298a9f89e6cf1a23fe40600c313ee706320fb4f833892a596c6b50ff374b"
     }
    },
    "category": [
@@ -239,6 +254,18 @@
    "checksums": {
     "1.0": {
      "sha256": "abaf0ad4fc2371b768b4a1f34371943b58ee52f322b671ce62bd0532176765b9"
+    }
+   }
+  },
+  {
+   "group": "sc4pacAsset",
+   "name": "test-ini",
+   "versions": [
+    "1"
+   ],
+   "checksums": {
+    "1": {
+     "sha256": "edb5a783ed1760057b430df991fdcf80698cffc6ea94b13f2f3258a3b328d705"
     }
    }
   },
