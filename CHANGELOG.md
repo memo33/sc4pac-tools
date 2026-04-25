@@ -9,6 +9,7 @@
 ### Changed
 - Packages with INI configuration files now install the INI files into the root of the Plugins folder, but named as `_sc4pacnew.ini`.
   To activate the INI files, rename them to remove `_sc4pacnew` from their name. (#52)
+- improved detection of download failures when a server is down for maintenance
 - API upgraded to 3.1:
   - added a new `/prompt/confirmation/update/ini-manual-edit` message to `/update` (#52)
   - added new `/plugins.folder.open` endpoint

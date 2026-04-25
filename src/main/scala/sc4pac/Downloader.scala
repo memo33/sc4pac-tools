@@ -248,9 +248,36 @@ class Downloader(
                                  // GZip encoding is mainly used with JSON files. They will fail to parse anyway if incomplete.
           }
 
+        def noHtmlCheck(): Either[Artifact2Error, Unit] =
+          if (filename.isDefined) {
+            Right(())
+          } else {
+            val htmlPrefix = "<!DOCTYPE"
+            util.Try(os.read.bytes(os.Path(tmp.getAbsolutePath), offset = 0, count = htmlPrefix.length))
+              .flatMap { bytes =>
+                if (bytes.headOption.contains('<')) {
+                  util.Try(Some(new String(bytes, java.nio.charset.StandardCharsets.ISO_8859_1)))
+                } else {
+                  util.Success(None)
+                }
+              } match {
+                case util.Failure(e) =>
+                  logger.debug(s"Failed to read first bytes of downloaded file for HTML check: ${e.getMessage()}")
+                  Right(())
+                case util.Success(prefixOpt) =>
+                  if (prefixOpt.exists(_.equalsIgnoreCase(htmlPrefix)))
+                    Left(new Artifact2Error.DownloadError(
+                      s"File downloaded from $url seems to be an HTML page instead of the expected file, which can happen when the server returns an error page (e.g. temporary maintenance).",
+                      None,
+                    ))
+                  else Right(())
+              }
+          }
+
         for {
           _ <- consumeStream()
           _ <- lengthCheck()
+          _ <- noHtmlCheck()
         } yield {
 
           CC.CacheLocks.withStructureLock(cacheLocation) {
