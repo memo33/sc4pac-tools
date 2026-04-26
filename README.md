@@ -50,7 +50,7 @@ The GUI is located in the <a href="https://github.com/memo33/sc4pac-gui/releases
   creating a new Profile and configuring the location of your Plugins folder.
 
 - Go to **Find Packages** to search and select packages to install (for example `pkg=cyclone-boom:save-warning`).
-  There are already more than 3000 plugins with compatible *metadata* to choose from.
+  There are already more than 5000 plugins with compatible *metadata* to choose from.
   Once satisfied, go to the **Dashboard** and hit **Update** to download and install the plugin files.
 
 - If you are signed in to [Simtropolis](https://community.simtropolis.com), watch out for the **“Install with sc4pac”** button on the STEX.

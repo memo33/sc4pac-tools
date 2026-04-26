@@ -2,13 +2,15 @@
 
 ## [Unreleased]
 
+
+## [0.10.0] - 2026-04-26
 ### Fixed
 - a problem where a zip file was treated like a plain DBPF file if `.SC4` was contained anywhere in its name.
 - a problem where files with names using "extended ASCII" (CP437) were silently ignored during extraction of a zip file (#51).
 
 ### Changed
 - Packages with INI configuration files now install the INI files into the root of the Plugins folder, but named as `_sc4pacnew.ini`.
-  To activate the INI files, rename them to remove `_sc4pacnew` from their name. (#52)
+  To activate the INI files, rename them by removing `_sc4pacnew` from their name. (#52)
 - improved detection of download failures when a server is down for maintenance
 - API upgraded to 3.1:
   - added a new `/prompt/confirmation/update/ini-manual-edit` message to `/update` (#52)
@@ -400,7 +402,8 @@
 ## [0.1.5] - 2023-09-26
 …
 
-[Unreleased]: https://github.com/memo33/sc4pac-tools/compare/0.9.5...HEAD
+[Unreleased]: https://github.com/memo33/sc4pac-tools/compare/0.10.0...HEAD
+[0.10.0]: https://github.com/memo33/sc4pac-tools/compare/0.9.5...0.10.0
 [0.9.5]: https://github.com/memo33/sc4pac-tools/compare/0.9.4...0.9.5
 [0.9.4]: https://github.com/memo33/sc4pac-tools/compare/0.9.3...0.9.4
 [0.9.3]: https://github.com/memo33/sc4pac-tools/compare/0.9.2...0.9.3
