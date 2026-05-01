@@ -19,6 +19,7 @@ import scalatags.JsDom.all.{stringFrag, stringAttr, SeqFrag, intPixelStyle, stri
 trait StringRwHelper {
   // helps avoid given-resolution conflicts (after switch from implicits to givens)
   def rawStringRwHelper: UP.ReadWriter[String] = UP.readwriter[String]
+  def rawStringMapRwHelper: UP.ReadWriter[Map[String, String]] = UP.readwriter[Map[String, String]]
 }
 
 object JsonData extends SharedData with StringRwHelper {
@@ -30,7 +31,7 @@ object JsonData extends SharedData with StringRwHelper {
     if (subpath.contains("/")) Some(subpath.substring(0, subpath.indexOf("/")))
     else Option.unless(subpath.isEmpty)(subpath)
   opaque type Checksum = Map[String, String]
-  override given checksumRw: UP.ReadWriter[Checksum] = ??? // UP.readwriter[Map[String, String]]
+  override given checksumRw: UP.ReadWriter[Checksum] = rawStringMapRwHelper
   protected def emptyChecksum = Map.empty
   opaque type Uri = String
   override given uriRw: UP.ReadWriter[Uri] = rawStringRwHelper
