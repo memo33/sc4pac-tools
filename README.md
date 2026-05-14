@@ -129,7 +129,7 @@ Each Profile corresponds to a Plugins folder.
 
 !> Important: Make sure to select distinct locations for all your Plugins folders to avoid interference between Profiles.
 
-?> You can use the [SC4 launch parameter](https://www.wiki.sc4devotion.com/index.php?title=Shortcut_Parameters#User_Dir) `-UserDir:"..."`
+?> You can use the [SC4 launch parameter](https://memo33.github.io/sc4pac/#/faq?id=changing-plugins-location) `-UserDir:"..."`
    to start the game with a custom location for the Plugins folder.
 
 

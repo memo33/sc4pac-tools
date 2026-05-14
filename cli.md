@@ -7,7 +7,7 @@ For most uses, it is recommended to use the *sc4pac* GUI instead.
 ## Overview
 
 - Prerequisites:
-  - Java 11+ ([Windows]/[macOS]/[Linux], see [Adoptium] for details)
+  - Java 17+ ([Windows]/[macOS]/[Linux], see [Adoptium] for details)
   - Mono ([macOS](https://www.mono-project.com/docs/getting-started/install/)/[Linux](https://repology.org/project/mono/versions), not needed on Windows)
   - Enough disk space
 
