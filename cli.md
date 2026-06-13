@@ -330,6 +330,7 @@ Archives containing DLL files or Clickteam EXE installers may require some extra
 sc4pac extract --output out asset.zip                                           # extract all DBPF files
 sc4pac extract -o out --include="\.SC4Model$" --include="\.SC4Desc$" asset.zip  # extract only Model and Desc files
 sc4pac extract -o out --include="." --exclude='(?<!\.dll)$' asset.zip           # extract only DLL files
+sc4pac extract -o out --include="." --exclude='$nothing' asset.zip              # extract everything
 sc4pac extract -o out --clickteam-version 40 asset.zip                          # use only with Clickteam installers
 ```
 
