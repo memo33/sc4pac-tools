@@ -101,4 +101,10 @@ package object sc4pac {
     given zioExceptionHandler: ZioExceptionHandler = new ZioExceptionHandler  // strategy
   }
 
+  def zioIterateUntilRight[R, E, S, A](initial: S)(f: S => zio.ZIO[R, E, Either[S, A]]): zio.ZIO[R, E, A] =
+    zio.ZIO.iterate(Left(initial): Either[S, A])(_.isLeft) {
+      case Left(s) => f(s)
+      case Right(_) => throw new AssertionError
+    }.map(_.toOption.get)
+
 }
