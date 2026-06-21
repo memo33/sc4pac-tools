@@ -36,7 +36,7 @@ final class ChecksumError(val title: String, val detail: String) extends java.io
 
 final class NotADbpfFile(val title: String, val detail: String) extends java.io.IOException(s"$title $detail") with Sc4pacErr
 
-final class InvalidArchiveSubpath(val path: String) extends java.io.IOException(s"Invalid archive subpath: $path") with Sc4pacErr
+final class InvalidArchiveSubpath(val path: String, cause: Throwable) extends java.io.IOException(s"Invalid archive subpath: $path", cause) with Sc4pacErr
 
 final class ChannelsNotAvailable(val title: String, val detail: String) extends java.io.IOException(s"$title $detail") with Sc4pacErr
 
