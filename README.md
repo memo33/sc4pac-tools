@@ -130,7 +130,7 @@ Each Profile corresponds to a Plugins folder.
 !> Important: Make sure to select distinct locations for all your Plugins folders to avoid interference between Profiles.
 
 ?> You can use the [SC4 launch parameter](https://memo33.github.io/sc4pac/#/faq?id=changing-plugins-location) `-UserDir:"..."`
-   to start the game with a custom location for the Plugins folder.
+   to start the game with a custom location for the game's user directory, which contains the `Plugins` folder (and `Regions` folder).
 
 
 ## Uninstalling
