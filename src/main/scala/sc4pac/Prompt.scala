@@ -70,8 +70,7 @@ object Prompt {
       }
     }
 
-    ZIO.iterate(None: Option[String])(_.isEmpty)(_ => readOption)  // repeatedly read input while empty
-      .map(_.get)
+    readOption.repeatWhileEquals(None).map(_.get)
   }
 
   def yesNo(question: String): ZIO[Interactive, IOException, Boolean] = Prompt.choice(question, Seq("Yes", "no"), default = Some("Yes")).map(_ == "Yes")
@@ -113,7 +112,7 @@ object Prompt {
     } yield parseRanges(s)
     for {
       _        <- zio.Console.printLine(f"$pretext%n%n" + indexed.map((i, o) => s"  ($i) ${render(o)}").mkString(f"%n") + f"%n")
-      selected <- ZIO.iterate(None: Option[Set[Int]])(_.isEmpty)(_ => promptRanges).map(_.get)
+      selected <- promptRanges.repeatWhileEquals(None).map(_.get)
     } yield indexed.collect { case (i, o) if selected(i) => o }
   }
 
@@ -125,7 +124,7 @@ object Prompt {
     } yield if (s.isEmpty) None else try {
       Some(os.Path(java.nio.file.Paths.get(s), os.pwd))
     } catch { case _: java.nio.file.InvalidPathException => None }
-    ZIO.iterate(None: Option[os.Path])(_.isEmpty)(_ => readOption).map(_.get)
+    readOption.repeatWhileEquals(None).map(_.get)
   }
 
   /** Choose a path, with an option to specify a custom location, creating it if necessary. */
@@ -148,6 +147,7 @@ object Prompt {
       )
     }
 
-    ZIO.iterate(None: Option[os.Path])(_.isEmpty)(_ => readPath.flatMap(createMaybe)).map(_.get)
+    readPath.flatMap(createMaybe)
+      .repeatWhileEquals(None).map(_.get)
   }
 }

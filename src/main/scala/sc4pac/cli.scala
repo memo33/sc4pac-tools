@@ -622,6 +622,7 @@ object Commands {
     |  sc4pac extract --output out asset.zip                                           ${gray("# extract all DBPF files")}
     |  sc4pac extract -o out --include="\\.SC4Model$$" --include="\\.SC4Desc$$" asset.zip  ${gray("# extract only Model and Desc files")}
     |  sc4pac extract -o out --include="." --exclude='(?<!\\.dll)$$' asset.zip           ${gray("# extract only DLL files")}
+    |  sc4pac extract -o out --include="." --exclude='$$nothing' asset.zip              ${gray("# extract everything")}
     |  sc4pac extract -o out --clickteam-version 40 asset.zip                          ${gray("# use only with Clickteam installers")}
     """.stripMargin.trim)
   final case class ExtractOptions(

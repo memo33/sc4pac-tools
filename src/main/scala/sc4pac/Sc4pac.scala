@@ -363,9 +363,8 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path, fileSys: ser
     }
 
     private def doPromptingForVariant[R, A](variantSelection: VariantSelection)(task: VariantSelection => RIO[R, A]): RIO[Prompter & ResolutionContext & R, (A, VariantSelection)] = {
-      ZIO.iterate(Left(variantSelection): Either[VariantSelection, (A, VariantSelection)])(_.isLeft) {
-        case Right(_) => throw new AssertionError
-        case Left(variantSelection) =>
+      zioIterateUntilRight(variantSelection) {
+        variantSelection =>
           val handler: PartialFunction[Throwable, RIO[Prompter & ResolutionContext, Either[VariantSelection, (A, VariantSelection)]]] = {
             case e: Sc4pacMissingVariant => variantSelection.refineFor(e.packageData).map(Left(_))
           }
@@ -373,13 +372,12 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path, fileSys: ser
             .map(x => Right((x, variantSelection)))
             .catchSome(handler)
             .catchSomeDefect(handler)  // legacy: Originally Repository used EitherT[Task, ErrStr, _], so Sc4pacMissingVariant was a `defect` rather than a regular `error`
-      }.map(_.toOption.get)
+      }
     }
 
     private def doResolveHandleUnresolvable(explicitModules: Seq[BareModule], variantSelection: VariantSelection): RIO[Prompter & ResolutionContext, (Resolution, Seq[BareModule], VariantSelection)] = {
-      ZIO.iterate(Left(explicitModules): Either[Seq[BareModule], (Resolution, Seq[BareModule], VariantSelection)])(_.isLeft) {
-        case Right(_) => throw new AssertionError
-        case Left(explicitModules) =>
+      zioIterateUntilRight(explicitModules) {
+        explicitModules =>
           doPromptingForVariant(variantSelection)(Resolution.resolve(explicitModules, _))
             .map { case (resolution, variantSelection) => Right((resolution, explicitModules, variantSelection)) }
             .catchSome {
@@ -405,7 +403,7 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path, fileSys: ser
                       ZIO.succeed(Left(explicitModules.filterNot(discard)))  // retry with smaller set of explicit packages
                   }
             }
-      }.map(_.toOption.get)
+      }
     }
 
     private def storeUpdatedSpec(selections: Variant, explicitModules: Seq[BareModule]): Task[Unit] =
@@ -415,8 +413,8 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path, fileSys: ser
 
     private def doDownloadWithMirror(resolution: Resolution, plan: UpdatePlan): RIO[Prompter & ResolutionContext & Downloader.Credentials, Seq[(DepAsset, Artifact, Blob)]] = {
       val depsToInstall = resolution.transitiveDependencies.filter(plan.toInstall).reverse  // we start by fetching artifacts in reverse as those have fewest dependencies of their own
-      ZIO.iterate(Left((Map.empty, None)): Either[(Map[java.net.URI, os.Path], Option[Downloader.Credentials]), Seq[(DepAsset, Artifact, Blob)]])(_.isLeft) {
-        case Left((urlFallbacks, credentialsFallback)) =>
+      zioIterateUntilRight((Map.empty[java.net.URI, os.Path], Option.empty[Downloader.Credentials])) {
+        (urlFallbacks, credentialsFallback) =>
           Resolution.fetchArtifacts(depsToInstall.collect{ case d: DepAsset => d }, urlFallbacks, plan.toRedownload)
             .updateService[Downloader.Credentials](origCredentials => credentialsFallback.getOrElse(origCredentials))
             .map(Right(_))
@@ -430,8 +428,7 @@ class Sc4pac(val context: ResolutionContext, val tempRoot: os.Path, fileSys: ser
                   )))
                 }
             }
-        case Right(_) => throw new AssertionError
-      }.map(_.toOption.get)
+      }
     }
 
     /** `def update`: Update all installed packages from modules (the list of explicitly added packages). */

@@ -232,13 +232,13 @@ object Extractor {
               None
             } else try {
               Some(os.SubPath(relativePathString))
-            } catch { case _: (IllegalArgumentException | java.io.IOException) =>
+            } catch { case e: (IllegalArgumentException | java.io.IOException) =>
               // Note that SubPath creation can fail here (on Windows) even for
               // files that we do not select for extraction later on.
               // This can happen if file names use an unknown encoding, see #51, so it's safer to throw an exception.
               // In some cases this can also fail later on with an ExtractionFailed, e.g. on Linux, when SubPath creation
               // succeeds, but the file system triggers an error later on during extraction.
-              throw new InvalidArchiveSubpath(path = relativePathString)
+              throw new InvalidArchiveSubpath(path = relativePathString, cause = e)
             }
           if (!subPathOpt.isDefined) {
             logger.debug(s"""Ignoring disallowed archive entry path "$relativePathString".""")
@@ -543,7 +543,7 @@ class Extractor(logger: Logger) {
     case e: ExtractionFailed => throw e
     case e: (NotADbpfFile | ChecksumError) => throw new ExtractionFailed(s"""Failed to extract "$archive".""", e.getMessage)
     case e: InvalidArchiveSubpath => throw new ExtractionFailed(s"""Failed to read some file(s) from "$archive".""",
-      s"""The file "${e.path}" cannot be extracted. This can happen when a file name contains illegal characters. Please report the problem.""",
+      s"""The file "${e.path}" cannot be extracted. This can happen when a file name contains illegal characters. Please report the problem. Original error: ${e.getCause}""",
     )
     case e: java.io.IOException => logger.debugPrintStackTrace(e); throw new ExtractionFailed(s"""Failed to extract "$archive".""", e.getMessage)
   }

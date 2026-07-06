@@ -7,7 +7,7 @@ For most uses, it is recommended to use the *sc4pac* GUI instead.
 ## Overview
 
 - Prerequisites:
-  - Java 11+ ([Windows]/[macOS]/[Linux], see [Adoptium] for details)
+  - Java 17+ ([Windows]/[macOS]/[Linux], see [Adoptium] for details)
   - Mono ([macOS](https://www.mono-project.com/docs/getting-started/install/)/[Linux](https://repology.org/project/mono/versions), not needed on Windows)
   - Enough disk space
 
@@ -330,6 +330,7 @@ Archives containing DLL files or Clickteam EXE installers may require some extra
 sc4pac extract --output out asset.zip                                           # extract all DBPF files
 sc4pac extract -o out --include="\.SC4Model$" --include="\.SC4Desc$" asset.zip  # extract only Model and Desc files
 sc4pac extract -o out --include="." --exclude='(?<!\.dll)$' asset.zip           # extract only DLL files
+sc4pac extract -o out --include="." --exclude='$nothing' asset.zip              # extract everything
 sc4pac extract -o out --clickteam-version 40 asset.zip                          # use only with Clickteam installers
 ```
 
