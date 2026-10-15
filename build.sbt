@@ -76,6 +76,7 @@ assembly / assemblyMergeStrategy := {
       case p1 if p1.last == "io.netty.versions.properties" => MergeStrategy.filterDistinctLines
       case _ => MergeStrategy.defaultMergeStrategy(p0)
     }
+    case "sevenzipjbinding-platforms.properties" => MergeStrategy.preferProject  // see src/main/resources/sevenzipjbinding-platforms.properties
   case p0 => MergeStrategy.defaultMergeStrategy(p0)
 }
 
@@ -109,15 +110,22 @@ libraryDependencies += "me.xdrop" % "fuzzywuzzy" % "1.4.0"  // fuzzy search
 
 libraryDependencies += "io.github.memo33" %% "scdbpf" % "0.3.0"
 
-libraryDependencies += "net.sf.sevenzipjbinding" % "sevenzipjbinding" % "16.02-2.01"  // native 7z for NSIS extraction
-
-// libraryDependencies += "net.sf.sevenzipjbinding" % "sevenzipjbinding-all-platforms" % "16.02-2.01"  // native 7z for NSIS extraction
-
-// https://www.mucommander.com/maven/com/mucommander/sevenzipjbinding-all-platforms/16.02-2.01/sevenzipjbinding-all-platforms-16.02-2.01.pom
-// https://www.mucommander.com/maven/com/mucommander/sevenzipjbinding-all-platforms/16.02-2.01/sevenzipjbinding-all-platforms-16.02-2.01.jar
-// resolvers += "mucommander internal Maven repository" at "https://www.mucommander.com/maven/"
-libraryDependencies += ("com.mucommander" % "sevenzipjbinding-all-platforms" % "16.02-2.01" // patched by muCommander for Apple M1 support
-  from "https://www.mucommander.com/maven/com/mucommander/sevenzipjbinding-all-platforms/16.02-2.01/sevenzipjbinding-all-platforms-16.02-2.01.jar")
+libraryDependencies ++= Seq(
+  /* Native 7z for NSIS extraction.
+   * To keep the jar file small, instead of including `sevenzipjbinding-all-platforms`,
+   * we select only the relevant native platforms, individually.
+   * These *must* be configured in:
+   *   src/main/resources/sevenzipjbinding-platforms.properties
+   * What is not included by us:
+   * - 32-bit flavors (x86, armv5/6/7),
+   * - musl/Alpine flavors (uncommon for desktops)
+   */
+  "net.sf.sevenzipjbinding" % "sevenzipjbinding"               % "23.01-2.2",  // wrapper
+  "net.sf.sevenzipjbinding" % "sevenzipjbinding-windows-amd64" % "23.01-2.2",
+  "net.sf.sevenzipjbinding" % "sevenzipjbinding-linux-amd64"   % "23.01-2.2",
+  "net.sf.sevenzipjbinding" % "sevenzipjbinding-linux-arm64"   % "23.01-2.2",
+  "net.sf.sevenzipjbinding" % "sevenzipjbinding-mac"           % "23.01-2.2",  // universal (Intel + Apple Silicon)
+)
 
 libraryDependencies += "org.slf4j" % "slf4j-nop" % "2.0.7"  // ignore logging in zio-http/netty
 

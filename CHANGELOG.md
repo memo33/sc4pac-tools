@@ -1,6 +1,8 @@
 # Changelog
 
 ## [Unreleased]
+### Changed
+- upgraded the embedded 7zip library to 23.01
 
 
 ## [0.10.0] - 2026-04-26
