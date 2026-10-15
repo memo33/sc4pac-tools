@@ -1,6 +1,9 @@
 # Changelog
 
 ## [Unreleased]
+
+
+## [0.10.1] - 2026-10-15
 ### Changed
 - upgraded the embedded 7zip library to 23.01
 
@@ -404,7 +407,8 @@
 ## [0.1.5] - 2023-09-26
 …
 
-[Unreleased]: https://github.com/memo33/sc4pac-tools/compare/0.10.0...HEAD
+[Unreleased]: https://github.com/memo33/sc4pac-tools/compare/0.10.1...HEAD
+[0.10.1]: https://github.com/memo33/sc4pac-tools/compare/0.10.0...0.10.1
 [0.10.0]: https://github.com/memo33/sc4pac-tools/compare/0.9.5...0.10.0
 [0.9.5]: https://github.com/memo33/sc4pac-tools/compare/0.9.4...0.9.5
 [0.9.4]: https://github.com/memo33/sc4pac-tools/compare/0.9.3...0.9.4
